@@ -23,7 +23,7 @@ GameTranslator.UI	WPF Application (.NET 9)	Presentation Layer – окна, over
 GameTranslator.Application	Class Library (.NET 9)	Use Cases, Services, Interfaces
 GameTranslator.Domain	Class Library (.NET 9)	Entities, Value Objects, Enums, Interfaces (Domain)
 GameTranslator.Infrastructure	Class Library (.NET 9)	OCR, Translation, Capture, Cache, Credentials
-GameTranslator.Tests	xUnit / NUnit	Юнит-тесты
+GameTranslator.Tests	xUnit	Юнит-тесты
 Зависимости между проектами (строго):
 text
 
@@ -283,7 +283,7 @@ markdown
 | `GameTranslator.Application` | Class Library (.NET 9) | Use Cases, Services, Interfaces |
 | `GameTranslator.Domain` | Class Library (.NET 9) | Entities, Value Objects, Enums, Interfaces (Domain) |
 | `GameTranslator.Infrastructure` | Class Library (.NET 9) | OCR, Translation, Capture, Cache, Credentials |
-| `GameTranslator.Tests` | xUnit / NUnit | Юнит-тесты |
+| `GameTranslator.Tests` | xUnit | Юнит-тесты |
 
 ### Зависимости между проектами (строго):
 

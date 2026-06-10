@@ -1,4 +1,5 @@
 using System.Windows;
+using GameTranslator.UI.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
@@ -30,6 +31,7 @@ public partial class App : System.Windows.Application
             })
             .ConfigureServices((context, services) =>
             {
+                services.AddSingleton<MainViewModel>();
                 services.AddSingleton<MainWindow>();
             })
             .Build();
@@ -43,6 +45,7 @@ public partial class App : System.Windows.Application
         Log.Information("GameTranslator application started.");
 
         MainWindow = host.Services.GetRequiredService<MainWindow>();
+        Log.Information("Main window resolved from dependency injection.");
         MainWindow.Show();
     }
 

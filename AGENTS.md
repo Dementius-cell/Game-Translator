@@ -42,3 +42,17 @@ For restricted changes, read `docs/governance/change-approval-required.md` and o
 - Keep changes minimal and tied to the current sprint.
 - Add or update tests for new behavior according to the quality gates.
 - Report changed files, created files, validation performed, discovered risks, remaining work, and the next step after each task.
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked in GitHub Issues for `Dementius-cell/Game-Translator`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The repository uses the standard mattpocock/skills triage label vocabulary. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repository with project-wide documentation under `docs/` and ADRs under `docs/adr/`. See `docs/agents/domain.md`.

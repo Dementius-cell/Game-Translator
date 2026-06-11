@@ -1,6 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <ProjectReference Include="..\GameTranslator.Application\GameTranslator.Application.csproj" />
     <ProjectReference Include="..\GameTranslator.Domain\GameTranslator.Domain.csproj" />
   </ItemGroup>
 

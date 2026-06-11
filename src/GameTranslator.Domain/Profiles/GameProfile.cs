@@ -4,6 +4,8 @@ public sealed record GameProfile
 {
     public const string CurrentSchemaVersion = "1.0";
 
+    public string Id { get; init; } = Guid.NewGuid().ToString("N");
+
     public string SchemaVersion { get; init; } = CurrentSchemaVersion;
 
     public string Name { get; init; } = string.Empty;

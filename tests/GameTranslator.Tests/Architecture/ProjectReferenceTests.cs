@@ -18,6 +18,7 @@ public sealed class ProjectReferenceTests
 
         AssertProjectReferences(
             "src/GameTranslator.Infrastructure/GameTranslator.Infrastructure.csproj",
+            "src/GameTranslator.Application/GameTranslator.Application.csproj",
             "src/GameTranslator.Domain/GameTranslator.Domain.csproj");
 
         AssertProjectReferences(

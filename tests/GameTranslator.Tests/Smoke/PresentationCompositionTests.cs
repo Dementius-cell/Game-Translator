@@ -1,0 +1,100 @@
+using System.IO;
+using System.Reflection;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace GameTranslator.Tests.Smoke;
+
+public sealed class PresentationCompositionTests
+{
+    [Fact]
+    public void PresentationCompositionRoot_RegistersShellAndNavigationServices()
+    {
+        var services = InvokePresentationCompositionRoot();
+        var serviceTypeNames = services
+            .Select(descriptor => descriptor.ServiceType.FullName)
+            .Where(name => name is not null)
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.Contains("GameTranslator.Application.Abstractions.INavigationService", serviceTypeNames);
+        Assert.Contains("GameTranslator.Application.Abstractions.IDialogService", serviceTypeNames);
+        Assert.Contains("GameTranslator.Application.Abstractions.ISettingsService", serviceTypeNames);
+        Assert.Contains("GameTranslator.Application.Abstractions.IApplicationLogger", serviceTypeNames);
+        Assert.Contains("GameTranslator.UI.ViewModels.ShellViewModel", serviceTypeNames);
+        Assert.Contains("GameTranslator.UI.ViewModels.MainViewModel", serviceTypeNames);
+        Assert.Contains("GameTranslator.UI.Views.ShellView", serviceTypeNames);
+        Assert.Contains("GameTranslator.UI.MainWindow", serviceTypeNames);
+    }
+
+    [Fact]
+    public void PresentationCompositionRoot_DoesNotRegisterOcrTranslationCaptureOrOverlayServices()
+    {
+        var services = InvokePresentationCompositionRoot();
+        var registeredTypeNames = services
+            .SelectMany(descriptor => new[] { descriptor.ServiceType, descriptor.ImplementationType })
+            .Where(type => type is not null)
+            .Select(type => type!.Name)
+            .ToArray();
+
+        var forbiddenTerms = new[] { "Ocr", "Translator", "Translation", "Capture", "Overlay" };
+
+        foreach (var forbiddenTerm in forbiddenTerms)
+        {
+            Assert.DoesNotContain(
+                registeredTypeNames,
+                typeName => typeName.Contains(forbiddenTerm, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    [Fact]
+    public void UiProject_DoesNotReferenceInfrastructureProject()
+    {
+        var references = ProjectFileReader.GetProjectReferences("src/GameTranslator.UI/GameTranslator.UI.csproj");
+
+        Assert.DoesNotContain(
+            "src/GameTranslator.Infrastructure/GameTranslator.Infrastructure.csproj",
+            references);
+    }
+
+    private static IServiceCollection InvokePresentationCompositionRoot()
+    {
+        var uiAssembly = LoadUiAssembly();
+        var extensionType = uiAssembly.GetType(
+            "GameTranslator.UI.DependencyInjection.PresentationServiceCollectionExtensions",
+            throwOnError: true)
+            ?? throw new InvalidOperationException("Presentation service collection extension type was not found.");
+
+        var method = extensionType.GetMethod(
+            "AddPresentationServices",
+            BindingFlags.Public | BindingFlags.Static)
+            ?? throw new InvalidOperationException("AddPresentationServices method was not found.");
+
+        var services = new ServiceCollection();
+        var result = method.Invoke(null, new object[] { services });
+
+        Assert.Same(services, result);
+
+        return services;
+    }
+
+    private static Assembly LoadUiAssembly()
+    {
+        var root = RepositoryRoot.Find();
+        var configuration = AppContext.BaseDirectory.Contains(
+            $"{Path.DirectorySeparatorChar}Release{Path.DirectorySeparatorChar}",
+            StringComparison.OrdinalIgnoreCase)
+            ? "Release"
+            : "Debug";
+        var assemblyPath = Path.Combine(
+            root,
+            "src",
+            "GameTranslator.UI",
+            "bin",
+            configuration,
+            "net9.0-windows",
+            "GameTranslator.UI.dll");
+
+        Assert.True(File.Exists(assemblyPath), $"UI assembly is missing. Build the solution first: {assemblyPath}");
+
+        return Assembly.LoadFrom(assemblyPath);
+    }
+}

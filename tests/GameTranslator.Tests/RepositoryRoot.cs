@@ -1,3 +1,5 @@
+using System.IO;
+
 namespace GameTranslator.Tests;
 
 internal static class RepositoryRoot

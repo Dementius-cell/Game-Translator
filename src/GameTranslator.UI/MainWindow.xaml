@@ -4,50 +4,10 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="{Binding ApplicationName, FallbackValue=Game Translator}"
+        Title="Game Translator"
         MinHeight="360"
         MinWidth="640"
         Height="450"
         Width="800">
-    <Grid Background="#F7F8FA">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="56" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="32" />
-        </Grid.RowDefinitions>
-
-        <Border Grid.Row="0" Background="#253238">
-            <DockPanel LastChildFill="False" Margin="20,0">
-                <TextBlock
-                    VerticalAlignment="Center"
-                    FontSize="18"
-                    FontWeight="SemiBold"
-                    Foreground="#FFFFFF"
-                    Text="{Binding ApplicationName}" />
-                <TextBlock
-                    DockPanel.Dock="Right"
-                    VerticalAlignment="Center"
-                    Foreground="#B9D8D4"
-                    Text="{Binding CurrentStage}" />
-            </DockPanel>
-        </Border>
-
-        <Grid Grid.Row="1" Margin="24">
-            <Border
-                Background="#FFFFFF"
-                BorderBrush="#D7DEE8"
-                BorderThickness="1"
-                CornerRadius="4">
-                <TextBlock
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Center"
-                    Foreground="#56616F"
-                    Text="{Binding StatusMessage}" />
-            </Border>
-        </Grid>
-
-        <StatusBar Grid.Row="2" Background="#EEF2F6">
-            <TextBlock Text="{Binding StatusMessage}" />
-        </StatusBar>
-    </Grid>
+    <ContentControl x:Name="ShellHost" />
 </Window>

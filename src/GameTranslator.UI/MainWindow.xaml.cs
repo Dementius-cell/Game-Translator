@@ -1,5 +1,5 @@
 using System.Windows;
-using GameTranslator.UI.ViewModels;
+using GameTranslator.UI.Views;
 
 namespace GameTranslator.UI;
 
@@ -8,9 +8,9 @@ namespace GameTranslator.UI;
 /// </summary>
 public partial class MainWindow : Window
 {
-    public MainWindow(MainViewModel viewModel)
+    public MainWindow(ShellView shellView)
     {
         InitializeComponent();
-        DataContext = viewModel;
+        ShellHost.Content = shellView;
     }
 }

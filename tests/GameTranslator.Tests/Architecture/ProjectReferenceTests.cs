@@ -1,5 +1,3 @@
-using System.Xml.Linq;
-
 namespace GameTranslator.Tests.Architecture;
 
 public sealed class ProjectReferenceTests
@@ -32,7 +30,7 @@ public sealed class ProjectReferenceTests
     [Fact]
     public void UiProject_DoesNotReferenceInfrastructureProject()
     {
-        var references = GetProjectReferences("src/GameTranslator.UI/GameTranslator.UI.csproj");
+        var references = ProjectFileReader.GetProjectReferences("src/GameTranslator.UI/GameTranslator.UI.csproj");
 
         Assert.DoesNotContain(
             "src/GameTranslator.Infrastructure/GameTranslator.Infrastructure.csproj",
@@ -41,31 +39,13 @@ public sealed class ProjectReferenceTests
 
     private static void AssertProjectReferences(string projectPath, params string[] expectedReferences)
     {
-        var actualReferences = GetProjectReferences(projectPath);
+        var actualReferences = ProjectFileReader.GetProjectReferences(projectPath);
         var normalizedExpectedReferences = expectedReferences
             .Select(NormalizePath)
             .Order(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
         Assert.Equal(normalizedExpectedReferences, actualReferences);
-    }
-
-    private static string[] GetProjectReferences(string projectPath)
-    {
-        var root = RepositoryRoot.Find();
-        var fullProjectPath = Path.Combine(root, projectPath);
-        var projectDirectory = Path.GetDirectoryName(fullProjectPath)
-            ?? throw new InvalidOperationException($"Project path has no directory: {projectPath}");
-
-        return XDocument.Load(fullProjectPath)
-            .Descendants("ProjectReference")
-            .Select(reference => reference.Attribute("Include")?.Value)
-            .Where(include => !string.IsNullOrWhiteSpace(include))
-            .Select(include => Path.GetFullPath(Path.Combine(projectDirectory, include!)))
-            .Select(path => Path.GetRelativePath(root, path))
-            .Select(NormalizePath)
-            .Order(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
     }
 
     private static string NormalizePath(string path)

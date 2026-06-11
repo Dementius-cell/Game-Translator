@@ -1,5 +1,5 @@
 using System.Windows;
-using GameTranslator.UI.ViewModels;
+using GameTranslator.UI.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
@@ -31,8 +31,7 @@ public partial class App : System.Windows.Application
             })
             .ConfigureServices((context, services) =>
             {
-                services.AddSingleton<MainViewModel>();
-                services.AddSingleton<MainWindow>();
+                services.AddPresentationServices();
             })
             .Build();
     }

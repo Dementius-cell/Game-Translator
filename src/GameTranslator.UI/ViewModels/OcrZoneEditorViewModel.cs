@@ -2,8 +2,10 @@ using GameTranslator.Domain.Profiles;
 
 namespace GameTranslator.UI.ViewModels;
 
-public sealed class OcrZoneEditorViewModel : ObservableObject
+public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
 {
+    private readonly List<string> absoluteOverlapErrors = new();
+
     private string id = Guid.NewGuid().ToString("N");
     private string name = string.Empty;
     private int absoluteX;
@@ -29,6 +31,7 @@ public sealed class OcrZoneEditorViewModel : ObservableObject
             if (SetProperty(ref name, value))
             {
                 OnPropertyChanged(nameof(DisplayName));
+                Validate();
             }
         }
     }
@@ -36,49 +39,97 @@ public sealed class OcrZoneEditorViewModel : ObservableObject
     public int AbsoluteX
     {
         get => absoluteX;
-        set => SetProperty(ref absoluteX, value);
+        set
+        {
+            if (SetProperty(ref absoluteX, value))
+            {
+                Validate();
+            }
+        }
     }
 
     public int AbsoluteY
     {
         get => absoluteY;
-        set => SetProperty(ref absoluteY, value);
+        set
+        {
+            if (SetProperty(ref absoluteY, value))
+            {
+                Validate();
+            }
+        }
     }
 
     public int AbsoluteWidth
     {
         get => absoluteWidth;
-        set => SetProperty(ref absoluteWidth, value);
+        set
+        {
+            if (SetProperty(ref absoluteWidth, value))
+            {
+                Validate();
+            }
+        }
     }
 
     public int AbsoluteHeight
     {
         get => absoluteHeight;
-        set => SetProperty(ref absoluteHeight, value);
+        set
+        {
+            if (SetProperty(ref absoluteHeight, value))
+            {
+                Validate();
+            }
+        }
     }
 
     public double RelativeX
     {
         get => relativeX;
-        set => SetProperty(ref relativeX, value);
+        set
+        {
+            if (SetProperty(ref relativeX, value))
+            {
+                Validate();
+            }
+        }
     }
 
     public double RelativeY
     {
         get => relativeY;
-        set => SetProperty(ref relativeY, value);
+        set
+        {
+            if (SetProperty(ref relativeY, value))
+            {
+                Validate();
+            }
+        }
     }
 
     public double RelativeWidth
     {
         get => relativeWidth;
-        set => SetProperty(ref relativeWidth, value);
+        set
+        {
+            if (SetProperty(ref relativeWidth, value))
+            {
+                Validate();
+            }
+        }
     }
 
     public double RelativeHeight
     {
         get => relativeHeight;
-        set => SetProperty(ref relativeHeight, value);
+        set
+        {
+            if (SetProperty(ref relativeHeight, value))
+            {
+                Validate();
+            }
+        }
     }
 
     public string DisplayName => string.IsNullOrWhiteSpace(Name) ? "Unnamed zone" : Name;
@@ -108,6 +159,18 @@ public sealed class OcrZoneEditorViewModel : ObservableObject
         };
     }
 
+    public void SetAbsoluteOverlapErrors(IEnumerable<string> errors)
+    {
+        absoluteOverlapErrors.Clear();
+        absoluteOverlapErrors.AddRange(
+            errors
+                .Where(error => !string.IsNullOrWhiteSpace(error))
+                .Select(error => error.Trim())
+                .Distinct(StringComparer.Ordinal));
+
+        Validate();
+    }
+
     public OcrZone ToModel()
     {
         return new OcrZone
@@ -117,5 +180,48 @@ public sealed class OcrZoneEditorViewModel : ObservableObject
             AbsoluteBounds = new AbsoluteRectangle(AbsoluteX, AbsoluteY, AbsoluteWidth, AbsoluteHeight),
             RelativeBounds = new RelativeRectangle(RelativeX, RelativeY, RelativeWidth, RelativeHeight),
         };
+    }
+
+    private void Validate()
+    {
+        SetErrors(
+            nameof(Name),
+            string.IsNullOrWhiteSpace(Name)
+                ? new[] { "Zone name is required." }
+                : Array.Empty<string>());
+
+        var absoluteErrors = new List<string>();
+        if (AbsoluteWidth <= 0 || AbsoluteHeight <= 0)
+        {
+            absoluteErrors.Add("Absolute width and height must be positive.");
+        }
+
+        absoluteErrors.AddRange(absoluteOverlapErrors);
+        SetErrors(nameof(AbsoluteX), absoluteErrors);
+        SetErrors(nameof(AbsoluteY), absoluteErrors);
+        SetErrors(nameof(AbsoluteWidth), absoluteErrors);
+        SetErrors(nameof(AbsoluteHeight), absoluteErrors);
+
+        var relativeSizeErrors = new List<string>();
+        if (RelativeWidth <= 0 || RelativeHeight <= 0)
+        {
+            relativeSizeErrors.Add("Relative width and height must be positive.");
+        }
+
+        var relativePositionErrors = new List<string>();
+        if (RelativeX < 0 || RelativeY < 0 || RelativeX >= 1 || RelativeY >= 1)
+        {
+            relativePositionErrors.Add("Relative X and Y must stay within 0..1.");
+        }
+
+        if (RelativeX + RelativeWidth > 1 || RelativeY + RelativeHeight > 1)
+        {
+            relativePositionErrors.Add("Relative bounds must fit within 0..1.");
+        }
+
+        SetErrors(nameof(RelativeX), relativePositionErrors);
+        SetErrors(nameof(RelativeY), relativePositionErrors);
+        SetErrors(nameof(RelativeWidth), relativeSizeErrors.Concat(relativePositionErrors));
+        SetErrors(nameof(RelativeHeight), relativeSizeErrors.Concat(relativePositionErrors));
     }
 }

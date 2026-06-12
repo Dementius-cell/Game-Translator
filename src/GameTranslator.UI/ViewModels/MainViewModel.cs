@@ -9,9 +9,20 @@ using GameTranslator.UI.Commands;
 
 namespace GameTranslator.UI.ViewModels;
 
-public sealed class MainViewModel : ObservableObject
+public sealed class MainViewModel : ValidatableObservableObject
 {
     private const string SelectedProfileSettingKey = "profiles.selectedId";
+    private const string DraftProfileNameSettingKey = "shell.draft.profile.name";
+    private const string DraftProfileDescriptionSettingKey = "shell.draft.profile.description";
+    private const string DraftTranslatorProviderSettingKey = "shell.draft.translator.provider";
+    private const string DraftSourceLanguageSettingKey = "shell.draft.translator.sourceLanguage";
+    private const string DraftTargetLanguageSettingKey = "shell.draft.translator.targetLanguage";
+    private const string DraftOverlayMaskModeSettingKey = "shell.draft.overlay.maskMode";
+    private const string DraftOverlayMaskColorSettingKey = "shell.draft.overlay.maskColor";
+    private const string DraftOverlayOpacitySettingKey = "shell.draft.overlay.opacity";
+    private const string DraftOverlayPaddingSettingKey = "shell.draft.overlay.padding";
+    private const string DraftOcrZonesSettingKey = "shell.draft.ocrZones";
+    private const string DraftSelectedZoneIdSettingKey = "shell.draft.selectedZoneId";
     private static readonly Regex HexColorPattern = new("^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$", RegexOptions.Compiled);
 
     private readonly ProfileService profileService;
@@ -34,6 +45,7 @@ public sealed class MainViewModel : ObservableObject
     private string statusMessage = "Loading profiles...";
     private bool isBusy;
     private bool isLoaded;
+    private bool suppressDraftStatePersistence;
 
     public MainViewModel(
         ProfileService profileService,
@@ -49,6 +61,8 @@ public sealed class MainViewModel : ObservableObject
         OcrZones = new ObservableCollection<OcrZoneEditorViewModel>();
         ValidationErrors = new ObservableCollection<string>();
         OverlayMaskModes = Enum.GetValues<OverlayMaskMode>();
+        TranslatorProviderOptions = new[] { "Google", "Azure", "Yandex" };
+        LanguageOptions = new[] { "ja", "en", "ru", "ko", "zh-CN", "zh-TW" };
         BeginCreateProfileCommand = new RelayCommand(BeginCreateProfile, () => !IsBusy);
         RefreshProfilesCommand = new AsyncRelayCommand(RefreshProfilesAsync, () => !IsBusy);
         SaveProfileCommand = new AsyncRelayCommand(SaveAsync, CanSaveProfile);
@@ -73,6 +87,10 @@ public sealed class MainViewModel : ObservableObject
     public ObservableCollection<string> ValidationErrors { get; }
 
     public IReadOnlyList<OverlayMaskMode> OverlayMaskModes { get; }
+
+    public IReadOnlyList<string> TranslatorProviderOptions { get; }
+
+    public IReadOnlyList<string> LanguageOptions { get; }
 
     public GameProfile? SelectedProfile
     {
@@ -100,6 +118,8 @@ public sealed class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(ActiveProfileName));
             OnPropertyChanged(nameof(EditorTitle));
             OnPropertyChanged(nameof(ProfileSummary));
+            OnPropertyChanged(nameof(HasValidationErrors));
+            OnPropertyChanged(nameof(IsEditorValid));
             NotifyCommandStateChanged();
         }
     }
@@ -111,7 +131,8 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref profileName, value))
             {
-                ValidateEditor();
+                PersistDraftShellStateIfNeeded();
+                RefreshValidationState();
             }
         }
     }
@@ -123,6 +144,7 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref profileDescription, value))
             {
+                PersistDraftShellStateIfNeeded();
                 OnPropertyChanged(nameof(ProfileSummary));
             }
         }
@@ -135,7 +157,10 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref translatorProvider, value))
             {
-                ValidateEditor();
+                OnPropertyChanged(nameof(TranslatorSettingsSummary));
+                OnPropertyChanged(nameof(ProfileSummary));
+                PersistDraftShellStateIfNeeded();
+                RefreshValidationState();
             }
         }
     }
@@ -147,7 +172,10 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref sourceLanguage, value))
             {
-                ValidateEditor();
+                OnPropertyChanged(nameof(TranslatorSettingsSummary));
+                OnPropertyChanged(nameof(ProfileSummary));
+                PersistDraftShellStateIfNeeded();
+                RefreshValidationState();
             }
         }
     }
@@ -159,7 +187,10 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref targetLanguage, value))
             {
-                ValidateEditor();
+                OnPropertyChanged(nameof(TranslatorSettingsSummary));
+                OnPropertyChanged(nameof(ProfileSummary));
+                PersistDraftShellStateIfNeeded();
+                RefreshValidationState();
             }
         }
     }
@@ -172,6 +203,7 @@ public sealed class MainViewModel : ObservableObject
             if (SetProperty(ref overlayMaskMode, value))
             {
                 OnPropertyChanged(nameof(ProfileSummary));
+                PersistDraftShellStateIfNeeded();
             }
         }
     }
@@ -183,7 +215,8 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref overlayMaskColor, value))
             {
-                ValidateEditor();
+                PersistDraftShellStateIfNeeded();
+                RefreshValidationState();
             }
         }
     }
@@ -195,7 +228,8 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref overlayOpacity, value))
             {
-                ValidateEditor();
+                PersistDraftShellStateIfNeeded();
+                RefreshValidationState();
             }
         }
     }
@@ -207,7 +241,8 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref overlayPadding, value))
             {
-                ValidateEditor();
+                PersistDraftShellStateIfNeeded();
+                RefreshValidationState();
             }
         }
     }
@@ -222,6 +257,7 @@ public sealed class MainViewModel : ObservableObject
                 return;
             }
 
+            PersistDraftShellStateIfNeeded();
             OnPropertyChanged(nameof(HasSelectedZone));
             NotifyCommandStateChanged();
         }
@@ -252,7 +288,7 @@ public sealed class MainViewModel : ObservableObject
 
     public bool HasSelectedZone => SelectedZone is not null;
 
-    public bool HasValidationErrors => ValidationErrors.Count != 0;
+    public bool HasValidationErrors => HasErrors || OcrZones.Any(zone => zone.HasErrors);
 
     public bool IsEditorValid => !HasValidationErrors;
 
@@ -268,7 +304,19 @@ public sealed class MainViewModel : ObservableObject
         {
             var schemaVersion = SelectedProfile?.SchemaVersion ?? GameProfile.CurrentSchemaVersion;
 
-            return $"schema {schemaVersion} | zones {OcrZones.Count} | overlay {OverlayMaskMode}";
+            return $"schema {schemaVersion} | {TranslatorSettingsSummary} | zones {OcrZones.Count} | overlay {OverlayMaskMode}";
+        }
+    }
+
+    public string TranslatorSettingsSummary
+    {
+        get
+        {
+            var provider = string.IsNullOrWhiteSpace(TranslatorProvider) ? "no provider" : TranslatorProvider.Trim();
+            var source = string.IsNullOrWhiteSpace(SourceLanguage) ? "source ?" : SourceLanguage.Trim();
+            var target = string.IsNullOrWhiteSpace(TargetLanguage) ? "target ?" : TargetLanguage.Trim();
+
+            return $"{provider} | {source} -> {target}";
         }
     }
 
@@ -313,7 +361,7 @@ public sealed class MainViewModel : ObservableObject
 
         LoadDraftValues();
         StatusMessage = "Drafting a new profile.";
-        ValidateEditor();
+        RefreshValidationState();
         NotifyCommandStateChanged();
     }
 
@@ -327,7 +375,7 @@ public sealed class MainViewModel : ObservableObject
 
     public async Task SaveAsync()
     {
-        ValidateEditor();
+        RefreshValidationState();
         if (!CanSaveProfile())
         {
             if (HasValidationErrors)
@@ -405,7 +453,7 @@ public sealed class MainViewModel : ObservableObject
 
         LoadEditorFromProfile(SelectedProfile);
         StatusMessage = $"Reset editor for '{SelectedProfile.Name}'.";
-        ValidateEditor();
+        RefreshValidationState();
     }
 
     public void AddZone()
@@ -414,9 +462,10 @@ public sealed class MainViewModel : ObservableObject
         AttachZone(zone);
         OcrZones.Add(zone);
         SelectedZone = zone;
+        PersistDraftShellStateIfNeeded();
         OnPropertyChanged(nameof(ZoneSummary));
         OnPropertyChanged(nameof(ProfileSummary));
-        ValidateEditor();
+        RefreshValidationState();
     }
 
     public void RemoveSelectedZone()
@@ -432,9 +481,10 @@ public sealed class MainViewModel : ObservableObject
         SelectedZone = OcrZones.Count == 0
             ? null
             : OcrZones[Math.Clamp(index, 0, OcrZones.Count - 1)];
+        PersistDraftShellStateIfNeeded();
         OnPropertyChanged(nameof(ZoneSummary));
         OnPropertyChanged(nameof(ProfileSummary));
-        ValidateEditor();
+        RefreshValidationState();
     }
 
     private async Task RefreshProfilesAsync(string? preferredProfileId)
@@ -548,36 +598,54 @@ public sealed class MainViewModel : ObservableObject
 
     private void LoadEditorFromProfile(GameProfile profile)
     {
-        ProfileName = profile.Name;
-        ProfileDescription = profile.Description;
-        TranslatorProvider = profile.TranslatorSettings.Provider;
-        SourceLanguage = profile.TranslatorSettings.SourceLanguage;
-        TargetLanguage = profile.TranslatorSettings.TargetLanguage;
-        OverlayMaskMode = profile.OverlaySettings.MaskMode;
-        OverlayMaskColor = profile.OverlaySettings.MaskColor;
-        OverlayOpacity = profile.OverlaySettings.Opacity;
-        OverlayPadding = profile.OverlaySettings.Padding;
-        ReplaceZones(profile.OcrZones.Select(OcrZoneEditorViewModel.FromModel));
+        RunWithoutPersistingDraftState(() =>
+        {
+            ProfileName = profile.Name;
+            ProfileDescription = profile.Description;
+            TranslatorProvider = profile.TranslatorSettings.Provider;
+            SourceLanguage = profile.TranslatorSettings.SourceLanguage;
+            TargetLanguage = profile.TranslatorSettings.TargetLanguage;
+            OverlayMaskMode = profile.OverlaySettings.MaskMode;
+            OverlayMaskColor = profile.OverlaySettings.MaskColor;
+            OverlayOpacity = profile.OverlaySettings.Opacity;
+            OverlayPadding = profile.OverlaySettings.Padding;
+            ReplaceZones(profile.OcrZones.Select(OcrZoneEditorViewModel.FromModel));
+        });
+
         OnPropertyChanged(nameof(ProfileSummary));
+        OnPropertyChanged(nameof(TranslatorSettingsSummary));
         OnPropertyChanged(nameof(ZoneSummary));
-        ValidateEditor();
+        RefreshValidationState();
     }
 
     private void LoadDraftValues()
     {
-        ProfileName = string.Empty;
-        ProfileDescription = string.Empty;
-        TranslatorProvider = string.Empty;
-        SourceLanguage = string.Empty;
-        TargetLanguage = string.Empty;
-        OverlayMaskMode = OverlaySettings.Default.MaskMode;
-        OverlayMaskColor = OverlaySettings.Default.MaskColor;
-        OverlayOpacity = OverlaySettings.Default.Opacity;
-        OverlayPadding = OverlaySettings.Default.Padding;
-        ReplaceZones(Array.Empty<OcrZoneEditorViewModel>());
+        var draftZones = settings.GetValue<OcrZone[]>(DraftOcrZonesSettingKey) ?? Array.Empty<OcrZone>();
+        var draftSelectedZoneId = settings.GetValue<string>(DraftSelectedZoneIdSettingKey);
+
+        RunWithoutPersistingDraftState(() =>
+        {
+            ProfileName = settings.GetValue<string>(DraftProfileNameSettingKey) ?? string.Empty;
+            ProfileDescription = settings.GetValue<string>(DraftProfileDescriptionSettingKey) ?? string.Empty;
+            TranslatorProvider = settings.GetValue<string>(DraftTranslatorProviderSettingKey) ?? string.Empty;
+            SourceLanguage = settings.GetValue<string>(DraftSourceLanguageSettingKey) ?? string.Empty;
+            TargetLanguage = settings.GetValue<string>(DraftTargetLanguageSettingKey) ?? string.Empty;
+            OverlayMaskMode = settings.GetValue<OverlayMaskMode?>(DraftOverlayMaskModeSettingKey) ?? OverlaySettings.Default.MaskMode;
+            OverlayMaskColor = settings.GetValue<string>(DraftOverlayMaskColorSettingKey) ?? OverlaySettings.Default.MaskColor;
+            OverlayOpacity = settings.GetValue<double?>(DraftOverlayOpacitySettingKey) ?? OverlaySettings.Default.Opacity;
+            OverlayPadding = settings.GetValue<double?>(DraftOverlayPaddingSettingKey) ?? OverlaySettings.Default.Padding;
+            ReplaceZones(draftZones.Select(OcrZoneEditorViewModel.FromModel));
+            if (!string.IsNullOrWhiteSpace(draftSelectedZoneId))
+            {
+                SelectedZone = OcrZones.FirstOrDefault(zone => string.Equals(zone.Id, draftSelectedZoneId, StringComparison.Ordinal))
+                    ?? OcrZones.FirstOrDefault();
+            }
+        });
+
         OnPropertyChanged(nameof(ProfileSummary));
+        OnPropertyChanged(nameof(TranslatorSettingsSummary));
         OnPropertyChanged(nameof(ZoneSummary));
-        ValidateEditor();
+        RefreshValidationState();
     }
 
     private bool CanSaveProfile()
@@ -630,79 +698,84 @@ public sealed class MainViewModel : ObservableObject
 
     private void OnZonePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        PersistDraftShellStateIfNeeded();
         OnPropertyChanged(nameof(ProfileSummary));
-        ValidateEditor();
+        RefreshValidationState();
     }
 
-    private void ValidateEditor()
+    private void PersistDraftShellStateIfNeeded()
     {
-        var errors = new List<string>();
-
-        if (string.IsNullOrWhiteSpace(ProfileName))
+        if (suppressDraftStatePersistence || !IsDraftEditor)
         {
-            errors.Add("Profile name is required.");
+            return;
         }
 
-        if (string.IsNullOrWhiteSpace(TranslatorProvider))
+        settings.SetValue(DraftProfileNameSettingKey, NormalizeOptionalText(ProfileName));
+        settings.SetValue(DraftProfileDescriptionSettingKey, NormalizeOptionalText(ProfileDescription));
+        settings.SetValue(DraftTranslatorProviderSettingKey, NormalizeOptionalText(TranslatorProvider));
+        settings.SetValue(DraftSourceLanguageSettingKey, NormalizeOptionalText(SourceLanguage));
+        settings.SetValue(DraftTargetLanguageSettingKey, NormalizeOptionalText(TargetLanguage));
+        settings.SetValue(DraftOverlayMaskModeSettingKey, OverlayMaskMode);
+        settings.SetValue(DraftOverlayMaskColorSettingKey, OverlayMaskColor.Trim());
+        settings.SetValue(DraftOverlayOpacitySettingKey, OverlayOpacity);
+        settings.SetValue(DraftOverlayPaddingSettingKey, OverlayPadding);
+        settings.SetValue(DraftOcrZonesSettingKey, OcrZones.Select(zone => zone.ToModel()).ToArray());
+        settings.SetValue(DraftSelectedZoneIdSettingKey, SelectedZone?.Id);
+    }
+
+    private void RunWithoutPersistingDraftState(Action action)
+    {
+        suppressDraftStatePersistence = true;
+
+        try
         {
-            errors.Add("Translator provider is required.");
+            action();
         }
-
-        if (string.IsNullOrWhiteSpace(SourceLanguage))
+        finally
         {
-            errors.Add("Source language is required.");
+            suppressDraftStatePersistence = false;
         }
+    }
 
-        if (string.IsNullOrWhiteSpace(TargetLanguage))
-        {
-            errors.Add("Target language is required.");
-        }
+    private void RefreshValidationState()
+    {
+        SetErrors(
+            nameof(ProfileName),
+            string.IsNullOrWhiteSpace(ProfileName)
+                ? new[] { "Profile name is required." }
+                : Array.Empty<string>());
+        SetErrors(
+            nameof(TranslatorProvider),
+            string.IsNullOrWhiteSpace(TranslatorProvider)
+                ? new[] { "Translator provider is required." }
+                : Array.Empty<string>());
+        SetErrors(
+            nameof(SourceLanguage),
+            string.IsNullOrWhiteSpace(SourceLanguage)
+                ? new[] { "Source language is required." }
+                : Array.Empty<string>());
+        SetErrors(
+            nameof(TargetLanguage),
+            string.IsNullOrWhiteSpace(TargetLanguage)
+                ? new[] { "Target language is required." }
+                : Array.Empty<string>());
+        SetErrors(
+            nameof(OverlayMaskColor),
+            !HexColorPattern.IsMatch(OverlayMaskColor.Trim())
+                ? new[] { "Overlay mask color must use #RRGGBB or #AARRGGBB format." }
+                : Array.Empty<string>());
+        SetErrors(
+            nameof(OverlayOpacity),
+            OverlayOpacity is < 0 or > 1
+                ? new[] { "Overlay opacity must be between 0 and 1." }
+                : Array.Empty<string>());
+        SetErrors(
+            nameof(OverlayPadding),
+            OverlayPadding < 0
+                ? new[] { "Overlay padding must be zero or greater." }
+                : Array.Empty<string>());
 
-        if (!HexColorPattern.IsMatch(OverlayMaskColor.Trim()))
-        {
-            errors.Add("Overlay mask color must use #RRGGBB or #AARRGGBB format.");
-        }
-
-        if (OverlayOpacity is < 0 or > 1)
-        {
-            errors.Add("Overlay opacity must be between 0 and 1.");
-        }
-
-        if (OverlayPadding < 0)
-        {
-            errors.Add("Overlay padding must be zero or greater.");
-        }
-
-        for (var index = 0; index < OcrZones.Count; index++)
-        {
-            var zone = OcrZones[index];
-            var zoneLabel = string.IsNullOrWhiteSpace(zone.Name) ? $"Zone {index + 1}" : zone.Name.Trim();
-
-            if (string.IsNullOrWhiteSpace(zone.Name))
-            {
-                errors.Add($"{zoneLabel}: name is required.");
-            }
-
-            if (zone.AbsoluteWidth <= 0 || zone.AbsoluteHeight <= 0)
-            {
-                errors.Add($"{zoneLabel}: absolute width and height must be positive.");
-            }
-
-            if (zone.RelativeWidth <= 0 || zone.RelativeHeight <= 0)
-            {
-                errors.Add($"{zoneLabel}: relative width and height must be positive.");
-            }
-
-            if (zone.RelativeX < 0 || zone.RelativeY < 0 || zone.RelativeX >= 1 || zone.RelativeY >= 1)
-            {
-                errors.Add($"{zoneLabel}: relative X and Y must stay within 0..1.");
-            }
-
-            if (zone.RelativeX + zone.RelativeWidth > 1 || zone.RelativeY + zone.RelativeHeight > 1)
-            {
-                errors.Add($"{zoneLabel}: relative bounds must fit within 0..1.");
-            }
-        }
+        var overlapErrorsByZoneId = OcrZones.ToDictionary(zone => zone.Id, _ => new List<string>(), StringComparer.Ordinal);
 
         for (var first = 0; first < OcrZones.Count; first++)
         {
@@ -722,14 +795,26 @@ public sealed class MainViewModel : ObservableObject
                     secondZone.AbsoluteWidth,
                     secondZone.AbsoluteHeight);
 
-                if (firstBounds.Intersects(secondBounds))
+                if (!firstBounds.Intersects(secondBounds))
                 {
-                    errors.Add($"OCR zones '{firstZone.DisplayName}' and '{secondZone.DisplayName}' overlap.");
+                    continue;
                 }
+
+                var overlapMessage = $"OCR zones '{firstZone.DisplayName}' and '{secondZone.DisplayName}' overlap.";
+                overlapErrorsByZoneId[firstZone.Id].Add(overlapMessage);
+                overlapErrorsByZoneId[secondZone.Id].Add(overlapMessage);
             }
         }
 
-        ReplaceValidationErrors(errors);
+        foreach (var zone in OcrZones)
+        {
+            zone.SetAbsoluteOverlapErrors(overlapErrorsByZoneId[zone.Id]);
+        }
+
+        ReplaceValidationErrors(
+            GetErrors(null).Cast<string>()
+                .Concat(OcrZones.SelectMany(zone => zone.GetErrors(null).Cast<string>()))
+                .Distinct(StringComparer.Ordinal));
     }
 
     private void ReplaceValidationErrors(IEnumerable<string> errors)
@@ -745,6 +830,15 @@ public sealed class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(IsEditorValid));
         NotifyCommandStateChanged();
     }
+
+    private static string? NormalizeOptionalText(string value)
+    {
+        var normalized = value.Trim();
+
+        return normalized.Length == 0 ? null : normalized;
+    }
+
+    private bool IsDraftEditor => SelectedProfile is null && string.IsNullOrWhiteSpace(editingProfileId);
 
     private void NotifyCommandStateChanged()
     {

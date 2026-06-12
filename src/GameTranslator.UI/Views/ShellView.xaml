@@ -9,6 +9,25 @@
              d:DesignWidth="800">
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <Style TargetType="TextBox">
+            <Style.Triggers>
+                <Trigger Property="Validation.HasError" Value="True">
+                    <Setter Property="Background" Value="#FFF8F8" />
+                    <Setter Property="BorderBrush" Value="#C84B4B" />
+                    <Setter Property="ToolTip"
+                            Value="{Binding RelativeSource={RelativeSource Self}, Path=(Validation.Errors)[0].ErrorContent}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Style.Triggers>
+                <Trigger Property="Validation.HasError" Value="True">
+                    <Setter Property="BorderBrush" Value="#C84B4B" />
+                    <Setter Property="ToolTip"
+                            Value="{Binding RelativeSource={RelativeSource Self}, Path=(Validation.Errors)[0].ErrorContent}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
         <DataTemplate DataType="{x:Type viewModels:MainViewModel}">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -164,9 +183,6 @@
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="150" />
@@ -183,7 +199,7 @@
                                         Grid.Row="0"
                                         Grid.Column="1"
                                         Padding="8,6"
-                                        Text="{Binding ProfileName, UpdateSourceTrigger=PropertyChanged}" />
+                                        Text="{Binding ProfileName, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
 
                                     <TextBlock
                                         Grid.Row="1"
@@ -202,48 +218,6 @@
                                         TextWrapping="Wrap"
                                         VerticalScrollBarVisibility="Auto"
                                         Text="{Binding ProfileDescription, UpdateSourceTrigger=PropertyChanged}" />
-
-                                    <TextBlock
-                                        Grid.Row="2"
-                                        Grid.Column="0"
-                                        Margin="0,12,0,0"
-                                        VerticalAlignment="Center"
-                                        Foreground="#253238"
-                                        Text="Provider" />
-                                    <TextBox
-                                        Grid.Row="2"
-                                        Grid.Column="1"
-                                        Margin="0,12,0,0"
-                                        Padding="8,6"
-                                        Text="{Binding TranslatorProvider, UpdateSourceTrigger=PropertyChanged}" />
-
-                                    <TextBlock
-                                        Grid.Row="3"
-                                        Grid.Column="0"
-                                        Margin="0,12,0,0"
-                                        VerticalAlignment="Center"
-                                        Foreground="#253238"
-                                        Text="Source language" />
-                                    <TextBox
-                                        Grid.Row="3"
-                                        Grid.Column="1"
-                                        Margin="0,12,0,0"
-                                        Padding="8,6"
-                                        Text="{Binding SourceLanguage, UpdateSourceTrigger=PropertyChanged}" />
-
-                                    <TextBlock
-                                        Grid.Row="4"
-                                        Grid.Column="0"
-                                        Margin="0,12,0,0"
-                                        VerticalAlignment="Center"
-                                        Foreground="#253238"
-                                        Text="Target language" />
-                                    <TextBox
-                                        Grid.Row="4"
-                                        Grid.Column="1"
-                                        Margin="0,12,0,0"
-                                        Padding="8,6"
-                                        Text="{Binding TargetLanguage, UpdateSourceTrigger=PropertyChanged}" />
                                 </Grid>
                             </Border>
 
@@ -255,6 +229,97 @@
                                 Padding="16">
                                 <Grid>
                                     <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="150" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock
+                                        Grid.Row="0"
+                                        Grid.ColumnSpan="2"
+                                        FontSize="16"
+                                        FontWeight="SemiBold"
+                                        Foreground="#253238"
+                                        Text="Translator settings" />
+                                    <TextBlock
+                                        Grid.Row="0"
+                                        Grid.ColumnSpan="2"
+                                        Margin="0,24,0,0"
+                                        Foreground="#56616F"
+                                        Text="{Binding TranslatorSettingsSummary}" />
+
+                                    <TextBlock
+                                        Grid.Row="1"
+                                        Grid.Column="0"
+                                        Margin="0,12,0,0"
+                                        VerticalAlignment="Center"
+                                        Foreground="#253238"
+                                        Text="Provider" />
+                                    <ComboBox
+                                        Grid.Row="1"
+                                        Grid.Column="1"
+                                        Margin="0,12,0,0"
+                                        Padding="6,4"
+                                        IsEditable="True"
+                                        ItemsSource="{Binding TranslatorProviderOptions}"
+                                        Text="{Binding TranslatorProvider, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+
+                                    <TextBlock
+                                        Grid.Row="2"
+                                        Grid.Column="0"
+                                        Margin="0,12,0,0"
+                                        VerticalAlignment="Center"
+                                        Foreground="#253238"
+                                        Text="Source language" />
+                                    <ComboBox
+                                        Grid.Row="2"
+                                        Grid.Column="1"
+                                        Margin="0,12,0,0"
+                                        Padding="6,4"
+                                        IsEditable="True"
+                                        ItemsSource="{Binding LanguageOptions}"
+                                        Text="{Binding SourceLanguage, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+
+                                    <TextBlock
+                                        Grid.Row="3"
+                                        Grid.Column="0"
+                                        Margin="0,12,0,0"
+                                        VerticalAlignment="Center"
+                                        Foreground="#253238"
+                                        Text="Target language" />
+                                    <ComboBox
+                                        Grid.Row="3"
+                                        Grid.Column="1"
+                                        Margin="0,12,0,0"
+                                        Padding="6,4"
+                                        IsEditable="True"
+                                        ItemsSource="{Binding LanguageOptions}"
+                                        Text="{Binding TargetLanguage, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+
+                                    <TextBlock
+                                        Grid.Row="4"
+                                        Grid.ColumnSpan="2"
+                                        Margin="0,12,0,0"
+                                        Foreground="#56616F"
+                                        Text="Common providers and language codes are prefilled, but values remain editable for future integrations." />
+                                </Grid>
+                            </Border>
+
+                            <Border
+                                Margin="0,16,0,0"
+                                BorderBrush="#E3E8EE"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="16">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
@@ -300,7 +365,7 @@
                                         Grid.Column="1"
                                         Margin="0,12,0,0"
                                         Padding="8,6"
-                                        Text="{Binding OverlayMaskColor, UpdateSourceTrigger=PropertyChanged}" />
+                                        Text="{Binding OverlayMaskColor, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
 
                                     <TextBlock
                                         Grid.Row="3"
@@ -318,12 +383,18 @@
                                         <TextBox
                                             Grid.Column="0"
                                             Padding="8,6"
-                                            Text="{Binding OverlayOpacity, UpdateSourceTrigger=PropertyChanged}" />
+                                            Text="{Binding OverlayOpacity, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                         <TextBox
                                             Grid.Column="2"
                                             Padding="8,6"
-                                            Text="{Binding OverlayPadding, UpdateSourceTrigger=PropertyChanged}" />
+                                            Text="{Binding OverlayPadding, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                     </Grid>
+                                    <TextBlock
+                                        Grid.Row="4"
+                                        Grid.ColumnSpan="2"
+                                        Margin="0,12,0,0"
+                                        Foreground="#56616F"
+                                        Text="Use #RRGGBB or #AARRGGBB for mask color. Opacity should stay within 0..1." />
                                 </Grid>
                             </Border>
 
@@ -421,7 +492,7 @@
                                                     Grid.Row="0"
                                                     Grid.Column="1"
                                                     Padding="8,6"
-                                                    Text="{Binding SelectedZone.Name, UpdateSourceTrigger=PropertyChanged}" />
+                                                    Text="{Binding SelectedZone.Name, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
 
                                                 <TextBlock
                                                     Grid.Row="1"
@@ -435,10 +506,10 @@
                                                     Grid.Column="1"
                                                     Margin="0,12,0,0"
                                                     Columns="4">
-                                                    <TextBox Margin="0,0,6,0" Padding="8,6" Text="{Binding SelectedZone.AbsoluteX, UpdateSourceTrigger=PropertyChanged}" />
-                                                    <TextBox Margin="6,0,6,0" Padding="8,6" Text="{Binding SelectedZone.AbsoluteY, UpdateSourceTrigger=PropertyChanged}" />
-                                                    <TextBox Margin="6,0,6,0" Padding="8,6" Text="{Binding SelectedZone.AbsoluteWidth, UpdateSourceTrigger=PropertyChanged}" />
-                                                    <TextBox Margin="6,0,0,0" Padding="8,6" Text="{Binding SelectedZone.AbsoluteHeight, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <TextBox Margin="0,0,6,0" Padding="8,6" Text="{Binding SelectedZone.AbsoluteX, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    <TextBox Margin="6,0,6,0" Padding="8,6" Text="{Binding SelectedZone.AbsoluteY, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    <TextBox Margin="6,0,6,0" Padding="8,6" Text="{Binding SelectedZone.AbsoluteWidth, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    <TextBox Margin="6,0,0,0" Padding="8,6" Text="{Binding SelectedZone.AbsoluteHeight, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                                 </UniformGrid>
 
                                                 <TextBlock
@@ -453,10 +524,10 @@
                                                     Grid.Column="1"
                                                     Margin="0,12,0,0"
                                                     Columns="4">
-                                                    <TextBox Margin="0,0,6,0" Padding="8,6" Text="{Binding SelectedZone.RelativeX, UpdateSourceTrigger=PropertyChanged}" />
-                                                    <TextBox Margin="6,0,6,0" Padding="8,6" Text="{Binding SelectedZone.RelativeY, UpdateSourceTrigger=PropertyChanged}" />
-                                                    <TextBox Margin="6,0,6,0" Padding="8,6" Text="{Binding SelectedZone.RelativeWidth, UpdateSourceTrigger=PropertyChanged}" />
-                                                    <TextBox Margin="6,0,0,0" Padding="8,6" Text="{Binding SelectedZone.RelativeHeight, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <TextBox Margin="0,0,6,0" Padding="8,6" Text="{Binding SelectedZone.RelativeX, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    <TextBox Margin="6,0,6,0" Padding="8,6" Text="{Binding SelectedZone.RelativeY, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    <TextBox Margin="6,0,6,0" Padding="8,6" Text="{Binding SelectedZone.RelativeWidth, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    <TextBox Margin="6,0,0,0" Padding="8,6" Text="{Binding SelectedZone.RelativeHeight, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                                 </UniformGrid>
 
                                                 <TextBlock

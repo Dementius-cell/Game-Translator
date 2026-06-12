@@ -57,6 +57,108 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
+    public void BeginCreateProfile_RestoresDraftTranslatorAndOverlayDefaultsFromSettings()
+    {
+        var repository = new InMemoryProfileRepository();
+        var settings = new TestSettingsService();
+        settings.SetValue("shell.draft.profile.name", "Draft profile");
+        settings.SetValue("shell.draft.profile.description", "Draft description");
+        settings.SetValue("shell.draft.translator.provider", "Azure");
+        settings.SetValue("shell.draft.translator.sourceLanguage", "ja");
+        settings.SetValue("shell.draft.translator.targetLanguage", "en");
+        settings.SetValue("shell.draft.overlay.maskMode", OverlayMaskMode.Darken);
+        settings.SetValue("shell.draft.overlay.maskColor", "#202020");
+        settings.SetValue("shell.draft.overlay.opacity", 0.65);
+        settings.SetValue("shell.draft.overlay.padding", 12d);
+        settings.SetValue("shell.draft.ocrZones", new[]
+        {
+            new OcrZone
+            {
+                Id = "zone-a",
+                Name = "Draft zone",
+                AbsoluteBounds = new AbsoluteRectangle(10, 20, 300, 80),
+                RelativeBounds = new RelativeRectangle(0.1, 0.2, 0.3, 0.1),
+            },
+        });
+        settings.SetValue("shell.draft.selectedZoneId", "zone-a");
+
+        var viewModel = CreateMainViewModel(repository, settings);
+        InvokeMethod(viewModel, "BeginCreateProfile");
+
+        Assert.Equal("Draft profile", GetPropertyValue(viewModel, "ProfileName"));
+        Assert.Equal("Draft description", GetPropertyValue(viewModel, "ProfileDescription"));
+        Assert.Equal("Azure", GetPropertyValue(viewModel, "TranslatorProvider"));
+        Assert.Equal("ja", GetPropertyValue(viewModel, "SourceLanguage"));
+        Assert.Equal("en", GetPropertyValue(viewModel, "TargetLanguage"));
+        Assert.Equal(OverlayMaskMode.Darken, GetPropertyValue(viewModel, "OverlayMaskMode"));
+        Assert.Equal("#202020", GetPropertyValue(viewModel, "OverlayMaskColor"));
+        Assert.Equal(0.65, GetPropertyValue(viewModel, "OverlayOpacity"));
+        Assert.Equal(12d, GetPropertyValue(viewModel, "OverlayPadding"));
+        Assert.Equal("zone-a", GetPropertyValue(GetPropertyValue(viewModel, "SelectedZone")!, "Id"));
+    }
+
+    [Fact]
+    public void DraftEditor_WhenTranslatorAndOverlayChange_PersistsShellDefaults()
+    {
+        var repository = new InMemoryProfileRepository();
+        var settings = new TestSettingsService();
+        var viewModel = CreateMainViewModel(repository, settings);
+
+        InvokeMethod(viewModel, "BeginCreateProfile");
+        SetPropertyValue(viewModel, "ProfileName", "Draft shell");
+        SetPropertyValue(viewModel, "ProfileDescription", "Persistent draft");
+        SetPropertyValue(viewModel, "TranslatorProvider", "Yandex");
+        SetPropertyValue(viewModel, "SourceLanguage", "ru");
+        SetPropertyValue(viewModel, "TargetLanguage", "en");
+        SetPropertyValue(viewModel, "OverlayMaskMode", OverlayMaskMode.Darken);
+        SetPropertyValue(viewModel, "OverlayMaskColor", "#303030");
+        SetPropertyValue(viewModel, "OverlayOpacity", 0.55);
+        SetPropertyValue(viewModel, "OverlayPadding", 10d);
+        InvokeMethod(viewModel, "AddZone");
+
+        Assert.Equal("Draft shell", settings.GetValue<string>("shell.draft.profile.name"));
+        Assert.Equal("Persistent draft", settings.GetValue<string>("shell.draft.profile.description"));
+        Assert.Equal("Yandex", settings.GetValue<string>("shell.draft.translator.provider"));
+        Assert.Equal("ru", settings.GetValue<string>("shell.draft.translator.sourceLanguage"));
+        Assert.Equal("en", settings.GetValue<string>("shell.draft.translator.targetLanguage"));
+        Assert.Equal(OverlayMaskMode.Darken, settings.GetValue<OverlayMaskMode>("shell.draft.overlay.maskMode"));
+        Assert.Equal("#303030", settings.GetValue<string>("shell.draft.overlay.maskColor"));
+        Assert.Equal(0.55, settings.GetValue<double>("shell.draft.overlay.opacity"));
+        Assert.Equal(10d, settings.GetValue<double>("shell.draft.overlay.padding"));
+        Assert.Single(settings.GetValue<OcrZone[]>("shell.draft.ocrZones") ?? Array.Empty<OcrZone>());
+        Assert.Equal(
+            GetPropertyValue(GetPropertyValue(viewModel, "SelectedZone")!, "Id"),
+            settings.GetValue<string>("shell.draft.selectedZoneId"));
+    }
+
+    [Fact]
+    public void InvalidZoneField_ExposesFieldLevelValidationErrors()
+    {
+        var repository = new InMemoryProfileRepository();
+        var viewModel = CreateMainViewModel(repository, new TestSettingsService());
+
+        InvokeMethod(viewModel, "BeginCreateProfile");
+        SetPropertyValue(viewModel, "ProfileName", "Zone errors");
+        SetPropertyValue(viewModel, "TranslatorProvider", "Google");
+        SetPropertyValue(viewModel, "SourceLanguage", "ja");
+        SetPropertyValue(viewModel, "TargetLanguage", "en");
+        InvokeMethod(viewModel, "AddZone");
+
+        var selectedZone = GetPropertyValue(viewModel, "SelectedZone")
+            ?? throw new InvalidOperationException("Selected zone was not created.");
+        SetPropertyValue(selectedZone, "AbsoluteWidth", 0);
+
+        var getErrors = selectedZone.GetType().GetMethod("GetErrors")
+            ?? throw new InvalidOperationException("GetErrors method was not found.");
+        var errors = Assert.IsAssignableFrom<System.Collections.IEnumerable>(
+            getErrors.Invoke(selectedZone, new object?[] { "AbsoluteWidth" }));
+
+        Assert.Contains(
+            errors.Cast<object>().Select(error => error.ToString()),
+            error => string.Equals(error, "Absolute width and height must be positive.", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task SaveAsync_PersistsOverlayAndZoneEdits()
     {
         var repository = new InMemoryProfileRepository();

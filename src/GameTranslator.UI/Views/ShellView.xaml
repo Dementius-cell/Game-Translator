@@ -65,6 +65,18 @@
                                 Content="Refresh" />
                             <Button
                                 DockPanel.Dock="Right"
+                                Margin="8,0,0,0"
+                                Padding="12,6"
+                                Command="{Binding ImportProfileCommand}"
+                                Content="Import" />
+                            <Button
+                                DockPanel.Dock="Right"
+                                Margin="8,0,0,0"
+                                Padding="12,6"
+                                Command="{Binding ExportSelectedProfileCommand}"
+                                Content="Export" />
+                            <Button
+                                DockPanel.Dock="Right"
                                 Padding="12,6"
                                 Command="{Binding BeginCreateProfileCommand}"
                                 Content="New" />

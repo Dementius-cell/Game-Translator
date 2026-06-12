@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Text.RegularExpressions;
 using System.Windows.Input;
 using GameTranslator.Application.Abstractions;
@@ -12,6 +13,7 @@ namespace GameTranslator.UI.ViewModels;
 public sealed class MainViewModel : ValidatableObservableObject
 {
     private const string SelectedProfileSettingKey = "profiles.selectedId";
+    private const string ProfileFileDialogFilter = "Game Translator profile (*.json)|*.json|JSON files (*.json)|*.json|All files (*.*)|*.*";
     private const string DraftProfileNameSettingKey = "shell.draft.profile.name";
     private const string DraftProfileDescriptionSettingKey = "shell.draft.profile.description";
     private const string DraftTranslatorProviderSettingKey = "shell.draft.translator.provider";
@@ -26,6 +28,8 @@ public sealed class MainViewModel : ValidatableObservableObject
     private static readonly Regex HexColorPattern = new("^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$", RegexOptions.Compiled);
 
     private readonly ProfileService profileService;
+    private readonly ProfileExchangeService profileExchangeService;
+    private readonly IDialogService dialogService;
     private readonly ISettingsService settings;
     private readonly IApplicationLogger logger;
 
@@ -49,10 +53,14 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public MainViewModel(
         ProfileService profileService,
+        ProfileExchangeService profileExchangeService,
+        IDialogService dialogService,
         ISettingsService settings,
         IApplicationLogger logger)
     {
         this.profileService = profileService;
+        this.profileExchangeService = profileExchangeService;
+        this.dialogService = dialogService;
         this.settings = settings;
         this.logger = logger;
         pendingSelectedProfileId = settings.GetValue<string>(SelectedProfileSettingKey);
@@ -66,6 +74,8 @@ public sealed class MainViewModel : ValidatableObservableObject
         BeginCreateProfileCommand = new RelayCommand(BeginCreateProfile, () => !IsBusy);
         RefreshProfilesCommand = new AsyncRelayCommand(RefreshProfilesAsync, () => !IsBusy);
         SaveProfileCommand = new AsyncRelayCommand(SaveAsync, CanSaveProfile);
+        ImportProfileCommand = new AsyncRelayCommand(ImportProfileAsync, () => !IsBusy);
+        ExportSelectedProfileCommand = new AsyncRelayCommand(ExportSelectedProfileAsync, CanExportSelectedProfile);
         CloneSelectedProfileCommand = new AsyncRelayCommand(CloneSelectedProfileAsync, CanCloneSelectedProfile);
         DeleteSelectedProfileCommand = new AsyncRelayCommand(DeleteSelectedProfileAsync, CanDeleteSelectedProfile);
         ResetEditorCommand = new RelayCommand(ResetEditor, () => !IsBusy);
@@ -331,6 +341,10 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public ICommand SaveProfileCommand { get; }
 
+    public ICommand ImportProfileCommand { get; }
+
+    public ICommand ExportSelectedProfileCommand { get; }
+
     public ICommand CloneSelectedProfileCommand { get; }
 
     public ICommand DeleteSelectedProfileCommand { get; }
@@ -407,6 +421,64 @@ public sealed class MainViewModel : ValidatableObservableObject
                 logger.Information($"Profile '{savedProfile.Name}' saved.");
                 await RefreshProfilesAsync(savedProfile.Id);
                 StatusMessage = $"Profile '{savedProfile.Name}' saved.";
+            });
+    }
+
+    public async Task ImportProfileAsync()
+    {
+        var filePath = await dialogService.ShowOpenFileDialogAsync(
+            "Import profile",
+            ProfileFileDialogFilter);
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            return;
+        }
+
+        await RunProfileOperationAsync(
+            "Importing profile...",
+            async () =>
+            {
+                var importedProfile = await profileExchangeService.ImportAsync(filePath);
+                var importedName = BuildImportedProfileName(importedProfile.Name);
+                var savedProfile = await profileService.CreateAsync(importedProfile with
+                {
+                    Id = string.Empty,
+                    Name = importedName,
+                    OcrZones = importedProfile.OcrZones
+                        .Select(zone => zone with { Id = Guid.NewGuid().ToString("N") })
+                        .ToArray(),
+                });
+
+                logger.Information($"Profile '{savedProfile.Name}' imported from '{filePath}'.");
+                await RefreshProfilesAsync(savedProfile.Id);
+                StatusMessage = $"Profile '{savedProfile.Name}' imported.";
+            });
+    }
+
+    public async Task ExportSelectedProfileAsync()
+    {
+        if (SelectedProfile is null)
+        {
+            return;
+        }
+
+        var filePath = await dialogService.ShowSaveFileDialogAsync(
+            "Export profile",
+            BuildDefaultExportFileName(SelectedProfile.Name),
+            ProfileFileDialogFilter);
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            return;
+        }
+
+        await RunProfileOperationAsync(
+            $"Exporting '{SelectedProfile.Name}'...",
+            async () =>
+            {
+                await profileExchangeService.ExportAsync(SelectedProfile, filePath);
+
+                logger.Information($"Profile '{SelectedProfile.Name}' exported to '{filePath}'.");
+                StatusMessage = $"Profile '{SelectedProfile.Name}' exported.";
             });
     }
 
@@ -563,6 +635,11 @@ public sealed class MainViewModel : ValidatableObservableObject
             logger.Warning(message);
             StatusMessage = message;
         }
+        catch (ProfileImportException exception)
+        {
+            logger.Warning(exception.Message);
+            StatusMessage = exception.Message;
+        }
         catch (ProfileNotFoundException exception)
         {
             logger.Warning(exception.Message);
@@ -691,6 +768,11 @@ public sealed class MainViewModel : ValidatableObservableObject
     }
 
     private bool CanCloneSelectedProfile()
+    {
+        return !IsBusy && SelectedProfile is not null;
+    }
+
+    private bool CanExportSelectedProfile()
     {
         return !IsBusy && SelectedProfile is not null;
     }
@@ -912,6 +994,34 @@ public sealed class MainViewModel : ValidatableObservableObject
         return candidate;
     }
 
+    private string BuildImportedProfileName(string sourceName)
+    {
+        var baseName = string.IsNullOrWhiteSpace(sourceName)
+            ? "Imported Profile"
+            : sourceName.Trim();
+        var candidate = baseName;
+        var suffix = 2;
+
+        while (Profiles.Any(profile => string.Equals(profile.Name, candidate, StringComparison.OrdinalIgnoreCase)))
+        {
+            candidate = $"{baseName} Imported {suffix}";
+            suffix++;
+        }
+
+        return candidate;
+    }
+
+    private static string BuildDefaultExportFileName(string profileName)
+    {
+        var baseName = string.IsNullOrWhiteSpace(profileName)
+            ? "game-translator-profile"
+            : profileName.Trim();
+        var invalidCharacters = Path.GetInvalidFileNameChars();
+        var sanitizedName = new string(baseName.Select(character => invalidCharacters.Contains(character) ? '_' : character).ToArray());
+
+        return $"{sanitizedName}.json";
+    }
+
     private void MoveSelectedZoneBy(int offset)
     {
         if (SelectedZone is null)
@@ -945,6 +1055,8 @@ public sealed class MainViewModel : ValidatableObservableObject
         ((RelayCommand)BeginCreateProfileCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)RefreshProfilesCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)SaveProfileCommand).RaiseCanExecuteChanged();
+        ((AsyncRelayCommand)ImportProfileCommand).RaiseCanExecuteChanged();
+        ((AsyncRelayCommand)ExportSelectedProfileCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)CloneSelectedProfileCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)DeleteSelectedProfileCommand).RaiseCanExecuteChanged();
         ((RelayCommand)ResetEditorCommand).RaiseCanExecuteChanged();

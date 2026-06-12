@@ -318,11 +318,58 @@ public sealed class ProfileManagerViewModelTests
         Assert.Equal(source.Id, profilesAfterDelete[0].Id);
     }
 
+    [Fact]
+    public async Task ImportProfileAsync_WhenDialogReturnsPath_ImportsProfileAndSelectsIt()
+    {
+        var repository = new InMemoryProfileRepository();
+        var dialog = new TestDialogService
+        {
+            OpenFilePath = "import.json",
+        };
+        var exchangeGateway = new TestProfileExchangeGateway
+        {
+            ImportedProfile = CreateProfile("Imported profile", "Azure", "ja", "en"),
+        };
+        var viewModel = CreateMainViewModel(repository, new TestSettingsService(), dialog, exchangeGateway);
+
+        await InvokeTaskMethodAsync(viewModel, "ImportProfileAsync");
+
+        var storedProfiles = await repository.ListAsync();
+        var storedProfile = Assert.Single(storedProfiles);
+        Assert.Equal("Imported profile", storedProfile.Name);
+        Assert.Equal(storedProfile.Id, GetPropertyValue(GetPropertyValue(viewModel, "SelectedProfile")!, "Id"));
+    }
+
+    [Fact]
+    public async Task ExportSelectedProfileAsync_WhenProfileSelected_ExportsSelectedProfile()
+    {
+        var repository = new InMemoryProfileRepository();
+        var profile = CreateProfile("Export me", "Google", "ja", "en");
+        await repository.SaveAsync(profile);
+
+        var dialog = new TestDialogService
+        {
+            SaveFilePath = "export.json",
+        };
+        var exchangeGateway = new TestProfileExchangeGateway();
+        var viewModel = CreateMainViewModel(repository, new TestSettingsService(), dialog, exchangeGateway);
+        await InvokeTaskMethodAsync(viewModel, "LoadAsync");
+
+        await InvokeTaskMethodAsync(viewModel, "ExportSelectedProfileAsync");
+
+        Assert.NotNull(exchangeGateway.ExportedProfile);
+        Assert.Equal("Export me", exchangeGateway.ExportedProfile!.Name);
+        Assert.Equal("export.json", exchangeGateway.ExportedPath);
+    }
+
     private static object CreateMainViewModel(
         InMemoryProfileRepository repository,
-        TestSettingsService settings)
+        TestSettingsService settings,
+        TestDialogService? dialog = null,
+        TestProfileExchangeGateway? exchangeGateway = null)
     {
         var profileService = new ProfileService(repository, new ProfileValidator());
+        var profileExchangeService = new ProfileExchangeService(exchangeGateway ?? new TestProfileExchangeGateway(), new ProfileValidator());
         var logger = new TestApplicationLogger();
         var assembly = LoadUiAssembly();
         var viewModelType = assembly.GetType(
@@ -330,7 +377,7 @@ public sealed class ProfileManagerViewModelTests
             throwOnError: true)
             ?? throw new InvalidOperationException("MainViewModel type was not found.");
 
-        return Activator.CreateInstance(viewModelType, profileService, settings, logger)
+        return Activator.CreateInstance(viewModelType, profileService, profileExchangeService, dialog ?? new TestDialogService(), settings, logger)
             ?? throw new InvalidOperationException("MainViewModel instance was not created.");
     }
 
@@ -419,6 +466,50 @@ public sealed class ProfileManagerViewModelTests
         public void SetValue<TValue>(string key, TValue? value)
         {
             values[key] = value;
+        }
+    }
+
+    private sealed class TestDialogService : IDialogService
+    {
+        public string? OpenFilePath { get; set; }
+
+        public string? SaveFilePath { get; set; }
+
+        public Task<string?> ShowOpenFileDialogAsync(string title, string filter, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(OpenFilePath);
+        }
+
+        public Task<string?> ShowSaveFileDialogAsync(string title, string defaultFileName, string filter, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(SaveFilePath);
+        }
+
+        public Task ShowInformationAsync(string title, string message, CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class TestProfileExchangeGateway : IProfileExchangeGateway
+    {
+        public GameProfile? ImportedProfile { get; set; }
+
+        public GameProfile? ExportedProfile { get; private set; }
+
+        public string? ExportedPath { get; private set; }
+
+        public Task ExportAsync(GameProfile profile, string filePath, CancellationToken cancellationToken = default)
+        {
+            ExportedProfile = profile;
+            ExportedPath = filePath;
+            return Task.CompletedTask;
+        }
+
+        public Task<GameProfile> ImportAsync(string filePath, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(
+                ImportedProfile ?? throw new InvalidOperationException("ImportedProfile was not configured."));
         }
     }
 

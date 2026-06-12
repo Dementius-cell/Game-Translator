@@ -8,7 +8,7 @@ namespace GameTranslator.Tests.Application;
 public sealed class ProfileCompositionTests
 {
     [Fact]
-    public void AddApplicationServices_RegistersProfileServiceAndValidator()
+    public void AddApplicationServices_RegistersProfileServicesAndValidator()
     {
         var services = new ServiceCollection();
 
@@ -16,6 +16,7 @@ public sealed class ProfileCompositionTests
 
         Assert.Same(services, result);
         Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(ProfileService));
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(ProfileExchangeService));
         Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(ProfileValidator));
     }
 

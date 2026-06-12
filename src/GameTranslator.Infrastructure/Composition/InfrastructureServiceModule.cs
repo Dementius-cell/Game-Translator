@@ -20,6 +20,7 @@ public sealed class InfrastructureServiceModule : IApplicationServiceModule
 
             return new JsonProfileRepository(options.ProfilesDirectory);
         });
+        services.AddSingleton<IProfileExchangeGateway, JsonProfileExchangeGateway>();
         services.AddSingleton<ISettingsService>(provider =>
         {
             var options = provider.GetRequiredService<SettingsStorageOptions>();

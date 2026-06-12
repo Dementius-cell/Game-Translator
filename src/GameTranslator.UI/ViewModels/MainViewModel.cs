@@ -23,6 +23,11 @@ public sealed class MainViewModel : ObservableObject
     private string translatorProvider = string.Empty;
     private string sourceLanguage = string.Empty;
     private string targetLanguage = string.Empty;
+    private OverlayMaskMode overlayMaskMode = OverlayMaskMode.Solid;
+    private string overlayMaskColor = "#000000";
+    private double overlayOpacity = 1;
+    private double overlayPadding;
+    private OcrZoneEditorViewModel? selectedZone;
     private string statusMessage = "Loading profiles...";
     private bool isBusy;
     private bool isLoaded;
@@ -38,12 +43,16 @@ public sealed class MainViewModel : ObservableObject
         pendingSelectedProfileId = settings.GetValue<string>(SelectedProfileSettingKey);
 
         Profiles = new ObservableCollection<GameProfile>();
+        OcrZones = new ObservableCollection<OcrZoneEditorViewModel>();
+        OverlayMaskModes = Enum.GetValues<OverlayMaskMode>();
         BeginCreateProfileCommand = new RelayCommand(BeginCreateProfile, () => !IsBusy);
         RefreshProfilesCommand = new AsyncRelayCommand(RefreshProfilesAsync, () => !IsBusy);
         SaveProfileCommand = new AsyncRelayCommand(SaveAsync, CanSaveProfile);
         CloneSelectedProfileCommand = new AsyncRelayCommand(CloneSelectedProfileAsync, CanCloneSelectedProfile);
         DeleteSelectedProfileCommand = new AsyncRelayCommand(DeleteSelectedProfileAsync, CanDeleteSelectedProfile);
         ResetEditorCommand = new RelayCommand(ResetEditor, () => !IsBusy);
+        AddZoneCommand = new RelayCommand(AddZone, () => !IsBusy);
+        RemoveSelectedZoneCommand = new RelayCommand(RemoveSelectedZone, CanRemoveSelectedZone);
 
         BeginCreateProfile();
         StatusMessage = "Ready to manage game profiles.";
@@ -54,6 +63,10 @@ public sealed class MainViewModel : ObservableObject
     public string CurrentStage => "Sprint 2";
 
     public ObservableCollection<GameProfile> Profiles { get; }
+
+    public ObservableCollection<OcrZoneEditorViewModel> OcrZones { get; }
+
+    public IReadOnlyList<OverlayMaskMode> OverlayMaskModes { get; }
 
     public GameProfile? SelectedProfile
     {
@@ -121,6 +134,45 @@ public sealed class MainViewModel : ObservableObject
         set => SetProperty(ref targetLanguage, value);
     }
 
+    public OverlayMaskMode OverlayMaskMode
+    {
+        get => overlayMaskMode;
+        set => SetProperty(ref overlayMaskMode, value);
+    }
+
+    public string OverlayMaskColor
+    {
+        get => overlayMaskColor;
+        set => SetProperty(ref overlayMaskColor, value);
+    }
+
+    public double OverlayOpacity
+    {
+        get => overlayOpacity;
+        set => SetProperty(ref overlayOpacity, value);
+    }
+
+    public double OverlayPadding
+    {
+        get => overlayPadding;
+        set => SetProperty(ref overlayPadding, value);
+    }
+
+    public OcrZoneEditorViewModel? SelectedZone
+    {
+        get => selectedZone;
+        set
+        {
+            if (!SetProperty(ref selectedZone, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(HasSelectedZone));
+            NotifyCommandStateChanged();
+        }
+    }
+
     public string StatusMessage
     {
         get => statusMessage;
@@ -144,6 +196,8 @@ public sealed class MainViewModel : ObservableObject
 
     public bool HasSelectedProfile => SelectedProfile is not null;
 
+    public bool HasSelectedZone => SelectedZone is not null;
+
     public string ActiveProfileName => SelectedProfile?.Name ?? "No active profile";
 
     public string EditorTitle => string.IsNullOrWhiteSpace(editingProfileId)
@@ -163,6 +217,8 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    public string ZoneSummary => $"{OcrZones.Count} zone(s)";
+
     public ICommand BeginCreateProfileCommand { get; }
 
     public ICommand RefreshProfilesCommand { get; }
@@ -174,6 +230,10 @@ public sealed class MainViewModel : ObservableObject
     public ICommand DeleteSelectedProfileCommand { get; }
 
     public ICommand ResetEditorCommand { get; }
+
+    public ICommand AddZoneCommand { get; }
+
+    public ICommand RemoveSelectedZoneCommand { get; }
 
     public async Task LoadAsync()
     {
@@ -285,6 +345,29 @@ public sealed class MainViewModel : ObservableObject
         StatusMessage = $"Reset editor for '{SelectedProfile.Name}'.";
     }
 
+    public void AddZone()
+    {
+        var zone = OcrZoneEditorViewModel.CreateDefault(OcrZones.Count + 1);
+        OcrZones.Add(zone);
+        SelectedZone = zone;
+        OnPropertyChanged(nameof(ZoneSummary));
+    }
+
+    public void RemoveSelectedZone()
+    {
+        if (SelectedZone is null)
+        {
+            return;
+        }
+
+        var index = OcrZones.IndexOf(SelectedZone);
+        OcrZones.Remove(SelectedZone);
+        SelectedZone = OcrZones.Count == 0
+            ? null
+            : OcrZones[Math.Clamp(index, 0, OcrZones.Count - 1)];
+        OnPropertyChanged(nameof(ZoneSummary));
+    }
+
     private async Task RefreshProfilesAsync(string? preferredProfileId)
     {
         await RunProfileOperationAsync(
@@ -350,8 +433,14 @@ public sealed class MainViewModel : ObservableObject
             SchemaVersion = existingProfile?.SchemaVersion ?? GameProfile.CurrentSchemaVersion,
             Name = ProfileName.Trim(),
             Description = ProfileDescription.Trim(),
-            OcrZones = existingProfile?.OcrZones ?? Array.Empty<OcrZone>(),
-            OverlaySettings = existingProfile?.OverlaySettings ?? OverlaySettings.Default,
+            OcrZones = OcrZones.Select(zone => zone.ToModel()).ToArray(),
+            OverlaySettings = new OverlaySettings
+            {
+                MaskMode = OverlayMaskMode,
+                MaskColor = OverlayMaskColor.Trim(),
+                Opacity = OverlayOpacity,
+                Padding = OverlayPadding,
+            },
             TranslatorSettings = new TranslatorSettings
             {
                 Provider = TranslatorProvider.Trim(),
@@ -395,7 +484,13 @@ public sealed class MainViewModel : ObservableObject
         TranslatorProvider = profile.TranslatorSettings.Provider;
         SourceLanguage = profile.TranslatorSettings.SourceLanguage;
         TargetLanguage = profile.TranslatorSettings.TargetLanguage;
+        OverlayMaskMode = profile.OverlaySettings.MaskMode;
+        OverlayMaskColor = profile.OverlaySettings.MaskColor;
+        OverlayOpacity = profile.OverlaySettings.Opacity;
+        OverlayPadding = profile.OverlaySettings.Padding;
+        ReplaceZones(profile.OcrZones.Select(OcrZoneEditorViewModel.FromModel));
         OnPropertyChanged(nameof(ProfileSummary));
+        OnPropertyChanged(nameof(ZoneSummary));
     }
 
     private void LoadDraftValues()
@@ -405,7 +500,13 @@ public sealed class MainViewModel : ObservableObject
         TranslatorProvider = string.Empty;
         SourceLanguage = string.Empty;
         TargetLanguage = string.Empty;
+        OverlayMaskMode = OverlaySettings.Default.MaskMode;
+        OverlayMaskColor = OverlaySettings.Default.MaskColor;
+        OverlayOpacity = OverlaySettings.Default.Opacity;
+        OverlayPadding = OverlaySettings.Default.Padding;
+        ReplaceZones(Array.Empty<OcrZoneEditorViewModel>());
         OnPropertyChanged(nameof(ProfileSummary));
+        OnPropertyChanged(nameof(ZoneSummary));
     }
 
     private bool CanSaveProfile()
@@ -423,6 +524,23 @@ public sealed class MainViewModel : ObservableObject
         return !IsBusy && SelectedProfile is not null;
     }
 
+    private bool CanRemoveSelectedZone()
+    {
+        return !IsBusy && SelectedZone is not null;
+    }
+
+    private void ReplaceZones(IEnumerable<OcrZoneEditorViewModel> zones)
+    {
+        OcrZones.Clear();
+
+        foreach (var zone in zones)
+        {
+            OcrZones.Add(zone);
+        }
+
+        SelectedZone = OcrZones.FirstOrDefault();
+    }
+
     private void NotifyCommandStateChanged()
     {
         ((RelayCommand)BeginCreateProfileCommand).RaiseCanExecuteChanged();
@@ -431,5 +549,7 @@ public sealed class MainViewModel : ObservableObject
         ((AsyncRelayCommand)CloneSelectedProfileCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)DeleteSelectedProfileCommand).RaiseCanExecuteChanged();
         ((RelayCommand)ResetEditorCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)AddZoneCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)RemoveSelectedZoneCommand).RaiseCanExecuteChanged();
     }
 }

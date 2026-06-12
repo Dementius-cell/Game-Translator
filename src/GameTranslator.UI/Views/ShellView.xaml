@@ -115,132 +115,355 @@
                     BorderThickness="1"
                     CornerRadius="4"
                     Padding="20">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <StackPanel>
+                                <TextBlock
+                                    FontSize="20"
+                                    FontWeight="SemiBold"
+                                    Foreground="#253238"
+                                    Text="{Binding EditorTitle}" />
+                                <TextBlock
+                                    Margin="0,6,0,0"
+                                    Foreground="#56616F"
+                                    Text="{Binding ProfileSummary}" />
+                            </StackPanel>
 
-                        <StackPanel Grid.Row="0">
                             <TextBlock
-                                FontSize="20"
-                                FontWeight="SemiBold"
-                                Foreground="#253238"
-                                Text="{Binding EditorTitle}" />
-                            <TextBlock
-                                Margin="0,6,0,0"
-                                Foreground="#56616F"
-                                Text="{Binding ProfileSummary}" />
+                                Margin="0,16,0,16"
+                                Foreground="#2A5D67"
+                                Text="{Binding StatusMessage}" />
+
+                            <Border
+                                BorderBrush="#E3E8EE"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="16">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="150" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock
+                                        Grid.Row="0"
+                                        Grid.Column="0"
+                                        VerticalAlignment="Center"
+                                        Foreground="#253238"
+                                        Text="Name" />
+                                    <TextBox
+                                        Grid.Row="0"
+                                        Grid.Column="1"
+                                        Padding="8,6"
+                                        Text="{Binding ProfileName, UpdateSourceTrigger=PropertyChanged}" />
+
+                                    <TextBlock
+                                        Grid.Row="1"
+                                        Grid.Column="0"
+                                        Margin="0,12,0,0"
+                                        VerticalAlignment="Top"
+                                        Foreground="#253238"
+                                        Text="Description" />
+                                    <TextBox
+                                        Grid.Row="1"
+                                        Grid.Column="1"
+                                        Margin="0,12,0,0"
+                                        Padding="8,6"
+                                        AcceptsReturn="True"
+                                        Height="88"
+                                        TextWrapping="Wrap"
+                                        VerticalScrollBarVisibility="Auto"
+                                        Text="{Binding ProfileDescription, UpdateSourceTrigger=PropertyChanged}" />
+
+                                    <TextBlock
+                                        Grid.Row="2"
+                                        Grid.Column="0"
+                                        Margin="0,12,0,0"
+                                        VerticalAlignment="Center"
+                                        Foreground="#253238"
+                                        Text="Provider" />
+                                    <TextBox
+                                        Grid.Row="2"
+                                        Grid.Column="1"
+                                        Margin="0,12,0,0"
+                                        Padding="8,6"
+                                        Text="{Binding TranslatorProvider, UpdateSourceTrigger=PropertyChanged}" />
+
+                                    <TextBlock
+                                        Grid.Row="3"
+                                        Grid.Column="0"
+                                        Margin="0,12,0,0"
+                                        VerticalAlignment="Center"
+                                        Foreground="#253238"
+                                        Text="Source language" />
+                                    <TextBox
+                                        Grid.Row="3"
+                                        Grid.Column="1"
+                                        Margin="0,12,0,0"
+                                        Padding="8,6"
+                                        Text="{Binding SourceLanguage, UpdateSourceTrigger=PropertyChanged}" />
+
+                                    <TextBlock
+                                        Grid.Row="4"
+                                        Grid.Column="0"
+                                        Margin="0,12,0,0"
+                                        VerticalAlignment="Center"
+                                        Foreground="#253238"
+                                        Text="Target language" />
+                                    <TextBox
+                                        Grid.Row="4"
+                                        Grid.Column="1"
+                                        Margin="0,12,0,0"
+                                        Padding="8,6"
+                                        Text="{Binding TargetLanguage, UpdateSourceTrigger=PropertyChanged}" />
+                                </Grid>
+                            </Border>
+
+                            <Border
+                                Margin="0,16,0,0"
+                                BorderBrush="#E3E8EE"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="16">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="150" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock
+                                        Grid.Row="0"
+                                        Grid.ColumnSpan="2"
+                                        FontSize="16"
+                                        FontWeight="SemiBold"
+                                        Foreground="#253238"
+                                        Text="Overlay settings" />
+
+                                    <TextBlock
+                                        Grid.Row="1"
+                                        Grid.Column="0"
+                                        Margin="0,12,0,0"
+                                        VerticalAlignment="Center"
+                                        Foreground="#253238"
+                                        Text="Mask mode" />
+                                    <ComboBox
+                                        Grid.Row="1"
+                                        Grid.Column="1"
+                                        Margin="0,12,0,0"
+                                        Padding="6,4"
+                                        ItemsSource="{Binding OverlayMaskModes}"
+                                        SelectedItem="{Binding OverlayMaskMode}" />
+
+                                    <TextBlock
+                                        Grid.Row="2"
+                                        Grid.Column="0"
+                                        Margin="0,12,0,0"
+                                        VerticalAlignment="Center"
+                                        Foreground="#253238"
+                                        Text="Mask color" />
+                                    <TextBox
+                                        Grid.Row="2"
+                                        Grid.Column="1"
+                                        Margin="0,12,0,0"
+                                        Padding="8,6"
+                                        Text="{Binding OverlayMaskColor, UpdateSourceTrigger=PropertyChanged}" />
+
+                                    <TextBlock
+                                        Grid.Row="3"
+                                        Grid.Column="0"
+                                        Margin="0,12,0,0"
+                                        VerticalAlignment="Center"
+                                        Foreground="#253238"
+                                        Text="Opacity / padding" />
+                                    <Grid Grid.Row="3" Grid.Column="1" Margin="0,12,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="12" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox
+                                            Grid.Column="0"
+                                            Padding="8,6"
+                                            Text="{Binding OverlayOpacity, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBox
+                                            Grid.Column="2"
+                                            Padding="8,6"
+                                            Text="{Binding OverlayPadding, UpdateSourceTrigger=PropertyChanged}" />
+                                    </Grid>
+                                </Grid>
+                            </Border>
+
+                            <Border
+                                Margin="0,16,0,0"
+                                BorderBrush="#E3E8EE"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="16">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+
+                                    <DockPanel Grid.Row="0" LastChildFill="False">
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            FontSize="16"
+                                            FontWeight="SemiBold"
+                                            Foreground="#253238"
+                                            Text="OCR zones" />
+                                        <TextBlock
+                                            Margin="12,0,0,0"
+                                            VerticalAlignment="Center"
+                                            Foreground="#56616F"
+                                            Text="{Binding ZoneSummary}" />
+                                        <Button
+                                            DockPanel.Dock="Right"
+                                            Margin="8,0,0,0"
+                                            Padding="12,6"
+                                            Command="{Binding RemoveSelectedZoneCommand}"
+                                            Content="Remove zone" />
+                                        <Button
+                                            DockPanel.Dock="Right"
+                                            Padding="12,6"
+                                            Command="{Binding AddZoneCommand}"
+                                            Content="Add zone" />
+                                    </DockPanel>
+
+                                    <Grid Grid.Row="1" Margin="0,16,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="220" />
+                                            <ColumnDefinition Width="16" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <ListBox
+                                            Grid.Column="0"
+                                            Height="240"
+                                            Background="#FDFDFD"
+                                            BorderBrush="#D7DEE8"
+                                            BorderThickness="1"
+                                            ItemsSource="{Binding OcrZones}"
+                                            SelectedItem="{Binding SelectedZone, Mode=TwoWay}">
+                                            <ListBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Padding="8">
+                                                        <TextBlock
+                                                            Foreground="#253238"
+                                                            Text="{Binding DisplayName}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ListBox.ItemTemplate>
+                                        </ListBox>
+
+                                        <Border
+                                            Grid.Column="2"
+                                            Background="#F9FBFD"
+                                            BorderBrush="#D7DEE8"
+                                            BorderThickness="1"
+                                            CornerRadius="4"
+                                            Padding="12">
+                                            <Grid>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="140" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <TextBlock
+                                                    Grid.Row="0"
+                                                    Grid.Column="0"
+                                                    VerticalAlignment="Center"
+                                                    Foreground="#253238"
+                                                    Text="Zone name" />
+                                                <TextBox
+                                                    Grid.Row="0"
+                                                    Grid.Column="1"
+                                                    Padding="8,6"
+                                                    Text="{Binding SelectedZone.Name, UpdateSourceTrigger=PropertyChanged}" />
+
+                                                <TextBlock
+                                                    Grid.Row="1"
+                                                    Grid.Column="0"
+                                                    Margin="0,12,0,0"
+                                                    VerticalAlignment="Top"
+                                                    Foreground="#253238"
+                                                    Text="Absolute X Y W H" />
+                                                <UniformGrid
+                                                    Grid.Row="1"
+                                                    Grid.Column="1"
+                                                    Margin="0,12,0,0"
+                                                    Columns="4">
+                                                    <TextBox Margin="0,0,6,0" Padding="8,6" Text="{Binding SelectedZone.AbsoluteX, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <TextBox Margin="6,0,6,0" Padding="8,6" Text="{Binding SelectedZone.AbsoluteY, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <TextBox Margin="6,0,6,0" Padding="8,6" Text="{Binding SelectedZone.AbsoluteWidth, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <TextBox Margin="6,0,0,0" Padding="8,6" Text="{Binding SelectedZone.AbsoluteHeight, UpdateSourceTrigger=PropertyChanged}" />
+                                                </UniformGrid>
+
+                                                <TextBlock
+                                                    Grid.Row="2"
+                                                    Grid.Column="0"
+                                                    Margin="0,12,0,0"
+                                                    VerticalAlignment="Top"
+                                                    Foreground="#253238"
+                                                    Text="Relative X Y W H" />
+                                                <UniformGrid
+                                                    Grid.Row="2"
+                                                    Grid.Column="1"
+                                                    Margin="0,12,0,0"
+                                                    Columns="4">
+                                                    <TextBox Margin="0,0,6,0" Padding="8,6" Text="{Binding SelectedZone.RelativeX, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <TextBox Margin="6,0,6,0" Padding="8,6" Text="{Binding SelectedZone.RelativeY, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <TextBox Margin="6,0,6,0" Padding="8,6" Text="{Binding SelectedZone.RelativeWidth, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <TextBox Margin="6,0,0,0" Padding="8,6" Text="{Binding SelectedZone.RelativeHeight, UpdateSourceTrigger=PropertyChanged}" />
+                                                </UniformGrid>
+
+                                                <TextBlock
+                                                    Grid.Row="3"
+                                                    Grid.ColumnSpan="2"
+                                                    Margin="0,12,0,0"
+                                                    Foreground="#56616F"
+                                                    Text="Manual numeric editing for OCR zones is part of Sprint 2. Mouse selection comes later." />
+                                            </Grid>
+                                        </Border>
+                                    </Grid>
+                                </Grid>
+                            </Border>
+
+                            <DockPanel Margin="0,20,0,0" LastChildFill="False">
+                                <Button
+                                    DockPanel.Dock="Right"
+                                    Margin="8,0,0,0"
+                                    Padding="14,8"
+                                    Command="{Binding SaveProfileCommand}"
+                                    Content="Save" />
+                                <Button
+                                    DockPanel.Dock="Right"
+                                    Padding="14,8"
+                                    Command="{Binding ResetEditorCommand}"
+                                    Content="Reset" />
+                            </DockPanel>
                         </StackPanel>
-
-                        <TextBlock
-                            Grid.Row="1"
-                            Margin="0,16,0,16"
-                            Foreground="#2A5D67"
-                            Text="{Binding StatusMessage}" />
-
-                        <Grid Grid.Row="2">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="150" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-
-                            <TextBlock
-                                Grid.Row="0"
-                                Grid.Column="0"
-                                VerticalAlignment="Center"
-                                Foreground="#253238"
-                                Text="Name" />
-                            <TextBox
-                                Grid.Row="0"
-                                Grid.Column="1"
-                                Padding="8,6"
-                                Text="{Binding ProfileName, UpdateSourceTrigger=PropertyChanged}" />
-
-                            <TextBlock
-                                Grid.Row="1"
-                                Grid.Column="0"
-                                Margin="0,12,0,0"
-                                VerticalAlignment="Top"
-                                Foreground="#253238"
-                                Text="Description" />
-                            <TextBox
-                                Grid.Row="1"
-                                Grid.Column="1"
-                                Margin="0,12,0,0"
-                                Padding="8,6"
-                                AcceptsReturn="True"
-                                Height="88"
-                                TextWrapping="Wrap"
-                                VerticalScrollBarVisibility="Auto"
-                                Text="{Binding ProfileDescription, UpdateSourceTrigger=PropertyChanged}" />
-
-                            <TextBlock
-                                Grid.Row="2"
-                                Grid.Column="0"
-                                Margin="0,12,0,0"
-                                VerticalAlignment="Center"
-                                Foreground="#253238"
-                                Text="Provider" />
-                            <TextBox
-                                Grid.Row="2"
-                                Grid.Column="1"
-                                Margin="0,12,0,0"
-                                Padding="8,6"
-                                Text="{Binding TranslatorProvider, UpdateSourceTrigger=PropertyChanged}" />
-
-                            <TextBlock
-                                Grid.Row="3"
-                                Grid.Column="0"
-                                Margin="0,12,0,0"
-                                VerticalAlignment="Center"
-                                Foreground="#253238"
-                                Text="Source language" />
-                            <TextBox
-                                Grid.Row="3"
-                                Grid.Column="1"
-                                Margin="0,12,0,0"
-                                Padding="8,6"
-                                Text="{Binding SourceLanguage, UpdateSourceTrigger=PropertyChanged}" />
-
-                            <TextBlock
-                                Grid.Row="4"
-                                Grid.Column="0"
-                                Margin="0,12,0,0"
-                                VerticalAlignment="Center"
-                                Foreground="#253238"
-                                Text="Target language" />
-                            <TextBox
-                                Grid.Row="4"
-                                Grid.Column="1"
-                                Margin="0,12,0,0"
-                                Padding="8,6"
-                                Text="{Binding TargetLanguage, UpdateSourceTrigger=PropertyChanged}" />
-                        </Grid>
-
-                        <DockPanel Grid.Row="3" Margin="0,20,0,0" LastChildFill="False">
-                            <Button
-                                DockPanel.Dock="Right"
-                                Margin="8,0,0,0"
-                                Padding="14,8"
-                                Command="{Binding SaveProfileCommand}"
-                                Content="Save" />
-                            <Button
-                                DockPanel.Dock="Right"
-                                Padding="14,8"
-                                Command="{Binding ResetEditorCommand}"
-                                Content="Reset" />
-                        </DockPanel>
-                    </Grid>
+                    </ScrollViewer>
                 </Border>
             </Grid>
         </DataTemplate>

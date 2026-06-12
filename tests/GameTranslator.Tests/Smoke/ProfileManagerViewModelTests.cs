@@ -57,6 +57,44 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
+    public async Task SaveAsync_PersistsOverlayAndZoneEdits()
+    {
+        var repository = new InMemoryProfileRepository();
+        var viewModel = CreateMainViewModel(repository, new TestSettingsService());
+
+        InvokeMethod(viewModel, "BeginCreateProfile");
+        SetPropertyValue(viewModel, "ProfileName", "NieR");
+        SetPropertyValue(viewModel, "OverlayMaskMode", OverlayMaskMode.Darken);
+        SetPropertyValue(viewModel, "OverlayMaskColor", "#101010");
+        SetPropertyValue(viewModel, "OverlayOpacity", 0.75);
+        SetPropertyValue(viewModel, "OverlayPadding", 8d);
+        InvokeMethod(viewModel, "AddZone");
+
+        var selectedZone = GetPropertyValue(viewModel, "SelectedZone")
+            ?? throw new InvalidOperationException("Selected zone was not created.");
+        SetPropertyValue(selectedZone, "Name", "Subtitles");
+        SetPropertyValue(selectedZone, "AbsoluteX", 10);
+        SetPropertyValue(selectedZone, "AbsoluteY", 20);
+        SetPropertyValue(selectedZone, "AbsoluteWidth", 300);
+        SetPropertyValue(selectedZone, "AbsoluteHeight", 80);
+        SetPropertyValue(selectedZone, "RelativeX", 0.1);
+        SetPropertyValue(selectedZone, "RelativeY", 0.2);
+        SetPropertyValue(selectedZone, "RelativeWidth", 0.4);
+        SetPropertyValue(selectedZone, "RelativeHeight", 0.1);
+
+        await InvokeTaskMethodAsync(viewModel, "SaveAsync");
+
+        var storedProfile = Assert.Single(await repository.ListAsync());
+        Assert.Equal(OverlayMaskMode.Darken, storedProfile.OverlaySettings.MaskMode);
+        Assert.Equal("#101010", storedProfile.OverlaySettings.MaskColor);
+        Assert.Equal(0.75, storedProfile.OverlaySettings.Opacity);
+        Assert.Equal(8d, storedProfile.OverlaySettings.Padding);
+        Assert.Single(storedProfile.OcrZones);
+        Assert.Equal("Subtitles", storedProfile.OcrZones[0].Name);
+        Assert.Equal(new AbsoluteRectangle(10, 20, 300, 80), storedProfile.OcrZones[0].AbsoluteBounds);
+    }
+
+    [Fact]
     public async Task CloneAndDeleteSelectedProfileAsync_UpdateProfileCollection()
     {
         var repository = new InMemoryProfileRepository();

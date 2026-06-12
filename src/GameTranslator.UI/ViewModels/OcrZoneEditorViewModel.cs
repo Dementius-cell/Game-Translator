@@ -31,6 +31,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
             if (SetProperty(ref name, value))
             {
                 OnPropertyChanged(nameof(DisplayName));
+                NotifyDerivedPropertiesChanged();
                 Validate();
             }
         }
@@ -43,6 +44,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         {
             if (SetProperty(ref absoluteX, value))
             {
+                NotifyDerivedPropertiesChanged();
                 Validate();
             }
         }
@@ -55,6 +57,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         {
             if (SetProperty(ref absoluteY, value))
             {
+                NotifyDerivedPropertiesChanged();
                 Validate();
             }
         }
@@ -67,6 +70,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         {
             if (SetProperty(ref absoluteWidth, value))
             {
+                NotifyDerivedPropertiesChanged();
                 Validate();
             }
         }
@@ -79,6 +83,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         {
             if (SetProperty(ref absoluteHeight, value))
             {
+                NotifyDerivedPropertiesChanged();
                 Validate();
             }
         }
@@ -91,6 +96,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         {
             if (SetProperty(ref relativeX, value))
             {
+                NotifyDerivedPropertiesChanged();
                 Validate();
             }
         }
@@ -103,6 +109,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         {
             if (SetProperty(ref relativeY, value))
             {
+                NotifyDerivedPropertiesChanged();
                 Validate();
             }
         }
@@ -115,6 +122,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         {
             if (SetProperty(ref relativeWidth, value))
             {
+                NotifyDerivedPropertiesChanged();
                 Validate();
             }
         }
@@ -127,12 +135,25 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         {
             if (SetProperty(ref relativeHeight, value))
             {
+                NotifyDerivedPropertiesChanged();
                 Validate();
             }
         }
     }
 
     public string DisplayName => string.IsNullOrWhiteSpace(Name) ? "Unnamed zone" : Name;
+
+    public string AbsoluteBoundsSummary => $"X {AbsoluteX}  Y {AbsoluteY}  W {AbsoluteWidth}  H {AbsoluteHeight}";
+
+    public string RelativeBoundsSummary => $"X {RelativeX:0.###}  Y {RelativeY:0.###}  W {RelativeWidth:0.###}  H {RelativeHeight:0.###}";
+
+    public int AbsoluteArea => AbsoluteWidth > 0 && AbsoluteHeight > 0
+        ? AbsoluteWidth * AbsoluteHeight
+        : 0;
+
+    public double RelativeAreaPercent => RelativeWidth > 0 && RelativeHeight > 0
+        ? Math.Round(RelativeWidth * RelativeHeight * 100, 2)
+        : 0;
 
     public static OcrZoneEditorViewModel CreateDefault(int index)
     {
@@ -239,5 +260,13 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         SetErrors(nameof(RelativeY), relativePositionErrors);
         SetErrors(nameof(RelativeWidth), relativeSizeErrors.Concat(relativePositionErrors));
         SetErrors(nameof(RelativeHeight), relativeSizeErrors.Concat(relativePositionErrors));
+    }
+
+    private void NotifyDerivedPropertiesChanged()
+    {
+        OnPropertyChanged(nameof(AbsoluteBoundsSummary));
+        OnPropertyChanged(nameof(RelativeBoundsSummary));
+        OnPropertyChanged(nameof(AbsoluteArea));
+        OnPropertyChanged(nameof(RelativeAreaPercent));
     }
 }

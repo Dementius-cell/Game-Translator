@@ -94,7 +94,11 @@ public sealed class ProfileManagerViewModelTests
         Assert.Equal("#202020", GetPropertyValue(viewModel, "OverlayMaskColor"));
         Assert.Equal(0.65, GetPropertyValue(viewModel, "OverlayOpacity"));
         Assert.Equal(12d, GetPropertyValue(viewModel, "OverlayPadding"));
-        Assert.Equal("zone-a", GetPropertyValue(GetPropertyValue(viewModel, "SelectedZone")!, "Id"));
+        var selectedZone = GetPropertyValue(viewModel, "SelectedZone")
+            ?? throw new InvalidOperationException("Selected draft zone was not restored.");
+        Assert.Equal("zone-a", GetPropertyValue(selectedZone, "Id"));
+        Assert.Equal("X 10  Y 20  W 300  H 80", GetPropertyValue(selectedZone, "AbsoluteBoundsSummary"));
+        Assert.Equal(3d, GetPropertyValue(selectedZone, "RelativeAreaPercent"));
     }
 
     [Fact]

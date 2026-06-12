@@ -502,9 +502,17 @@
                                             <ListBox.ItemTemplate>
                                                 <DataTemplate>
                                                     <Border Padding="8">
-                                                        <TextBlock
-                                                            Foreground="#253238"
-                                                            Text="{Binding DisplayName}" />
+                                                        <StackPanel>
+                                                            <TextBlock
+                                                                Foreground="#253238"
+                                                                FontWeight="SemiBold"
+                                                                Text="{Binding DisplayName}" />
+                                                            <TextBlock
+                                                                Margin="0,4,0,0"
+                                                                Foreground="#56616F"
+                                                                FontSize="11"
+                                                                Text="{Binding AbsoluteBoundsSummary}" />
+                                                        </StackPanel>
                                                     </Border>
                                                 </DataTemplate>
                                             </ListBox.ItemTemplate>
@@ -543,15 +551,62 @@
                                                     Padding="8,6"
                                                     Text="{Binding SelectedZone.Name, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
 
-                                                <TextBlock
+                                                <Border
                                                     Grid.Row="1"
+                                                    Grid.ColumnSpan="2"
+                                                    Margin="0,12,0,0"
+                                                    Background="#FFFFFF"
+                                                    BorderBrush="#D7DEE8"
+                                                    BorderThickness="1"
+                                                    CornerRadius="4"
+                                                    Padding="10">
+                                                    <StackPanel>
+                                                        <TextBlock
+                                                            Foreground="#253238"
+                                                            FontWeight="SemiBold"
+                                                            Text="{Binding SelectedZone.DisplayName}" />
+                                                        <TextBlock
+                                                            Margin="0,6,0,0"
+                                                            Foreground="#56616F"
+                                                            Text="{Binding SelectedZone.AbsoluteBoundsSummary}" />
+                                                        <TextBlock
+                                                            Margin="0,2,0,0"
+                                                            Foreground="#56616F"
+                                                            Text="{Binding SelectedZone.RelativeBoundsSummary}" />
+                                                        <Grid Margin="0,8,0,0">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="88" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <ProgressBar
+                                                                Grid.Column="0"
+                                                                Height="10"
+                                                                Minimum="0"
+                                                                Maximum="100"
+                                                                Value="{Binding SelectedZone.RelativeAreaPercent}" />
+                                                            <TextBlock
+                                                                Grid.Column="1"
+                                                                Margin="12,0,0,0"
+                                                                VerticalAlignment="Center"
+                                                                Foreground="#2A5D67"
+                                                                Text="{Binding SelectedZone.RelativeAreaPercent, StringFormat={}{0:F2}%}" />
+                                                        </Grid>
+                                                        <TextBlock
+                                                            Margin="0,6,0,0"
+                                                            Foreground="#56616F"
+                                                            Text="{Binding SelectedZone.AbsoluteArea, StringFormat=Area {0} px}" />
+                                                    </StackPanel>
+                                                </Border>
+
+                                                <TextBlock
+                                                    Grid.Row="2"
                                                     Grid.Column="0"
                                                     Margin="0,12,0,0"
                                                     VerticalAlignment="Top"
                                                     Foreground="#253238"
                                                     Text="Absolute bounds" />
                                                 <UniformGrid
-                                                    Grid.Row="1"
+                                                    Grid.Row="2"
                                                     Grid.Column="1"
                                                     Margin="0,12,0,0"
                                                     Columns="4">
@@ -574,14 +629,14 @@
                                                 </UniformGrid>
 
                                                 <TextBlock
-                                                    Grid.Row="2"
+                                                    Grid.Row="3"
                                                     Grid.Column="0"
                                                     Margin="0,12,0,0"
                                                     VerticalAlignment="Top"
                                                     Foreground="#253238"
                                                     Text="Relative bounds" />
                                                 <UniformGrid
-                                                    Grid.Row="2"
+                                                    Grid.Row="3"
                                                     Grid.Column="1"
                                                     Margin="0,12,0,0"
                                                     Columns="4">
@@ -604,7 +659,7 @@
                                                 </UniformGrid>
 
                                                 <TextBlock
-                                                    Grid.Row="3"
+                                                    Grid.Row="4"
                                                     Grid.ColumnSpan="2"
                                                     Margin="0,12,0,0"
                                                     Foreground="#56616F"

@@ -182,6 +182,22 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         };
     }
 
+    public OcrZoneEditorViewModel CreateDuplicate(string name)
+    {
+        return new OcrZoneEditorViewModel
+        {
+            Name = name,
+            AbsoluteX = AbsoluteX,
+            AbsoluteY = AbsoluteY,
+            AbsoluteWidth = AbsoluteWidth,
+            AbsoluteHeight = AbsoluteHeight,
+            RelativeX = RelativeX,
+            RelativeY = RelativeY,
+            RelativeWidth = RelativeWidth,
+            RelativeHeight = RelativeHeight,
+        };
+    }
+
     private void Validate()
     {
         SetErrors(

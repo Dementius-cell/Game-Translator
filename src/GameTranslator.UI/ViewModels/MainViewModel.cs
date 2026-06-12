@@ -70,6 +70,9 @@ public sealed class MainViewModel : ValidatableObservableObject
         DeleteSelectedProfileCommand = new AsyncRelayCommand(DeleteSelectedProfileAsync, CanDeleteSelectedProfile);
         ResetEditorCommand = new RelayCommand(ResetEditor, () => !IsBusy);
         AddZoneCommand = new RelayCommand(AddZone, () => !IsBusy);
+        DuplicateSelectedZoneCommand = new RelayCommand(DuplicateSelectedZone, CanDuplicateSelectedZone);
+        MoveSelectedZoneUpCommand = new RelayCommand(MoveSelectedZoneUp, CanMoveSelectedZoneUp);
+        MoveSelectedZoneDownCommand = new RelayCommand(MoveSelectedZoneDown, CanMoveSelectedZoneDown);
         RemoveSelectedZoneCommand = new RelayCommand(RemoveSelectedZone, CanRemoveSelectedZone);
 
         BeginCreateProfile();
@@ -336,6 +339,12 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public ICommand AddZoneCommand { get; }
 
+    public ICommand DuplicateSelectedZoneCommand { get; }
+
+    public ICommand MoveSelectedZoneUpCommand { get; }
+
+    public ICommand MoveSelectedZoneDownCommand { get; }
+
     public ICommand RemoveSelectedZoneCommand { get; }
 
     public async Task LoadAsync()
@@ -485,6 +494,34 @@ public sealed class MainViewModel : ValidatableObservableObject
         OnPropertyChanged(nameof(ZoneSummary));
         OnPropertyChanged(nameof(ProfileSummary));
         RefreshValidationState();
+    }
+
+    public void DuplicateSelectedZone()
+    {
+        if (SelectedZone is null)
+        {
+            return;
+        }
+
+        var selectedIndex = OcrZones.IndexOf(SelectedZone);
+        var duplicate = SelectedZone.CreateDuplicate(BuildDuplicateZoneName(SelectedZone.Name));
+        AttachZone(duplicate);
+        OcrZones.Insert(selectedIndex + 1, duplicate);
+        SelectedZone = duplicate;
+        PersistDraftShellStateIfNeeded();
+        OnPropertyChanged(nameof(ZoneSummary));
+        OnPropertyChanged(nameof(ProfileSummary));
+        RefreshValidationState();
+    }
+
+    public void MoveSelectedZoneUp()
+    {
+        MoveSelectedZoneBy(-1);
+    }
+
+    public void MoveSelectedZoneDown()
+    {
+        MoveSelectedZoneBy(1);
     }
 
     private async Task RefreshProfilesAsync(string? preferredProfileId)
@@ -668,6 +705,26 @@ public sealed class MainViewModel : ValidatableObservableObject
         return !IsBusy && SelectedZone is not null;
     }
 
+    private bool CanDuplicateSelectedZone()
+    {
+        return !IsBusy && SelectedZone is not null;
+    }
+
+    private bool CanMoveSelectedZoneUp()
+    {
+        return !IsBusy
+            && SelectedZone is not null
+            && OcrZones.IndexOf(SelectedZone) > 0;
+    }
+
+    private bool CanMoveSelectedZoneDown()
+    {
+        return !IsBusy
+            && SelectedZone is not null
+            && OcrZones.IndexOf(SelectedZone) >= 0
+            && OcrZones.IndexOf(SelectedZone) < OcrZones.Count - 1;
+    }
+
     private void ReplaceZones(IEnumerable<OcrZoneEditorViewModel> zones)
     {
         foreach (var zone in OcrZones)
@@ -838,6 +895,49 @@ public sealed class MainViewModel : ValidatableObservableObject
         return normalized.Length == 0 ? null : normalized;
     }
 
+    private string BuildDuplicateZoneName(string sourceName)
+    {
+        var baseName = string.IsNullOrWhiteSpace(sourceName)
+            ? "Zone Copy"
+            : $"{sourceName.Trim()} Copy";
+        var candidate = baseName;
+        var suffix = 2;
+
+        while (OcrZones.Any(zone => string.Equals(zone.Name, candidate, StringComparison.OrdinalIgnoreCase)))
+        {
+            candidate = $"{baseName} {suffix}";
+            suffix++;
+        }
+
+        return candidate;
+    }
+
+    private void MoveSelectedZoneBy(int offset)
+    {
+        if (SelectedZone is null)
+        {
+            return;
+        }
+
+        var currentIndex = OcrZones.IndexOf(SelectedZone);
+        if (currentIndex < 0)
+        {
+            return;
+        }
+
+        var targetIndex = currentIndex + offset;
+        if (targetIndex < 0 || targetIndex >= OcrZones.Count)
+        {
+            return;
+        }
+
+        OcrZones.Move(currentIndex, targetIndex);
+        PersistDraftShellStateIfNeeded();
+        OnPropertyChanged(nameof(ZoneSummary));
+        OnPropertyChanged(nameof(ProfileSummary));
+        RefreshValidationState();
+    }
+
     private bool IsDraftEditor => SelectedProfile is null && string.IsNullOrWhiteSpace(editingProfileId);
 
     private void NotifyCommandStateChanged()
@@ -849,6 +949,9 @@ public sealed class MainViewModel : ValidatableObservableObject
         ((AsyncRelayCommand)DeleteSelectedProfileCommand).RaiseCanExecuteChanged();
         ((RelayCommand)ResetEditorCommand).RaiseCanExecuteChanged();
         ((RelayCommand)AddZoneCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)DuplicateSelectedZoneCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)MoveSelectedZoneUpCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)MoveSelectedZoneDownCommand).RaiseCanExecuteChanged();
         ((RelayCommand)RemoveSelectedZoneCommand).RaiseCanExecuteChanged();
     }
 }

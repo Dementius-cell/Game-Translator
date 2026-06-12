@@ -159,6 +159,39 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
+    public void DuplicateAndReorderZone_PersistDraftZoneOrderAndSelection()
+    {
+        var repository = new InMemoryProfileRepository();
+        var settings = new TestSettingsService();
+        var viewModel = CreateMainViewModel(repository, settings);
+
+        InvokeMethod(viewModel, "BeginCreateProfile");
+        SetPropertyValue(viewModel, "ProfileName", "Zone manager");
+        SetPropertyValue(viewModel, "TranslatorProvider", "Google");
+        SetPropertyValue(viewModel, "SourceLanguage", "ja");
+        SetPropertyValue(viewModel, "TargetLanguage", "en");
+        InvokeMethod(viewModel, "AddZone");
+        var firstZone = GetPropertyValue(viewModel, "SelectedZone")
+            ?? throw new InvalidOperationException("First zone was not created.");
+        SetPropertyValue(firstZone, "Name", "Primary");
+        InvokeMethod(viewModel, "DuplicateSelectedZone");
+
+        var duplicatedZone = GetPropertyValue(viewModel, "SelectedZone")
+            ?? throw new InvalidOperationException("Duplicated zone was not selected.");
+        Assert.Equal("Primary Copy", GetPropertyValue(duplicatedZone, "Name"));
+
+        InvokeMethod(viewModel, "MoveSelectedZoneUp");
+
+        var persistedZones = settings.GetValue<OcrZone[]>("shell.draft.ocrZones")
+            ?? throw new InvalidOperationException("Persisted zones were not found.");
+
+        Assert.Equal(2, persistedZones.Length);
+        Assert.Equal("Primary Copy", persistedZones[0].Name);
+        Assert.Equal("Primary", persistedZones[1].Name);
+        Assert.Equal(GetPropertyValue(duplicatedZone, "Id"), settings.GetValue<string>("shell.draft.selectedZoneId"));
+    }
+
+    [Fact]
     public async Task SaveAsync_PersistsOverlayAndZoneEdits()
     {
         var repository = new InMemoryProfileRepository();

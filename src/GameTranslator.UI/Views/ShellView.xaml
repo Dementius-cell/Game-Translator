@@ -457,6 +457,24 @@
                                             DockPanel.Dock="Right"
                                             Margin="8,0,0,0"
                                             Padding="12,6"
+                                            Command="{Binding MoveSelectedZoneDownCommand}"
+                                            Content="Down" />
+                                        <Button
+                                            DockPanel.Dock="Right"
+                                            Margin="8,0,0,0"
+                                            Padding="12,6"
+                                            Command="{Binding MoveSelectedZoneUpCommand}"
+                                            Content="Up" />
+                                        <Button
+                                            DockPanel.Dock="Right"
+                                            Margin="8,0,0,0"
+                                            Padding="12,6"
+                                            Command="{Binding DuplicateSelectedZoneCommand}"
+                                            Content="Duplicate" />
+                                        <Button
+                                            DockPanel.Dock="Right"
+                                            Margin="8,0,0,0"
+                                            Padding="12,6"
                                             Command="{Binding RemoveSelectedZoneCommand}"
                                             Content="Remove zone" />
                                         <Button

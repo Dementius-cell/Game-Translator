@@ -2,6 +2,7 @@ using System.IO;
 using System.Reflection;
 using System.Runtime.Loader;
 using GameTranslator.Application.Abstractions;
+using GameTranslator.Application.Capture;
 using GameTranslator.Application.Profiles;
 using GameTranslator.Domain.Profiles;
 
@@ -668,25 +669,87 @@ public sealed class ProfileManagerViewModelTests
         Assert.Contains(dialog.InformationMessages, message => message.Contains("export.json", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task RefreshCapturePreviewAsync_WhenZoneSelected_CapturesSelectedZoneAndExposesPreview()
+    {
+        var repository = new InMemoryProfileRepository();
+        var frameSource = new TestCaptureFrameSource();
+        var viewModel = CreateMainViewModel(
+            repository,
+            new TestSettingsService(),
+            frameSource: frameSource);
+        ConfigureValidDraftProfile(viewModel, "Capture preview");
+        InvokeMethod(viewModel, "AddZone");
+
+        var selectedZone = GetPropertyValue(viewModel, "SelectedZone")
+            ?? throw new InvalidOperationException("Selected zone was not created.");
+        SetPropertyValue(selectedZone, "AbsoluteX", 10);
+        SetPropertyValue(selectedZone, "AbsoluteY", 20);
+        SetPropertyValue(selectedZone, "AbsoluteWidth", 4);
+        SetPropertyValue(selectedZone, "AbsoluteHeight", 3);
+
+        await InvokeTaskMethodAsync(viewModel, "RefreshCapturePreviewAsync");
+
+        Assert.Equal(new[] { new CaptureRegion(10, 20, 4, 3) }, frameSource.CapturedRegions);
+        Assert.True((bool)(GetPropertyValue(viewModel, "HasCapturePreview") ?? false));
+        Assert.NotNull(GetPropertyValue(viewModel, "CapturePreviewImage"));
+        Assert.Equal("Captured 4x3 at 12:00:01.", GetPropertyValue(viewModel, "CapturePreviewStatus"));
+    }
+
+    [Fact]
+    public async Task RefreshCapturePreviewAsync_WhenCaptureFails_ReportsStatusAndLogsError()
+    {
+        var repository = new InMemoryProfileRepository();
+        var logger = new TestApplicationLogger();
+        var viewModel = CreateMainViewModel(
+            repository,
+            new TestSettingsService(),
+            logger: logger,
+            frameSource: new TestCaptureFrameSource
+            {
+                Failure = new CaptureFrameSourceException("capture source unavailable"),
+            });
+        ConfigureValidDraftProfile(viewModel, "Capture failure");
+        InvokeMethod(viewModel, "AddZone");
+
+        await InvokeTaskMethodAsync(viewModel, "RefreshCapturePreviewAsync");
+
+        Assert.Equal(
+            "Capture preview failed: capture source unavailable",
+            GetPropertyValue(viewModel, "CapturePreviewStatus"));
+        Assert.False((bool)(GetPropertyValue(viewModel, "HasCapturePreview") ?? true));
+        Assert.Contains(logger.Errors, error => error.Contains("Capture preview failed.", StringComparison.Ordinal));
+    }
+
     private static object CreateMainViewModel(
         InMemoryProfileRepository repository,
         TestSettingsService settings,
         TestDialogService? dialog = null,
-        TestProfileExchangeGateway? exchangeGateway = null)
+        TestProfileExchangeGateway? exchangeGateway = null,
+        TestApplicationLogger? logger = null,
+        TestCaptureFrameSource? frameSource = null)
     {
         var profileService = new ProfileService(repository, new ProfileValidator());
         var profileExchangeService = new ProfileExchangeService(
             exchangeGateway ?? new TestProfileExchangeGateway(),
             new ProfileMigrationService(),
             new ProfileValidator());
-        var logger = new TestApplicationLogger();
+        var captureService = new CaptureService(frameSource ?? new TestCaptureFrameSource());
+        var applicationLogger = logger ?? new TestApplicationLogger();
         var assembly = LoadUiAssembly();
         var viewModelType = assembly.GetType(
             "GameTranslator.UI.ViewModels.MainViewModel",
             throwOnError: true)
             ?? throw new InvalidOperationException("MainViewModel type was not found.");
 
-        return Activator.CreateInstance(viewModelType, profileService, profileExchangeService, dialog ?? new TestDialogService(), settings, logger)
+        return Activator.CreateInstance(
+                viewModelType,
+                profileService,
+                profileExchangeService,
+                captureService,
+                dialog ?? new TestDialogService(),
+                settings,
+                applicationLogger)
             ?? throw new InvalidOperationException("MainViewModel instance was not created.");
     }
 
@@ -750,6 +813,13 @@ public sealed class ProfileManagerViewModelTests
 
     private static Assembly LoadUiAssembly()
     {
+        var loadedAssembly = AssemblyLoadContext.Default.Assemblies.FirstOrDefault(
+            assembly => string.Equals(assembly.GetName().Name, "GameTranslator.UI", StringComparison.Ordinal));
+        if (loadedAssembly is not null)
+        {
+            return loadedAssembly;
+        }
+
         var root = RepositoryRoot.Find();
         var configuration = AppContext.BaseDirectory.Contains(
             $"{Path.DirectorySeparatorChar}Release{Path.DirectorySeparatorChar}",
@@ -762,7 +832,7 @@ public sealed class ProfileManagerViewModelTests
             "GameTranslator.UI",
             "bin",
             configuration,
-            "net9.0-windows",
+            "net9.0-windows10.0.19041.0",
             "GameTranslator.UI.dll");
 
         Assert.True(File.Exists(assemblyPath), $"UI assembly is missing. Build the solution first: {assemblyPath}");
@@ -861,8 +931,11 @@ public sealed class ProfileManagerViewModelTests
 
     private sealed class TestApplicationLogger : IApplicationLogger
     {
+        public List<string> Errors { get; } = new();
+
         public void Error(Exception exception, string message)
         {
+            Errors.Add(message);
         }
 
         public void Information(string message)
@@ -871,6 +944,40 @@ public sealed class ProfileManagerViewModelTests
 
         public void Warning(string message)
         {
+        }
+    }
+
+    private sealed class TestCaptureFrameSource : ICaptureFrameSource
+    {
+        private static readonly DateTimeOffset FrameTime = new(2026, 6, 12, 12, 0, 1, TimeSpan.Zero);
+
+        public List<CaptureRegion> CapturedRegions { get; } = new();
+
+        public Exception? Failure { get; init; }
+
+        public Task<CapturedFrame> CaptureAsync(CaptureRegion region, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (Failure is not null)
+            {
+                return Task.FromException<CapturedFrame>(Failure);
+            }
+
+            CapturedRegions.Add(region);
+
+            var stride = checked(region.Width * 4);
+            var pixels = Enumerable.Repeat((byte)127, checked(stride * region.Height)).ToArray();
+
+            return Task.FromResult(
+                new CapturedFrame(
+                    region,
+                    region.Width,
+                    region.Height,
+                    stride,
+                    "Bgra32",
+                    pixels,
+                    FrameTime));
         }
     }
 

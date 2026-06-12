@@ -35,7 +35,7 @@ public sealed class SprintZeroScaffoldTests
         var projectPath = Path.Combine(root, "src/GameTranslator.UI/GameTranslator.UI.csproj");
         var project = XDocument.Load(projectPath);
 
-        Assert.Equal("net9.0-windows", GetPropertyValue(project, "TargetFramework"));
+        Assert.Equal("net9.0-windows10.0.19041.0", GetPropertyValue(project, "TargetFramework"));
         Assert.Equal("true", GetPropertyValue(project, "UseWPF"));
     }
 

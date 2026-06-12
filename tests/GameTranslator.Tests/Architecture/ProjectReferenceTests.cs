@@ -46,7 +46,7 @@ public sealed class ProjectReferenceTests
             "InfrastructureCompositionModule");
 
         Assert.Contains(
-            "src/GameTranslator.Infrastructure/bin/$(Configuration)/net9.0/GameTranslator.Infrastructure.dll",
+            "src/GameTranslator.Infrastructure/bin/$(Configuration)/net9.0-windows10.0.19041.0/GameTranslator.Infrastructure.dll",
             moduleIncludes);
         Assert.True(ProjectFileReader.HasTarget(
             "src/GameTranslator.UI/GameTranslator.UI.csproj",

@@ -2,8 +2,11 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Text.RegularExpressions;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Input;
 using GameTranslator.Application.Abstractions;
+using GameTranslator.Application.Capture;
 using GameTranslator.Application.Profiles;
 using GameTranslator.Domain.Profiles;
 using GameTranslator.UI.Commands;
@@ -29,6 +32,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     private readonly ProfileService profileService;
     private readonly ProfileExchangeService profileExchangeService;
+    private readonly CaptureService captureService;
     private readonly IDialogService dialogService;
     private readonly ISettingsService settings;
     private readonly IApplicationLogger logger;
@@ -46,6 +50,8 @@ public sealed class MainViewModel : ValidatableObservableObject
     private double overlayOpacity = 1;
     private double overlayPadding;
     private OcrZoneEditorViewModel? selectedZone;
+    private ImageSource? capturePreviewImage;
+    private string capturePreviewStatus = "No capture preview yet.";
     private string statusMessage = "Loading profiles...";
     private bool isBusy;
     private bool isLoaded;
@@ -64,12 +70,14 @@ public sealed class MainViewModel : ValidatableObservableObject
     public MainViewModel(
         ProfileService profileService,
         ProfileExchangeService profileExchangeService,
+        CaptureService captureService,
         IDialogService dialogService,
         ISettingsService settings,
         IApplicationLogger logger)
     {
         this.profileService = profileService;
         this.profileExchangeService = profileExchangeService;
+        this.captureService = captureService;
         this.dialogService = dialogService;
         this.settings = settings;
         this.logger = logger;
@@ -94,6 +102,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         MoveSelectedZoneUpCommand = new RelayCommand(MoveSelectedZoneUp, CanMoveSelectedZoneUp);
         MoveSelectedZoneDownCommand = new RelayCommand(MoveSelectedZoneDown, CanMoveSelectedZoneDown);
         RemoveSelectedZoneCommand = new RelayCommand(RemoveSelectedZone, CanRemoveSelectedZone);
+        RefreshCapturePreviewCommand = new AsyncRelayCommand(RefreshCapturePreviewAsync, CanRefreshCapturePreview);
 
         BeginCreateProfile();
         StatusMessage = "Ready to manage game profiles.";
@@ -289,6 +298,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
             PersistDraftShellStateIfNeeded();
             SyncSelectedZoneState();
+            ClearCapturePreview();
             OnPropertyChanged(nameof(HasSelectedZone));
             NotifyCommandStateChanged();
         }
@@ -379,6 +389,26 @@ public sealed class MainViewModel : ValidatableObservableObject
         private set => SetProperty(ref zoneSelectionPreviewHeight, value);
     }
 
+    public ImageSource? CapturePreviewImage
+    {
+        get => capturePreviewImage;
+        private set
+        {
+            if (SetProperty(ref capturePreviewImage, value))
+            {
+                OnPropertyChanged(nameof(HasCapturePreview));
+            }
+        }
+    }
+
+    public bool HasCapturePreview => CapturePreviewImage is not null;
+
+    public string CapturePreviewStatus
+    {
+        get => capturePreviewStatus;
+        private set => SetProperty(ref capturePreviewStatus, value);
+    }
+
     public ICommand BeginCreateProfileCommand { get; }
 
     public ICommand RefreshProfilesCommand { get; }
@@ -404,6 +434,8 @@ public sealed class MainViewModel : ValidatableObservableObject
     public ICommand MoveSelectedZoneDownCommand { get; }
 
     public ICommand RemoveSelectedZoneCommand { get; }
+
+    public ICommand RefreshCapturePreviewCommand { get; }
 
     public async Task LoadAsync()
     {
@@ -812,6 +844,54 @@ public sealed class MainViewModel : ValidatableObservableObject
         MoveSelectedZoneBy(1);
     }
 
+    public async Task RefreshCapturePreviewAsync()
+    {
+        if (SelectedZone is null)
+        {
+            CapturePreviewStatus = "Select an OCR zone to preview capture.";
+            StatusMessage = CapturePreviewStatus;
+            return;
+        }
+
+        try
+        {
+            IsBusy = true;
+            var region = new CaptureRegion(
+                SelectedZone.AbsoluteX,
+                SelectedZone.AbsoluteY,
+                SelectedZone.AbsoluteWidth,
+                SelectedZone.AbsoluteHeight);
+
+            StatusMessage = $"Capturing preview for '{SelectedZone.DisplayName}'...";
+            var frame = await captureService.CaptureAsync(region);
+            CapturePreviewImage = CreateCapturePreviewImage(frame);
+            CapturePreviewStatus = $"Captured {frame.Width}x{frame.Height} at {frame.CapturedAt:HH:mm:ss}.";
+            StatusMessage = CapturePreviewStatus;
+            logger.Information($"Capture preview refreshed for zone '{SelectedZone.DisplayName}'.");
+        }
+        catch (CaptureFrameSourceException exception)
+        {
+            logger.Error(exception, "Capture preview failed.");
+            CapturePreviewStatus = $"Capture preview failed: {exception.Message}";
+            StatusMessage = CapturePreviewStatus;
+        }
+        catch (OperationCanceledException)
+        {
+            CapturePreviewStatus = "Capture preview canceled.";
+            StatusMessage = CapturePreviewStatus;
+        }
+        catch (Exception exception)
+        {
+            logger.Error(exception, "Unexpected capture preview failure.");
+            CapturePreviewStatus = "Capture preview failed. Check logs for details.";
+            StatusMessage = CapturePreviewStatus;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     private async Task RefreshProfilesAsync(string? preferredProfileId)
     {
         await RunProfileOperationAsync(
@@ -1004,6 +1084,11 @@ public sealed class MainViewModel : ValidatableObservableObject
     }
 
     private bool CanRemoveSelectedZone()
+    {
+        return !IsBusy && SelectedZone is not null;
+    }
+
+    private bool CanRefreshCapturePreview()
     {
         return !IsBusy && SelectedZone is not null;
     }
@@ -1373,6 +1458,30 @@ public sealed class MainViewModel : ValidatableObservableObject
         ClearZoneResizeState();
     }
 
+    private void ClearCapturePreview()
+    {
+        CapturePreviewImage = null;
+        CapturePreviewStatus = SelectedZone is null
+            ? "Select an OCR zone to preview capture."
+            : "No capture preview yet.";
+    }
+
+    private static BitmapSource CreateCapturePreviewImage(CapturedFrame frame)
+    {
+        var image = BitmapSource.Create(
+            frame.Width,
+            frame.Height,
+            96,
+            96,
+            PixelFormats.Bgra32,
+            null,
+            frame.PixelData.ToArray(),
+            frame.Stride);
+        image.Freeze();
+
+        return image;
+    }
+
     private static int ConvertSurfaceToAbsolute(double coordinate, int referenceSize, double surfaceSize)
     {
         return (int)Math.Round(coordinate * referenceSize / surfaceSize, MidpointRounding.AwayFromZero);
@@ -1410,5 +1519,6 @@ public sealed class MainViewModel : ValidatableObservableObject
         ((RelayCommand)MoveSelectedZoneUpCommand).RaiseCanExecuteChanged();
         ((RelayCommand)MoveSelectedZoneDownCommand).RaiseCanExecuteChanged();
         ((RelayCommand)RemoveSelectedZoneCommand).RaiseCanExecuteChanged();
+        ((AsyncRelayCommand)RefreshCapturePreviewCommand).RaiseCanExecuteChanged();
     }
 }

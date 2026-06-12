@@ -1,4 +1,5 @@
 using System.Windows;
+using GameTranslator.Application.DependencyInjection;
 using GameTranslator.UI.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -31,7 +32,10 @@ public partial class App : System.Windows.Application
             })
             .ConfigureServices((context, services) =>
             {
+                services.AddApplicationServices();
+                services.AddDefaultProfileStorageOptions();
                 services.AddPresentationServices();
+                services.AddExternalServiceModules("GameTranslator.Infrastructure");
             })
             .Build();
     }

@@ -1,5 +1,6 @@
 using System.IO;
 using System.Reflection;
+using GameTranslator.Application.Profiles;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace GameTranslator.Tests.Smoke;
@@ -53,6 +54,33 @@ public sealed class PresentationCompositionTests
         Assert.DoesNotContain(
             "src/GameTranslator.Infrastructure/GameTranslator.Infrastructure.csproj",
             references);
+    }
+
+    [Fact]
+    public void ExternalServiceModuleLoader_LoadsInfrastructureProfileStorageWithoutUiProjectReference()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(new ProfileStorageOptions(Path.Combine(
+            Path.GetTempPath(),
+            "GameTranslator.Tests",
+            Guid.NewGuid().ToString("N"))));
+
+        var uiAssembly = LoadUiAssembly();
+        var extensionType = uiAssembly.GetType(
+            "GameTranslator.UI.DependencyInjection.ExternalServiceModuleLoader",
+            throwOnError: true)
+            ?? throw new InvalidOperationException("External service module loader type was not found.");
+        var method = extensionType.GetMethod(
+            "AddExternalServiceModules",
+            BindingFlags.Public | BindingFlags.Static)
+            ?? throw new InvalidOperationException("AddExternalServiceModules method was not found.");
+
+        var result = method.Invoke(null, new object[] { services, new[] { "GameTranslator.Infrastructure" } });
+
+        Assert.Same(services, result);
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType.FullName == "GameTranslator.Application.Profiles.IProfileRepository");
     }
 
     private static IServiceCollection InvokePresentationCompositionRoot()

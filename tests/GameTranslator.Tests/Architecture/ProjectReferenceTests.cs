@@ -38,6 +38,24 @@ public sealed class ProjectReferenceTests
             references);
     }
 
+    [Fact]
+    public void UiProject_CopiesInfrastructureCompositionModuleWithoutProjectReference()
+    {
+        var moduleIncludes = ProjectFileReader.GetItemIncludes(
+            "src/GameTranslator.UI/GameTranslator.UI.csproj",
+            "InfrastructureCompositionModule");
+
+        Assert.Contains(
+            "src/GameTranslator.Infrastructure/bin/$(Configuration)/net9.0/GameTranslator.Infrastructure.dll",
+            moduleIncludes);
+        Assert.True(ProjectFileReader.HasTarget(
+            "src/GameTranslator.UI/GameTranslator.UI.csproj",
+            "BuildInfrastructureCompositionModule"));
+        Assert.True(ProjectFileReader.HasTarget(
+            "src/GameTranslator.UI/GameTranslator.UI.csproj",
+            "CopyInfrastructureCompositionModule"));
+    }
+
     private static void AssertProjectReferences(string projectPath, params string[] expectedReferences)
     {
         var actualReferences = ProjectFileReader.GetProjectReferences(projectPath);

@@ -5,6 +5,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InfrastructureCompositionModule Include="..\GameTranslator.Infrastructure\bin\$(Configuration)\net9.0\GameTranslator.Infrastructure.dll" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.17" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.17" />
     <PackageReference Include="Serilog" Version="4.3.1" />
@@ -20,5 +24,20 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
   </PropertyGroup>
+
+  <Target Name="BuildInfrastructureCompositionModule" BeforeTargets="Build">
+    <MSBuild
+      Projects="..\GameTranslator.Infrastructure\GameTranslator.Infrastructure.csproj"
+      Targets="Build"
+      Properties="Configuration=$(Configuration)" />
+  </Target>
+
+  <Target Name="CopyInfrastructureCompositionModule" AfterTargets="Build">
+    <Copy
+      SourceFiles="@(InfrastructureCompositionModule)"
+      DestinationFolder="$(OutDir)"
+      SkipUnchangedFiles="true"
+      Condition="Exists('%(InfrastructureCompositionModule.FullPath)')" />
+  </Target>
 
 </Project>

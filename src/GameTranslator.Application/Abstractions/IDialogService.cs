@@ -10,5 +10,10 @@ public interface IDialogService
         string filter,
         CancellationToken cancellationToken = default);
 
+    Task<DialogChoice> ShowYesNoCancelDialogAsync(
+        string title,
+        string message,
+        CancellationToken cancellationToken = default);
+
     Task ShowInformationAsync(string title, string message, CancellationToken cancellationToken = default);
 }

@@ -338,6 +338,89 @@ public sealed class ProfileManagerViewModelTests
         var storedProfile = Assert.Single(storedProfiles);
         Assert.Equal("Imported profile", storedProfile.Name);
         Assert.Equal(storedProfile.Id, GetPropertyValue(GetPropertyValue(viewModel, "SelectedProfile")!, "Id"));
+        Assert.Contains(dialog.InformationMessages, message => message.Contains("Imported profile", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ImportProfileAsync_WhenNameConflictsAndDialogReturnsYes_ReplacesExistingProfile()
+    {
+        var repository = new InMemoryProfileRepository();
+        var existingProfile = CreateProfile("Shared profile", "Google", "ja", "en");
+        await repository.SaveAsync(existingProfile);
+
+        var dialog = new TestDialogService
+        {
+            OpenFilePath = "import.json",
+            YesNoCancelChoice = DialogChoice.Yes,
+        };
+        var exchangeGateway = new TestProfileExchangeGateway
+        {
+            ImportedProfile = CreateProfile("Shared profile", "Azure", "ja", "ru"),
+        };
+        var viewModel = CreateMainViewModel(repository, new TestSettingsService(), dialog, exchangeGateway);
+        await InvokeTaskMethodAsync(viewModel, "LoadAsync");
+
+        await InvokeTaskMethodAsync(viewModel, "ImportProfileAsync");
+
+        var storedProfiles = await repository.ListAsync();
+        var storedProfile = Assert.Single(storedProfiles);
+        Assert.Equal(existingProfile.Id, storedProfile.Id);
+        Assert.Equal("Azure", storedProfile.TranslatorSettings.Provider);
+        Assert.Equal("ru", storedProfile.TranslatorSettings.TargetLanguage);
+    }
+
+    [Fact]
+    public async Task ImportProfileAsync_WhenNameConflictsAndDialogReturnsNo_KeepsBothProfiles()
+    {
+        var repository = new InMemoryProfileRepository();
+        await repository.SaveAsync(CreateProfile("Shared profile", "Google", "ja", "en"));
+
+        var dialog = new TestDialogService
+        {
+            OpenFilePath = "import.json",
+            YesNoCancelChoice = DialogChoice.No,
+        };
+        var exchangeGateway = new TestProfileExchangeGateway
+        {
+            ImportedProfile = CreateProfile("Shared profile", "Azure", "ja", "ru"),
+        };
+        var viewModel = CreateMainViewModel(repository, new TestSettingsService(), dialog, exchangeGateway);
+        await InvokeTaskMethodAsync(viewModel, "LoadAsync");
+
+        await InvokeTaskMethodAsync(viewModel, "ImportProfileAsync");
+
+        var storedProfiles = await repository.ListAsync();
+        Assert.Equal(2, storedProfiles.Count);
+        Assert.Contains(storedProfiles, profile => string.Equals(profile.Name, "Shared profile", StringComparison.Ordinal));
+        Assert.Contains(storedProfiles, profile => string.Equals(profile.Name, "Shared profile Imported 2", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ImportProfileAsync_WhenNameConflictsAndDialogReturnsCancel_DoesNotChangeProfiles()
+    {
+        var repository = new InMemoryProfileRepository();
+        var existingProfile = CreateProfile("Shared profile", "Google", "ja", "en");
+        await repository.SaveAsync(existingProfile);
+
+        var dialog = new TestDialogService
+        {
+            OpenFilePath = "import.json",
+            YesNoCancelChoice = DialogChoice.Cancel,
+        };
+        var exchangeGateway = new TestProfileExchangeGateway
+        {
+            ImportedProfile = CreateProfile("Shared profile", "Azure", "ja", "ru"),
+        };
+        var viewModel = CreateMainViewModel(repository, new TestSettingsService(), dialog, exchangeGateway);
+        await InvokeTaskMethodAsync(viewModel, "LoadAsync");
+
+        await InvokeTaskMethodAsync(viewModel, "ImportProfileAsync");
+
+        var storedProfiles = await repository.ListAsync();
+        var storedProfile = Assert.Single(storedProfiles);
+        Assert.Equal(existingProfile.Id, storedProfile.Id);
+        Assert.Equal("Google", storedProfile.TranslatorSettings.Provider);
+        Assert.Equal("Profile import canceled.", GetPropertyValue(viewModel, "StatusMessage"));
     }
 
     [Fact]
@@ -360,6 +443,7 @@ public sealed class ProfileManagerViewModelTests
         Assert.NotNull(exchangeGateway.ExportedProfile);
         Assert.Equal("Export me", exchangeGateway.ExportedProfile!.Name);
         Assert.Equal("export.json", exchangeGateway.ExportedPath);
+        Assert.Contains(dialog.InformationMessages, message => message.Contains("export.json", StringComparison.Ordinal));
     }
 
     private static object CreateMainViewModel(
@@ -369,7 +453,10 @@ public sealed class ProfileManagerViewModelTests
         TestProfileExchangeGateway? exchangeGateway = null)
     {
         var profileService = new ProfileService(repository, new ProfileValidator());
-        var profileExchangeService = new ProfileExchangeService(exchangeGateway ?? new TestProfileExchangeGateway(), new ProfileValidator());
+        var profileExchangeService = new ProfileExchangeService(
+            exchangeGateway ?? new TestProfileExchangeGateway(),
+            new ProfileMigrationService(),
+            new ProfileValidator());
         var logger = new TestApplicationLogger();
         var assembly = LoadUiAssembly();
         var viewModelType = assembly.GetType(
@@ -475,6 +562,10 @@ public sealed class ProfileManagerViewModelTests
 
         public string? SaveFilePath { get; set; }
 
+        public DialogChoice YesNoCancelChoice { get; set; } = DialogChoice.Yes;
+
+        public List<string> InformationMessages { get; } = new();
+
         public Task<string?> ShowOpenFileDialogAsync(string title, string filter, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(OpenFilePath);
@@ -485,8 +576,14 @@ public sealed class ProfileManagerViewModelTests
             return Task.FromResult(SaveFilePath);
         }
 
+        public Task<DialogChoice> ShowYesNoCancelDialogAsync(string title, string message, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(YesNoCancelChoice);
+        }
+
         public Task ShowInformationAsync(string title, string message, CancellationToken cancellationToken = default)
         {
+            InformationMessages.Add($"{title}|{message}");
             return Task.CompletedTask;
         }
     }

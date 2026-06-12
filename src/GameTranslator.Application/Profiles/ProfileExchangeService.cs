@@ -5,11 +5,16 @@ namespace GameTranslator.Application.Profiles;
 public sealed class ProfileExchangeService
 {
     private readonly IProfileExchangeGateway gateway;
+    private readonly ProfileMigrationService migrationService;
     private readonly ProfileValidator validator;
 
-    public ProfileExchangeService(IProfileExchangeGateway gateway, ProfileValidator validator)
+    public ProfileExchangeService(
+        IProfileExchangeGateway gateway,
+        ProfileMigrationService migrationService,
+        ProfileValidator validator)
     {
         this.gateway = gateway;
+        this.migrationService = migrationService;
         this.validator = validator;
     }
 
@@ -29,6 +34,7 @@ public sealed class ProfileExchangeService
         cancellationToken.ThrowIfCancellationRequested();
 
         var profile = await gateway.ImportAsync(filePath, cancellationToken);
+        profile = migrationService.MigrateToCurrent(profile);
         ValidateProfile(profile);
 
         return profile;

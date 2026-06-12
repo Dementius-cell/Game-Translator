@@ -7,11 +7,13 @@ namespace GameTranslator.Tests.Application;
 public sealed class ProfileExchangeServiceTests
 {
     private readonly StubProfileExchangeGateway gateway = new();
+    private readonly ProfileMigrationService migrationService;
     private readonly ProfileExchangeService service;
 
     public ProfileExchangeServiceTests()
     {
-        service = new ProfileExchangeService(gateway, new ProfileValidator());
+        migrationService = new ProfileMigrationService();
+        service = new ProfileExchangeService(gateway, migrationService, new ProfileValidator());
     }
 
     [Fact]
@@ -50,6 +52,24 @@ public sealed class ProfileExchangeServiceTests
 
         Assert.Same(profile, gateway.ExportedProfile);
         Assert.Equal("profile.json", gateway.ExportedPath);
+    }
+
+    [Fact]
+    public async Task ImportAsync_WhenMigrationPathExists_MigratesProfileBeforeValidation()
+    {
+        gateway.ImportedProfile = CreateProfile("Legacy profile") with
+        {
+            SchemaVersion = "0.9",
+        };
+        var service = new ProfileExchangeService(
+            gateway,
+            new ProfileMigrationService(new[] { new TestMigration("0.9", GameProfile.CurrentSchemaVersion) }),
+            new ProfileValidator());
+
+        var imported = await service.ImportAsync("legacy-profile.json");
+
+        Assert.Equal(GameProfile.CurrentSchemaVersion, imported.SchemaVersion);
+        Assert.Equal("Legacy profile", imported.Name);
     }
 
     private static GameProfile CreateProfile(string name)
@@ -95,6 +115,27 @@ public sealed class ProfileExchangeServiceTests
 
             return Task.FromResult(
                 ImportedProfile ?? throw new InvalidOperationException("ImportedProfile was not configured."));
+        }
+    }
+
+    private sealed class TestMigration : IProfileMigration
+    {
+        public TestMigration(string sourceSchemaVersion, string targetSchemaVersion)
+        {
+            SourceSchemaVersion = sourceSchemaVersion;
+            TargetSchemaVersion = targetSchemaVersion;
+        }
+
+        public string SourceSchemaVersion { get; }
+
+        public string TargetSchemaVersion { get; }
+
+        public GameProfile Migrate(GameProfile profile)
+        {
+            return profile with
+            {
+                SchemaVersion = TargetSchemaVersion,
+            };
         }
     }
 }

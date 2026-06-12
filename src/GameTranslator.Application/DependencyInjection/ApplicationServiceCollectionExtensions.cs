@@ -11,6 +11,7 @@ public static class ApplicationServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddSingleton<ProfileValidator>();
+        services.AddSingleton<ProfileMigrationService>();
         services.AddSingleton<ProfileService>();
         services.AddSingleton<ProfileExchangeService>();
 

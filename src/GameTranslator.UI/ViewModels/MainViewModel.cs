@@ -91,7 +91,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public string ApplicationName => "Game Translator";
 
-    public string CurrentStage => "Sprint 2";
+    public string CurrentStage => "Sprint 3";
 
     public ObservableCollection<GameProfile> Profiles { get; }
 
@@ -434,25 +434,52 @@ public sealed class MainViewModel : ValidatableObservableObject
             return;
         }
 
-        await RunProfileOperationAsync(
+        GameProfile? importedResult = null;
+        var succeeded = await RunProfileOperationAsync(
             "Importing profile...",
             async () =>
             {
                 var importedProfile = await profileExchangeService.ImportAsync(filePath);
-                var importedName = BuildImportedProfileName(importedProfile.Name);
-                var savedProfile = await profileService.CreateAsync(importedProfile with
+                var conflictingProfile = FindProfileByName(importedProfile.Name);
+                if (conflictingProfile is not null)
                 {
-                    Id = string.Empty,
-                    Name = importedName,
-                    OcrZones = importedProfile.OcrZones
-                        .Select(zone => zone with { Id = Guid.NewGuid().ToString("N") })
-                        .ToArray(),
-                });
+                    var dialogChoice = await dialogService.ShowYesNoCancelDialogAsync(
+                        "Import conflict",
+                        $"A profile named '{conflictingProfile.Name}' already exists.\n\nYes: replace the existing profile.\nNo: keep both profiles.\nCancel: abort the import.");
+                    if (dialogChoice == DialogChoice.Cancel)
+                    {
+                        StatusMessage = "Profile import canceled.";
+                        return;
+                    }
 
-                logger.Information($"Profile '{savedProfile.Name}' imported from '{filePath}'.");
-                await RefreshProfilesAsync(savedProfile.Id);
-                StatusMessage = $"Profile '{savedProfile.Name}' imported.";
+                    var conflictPolicy = dialogChoice == DialogChoice.Yes
+                        ? ProfileImportConflictPolicy.ReplaceExisting
+                        : ProfileImportConflictPolicy.KeepBoth;
+                    importedResult = await SaveImportedProfileAsync(importedProfile, conflictingProfile, conflictPolicy);
+                }
+                else
+                {
+                    importedResult = await SaveImportedProfileAsync(importedProfile, null, ProfileImportConflictPolicy.KeepBoth);
+                }
+
+                if (importedResult is null)
+                {
+                    return;
+                }
+
+                logger.Information($"Profile '{importedResult.Name}' imported from '{filePath}'.");
+                await RefreshProfilesAsync(importedResult.Id);
+                StatusMessage = conflictingProfile is null
+                    ? $"Profile '{importedResult.Name}' imported."
+                    : $"Profile '{importedResult.Name}' imported with conflict policy applied.";
             });
+
+        if (succeeded && importedResult is not null)
+        {
+            await dialogService.ShowInformationAsync(
+                "Import complete",
+                $"Profile '{importedResult.Name}' is ready to use.");
+        }
     }
 
     public async Task ExportSelectedProfileAsync()
@@ -471,7 +498,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             return;
         }
 
-        await RunProfileOperationAsync(
+        var succeeded = await RunProfileOperationAsync(
             $"Exporting '{SelectedProfile.Name}'...",
             async () =>
             {
@@ -480,6 +507,13 @@ public sealed class MainViewModel : ValidatableObservableObject
                 logger.Information($"Profile '{SelectedProfile.Name}' exported to '{filePath}'.");
                 StatusMessage = $"Profile '{SelectedProfile.Name}' exported.";
             });
+
+        if (succeeded)
+        {
+            await dialogService.ShowInformationAsync(
+                "Export complete",
+                $"Profile '{SelectedProfile.Name}' was exported to:\n{filePath}");
+        }
     }
 
     public async Task CloneSelectedProfileAsync()
@@ -621,13 +655,14 @@ public sealed class MainViewModel : ValidatableObservableObject
             });
     }
 
-    private async Task RunProfileOperationAsync(string activityMessage, Func<Task> action)
+    private async Task<bool> RunProfileOperationAsync(string activityMessage, Func<Task> action)
     {
         try
         {
             IsBusy = true;
             StatusMessage = activityMessage;
             await action();
+            return true;
         }
         catch (ProfileValidationException exception)
         {
@@ -654,6 +689,8 @@ public sealed class MainViewModel : ValidatableObservableObject
         {
             IsBusy = false;
         }
+
+        return false;
     }
 
     private GameProfile BuildProfileFromEditor()
@@ -1009,6 +1046,43 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
 
         return candidate;
+    }
+
+    private GameProfile? FindProfileByName(string profileName)
+    {
+        var normalizedName = profileName.Trim();
+        if (normalizedName.Length == 0)
+        {
+            return null;
+        }
+
+        return Profiles.FirstOrDefault(profile =>
+            string.Equals(profile.Name.Trim(), normalizedName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task<GameProfile> SaveImportedProfileAsync(
+        GameProfile importedProfile,
+        GameProfile? conflictingProfile,
+        ProfileImportConflictPolicy conflictPolicy)
+    {
+        var profileName = conflictPolicy == ProfileImportConflictPolicy.ReplaceExisting && conflictingProfile is not null
+            ? importedProfile.Name.Trim()
+            : BuildImportedProfileName(importedProfile.Name);
+
+        var profileToPersist = importedProfile with
+        {
+            Id = conflictPolicy == ProfileImportConflictPolicy.ReplaceExisting && conflictingProfile is not null
+                ? conflictingProfile.Id
+                : string.Empty,
+            Name = profileName,
+            OcrZones = importedProfile.OcrZones
+                .Select(zone => zone with { Id = Guid.NewGuid().ToString("N") })
+                .ToArray(),
+        };
+
+        return conflictPolicy == ProfileImportConflictPolicy.ReplaceExisting && conflictingProfile is not null
+            ? await profileService.UpdateAsync(profileToPersist)
+            : await profileService.CreateAsync(profileToPersist);
     }
 
     private static string BuildDefaultExportFileName(string profileName)

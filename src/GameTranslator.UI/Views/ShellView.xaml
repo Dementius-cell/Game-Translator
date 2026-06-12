@@ -234,6 +234,7 @@
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="150" />
@@ -371,30 +372,60 @@
                                         Grid.Row="3"
                                         Grid.Column="0"
                                         Margin="0,12,0,0"
-                                        VerticalAlignment="Center"
+                                        VerticalAlignment="Top"
                                         Foreground="#253238"
-                                        Text="Opacity / padding" />
+                                        Text="Opacity" />
                                     <Grid Grid.Row="3" Grid.Column="1" Margin="0,12,0,0">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="12" />
-                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="88" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBox
+                                        <Slider
                                             Grid.Column="0"
-                                            Padding="8,6"
-                                            Text="{Binding OverlayOpacity, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                            Minimum="0"
+                                            Maximum="1"
+                                            TickFrequency="0.05"
+                                            SmallChange="0.01"
+                                            LargeChange="0.1"
+                                            Value="{Binding OverlayOpacity, Mode=TwoWay}" />
                                         <TextBox
-                                            Grid.Column="2"
+                                            Grid.Column="1"
+                                            Margin="12,0,0,0"
                                             Padding="8,6"
-                                            Text="{Binding OverlayPadding, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                            Text="{Binding OverlayOpacity, UpdateSourceTrigger=PropertyChanged, StringFormat=F2, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                     </Grid>
                                     <TextBlock
                                         Grid.Row="4"
+                                        Grid.Column="0"
+                                        Margin="0,12,0,0"
+                                        VerticalAlignment="Top"
+                                        Foreground="#253238"
+                                        Text="Padding" />
+                                    <Grid Grid.Row="4" Grid.Column="1" Margin="0,12,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="88" />
+                                        </Grid.ColumnDefinitions>
+                                        <Slider
+                                            Grid.Column="0"
+                                            Minimum="0"
+                                            Maximum="64"
+                                            TickFrequency="1"
+                                            SmallChange="1"
+                                            LargeChange="4"
+                                            Value="{Binding OverlayPadding, Mode=TwoWay}" />
+                                        <TextBox
+                                            Grid.Column="1"
+                                            Margin="12,0,0,0"
+                                            Padding="8,6"
+                                            Text="{Binding OverlayPadding, UpdateSourceTrigger=PropertyChanged, StringFormat=F0, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                    </Grid>
+                                    <TextBlock
+                                        Grid.Row="5"
                                         Grid.ColumnSpan="2"
                                         Margin="0,12,0,0"
                                         Foreground="#56616F"
-                                        Text="Use #RRGGBB or #AARRGGBB for mask color. Opacity should stay within 0..1." />
+                                        Text="Use #RRGGBB or #AARRGGBB for mask color. Sliders are for quick tuning, inputs stay available for exact values." />
                                 </Grid>
                             </Border>
 
@@ -500,16 +531,28 @@
                                                     Margin="0,12,0,0"
                                                     VerticalAlignment="Top"
                                                     Foreground="#253238"
-                                                    Text="Absolute X Y W H" />
+                                                    Text="Absolute bounds" />
                                                 <UniformGrid
                                                     Grid.Row="1"
                                                     Grid.Column="1"
                                                     Margin="0,12,0,0"
                                                     Columns="4">
-                                                    <TextBox Margin="0,0,6,0" Padding="8,6" Text="{Binding SelectedZone.AbsoluteX, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
-                                                    <TextBox Margin="6,0,6,0" Padding="8,6" Text="{Binding SelectedZone.AbsoluteY, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
-                                                    <TextBox Margin="6,0,6,0" Padding="8,6" Text="{Binding SelectedZone.AbsoluteWidth, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
-                                                    <TextBox Margin="6,0,0,0" Padding="8,6" Text="{Binding SelectedZone.AbsoluteHeight, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    <StackPanel Margin="0,0,6,0">
+                                                        <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="X" />
+                                                        <TextBox Padding="8,6" Text="{Binding SelectedZone.AbsoluteX, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    </StackPanel>
+                                                    <StackPanel Margin="6,0,6,0">
+                                                        <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="Y" />
+                                                        <TextBox Padding="8,6" Text="{Binding SelectedZone.AbsoluteY, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    </StackPanel>
+                                                    <StackPanel Margin="6,0,6,0">
+                                                        <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="W" />
+                                                        <TextBox Padding="8,6" Text="{Binding SelectedZone.AbsoluteWidth, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    </StackPanel>
+                                                    <StackPanel Margin="6,0,0,0">
+                                                        <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="H" />
+                                                        <TextBox Padding="8,6" Text="{Binding SelectedZone.AbsoluteHeight, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    </StackPanel>
                                                 </UniformGrid>
 
                                                 <TextBlock
@@ -518,16 +561,28 @@
                                                     Margin="0,12,0,0"
                                                     VerticalAlignment="Top"
                                                     Foreground="#253238"
-                                                    Text="Relative X Y W H" />
+                                                    Text="Relative bounds" />
                                                 <UniformGrid
                                                     Grid.Row="2"
                                                     Grid.Column="1"
                                                     Margin="0,12,0,0"
                                                     Columns="4">
-                                                    <TextBox Margin="0,0,6,0" Padding="8,6" Text="{Binding SelectedZone.RelativeX, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
-                                                    <TextBox Margin="6,0,6,0" Padding="8,6" Text="{Binding SelectedZone.RelativeY, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
-                                                    <TextBox Margin="6,0,6,0" Padding="8,6" Text="{Binding SelectedZone.RelativeWidth, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
-                                                    <TextBox Margin="6,0,0,0" Padding="8,6" Text="{Binding SelectedZone.RelativeHeight, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    <StackPanel Margin="0,0,6,0">
+                                                        <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="X" />
+                                                        <TextBox Padding="8,6" Text="{Binding SelectedZone.RelativeX, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    </StackPanel>
+                                                    <StackPanel Margin="6,0,6,0">
+                                                        <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="Y" />
+                                                        <TextBox Padding="8,6" Text="{Binding SelectedZone.RelativeY, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    </StackPanel>
+                                                    <StackPanel Margin="6,0,6,0">
+                                                        <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="W" />
+                                                        <TextBox Padding="8,6" Text="{Binding SelectedZone.RelativeWidth, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    </StackPanel>
+                                                    <StackPanel Margin="6,0,0,0">
+                                                        <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="H" />
+                                                        <TextBox Padding="8,6" Text="{Binding SelectedZone.RelativeHeight, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    </StackPanel>
                                                 </UniformGrid>
 
                                                 <TextBlock
@@ -535,7 +590,7 @@
                                                     Grid.ColumnSpan="2"
                                                     Margin="0,12,0,0"
                                                     Foreground="#56616F"
-                                                    Text="Manual numeric editing for OCR zones is part of Sprint 2. Mouse selection comes later." />
+                                                    Text="Absolute values are pixel-based. Relative values stay within 0..1 and are useful for future resolution-aware workflows." />
                                             </Grid>
                                         </Border>
                                     </Grid>

@@ -9,17 +9,240 @@
              d:DesignWidth="800">
     <UserControl.Resources>
         <DataTemplate DataType="{x:Type viewModels:MainViewModel}">
-            <Border
-                Background="#FFFFFF"
-                BorderBrush="#D7DEE8"
-                BorderThickness="1"
-                CornerRadius="4">
-                <TextBlock
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Center"
-                    Foreground="#56616F"
-                    Text="{Binding StatusMessage}" />
-            </Border>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="280" />
+                    <ColumnDefinition Width="24" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border
+                    Grid.Column="0"
+                    Background="#FFFFFF"
+                    BorderBrush="#D7DEE8"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="16">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <DockPanel Grid.Row="0" LastChildFill="False">
+                            <TextBlock
+                                FontSize="18"
+                                FontWeight="SemiBold"
+                                Foreground="#253238"
+                                Text="Profiles" />
+                            <Button
+                                DockPanel.Dock="Right"
+                                Margin="8,0,0,0"
+                                Padding="12,6"
+                                Command="{Binding RefreshProfilesCommand}"
+                                Content="Refresh" />
+                            <Button
+                                DockPanel.Dock="Right"
+                                Padding="12,6"
+                                Command="{Binding BeginCreateProfileCommand}"
+                                Content="New" />
+                        </DockPanel>
+
+                        <Border
+                            Grid.Row="1"
+                            Margin="0,12,0,12"
+                            Background="#F6F8FA"
+                            CornerRadius="4"
+                            Padding="12">
+                            <StackPanel>
+                                <TextBlock
+                                    Foreground="#56616F"
+                                    Text="Active profile" />
+                                <TextBlock
+                                    Margin="0,4,0,0"
+                                    FontWeight="SemiBold"
+                                    Foreground="#253238"
+                                    Text="{Binding ActiveProfileName}" />
+                            </StackPanel>
+                        </Border>
+
+                        <ListBox
+                            Grid.Row="2"
+                            Background="#FDFDFD"
+                            BorderBrush="#D7DEE8"
+                            BorderThickness="1"
+                            ItemsSource="{Binding Profiles}"
+                            SelectedItem="{Binding SelectedProfile, Mode=TwoWay}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Padding="8">
+                                        <StackPanel>
+                                            <TextBlock
+                                                FontWeight="SemiBold"
+                                                Foreground="#253238"
+                                                Text="{Binding Name}" />
+                                            <TextBlock
+                                                Margin="0,2,0,0"
+                                                Foreground="#56616F"
+                                                Text="{Binding TranslatorSettings.TargetLanguage}" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <UniformGrid Grid.Row="3" Margin="0,12,0,0" Columns="2">
+                            <Button
+                                Margin="0,0,6,0"
+                                Padding="12,6"
+                                Command="{Binding CloneSelectedProfileCommand}"
+                                Content="Clone" />
+                            <Button
+                                Margin="6,0,0,0"
+                                Padding="12,6"
+                                Command="{Binding DeleteSelectedProfileCommand}"
+                                Content="Delete" />
+                        </UniformGrid>
+                    </Grid>
+                </Border>
+
+                <Border
+                    Grid.Column="2"
+                    Background="#FFFFFF"
+                    BorderBrush="#D7DEE8"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="20">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Grid.Row="0">
+                            <TextBlock
+                                FontSize="20"
+                                FontWeight="SemiBold"
+                                Foreground="#253238"
+                                Text="{Binding EditorTitle}" />
+                            <TextBlock
+                                Margin="0,6,0,0"
+                                Foreground="#56616F"
+                                Text="{Binding ProfileSummary}" />
+                        </StackPanel>
+
+                        <TextBlock
+                            Grid.Row="1"
+                            Margin="0,16,0,16"
+                            Foreground="#2A5D67"
+                            Text="{Binding StatusMessage}" />
+
+                        <Grid Grid.Row="2">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock
+                                Grid.Row="0"
+                                Grid.Column="0"
+                                VerticalAlignment="Center"
+                                Foreground="#253238"
+                                Text="Name" />
+                            <TextBox
+                                Grid.Row="0"
+                                Grid.Column="1"
+                                Padding="8,6"
+                                Text="{Binding ProfileName, UpdateSourceTrigger=PropertyChanged}" />
+
+                            <TextBlock
+                                Grid.Row="1"
+                                Grid.Column="0"
+                                Margin="0,12,0,0"
+                                VerticalAlignment="Top"
+                                Foreground="#253238"
+                                Text="Description" />
+                            <TextBox
+                                Grid.Row="1"
+                                Grid.Column="1"
+                                Margin="0,12,0,0"
+                                Padding="8,6"
+                                AcceptsReturn="True"
+                                Height="88"
+                                TextWrapping="Wrap"
+                                VerticalScrollBarVisibility="Auto"
+                                Text="{Binding ProfileDescription, UpdateSourceTrigger=PropertyChanged}" />
+
+                            <TextBlock
+                                Grid.Row="2"
+                                Grid.Column="0"
+                                Margin="0,12,0,0"
+                                VerticalAlignment="Center"
+                                Foreground="#253238"
+                                Text="Provider" />
+                            <TextBox
+                                Grid.Row="2"
+                                Grid.Column="1"
+                                Margin="0,12,0,0"
+                                Padding="8,6"
+                                Text="{Binding TranslatorProvider, UpdateSourceTrigger=PropertyChanged}" />
+
+                            <TextBlock
+                                Grid.Row="3"
+                                Grid.Column="0"
+                                Margin="0,12,0,0"
+                                VerticalAlignment="Center"
+                                Foreground="#253238"
+                                Text="Source language" />
+                            <TextBox
+                                Grid.Row="3"
+                                Grid.Column="1"
+                                Margin="0,12,0,0"
+                                Padding="8,6"
+                                Text="{Binding SourceLanguage, UpdateSourceTrigger=PropertyChanged}" />
+
+                            <TextBlock
+                                Grid.Row="4"
+                                Grid.Column="0"
+                                Margin="0,12,0,0"
+                                VerticalAlignment="Center"
+                                Foreground="#253238"
+                                Text="Target language" />
+                            <TextBox
+                                Grid.Row="4"
+                                Grid.Column="1"
+                                Margin="0,12,0,0"
+                                Padding="8,6"
+                                Text="{Binding TargetLanguage, UpdateSourceTrigger=PropertyChanged}" />
+                        </Grid>
+
+                        <DockPanel Grid.Row="3" Margin="0,20,0,0" LastChildFill="False">
+                            <Button
+                                DockPanel.Dock="Right"
+                                Margin="8,0,0,0"
+                                Padding="14,8"
+                                Command="{Binding SaveProfileCommand}"
+                                Content="Save" />
+                            <Button
+                                DockPanel.Dock="Right"
+                                Padding="14,8"
+                                Command="{Binding ResetEditorCommand}"
+                                Content="Reset" />
+                        </DockPanel>
+                    </Grid>
+                </Border>
+            </Grid>
         </DataTemplate>
     </UserControl.Resources>
 

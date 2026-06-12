@@ -4,6 +4,8 @@ namespace GameTranslator.UI.ViewModels;
 
 public sealed class ShellViewModel
 {
+    private bool isInitialized;
+
     public ShellViewModel(
         INavigationService navigation,
         IDialogService dialog,
@@ -21,7 +23,7 @@ public sealed class ShellViewModel
 
     public string ApplicationName => "Game Translator";
 
-    public string CurrentStage => "Sprint 1";
+    public string CurrentStage => "Sprint 2";
 
     public INavigationService Navigation { get; }
 
@@ -30,4 +32,19 @@ public sealed class ShellViewModel
     public ISettingsService Settings { get; }
 
     public IApplicationLogger Logger { get; }
+
+    public async Task InitializeAsync()
+    {
+        if (isInitialized)
+        {
+            return;
+        }
+
+        isInitialized = true;
+
+        if (Navigation.CurrentViewModel is MainViewModel mainViewModel)
+        {
+            await mainViewModel.LoadAsync();
+        }
+    }
 }

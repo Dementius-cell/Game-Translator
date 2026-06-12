@@ -1,0 +1,227 @@
+using System.IO;
+using System.Reflection;
+using System.Runtime.Loader;
+using GameTranslator.Application.Abstractions;
+using GameTranslator.Application.Profiles;
+using GameTranslator.Domain.Profiles;
+
+namespace GameTranslator.Tests.Smoke;
+
+public sealed class ProfileManagerViewModelTests
+{
+    [Fact]
+    public async Task LoadAsync_RestoresSelectedProfileFromSettings()
+    {
+        var repository = new InMemoryProfileRepository();
+        var alpha = CreateProfile("Alpha", "Google", "en", "ru");
+        var beta = CreateProfile("Beta", "Azure", "ja", "en");
+        await repository.SaveAsync(alpha);
+        await repository.SaveAsync(beta);
+
+        var settings = new TestSettingsService();
+        settings.SetValue("profiles.selectedId", beta.Id);
+
+        var viewModel = CreateMainViewModel(repository, settings);
+        await InvokeTaskMethodAsync(viewModel, "LoadAsync");
+
+        var selectedProfile = GetPropertyValue(viewModel, "SelectedProfile");
+
+        Assert.NotNull(selectedProfile);
+        Assert.Equal(beta.Id, GetPropertyValue(selectedProfile!, "Id"));
+        Assert.Equal("Beta", GetPropertyValue(viewModel, "ActiveProfileName"));
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenDraftIsValid_CreatesProfileAndPersistsSelection()
+    {
+        var repository = new InMemoryProfileRepository();
+        var settings = new TestSettingsService();
+        var viewModel = CreateMainViewModel(repository, settings);
+
+        InvokeMethod(viewModel, "BeginCreateProfile");
+        SetPropertyValue(viewModel, "ProfileName", "Cyberpunk 2077");
+        SetPropertyValue(viewModel, "ProfileDescription", "Main subtitles profile.");
+        SetPropertyValue(viewModel, "TranslatorProvider", "Google");
+        SetPropertyValue(viewModel, "SourceLanguage", "ja");
+        SetPropertyValue(viewModel, "TargetLanguage", "en");
+
+        await InvokeTaskMethodAsync(viewModel, "SaveAsync");
+
+        var storedProfiles = await repository.ListAsync();
+
+        Assert.Single(storedProfiles);
+        Assert.Equal("Cyberpunk 2077", storedProfiles[0].Name);
+        Assert.Equal("Google", storedProfiles[0].TranslatorSettings.Provider);
+        Assert.Equal(storedProfiles[0].Id, settings.GetValue<string>("profiles.selectedId"));
+        Assert.Equal(storedProfiles[0].Id, GetPropertyValue(GetPropertyValue(viewModel, "SelectedProfile")!, "Id"));
+    }
+
+    [Fact]
+    public async Task CloneAndDeleteSelectedProfileAsync_UpdateProfileCollection()
+    {
+        var repository = new InMemoryProfileRepository();
+        var source = CreateProfile("Persona 5", "Google", "ja", "ru");
+        await repository.SaveAsync(source);
+
+        var viewModel = CreateMainViewModel(repository, new TestSettingsService());
+        await InvokeTaskMethodAsync(viewModel, "LoadAsync");
+        await InvokeTaskMethodAsync(viewModel, "CloneSelectedProfileAsync");
+
+        var profilesAfterClone = await repository.ListAsync();
+        Assert.Equal(2, profilesAfterClone.Count);
+
+        await InvokeTaskMethodAsync(viewModel, "DeleteSelectedProfileAsync");
+
+        var profilesAfterDelete = await repository.ListAsync();
+        Assert.Single(profilesAfterDelete);
+        Assert.Equal(source.Id, profilesAfterDelete[0].Id);
+    }
+
+    private static object CreateMainViewModel(
+        InMemoryProfileRepository repository,
+        TestSettingsService settings)
+    {
+        var profileService = new ProfileService(repository, new ProfileValidator());
+        var logger = new TestApplicationLogger();
+        var assembly = LoadUiAssembly();
+        var viewModelType = assembly.GetType(
+            "GameTranslator.UI.ViewModels.MainViewModel",
+            throwOnError: true)
+            ?? throw new InvalidOperationException("MainViewModel type was not found.");
+
+        return Activator.CreateInstance(viewModelType, profileService, settings, logger)
+            ?? throw new InvalidOperationException("MainViewModel instance was not created.");
+    }
+
+    private static Task InvokeTaskMethodAsync(object instance, string methodName)
+    {
+        var method = instance.GetType().GetMethod(methodName)
+            ?? throw new InvalidOperationException($"Method '{methodName}' was not found.");
+        var result = method.Invoke(instance, Array.Empty<object?>())
+            ?? throw new InvalidOperationException($"Method '{methodName}' returned null.");
+
+        return (Task)result;
+    }
+
+    private static void InvokeMethod(object instance, string methodName)
+    {
+        var method = instance.GetType().GetMethod(methodName)
+            ?? throw new InvalidOperationException($"Method '{methodName}' was not found.");
+
+        method.Invoke(instance, Array.Empty<object?>());
+    }
+
+    private static object? GetPropertyValue(object instance, string propertyName)
+    {
+        return instance.GetType().GetProperty(propertyName)?.GetValue(instance);
+    }
+
+    private static void SetPropertyValue(object instance, string propertyName, object? value)
+    {
+        var property = instance.GetType().GetProperty(propertyName)
+            ?? throw new InvalidOperationException($"Property '{propertyName}' was not found.");
+
+        property.SetValue(instance, value);
+    }
+
+    private static Assembly LoadUiAssembly()
+    {
+        var root = RepositoryRoot.Find();
+        var configuration = AppContext.BaseDirectory.Contains(
+            $"{Path.DirectorySeparatorChar}Release{Path.DirectorySeparatorChar}",
+            StringComparison.OrdinalIgnoreCase)
+            ? "Release"
+            : "Debug";
+        var assemblyPath = Path.Combine(
+            root,
+            "src",
+            "GameTranslator.UI",
+            "bin",
+            configuration,
+            "net9.0-windows",
+            "GameTranslator.UI.dll");
+
+        Assert.True(File.Exists(assemblyPath), $"UI assembly is missing. Build the solution first: {assemblyPath}");
+
+        return AssemblyLoadContext.Default.LoadFromAssemblyPath(assemblyPath);
+    }
+
+    private static GameProfile CreateProfile(
+        string name,
+        string provider,
+        string sourceLanguage,
+        string targetLanguage)
+    {
+        return new GameProfile
+        {
+            Name = name,
+            TranslatorSettings = new TranslatorSettings
+            {
+                Provider = provider,
+                SourceLanguage = sourceLanguage,
+                TargetLanguage = targetLanguage,
+            },
+        };
+    }
+
+    private sealed class TestSettingsService : ISettingsService
+    {
+        private readonly Dictionary<string, object?> values = new(StringComparer.Ordinal);
+
+        public TValue? GetValue<TValue>(string key)
+        {
+            return values.TryGetValue(key, out var value)
+                ? (TValue?)value
+                : default;
+        }
+
+        public void SetValue<TValue>(string key, TValue? value)
+        {
+            values[key] = value;
+        }
+    }
+
+    private sealed class TestApplicationLogger : IApplicationLogger
+    {
+        public void Error(Exception exception, string message)
+        {
+        }
+
+        public void Information(string message)
+        {
+        }
+
+        public void Warning(string message)
+        {
+        }
+    }
+
+    private sealed class InMemoryProfileRepository : IProfileRepository
+    {
+        private readonly Dictionary<string, GameProfile> profiles = new(StringComparer.Ordinal);
+
+        public Task<IReadOnlyList<GameProfile>> ListAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<GameProfile>>(
+                profiles.Values.OrderBy(profile => profile.Name, StringComparer.Ordinal).ToArray());
+        }
+
+        public Task<GameProfile?> GetByIdAsync(string id, CancellationToken cancellationToken = default)
+        {
+            profiles.TryGetValue(id, out var profile);
+            return Task.FromResult(profile);
+        }
+
+        public Task SaveAsync(GameProfile profile, CancellationToken cancellationToken = default)
+        {
+            profiles[profile.Id] = profile;
+            return Task.CompletedTask;
+        }
+
+        public Task DeleteAsync(string id, CancellationToken cancellationToken = default)
+        {
+            profiles.Remove(id);
+            return Task.CompletedTask;
+        }
+    }
+}

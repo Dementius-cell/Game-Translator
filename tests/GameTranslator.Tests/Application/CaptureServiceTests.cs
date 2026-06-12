@@ -84,6 +84,38 @@ public sealed class CaptureServiceTests
     }
 
     [Fact]
+    public async Task CaptureSession_MeasureRefreshAsync_CapturesRequestedFramesAndReportsMetrics()
+    {
+        var frameSource = new FakeCaptureFrameSource();
+        var service = new CaptureService(frameSource);
+        await using var session = service.CreateSession(SelectedRegion);
+
+        var result = await session.MeasureRefreshAsync(30);
+
+        Assert.Equal(30, frameSource.CapturedRegions.Count);
+        Assert.Equal(30, result.Metrics.CapturedFrameCount);
+        Assert.Equal(30, result.Metrics.TargetFramesPerSecond);
+        Assert.True(result.Metrics.FramesPerSecond > 0);
+        Assert.True(result.Metrics.MeetsTarget);
+        Assert.Equal(SelectedRegion, result.LatestFrame.Region);
+    }
+
+    [Fact]
+    public async Task CaptureSession_MeasureRefreshAsync_WhenCanceled_StopsBeforeRequestingFrames()
+    {
+        var frameSource = new FakeCaptureFrameSource();
+        var service = new CaptureService(frameSource);
+        await using var session = service.CreateSession(SelectedRegion);
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => session.MeasureRefreshAsync(30, cancellation.Token));
+
+        Assert.Empty(frameSource.CapturedRegions);
+    }
+
+    [Fact]
     public void CaptureSessionOptions_DefaultToDocumentedMvpRefreshTarget()
     {
         var options = new CaptureSessionOptions();

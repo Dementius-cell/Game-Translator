@@ -52,6 +52,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private OcrZoneEditorViewModel? selectedZone;
     private ImageSource? capturePreviewImage;
     private string capturePreviewStatus = "No capture preview yet.";
+    private string captureRefreshMetricsSummary = "Refresh rate not measured.";
     private string statusMessage = "Loading profiles...";
     private bool isBusy;
     private bool isLoaded;
@@ -103,6 +104,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         MoveSelectedZoneDownCommand = new RelayCommand(MoveSelectedZoneDown, CanMoveSelectedZoneDown);
         RemoveSelectedZoneCommand = new RelayCommand(RemoveSelectedZone, CanRemoveSelectedZone);
         RefreshCapturePreviewCommand = new AsyncRelayCommand(RefreshCapturePreviewAsync, CanRefreshCapturePreview);
+        MeasureCaptureRefreshCommand = new AsyncRelayCommand(MeasureCaptureRefreshAsync, CanRefreshCapturePreview);
 
         BeginCreateProfile();
         StatusMessage = "Ready to manage game profiles.";
@@ -110,7 +112,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public string ApplicationName => "Game Translator";
 
-    public string CurrentStage => "Sprint 4";
+    public string CurrentStage => "Sprint 5";
 
     public double ZoneSurfaceWidth => OcrZoneEditorViewModel.PreviewSurfaceWidth;
 
@@ -409,6 +411,12 @@ public sealed class MainViewModel : ValidatableObservableObject
         private set => SetProperty(ref capturePreviewStatus, value);
     }
 
+    public string CaptureRefreshMetricsSummary
+    {
+        get => captureRefreshMetricsSummary;
+        private set => SetProperty(ref captureRefreshMetricsSummary, value);
+    }
+
     public ICommand BeginCreateProfileCommand { get; }
 
     public ICommand RefreshProfilesCommand { get; }
@@ -436,6 +444,8 @@ public sealed class MainViewModel : ValidatableObservableObject
     public ICommand RemoveSelectedZoneCommand { get; }
 
     public ICommand RefreshCapturePreviewCommand { get; }
+
+    public ICommand MeasureCaptureRefreshCommand { get; }
 
     public async Task LoadAsync()
     {
@@ -885,6 +895,56 @@ public sealed class MainViewModel : ValidatableObservableObject
             logger.Error(exception, "Unexpected capture preview failure.");
             CapturePreviewStatus = "Capture preview failed. Check logs for details.";
             StatusMessage = CapturePreviewStatus;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task MeasureCaptureRefreshAsync()
+    {
+        if (SelectedZone is null)
+        {
+            CaptureRefreshMetricsSummary = "Select an OCR zone to measure capture refresh.";
+            StatusMessage = CaptureRefreshMetricsSummary;
+            return;
+        }
+
+        try
+        {
+            IsBusy = true;
+            var region = new CaptureRegion(
+                SelectedZone.AbsoluteX,
+                SelectedZone.AbsoluteY,
+                SelectedZone.AbsoluteWidth,
+                SelectedZone.AbsoluteHeight);
+            await using var session = captureService.CreateSession(region);
+
+            StatusMessage = $"Measuring capture refresh for '{SelectedZone.DisplayName}'...";
+            var result = await session.MeasureRefreshAsync(CaptureSessionOptions.MvpTargetFramesPerSecond);
+            CapturePreviewImage = CreateCapturePreviewImage(result.LatestFrame);
+            CapturePreviewStatus = $"Captured {result.LatestFrame.Width}x{result.LatestFrame.Height} at {result.LatestFrame.CapturedAt:HH:mm:ss}.";
+            CaptureRefreshMetricsSummary = FormatCaptureRefreshMetrics(result.Metrics);
+            StatusMessage = CaptureRefreshMetricsSummary;
+            logger.Information($"Capture refresh measured for zone '{SelectedZone.DisplayName}': {CaptureRefreshMetricsSummary}");
+        }
+        catch (CaptureFrameSourceException exception)
+        {
+            logger.Error(exception, "Capture refresh measurement failed.");
+            CaptureRefreshMetricsSummary = $"Capture refresh failed: {exception.Message}";
+            StatusMessage = CaptureRefreshMetricsSummary;
+        }
+        catch (OperationCanceledException)
+        {
+            CaptureRefreshMetricsSummary = "Capture refresh measurement canceled.";
+            StatusMessage = CaptureRefreshMetricsSummary;
+        }
+        catch (Exception exception)
+        {
+            logger.Error(exception, "Unexpected capture refresh measurement failure.");
+            CaptureRefreshMetricsSummary = "Capture refresh failed. Check logs for details.";
+            StatusMessage = CaptureRefreshMetricsSummary;
         }
         finally
         {
@@ -1464,6 +1524,9 @@ public sealed class MainViewModel : ValidatableObservableObject
         CapturePreviewStatus = SelectedZone is null
             ? "Select an OCR zone to preview capture."
             : "No capture preview yet.";
+        CaptureRefreshMetricsSummary = SelectedZone is null
+            ? "Select an OCR zone to measure capture refresh."
+            : "Refresh rate not measured.";
     }
 
     private static BitmapSource CreateCapturePreviewImage(CapturedFrame frame)
@@ -1480,6 +1543,13 @@ public sealed class MainViewModel : ValidatableObservableObject
         image.Freeze();
 
         return image;
+    }
+
+    private static string FormatCaptureRefreshMetrics(CaptureRefreshMetrics metrics)
+    {
+        var result = metrics.MeetsTarget ? "meets target" : "below target";
+
+        return $"{metrics.CapturedFrameCount} frames in {metrics.Elapsed.TotalMilliseconds:F0} ms | {metrics.FramesPerSecond:F1} FPS ({result}, target {metrics.TargetFramesPerSecond}+).";
     }
 
     private static int ConvertSurfaceToAbsolute(double coordinate, int referenceSize, double surfaceSize)
@@ -1520,5 +1590,6 @@ public sealed class MainViewModel : ValidatableObservableObject
         ((RelayCommand)MoveSelectedZoneDownCommand).RaiseCanExecuteChanged();
         ((RelayCommand)RemoveSelectedZoneCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)RefreshCapturePreviewCommand).RaiseCanExecuteChanged();
+        ((AsyncRelayCommand)MeasureCaptureRefreshCommand).RaiseCanExecuteChanged();
     }
 }

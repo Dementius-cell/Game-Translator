@@ -12,6 +12,8 @@ public sealed class CapturePublicSeamTests
         AssertPublicApplicationType<CapturedFrame>();
         AssertPublicApplicationType<CaptureSession>();
         AssertPublicApplicationType<CaptureSessionOptions>();
+        AssertPublicApplicationType<CaptureRefreshMetrics>();
+        AssertPublicApplicationType<CaptureRefreshResult>();
         AssertPublicApplicationType<CaptureService>();
     }
 
@@ -36,6 +38,8 @@ public sealed class CapturePublicSeamTests
             typeof(CapturedFrame),
             typeof(CaptureSession),
             typeof(CaptureSessionOptions),
+            typeof(CaptureRefreshMetrics),
+            typeof(CaptureRefreshResult),
             typeof(CaptureService),
         };
 

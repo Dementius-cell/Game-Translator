@@ -721,6 +721,37 @@ public sealed class ProfileManagerViewModelTests
         Assert.Contains(logger.Errors, error => error.Contains("Capture preview failed.", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task MeasureCaptureRefreshAsync_WhenZoneSelected_CapturesThirtyFramesAndReportsFps()
+    {
+        var repository = new InMemoryProfileRepository();
+        var frameSource = new TestCaptureFrameSource();
+        var viewModel = CreateMainViewModel(
+            repository,
+            new TestSettingsService(),
+            frameSource: frameSource);
+        ConfigureValidDraftProfile(viewModel, "Capture refresh");
+        InvokeMethod(viewModel, "AddZone");
+
+        var selectedZone = GetPropertyValue(viewModel, "SelectedZone")
+            ?? throw new InvalidOperationException("Selected zone was not created.");
+        SetPropertyValue(selectedZone, "AbsoluteX", 10);
+        SetPropertyValue(selectedZone, "AbsoluteY", 20);
+        SetPropertyValue(selectedZone, "AbsoluteWidth", 4);
+        SetPropertyValue(selectedZone, "AbsoluteHeight", 3);
+
+        await InvokeTaskMethodAsync(viewModel, "MeasureCaptureRefreshAsync");
+
+        Assert.Equal(30, frameSource.CapturedRegions.Count);
+        Assert.All(frameSource.CapturedRegions, region => Assert.Equal(new CaptureRegion(10, 20, 4, 3), region));
+        Assert.True((bool)(GetPropertyValue(viewModel, "HasCapturePreview") ?? false));
+
+        var summary = Assert.IsType<string>(GetPropertyValue(viewModel, "CaptureRefreshMetricsSummary"));
+        Assert.Contains("30 frames", summary, StringComparison.Ordinal);
+        Assert.Contains("FPS", summary, StringComparison.Ordinal);
+        Assert.Contains("target 30+", summary, StringComparison.Ordinal);
+    }
+
     private static object CreateMainViewModel(
         InMemoryProfileRepository repository,
         TestSettingsService settings,
@@ -813,13 +844,6 @@ public sealed class ProfileManagerViewModelTests
 
     private static Assembly LoadUiAssembly()
     {
-        var loadedAssembly = AssemblyLoadContext.Default.Assemblies.FirstOrDefault(
-            assembly => string.Equals(assembly.GetName().Name, "GameTranslator.UI", StringComparison.Ordinal));
-        if (loadedAssembly is not null)
-        {
-            return loadedAssembly;
-        }
-
         var root = RepositoryRoot.Find();
         var configuration = AppContext.BaseDirectory.Contains(
             $"{Path.DirectorySeparatorChar}Release{Path.DirectorySeparatorChar}",
@@ -836,8 +860,41 @@ public sealed class ProfileManagerViewModelTests
             "GameTranslator.UI.dll");
 
         Assert.True(File.Exists(assemblyPath), $"UI assembly is missing. Build the solution first: {assemblyPath}");
+        LoadOutputDependencies(Path.GetDirectoryName(assemblyPath)!);
+
+        var loadedAssembly = AssemblyLoadContext.Default.Assemblies.FirstOrDefault(
+            assembly => string.Equals(assembly.GetName().Name, "GameTranslator.UI", StringComparison.Ordinal));
+        if (loadedAssembly is not null)
+        {
+            return loadedAssembly;
+        }
 
         return AssemblyLoadContext.Default.LoadFromAssemblyPath(assemblyPath);
+    }
+
+    private static void LoadOutputDependencies(string outputDirectory)
+    {
+        foreach (var dependencyPath in Directory.EnumerateFiles(outputDirectory, "*.dll"))
+        {
+            var assemblyName = Path.GetFileNameWithoutExtension(dependencyPath);
+            if (string.Equals(assemblyName, "GameTranslator.UI", StringComparison.Ordinal)
+                || AssemblyLoadContext.Default.Assemblies.Any(assembly =>
+                    string.Equals(assembly.GetName().Name, assemblyName, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            try
+            {
+                AssemblyLoadContext.Default.LoadFromAssemblyPath(dependencyPath);
+            }
+            catch (FileLoadException)
+            {
+            }
+            catch (BadImageFormatException)
+            {
+            }
+        }
     }
 
     private static GameProfile CreateProfile(

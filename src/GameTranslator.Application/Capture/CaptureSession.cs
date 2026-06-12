@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace GameTranslator.Application.Capture;
 
 /// <summary>
@@ -30,6 +32,33 @@ public sealed class CaptureSession : IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
 
         return frameSource.CaptureAsync(Region, cancellationToken);
+    }
+
+    public async Task<CaptureRefreshResult> MeasureRefreshAsync(
+        int frameCount,
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (frameCount <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(frameCount), "Frame count must be positive.");
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        CapturedFrame? latestFrame = null;
+        var startedAt = Stopwatch.GetTimestamp();
+
+        for (var index = 0; index < frameCount; index++)
+        {
+            latestFrame = await RefreshAsync(cancellationToken);
+        }
+
+        var elapsed = Stopwatch.GetElapsedTime(startedAt);
+
+        return new CaptureRefreshResult(
+            latestFrame ?? throw new InvalidOperationException("Capture refresh probe did not produce a frame."),
+            new CaptureRefreshMetrics(frameCount, elapsed, Options.TargetFramesPerSecond));
     }
 
     public ValueTask DisposeAsync()

@@ -1,5 +1,6 @@
 using System.IO;
 using System.Reflection;
+using System.Runtime.Loader;
 using GameTranslator.Application.Abstractions;
 using GameTranslator.Application.Profiles;
 using GameTranslator.Application.Settings;
@@ -125,11 +126,44 @@ public sealed class PresentationCompositionTests
             "GameTranslator.UI",
             "bin",
             configuration,
-            "net9.0-windows",
+            "net9.0-windows10.0.19041.0",
             "GameTranslator.UI.dll");
 
         Assert.True(File.Exists(assemblyPath), $"UI assembly is missing. Build the solution first: {assemblyPath}");
+        LoadOutputDependencies(Path.GetDirectoryName(assemblyPath)!);
+
+        var loadedAssembly = AssemblyLoadContext.Default.Assemblies.FirstOrDefault(
+            assembly => string.Equals(assembly.GetName().Name, "GameTranslator.UI", StringComparison.Ordinal));
+        if (loadedAssembly is not null)
+        {
+            return loadedAssembly;
+        }
 
         return Assembly.LoadFrom(assemblyPath);
+    }
+
+    private static void LoadOutputDependencies(string outputDirectory)
+    {
+        foreach (var dependencyPath in Directory.EnumerateFiles(outputDirectory, "*.dll"))
+        {
+            var assemblyName = Path.GetFileNameWithoutExtension(dependencyPath);
+            if (string.Equals(assemblyName, "GameTranslator.UI", StringComparison.Ordinal)
+                || AssemblyLoadContext.Default.Assemblies.Any(assembly =>
+                    string.Equals(assembly.GetName().Name, assemblyName, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            try
+            {
+                AssemblyLoadContext.Default.LoadFromAssemblyPath(dependencyPath);
+            }
+            catch (FileLoadException)
+            {
+            }
+            catch (BadImageFormatException)
+            {
+            }
+        }
     }
 }

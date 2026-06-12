@@ -1,6 +1,8 @@
 using System.IO;
 using System.Reflection;
+using GameTranslator.Application.Abstractions;
 using GameTranslator.Application.Profiles;
+using GameTranslator.Application.Settings;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace GameTranslator.Tests.Smoke;
@@ -60,10 +62,12 @@ public sealed class PresentationCompositionTests
     public void ExternalServiceModuleLoader_LoadsInfrastructureProfileStorageWithoutUiProjectReference()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(new ProfileStorageOptions(Path.Combine(
+        var rootDirectory = Path.Combine(
             Path.GetTempPath(),
             "GameTranslator.Tests",
-            Guid.NewGuid().ToString("N"))));
+            Guid.NewGuid().ToString("N"));
+        services.AddSingleton(new ProfileStorageOptions(rootDirectory));
+        services.AddSingleton(new SettingsStorageOptions(Path.Combine(rootDirectory, "state", "settings.json")));
 
         var uiAssembly = LoadUiAssembly();
         var extensionType = uiAssembly.GetType(
@@ -81,6 +85,9 @@ public sealed class PresentationCompositionTests
         Assert.Contains(
             services,
             descriptor => descriptor.ServiceType.FullName == "GameTranslator.Application.Profiles.IProfileRepository");
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(ISettingsService));
     }
 
     private static IServiceCollection InvokePresentationCompositionRoot()

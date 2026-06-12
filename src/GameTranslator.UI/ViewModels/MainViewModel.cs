@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Text.RegularExpressions;
 using System.Windows.Input;
 using GameTranslator.Application.Abstractions;
 using GameTranslator.Application.Profiles;
@@ -10,6 +12,7 @@ namespace GameTranslator.UI.ViewModels;
 public sealed class MainViewModel : ObservableObject
 {
     private const string SelectedProfileSettingKey = "profiles.selectedId";
+    private static readonly Regex HexColorPattern = new("^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$", RegexOptions.Compiled);
 
     private readonly ProfileService profileService;
     private readonly ISettingsService settings;
@@ -44,6 +47,7 @@ public sealed class MainViewModel : ObservableObject
 
         Profiles = new ObservableCollection<GameProfile>();
         OcrZones = new ObservableCollection<OcrZoneEditorViewModel>();
+        ValidationErrors = new ObservableCollection<string>();
         OverlayMaskModes = Enum.GetValues<OverlayMaskMode>();
         BeginCreateProfileCommand = new RelayCommand(BeginCreateProfile, () => !IsBusy);
         RefreshProfilesCommand = new AsyncRelayCommand(RefreshProfilesAsync, () => !IsBusy);
@@ -65,6 +69,8 @@ public sealed class MainViewModel : ObservableObject
     public ObservableCollection<GameProfile> Profiles { get; }
 
     public ObservableCollection<OcrZoneEditorViewModel> OcrZones { get; }
+
+    public ObservableCollection<string> ValidationErrors { get; }
 
     public IReadOnlyList<OverlayMaskMode> OverlayMaskModes { get; }
 
@@ -105,7 +111,7 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref profileName, value))
             {
-                NotifyCommandStateChanged();
+                ValidateEditor();
             }
         }
     }
@@ -113,49 +119,97 @@ public sealed class MainViewModel : ObservableObject
     public string ProfileDescription
     {
         get => profileDescription;
-        set => SetProperty(ref profileDescription, value);
+        set
+        {
+            if (SetProperty(ref profileDescription, value))
+            {
+                OnPropertyChanged(nameof(ProfileSummary));
+            }
+        }
     }
 
     public string TranslatorProvider
     {
         get => translatorProvider;
-        set => SetProperty(ref translatorProvider, value);
+        set
+        {
+            if (SetProperty(ref translatorProvider, value))
+            {
+                ValidateEditor();
+            }
+        }
     }
 
     public string SourceLanguage
     {
         get => sourceLanguage;
-        set => SetProperty(ref sourceLanguage, value);
+        set
+        {
+            if (SetProperty(ref sourceLanguage, value))
+            {
+                ValidateEditor();
+            }
+        }
     }
 
     public string TargetLanguage
     {
         get => targetLanguage;
-        set => SetProperty(ref targetLanguage, value);
+        set
+        {
+            if (SetProperty(ref targetLanguage, value))
+            {
+                ValidateEditor();
+            }
+        }
     }
 
     public OverlayMaskMode OverlayMaskMode
     {
         get => overlayMaskMode;
-        set => SetProperty(ref overlayMaskMode, value);
+        set
+        {
+            if (SetProperty(ref overlayMaskMode, value))
+            {
+                OnPropertyChanged(nameof(ProfileSummary));
+            }
+        }
     }
 
     public string OverlayMaskColor
     {
         get => overlayMaskColor;
-        set => SetProperty(ref overlayMaskColor, value);
+        set
+        {
+            if (SetProperty(ref overlayMaskColor, value))
+            {
+                ValidateEditor();
+            }
+        }
     }
 
     public double OverlayOpacity
     {
         get => overlayOpacity;
-        set => SetProperty(ref overlayOpacity, value);
+        set
+        {
+            if (SetProperty(ref overlayOpacity, value))
+            {
+                ValidateEditor();
+            }
+        }
     }
 
     public double OverlayPadding
     {
         get => overlayPadding;
-        set => SetProperty(ref overlayPadding, value);
+        set
+        {
+            if (SetProperty(ref overlayPadding, value))
+            {
+                ValidateEditor();
+            }
+        }
     }
 
     public OcrZoneEditorViewModel? SelectedZone
@@ -198,6 +252,10 @@ public sealed class MainViewModel : ObservableObject
 
     public bool HasSelectedZone => SelectedZone is not null;
 
+    public bool HasValidationErrors => ValidationErrors.Count != 0;
+
+    public bool IsEditorValid => !HasValidationErrors;
+
     public string ActiveProfileName => SelectedProfile?.Name ?? "No active profile";
 
     public string EditorTitle => string.IsNullOrWhiteSpace(editingProfileId)
@@ -208,12 +266,9 @@ public sealed class MainViewModel : ObservableObject
     {
         get
         {
-            var profile = SelectedProfile;
-            var schemaVersion = profile?.SchemaVersion ?? GameProfile.CurrentSchemaVersion;
-            var zoneCount = profile?.OcrZones.Count ?? 0;
-            var overlay = profile?.OverlaySettings ?? OverlaySettings.Default;
+            var schemaVersion = SelectedProfile?.SchemaVersion ?? GameProfile.CurrentSchemaVersion;
 
-            return $"schema {schemaVersion} | zones {zoneCount} | overlay {overlay.MaskMode}";
+            return $"schema {schemaVersion} | zones {OcrZones.Count} | overlay {OverlayMaskMode}";
         }
     }
 
@@ -258,6 +313,7 @@ public sealed class MainViewModel : ObservableObject
 
         LoadDraftValues();
         StatusMessage = "Drafting a new profile.";
+        ValidateEditor();
         NotifyCommandStateChanged();
     }
 
@@ -271,8 +327,14 @@ public sealed class MainViewModel : ObservableObject
 
     public async Task SaveAsync()
     {
+        ValidateEditor();
         if (!CanSaveProfile())
         {
+            if (HasValidationErrors)
+            {
+                StatusMessage = ValidationErrors[0];
+            }
+
             return;
         }
 
@@ -343,14 +405,18 @@ public sealed class MainViewModel : ObservableObject
 
         LoadEditorFromProfile(SelectedProfile);
         StatusMessage = $"Reset editor for '{SelectedProfile.Name}'.";
+        ValidateEditor();
     }
 
     public void AddZone()
     {
         var zone = OcrZoneEditorViewModel.CreateDefault(OcrZones.Count + 1);
+        AttachZone(zone);
         OcrZones.Add(zone);
         SelectedZone = zone;
         OnPropertyChanged(nameof(ZoneSummary));
+        OnPropertyChanged(nameof(ProfileSummary));
+        ValidateEditor();
     }
 
     public void RemoveSelectedZone()
@@ -361,11 +427,14 @@ public sealed class MainViewModel : ObservableObject
         }
 
         var index = OcrZones.IndexOf(SelectedZone);
+        DetachZone(SelectedZone);
         OcrZones.Remove(SelectedZone);
         SelectedZone = OcrZones.Count == 0
             ? null
             : OcrZones[Math.Clamp(index, 0, OcrZones.Count - 1)];
         OnPropertyChanged(nameof(ZoneSummary));
+        OnPropertyChanged(nameof(ProfileSummary));
+        ValidateEditor();
     }
 
     private async Task RefreshProfilesAsync(string? preferredProfileId)
@@ -491,6 +560,7 @@ public sealed class MainViewModel : ObservableObject
         ReplaceZones(profile.OcrZones.Select(OcrZoneEditorViewModel.FromModel));
         OnPropertyChanged(nameof(ProfileSummary));
         OnPropertyChanged(nameof(ZoneSummary));
+        ValidateEditor();
     }
 
     private void LoadDraftValues()
@@ -507,11 +577,12 @@ public sealed class MainViewModel : ObservableObject
         ReplaceZones(Array.Empty<OcrZoneEditorViewModel>());
         OnPropertyChanged(nameof(ProfileSummary));
         OnPropertyChanged(nameof(ZoneSummary));
+        ValidateEditor();
     }
 
     private bool CanSaveProfile()
     {
-        return !IsBusy && !string.IsNullOrWhiteSpace(ProfileName);
+        return !IsBusy && !HasValidationErrors;
     }
 
     private bool CanCloneSelectedProfile()
@@ -531,14 +602,148 @@ public sealed class MainViewModel : ObservableObject
 
     private void ReplaceZones(IEnumerable<OcrZoneEditorViewModel> zones)
     {
+        foreach (var zone in OcrZones)
+        {
+            DetachZone(zone);
+        }
+
         OcrZones.Clear();
 
         foreach (var zone in zones)
         {
+            AttachZone(zone);
             OcrZones.Add(zone);
         }
 
         SelectedZone = OcrZones.FirstOrDefault();
+    }
+
+    private void AttachZone(OcrZoneEditorViewModel zone)
+    {
+        zone.PropertyChanged += OnZonePropertyChanged;
+    }
+
+    private void DetachZone(OcrZoneEditorViewModel zone)
+    {
+        zone.PropertyChanged -= OnZonePropertyChanged;
+    }
+
+    private void OnZonePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        OnPropertyChanged(nameof(ProfileSummary));
+        ValidateEditor();
+    }
+
+    private void ValidateEditor()
+    {
+        var errors = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(ProfileName))
+        {
+            errors.Add("Profile name is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(TranslatorProvider))
+        {
+            errors.Add("Translator provider is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(SourceLanguage))
+        {
+            errors.Add("Source language is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(TargetLanguage))
+        {
+            errors.Add("Target language is required.");
+        }
+
+        if (!HexColorPattern.IsMatch(OverlayMaskColor.Trim()))
+        {
+            errors.Add("Overlay mask color must use #RRGGBB or #AARRGGBB format.");
+        }
+
+        if (OverlayOpacity is < 0 or > 1)
+        {
+            errors.Add("Overlay opacity must be between 0 and 1.");
+        }
+
+        if (OverlayPadding < 0)
+        {
+            errors.Add("Overlay padding must be zero or greater.");
+        }
+
+        for (var index = 0; index < OcrZones.Count; index++)
+        {
+            var zone = OcrZones[index];
+            var zoneLabel = string.IsNullOrWhiteSpace(zone.Name) ? $"Zone {index + 1}" : zone.Name.Trim();
+
+            if (string.IsNullOrWhiteSpace(zone.Name))
+            {
+                errors.Add($"{zoneLabel}: name is required.");
+            }
+
+            if (zone.AbsoluteWidth <= 0 || zone.AbsoluteHeight <= 0)
+            {
+                errors.Add($"{zoneLabel}: absolute width and height must be positive.");
+            }
+
+            if (zone.RelativeWidth <= 0 || zone.RelativeHeight <= 0)
+            {
+                errors.Add($"{zoneLabel}: relative width and height must be positive.");
+            }
+
+            if (zone.RelativeX < 0 || zone.RelativeY < 0 || zone.RelativeX >= 1 || zone.RelativeY >= 1)
+            {
+                errors.Add($"{zoneLabel}: relative X and Y must stay within 0..1.");
+            }
+
+            if (zone.RelativeX + zone.RelativeWidth > 1 || zone.RelativeY + zone.RelativeHeight > 1)
+            {
+                errors.Add($"{zoneLabel}: relative bounds must fit within 0..1.");
+            }
+        }
+
+        for (var first = 0; first < OcrZones.Count; first++)
+        {
+            var firstZone = OcrZones[first];
+            var firstBounds = new AbsoluteRectangle(
+                firstZone.AbsoluteX,
+                firstZone.AbsoluteY,
+                firstZone.AbsoluteWidth,
+                firstZone.AbsoluteHeight);
+
+            for (var second = first + 1; second < OcrZones.Count; second++)
+            {
+                var secondZone = OcrZones[second];
+                var secondBounds = new AbsoluteRectangle(
+                    secondZone.AbsoluteX,
+                    secondZone.AbsoluteY,
+                    secondZone.AbsoluteWidth,
+                    secondZone.AbsoluteHeight);
+
+                if (firstBounds.Intersects(secondBounds))
+                {
+                    errors.Add($"OCR zones '{firstZone.DisplayName}' and '{secondZone.DisplayName}' overlap.");
+                }
+            }
+        }
+
+        ReplaceValidationErrors(errors);
+    }
+
+    private void ReplaceValidationErrors(IEnumerable<string> errors)
+    {
+        ValidationErrors.Clear();
+
+        foreach (var error in errors.Distinct(StringComparer.Ordinal))
+        {
+            ValidationErrors.Add(error);
+        }
+
+        OnPropertyChanged(nameof(HasValidationErrors));
+        OnPropertyChanged(nameof(IsEditorValid));
+        NotifyCommandStateChanged();
     }
 
     private void NotifyCommandStateChanged()

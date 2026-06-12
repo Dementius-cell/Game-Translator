@@ -1,5 +1,7 @@
 using System.IO;
+using GameTranslator.Application.Abstractions;
 using GameTranslator.Application.Profiles;
+using GameTranslator.Application.Settings;
 using GameTranslator.Domain.Profiles;
 using GameTranslator.Infrastructure.Composition;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,6 +20,7 @@ public sealed class ProfileStorageCompositionTests : IDisposable
     {
         var services = new ServiceCollection();
         services.AddSingleton(new ProfileStorageOptions(profilesDirectory));
+        services.AddSingleton(new SettingsStorageOptions(Path.Combine(profilesDirectory, "state", "settings.json")));
 
         new InfrastructureServiceModule().RegisterServices(services);
 
@@ -31,6 +34,25 @@ public sealed class ProfileStorageCompositionTests : IDisposable
         await repository.SaveAsync(profile);
 
         Assert.True(File.Exists(Path.Combine(profilesDirectory, $"{profile.Id}.json")));
+    }
+
+    [Fact]
+    public void RegisterServices_UsesConfiguredSettingsFile()
+    {
+        var settingsFilePath = Path.Combine(profilesDirectory, "state", "settings.json");
+        var services = new ServiceCollection();
+        services.AddSingleton(new ProfileStorageOptions(profilesDirectory));
+        services.AddSingleton(new SettingsStorageOptions(settingsFilePath));
+
+        new InfrastructureServiceModule().RegisterServices(services);
+
+        using var provider = services.BuildServiceProvider();
+        var settings = provider.GetRequiredService<ISettingsService>();
+
+        settings.SetValue("profiles.selectedId", "active-profile");
+
+        Assert.True(File.Exists(settingsFilePath));
+        Assert.Equal("active-profile", settings.GetValue<string>("profiles.selectedId"));
     }
 
     public void Dispose()

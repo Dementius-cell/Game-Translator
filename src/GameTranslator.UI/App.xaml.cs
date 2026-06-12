@@ -34,6 +34,7 @@ public partial class App : System.Windows.Application
             {
                 services.AddApplicationServices();
                 services.AddDefaultProfileStorageOptions();
+                services.AddDefaultSettingsStorageOptions();
                 services.AddPresentationServices();
                 services.AddExternalServiceModules("GameTranslator.Infrastructure");
             })

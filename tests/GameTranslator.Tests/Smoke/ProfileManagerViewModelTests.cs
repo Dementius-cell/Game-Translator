@@ -64,6 +64,9 @@ public sealed class ProfileManagerViewModelTests
 
         InvokeMethod(viewModel, "BeginCreateProfile");
         SetPropertyValue(viewModel, "ProfileName", "NieR");
+        SetPropertyValue(viewModel, "TranslatorProvider", "Google");
+        SetPropertyValue(viewModel, "SourceLanguage", "ja");
+        SetPropertyValue(viewModel, "TargetLanguage", "en");
         SetPropertyValue(viewModel, "OverlayMaskMode", OverlayMaskMode.Darken);
         SetPropertyValue(viewModel, "OverlayMaskColor", "#101010");
         SetPropertyValue(viewModel, "OverlayOpacity", 0.75);
@@ -92,6 +95,67 @@ public sealed class ProfileManagerViewModelTests
         Assert.Single(storedProfile.OcrZones);
         Assert.Equal("Subtitles", storedProfile.OcrZones[0].Name);
         Assert.Equal(new AbsoluteRectangle(10, 20, 300, 80), storedProfile.OcrZones[0].AbsoluteBounds);
+    }
+
+    [Fact]
+    public async Task SaveAsync_WithInvalidOverlayAndTranslatorInputs_DoesNotPersistProfile()
+    {
+        var repository = new InMemoryProfileRepository();
+        var viewModel = CreateMainViewModel(repository, new TestSettingsService());
+
+        InvokeMethod(viewModel, "BeginCreateProfile");
+        SetPropertyValue(viewModel, "ProfileName", "Broken profile");
+        SetPropertyValue(viewModel, "TranslatorProvider", string.Empty);
+        SetPropertyValue(viewModel, "SourceLanguage", string.Empty);
+        SetPropertyValue(viewModel, "TargetLanguage", string.Empty);
+        SetPropertyValue(viewModel, "OverlayMaskColor", "red");
+        SetPropertyValue(viewModel, "OverlayOpacity", 1.5);
+        SetPropertyValue(viewModel, "OverlayPadding", -5d);
+
+        await InvokeTaskMethodAsync(viewModel, "SaveAsync");
+
+        Assert.Empty(await repository.ListAsync());
+        Assert.True((bool)(GetPropertyValue(viewModel, "HasValidationErrors") ?? false));
+
+        var validationErrors = Assert.IsAssignableFrom<System.Collections.IEnumerable>(
+            GetPropertyValue(viewModel, "ValidationErrors"));
+        Assert.Contains(
+            validationErrors.Cast<object>().Select(error => error.ToString()),
+            error => string.Equals(error, "Overlay opacity must be between 0 and 1.", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AddZone_WithOverlappingBounds_ProducesValidationError()
+    {
+        var repository = new InMemoryProfileRepository();
+        var viewModel = CreateMainViewModel(repository, new TestSettingsService());
+
+        InvokeMethod(viewModel, "BeginCreateProfile");
+        SetPropertyValue(viewModel, "ProfileName", "Overlap test");
+        SetPropertyValue(viewModel, "TranslatorProvider", "Google");
+        SetPropertyValue(viewModel, "SourceLanguage", "ja");
+        SetPropertyValue(viewModel, "TargetLanguage", "en");
+        InvokeMethod(viewModel, "AddZone");
+        SetPropertyValue(GetPropertyValue(viewModel, "SelectedZone")!, "Name", "Zone A");
+        SetPropertyValue(GetPropertyValue(viewModel, "SelectedZone")!, "AbsoluteWidth", 100);
+        SetPropertyValue(GetPropertyValue(viewModel, "SelectedZone")!, "AbsoluteHeight", 40);
+        InvokeMethod(viewModel, "AddZone");
+
+        var secondZone = GetPropertyValue(viewModel, "SelectedZone")
+            ?? throw new InvalidOperationException("Second zone was not selected.");
+        SetPropertyValue(secondZone, "Name", "Zone B");
+        SetPropertyValue(secondZone, "AbsoluteX", 20);
+        SetPropertyValue(secondZone, "AbsoluteY", 10);
+        SetPropertyValue(secondZone, "AbsoluteWidth", 120);
+        SetPropertyValue(secondZone, "AbsoluteHeight", 30);
+
+        Assert.True((bool)(GetPropertyValue(viewModel, "HasValidationErrors") ?? false));
+
+        var validationErrors = Assert.IsAssignableFrom<System.Collections.IEnumerable>(
+            GetPropertyValue(viewModel, "ValidationErrors"));
+        Assert.Contains(
+            validationErrors.Cast<object>().Select(error => error.ToString()),
+            error => string.Equals(error, "OCR zones 'Zone A' and 'Zone B' overlap.", StringComparison.Ordinal));
     }
 
     [Fact]

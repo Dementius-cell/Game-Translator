@@ -4,10 +4,16 @@ namespace GameTranslator.UI.ViewModels;
 
 public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
 {
+    public const int ReferenceSurfaceWidth = 1920;
+    public const int ReferenceSurfaceHeight = 1080;
+    public const double PreviewSurfaceWidth = 640;
+    public const double PreviewSurfaceHeight = 360;
+
     private readonly List<string> absoluteOverlapErrors = new();
 
     private string id = Guid.NewGuid().ToString("N");
     private string name = string.Empty;
+    private bool isSelected;
     private int absoluteX;
     private int absoluteY;
     private int absoluteWidth = 100;
@@ -35,6 +41,12 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
                 Validate();
             }
         }
+    }
+
+    public bool IsSelected
+    {
+        get => isSelected;
+        set => SetProperty(ref isSelected, value);
     }
 
     public int AbsoluteX
@@ -155,6 +167,18 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         ? Math.Round(RelativeWidth * RelativeHeight * 100, 2)
         : 0;
 
+    public double SurfaceX => Math.Round(AbsoluteX * PreviewSurfaceWidth / ReferenceSurfaceWidth, 2);
+
+    public double SurfaceY => Math.Round(AbsoluteY * PreviewSurfaceHeight / ReferenceSurfaceHeight, 2);
+
+    public double SurfaceWidth => Math.Round(AbsoluteWidth * PreviewSurfaceWidth / ReferenceSurfaceWidth, 2);
+
+    public double SurfaceHeight => Math.Round(AbsoluteHeight * PreviewSurfaceHeight / ReferenceSurfaceHeight, 2);
+
+    public double SurfaceHandleX => Math.Max(0, SurfaceWidth - 10);
+
+    public double SurfaceHandleY => Math.Max(0, SurfaceHeight - 10);
+
     public static OcrZoneEditorViewModel CreateDefault(int index)
     {
         return new OcrZoneEditorViewModel
@@ -268,5 +292,11 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         OnPropertyChanged(nameof(RelativeBoundsSummary));
         OnPropertyChanged(nameof(AbsoluteArea));
         OnPropertyChanged(nameof(RelativeAreaPercent));
+        OnPropertyChanged(nameof(SurfaceX));
+        OnPropertyChanged(nameof(SurfaceY));
+        OnPropertyChanged(nameof(SurfaceWidth));
+        OnPropertyChanged(nameof(SurfaceHeight));
+        OnPropertyChanged(nameof(SurfaceHandleX));
+        OnPropertyChanged(nameof(SurfaceHandleY));
     }
 }

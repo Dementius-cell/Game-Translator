@@ -50,6 +50,16 @@ public sealed class MainViewModel : ValidatableObservableObject
     private bool isBusy;
     private bool isLoaded;
     private bool suppressDraftStatePersistence;
+    private bool isZoneSelectionActive;
+    private bool isZoneResizeActive;
+    private double zoneSelectionStartX;
+    private double zoneSelectionStartY;
+    private double zoneSelectionPreviewX;
+    private double zoneSelectionPreviewY;
+    private double zoneSelectionPreviewWidth;
+    private double zoneSelectionPreviewHeight;
+    private int zoneResizeOriginalAbsoluteX;
+    private int zoneResizeOriginalAbsoluteY;
 
     public MainViewModel(
         ProfileService profileService,
@@ -91,7 +101,13 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public string ApplicationName => "Game Translator";
 
-    public string CurrentStage => "Sprint 3";
+    public string CurrentStage => "Sprint 4";
+
+    public double ZoneSurfaceWidth => OcrZoneEditorViewModel.PreviewSurfaceWidth;
+
+    public double ZoneSurfaceHeight => OcrZoneEditorViewModel.PreviewSurfaceHeight;
+
+    public string ZoneSurfaceSummary => $"Reference surface {OcrZoneEditorViewModel.ReferenceSurfaceWidth}x{OcrZoneEditorViewModel.ReferenceSurfaceHeight}";
 
     public ObservableCollection<GameProfile> Profiles { get; }
 
@@ -127,6 +143,7 @@ public sealed class MainViewModel : ValidatableObservableObject
                 LoadEditorFromProfile(value);
             }
 
+            SyncSelectedZoneState();
             OnPropertyChanged(nameof(HasSelectedProfile));
             OnPropertyChanged(nameof(ActiveProfileName));
             OnPropertyChanged(nameof(EditorTitle));
@@ -271,6 +288,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             }
 
             PersistDraftShellStateIfNeeded();
+            SyncSelectedZoneState();
             OnPropertyChanged(nameof(HasSelectedZone));
             NotifyCommandStateChanged();
         }
@@ -335,6 +353,32 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public string ZoneSummary => $"{OcrZones.Count} zone(s)";
 
+    public bool HasZoneSelectionPreview => isZoneSelectionActive && zoneSelectionPreviewWidth > 0 && zoneSelectionPreviewHeight > 0;
+
+    public double ZoneSelectionPreviewX
+    {
+        get => zoneSelectionPreviewX;
+        private set => SetProperty(ref zoneSelectionPreviewX, value);
+    }
+
+    public double ZoneSelectionPreviewY
+    {
+        get => zoneSelectionPreviewY;
+        private set => SetProperty(ref zoneSelectionPreviewY, value);
+    }
+
+    public double ZoneSelectionPreviewWidth
+    {
+        get => zoneSelectionPreviewWidth;
+        private set => SetProperty(ref zoneSelectionPreviewWidth, value);
+    }
+
+    public double ZoneSelectionPreviewHeight
+    {
+        get => zoneSelectionPreviewHeight;
+        private set => SetProperty(ref zoneSelectionPreviewHeight, value);
+    }
+
     public ICommand BeginCreateProfileCommand { get; }
 
     public ICommand RefreshProfilesCommand { get; }
@@ -372,10 +416,142 @@ public sealed class MainViewModel : ValidatableObservableObject
         await RefreshProfilesAsync();
     }
 
+    public void SelectZone(string zoneId)
+    {
+        if (string.IsNullOrWhiteSpace(zoneId))
+        {
+            return;
+        }
+
+        SelectedZone = OcrZones.FirstOrDefault(zone => string.Equals(zone.Id, zoneId, StringComparison.Ordinal));
+    }
+
+    public void StartZoneSelection(double surfaceX, double surfaceY)
+    {
+        if (IsBusy)
+        {
+            return;
+        }
+
+        ClearZoneResizeState();
+
+        zoneSelectionStartX = Math.Clamp(surfaceX, 0, ZoneSurfaceWidth);
+        zoneSelectionStartY = Math.Clamp(surfaceY, 0, ZoneSurfaceHeight);
+        isZoneSelectionActive = true;
+        UpdateZoneSelectionPreview(zoneSelectionStartX, zoneSelectionStartY, 0, 0);
+        StatusMessage = "Drag on the surface to create an OCR zone.";
+    }
+
+    public void UpdateZoneSelection(double surfaceX, double surfaceY)
+    {
+        if (!isZoneSelectionActive)
+        {
+            return;
+        }
+
+        var currentX = Math.Clamp(surfaceX, 0, ZoneSurfaceWidth);
+        var currentY = Math.Clamp(surfaceY, 0, ZoneSurfaceHeight);
+        var left = Math.Min(zoneSelectionStartX, currentX);
+        var top = Math.Min(zoneSelectionStartY, currentY);
+        var width = Math.Abs(currentX - zoneSelectionStartX);
+        var height = Math.Abs(currentY - zoneSelectionStartY);
+
+        UpdateZoneSelectionPreview(left, top, width, height);
+    }
+
+    public void CompleteZoneSelection(double surfaceX, double surfaceY)
+    {
+        if (!isZoneSelectionActive)
+        {
+            return;
+        }
+
+        UpdateZoneSelection(surfaceX, surfaceY);
+        isZoneSelectionActive = false;
+
+        if (ZoneSelectionPreviewWidth < 4 || ZoneSelectionPreviewHeight < 4)
+        {
+            ClearZoneSelectionPreview();
+            StatusMessage = "Zone selection canceled.";
+            return;
+        }
+
+        var zone = OcrZoneEditorViewModel.CreateDefault(OcrZones.Count + 1);
+        AttachZone(zone);
+        OcrZones.Add(zone);
+        ApplySurfaceBoundsToZone(
+            zone,
+            ZoneSelectionPreviewX,
+            ZoneSelectionPreviewY,
+            ZoneSelectionPreviewWidth,
+            ZoneSelectionPreviewHeight);
+        SelectedZone = zone;
+        PersistDraftShellStateIfNeeded();
+        OnPropertyChanged(nameof(ZoneSummary));
+        OnPropertyChanged(nameof(ProfileSummary));
+        RefreshValidationState();
+        ClearZoneSelectionPreview();
+        StatusMessage = $"Created zone '{zone.DisplayName}' from the surface.";
+    }
+
+    public void StartSelectedZoneResize()
+    {
+        if (IsBusy || SelectedZone is null)
+        {
+            return;
+        }
+
+        ClearZoneSelectionPreview();
+        isZoneResizeActive = true;
+        zoneResizeOriginalAbsoluteX = SelectedZone.AbsoluteX;
+        zoneResizeOriginalAbsoluteY = SelectedZone.AbsoluteY;
+        StatusMessage = $"Resize '{SelectedZone.DisplayName}' using the surface handle.";
+    }
+
+    public void UpdateSelectedZoneResize(double surfaceX, double surfaceY)
+    {
+        if (!isZoneResizeActive || SelectedZone is null)
+        {
+            return;
+        }
+
+        var left = ConvertAbsoluteToSurface(zoneResizeOriginalAbsoluteX, OcrZoneEditorViewModel.ReferenceSurfaceWidth, ZoneSurfaceWidth);
+        var top = ConvertAbsoluteToSurface(zoneResizeOriginalAbsoluteY, OcrZoneEditorViewModel.ReferenceSurfaceHeight, ZoneSurfaceHeight);
+        var clampedX = Math.Clamp(surfaceX, left + 1, ZoneSurfaceWidth);
+        var clampedY = Math.Clamp(surfaceY, top + 1, ZoneSurfaceHeight);
+
+        ApplySurfaceBoundsToZone(
+            SelectedZone,
+            left,
+            top,
+            clampedX - left,
+            clampedY - top);
+        PersistDraftShellStateIfNeeded();
+        OnPropertyChanged(nameof(ProfileSummary));
+        RefreshValidationState();
+    }
+
+    public void CompleteSelectedZoneResize(double surfaceX, double surfaceY)
+    {
+        if (!isZoneResizeActive)
+        {
+            return;
+        }
+
+        UpdateSelectedZoneResize(surfaceX, surfaceY);
+        ClearZoneResizeState();
+
+        if (SelectedZone is not null)
+        {
+            StatusMessage = $"Resized zone '{SelectedZone.DisplayName}'.";
+        }
+    }
+
     public void BeginCreateProfile()
     {
         selectedProfile = null;
         editingProfileId = null;
+        ClearSurfaceInteractionState();
 
         OnPropertyChanged(nameof(SelectedProfile));
         OnPropertyChanged(nameof(HasSelectedProfile));
@@ -573,6 +749,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public void AddZone()
     {
+        ClearSurfaceInteractionState();
         var zone = OcrZoneEditorViewModel.CreateDefault(OcrZones.Count + 1);
         AttachZone(zone);
         OcrZones.Add(zone);
@@ -581,6 +758,11 @@ public sealed class MainViewModel : ValidatableObservableObject
         OnPropertyChanged(nameof(ZoneSummary));
         OnPropertyChanged(nameof(ProfileSummary));
         RefreshValidationState();
+
+        if (OcrZones.Count == 0)
+        {
+            ClearZoneResizeState();
+        }
     }
 
     public void RemoveSelectedZone()
@@ -763,6 +945,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             ReplaceZones(profile.OcrZones.Select(OcrZoneEditorViewModel.FromModel));
         });
 
+        SyncSelectedZoneState();
         OnPropertyChanged(nameof(ProfileSummary));
         OnPropertyChanged(nameof(TranslatorSettingsSummary));
         OnPropertyChanged(nameof(ZoneSummary));
@@ -793,6 +976,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             }
         });
 
+        SyncSelectedZoneState();
         OnPropertyChanged(nameof(ProfileSummary));
         OnPropertyChanged(nameof(TranslatorSettingsSummary));
         OnPropertyChanged(nameof(ZoneSummary));
@@ -860,6 +1044,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
 
         SelectedZone = OcrZones.FirstOrDefault();
+        SyncSelectedZoneState();
     }
 
     private void AttachZone(OcrZoneEditorViewModel zone)
@@ -1120,6 +1305,77 @@ public sealed class MainViewModel : ValidatableObservableObject
         OnPropertyChanged(nameof(ZoneSummary));
         OnPropertyChanged(nameof(ProfileSummary));
         RefreshValidationState();
+    }
+
+    private void SyncSelectedZoneState()
+    {
+        foreach (var zone in OcrZones)
+        {
+            zone.IsSelected = ReferenceEquals(zone, SelectedZone);
+        }
+    }
+
+    private void ApplySurfaceBoundsToZone(
+        OcrZoneEditorViewModel zone,
+        double surfaceX,
+        double surfaceY,
+        double surfaceWidth,
+        double surfaceHeight)
+    {
+        var left = Math.Clamp(surfaceX, 0, ZoneSurfaceWidth - 1);
+        var top = Math.Clamp(surfaceY, 0, ZoneSurfaceHeight - 1);
+        var right = Math.Clamp(left + Math.Max(1, surfaceWidth), left + 1, ZoneSurfaceWidth);
+        var bottom = Math.Clamp(top + Math.Max(1, surfaceHeight), top + 1, ZoneSurfaceHeight);
+
+        var absoluteLeft = ConvertSurfaceToAbsolute(left, OcrZoneEditorViewModel.ReferenceSurfaceWidth, ZoneSurfaceWidth);
+        var absoluteTop = ConvertSurfaceToAbsolute(top, OcrZoneEditorViewModel.ReferenceSurfaceHeight, ZoneSurfaceHeight);
+        var absoluteRight = ConvertSurfaceToAbsolute(right, OcrZoneEditorViewModel.ReferenceSurfaceWidth, ZoneSurfaceWidth);
+        var absoluteBottom = ConvertSurfaceToAbsolute(bottom, OcrZoneEditorViewModel.ReferenceSurfaceHeight, ZoneSurfaceHeight);
+
+        zone.AbsoluteX = absoluteLeft;
+        zone.AbsoluteY = absoluteTop;
+        zone.AbsoluteWidth = Math.Max(1, absoluteRight - absoluteLeft);
+        zone.AbsoluteHeight = Math.Max(1, absoluteBottom - absoluteTop);
+        zone.RelativeX = Math.Round(left / ZoneSurfaceWidth, 4, MidpointRounding.AwayFromZero);
+        zone.RelativeY = Math.Round(top / ZoneSurfaceHeight, 4, MidpointRounding.AwayFromZero);
+        zone.RelativeWidth = Math.Round((right - left) / ZoneSurfaceWidth, 4, MidpointRounding.AwayFromZero);
+        zone.RelativeHeight = Math.Round((bottom - top) / ZoneSurfaceHeight, 4, MidpointRounding.AwayFromZero);
+    }
+
+    private void UpdateZoneSelectionPreview(double left, double top, double width, double height)
+    {
+        ZoneSelectionPreviewX = left;
+        ZoneSelectionPreviewY = top;
+        ZoneSelectionPreviewWidth = width;
+        ZoneSelectionPreviewHeight = height;
+        OnPropertyChanged(nameof(HasZoneSelectionPreview));
+    }
+
+    private void ClearZoneSelectionPreview()
+    {
+        isZoneSelectionActive = false;
+        UpdateZoneSelectionPreview(0, 0, 0, 0);
+    }
+
+    private void ClearZoneResizeState()
+    {
+        isZoneResizeActive = false;
+    }
+
+    private void ClearSurfaceInteractionState()
+    {
+        ClearZoneSelectionPreview();
+        ClearZoneResizeState();
+    }
+
+    private static int ConvertSurfaceToAbsolute(double coordinate, int referenceSize, double surfaceSize)
+    {
+        return (int)Math.Round(coordinate * referenceSize / surfaceSize, MidpointRounding.AwayFromZero);
+    }
+
+    private static double ConvertAbsoluteToSurface(int coordinate, int referenceSize, double surfaceSize)
+    {
+        return coordinate * surfaceSize / referenceSize;
     }
 
     private bool IsDraftEditor => SelectedProfile is null && string.IsNullOrWhiteSpace(editingProfileId);

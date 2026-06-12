@@ -298,6 +298,55 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
+    public async Task InteractiveZoneSelection_CreatesZoneAndPersistsCoordinatesOnSave()
+    {
+        var repository = new InMemoryProfileRepository();
+        var viewModel = CreateMainViewModel(repository, new TestSettingsService());
+
+        InvokeMethod(viewModel, "BeginCreateProfile");
+        SetPropertyValue(viewModel, "ProfileName", "Surface zone");
+        SetPropertyValue(viewModel, "TranslatorProvider", "Google");
+        SetPropertyValue(viewModel, "SourceLanguage", "ja");
+        SetPropertyValue(viewModel, "TargetLanguage", "en");
+
+        InvokeMethodWithArguments(viewModel, "StartZoneSelection", 10d, 20d);
+        InvokeMethodWithArguments(viewModel, "UpdateZoneSelection", 110d, 70d);
+        InvokeMethodWithArguments(viewModel, "CompleteZoneSelection", 110d, 70d);
+        await InvokeTaskMethodAsync(viewModel, "SaveAsync");
+
+        var storedProfile = Assert.Single(await repository.ListAsync());
+        var storedZone = Assert.Single(storedProfile.OcrZones);
+
+        Assert.Equal(new AbsoluteRectangle(30, 60, 300, 150), storedZone.AbsoluteBounds);
+        Assert.Equal(new RelativeRectangle(0.0156, 0.0556, 0.1563, 0.1389), storedZone.RelativeBounds);
+    }
+
+    [Fact]
+    public async Task InteractiveZoneResize_UpdatesSelectedZoneBounds()
+    {
+        var repository = new InMemoryProfileRepository();
+        var viewModel = CreateMainViewModel(repository, new TestSettingsService());
+
+        InvokeMethod(viewModel, "BeginCreateProfile");
+        SetPropertyValue(viewModel, "ProfileName", "Resize zone");
+        SetPropertyValue(viewModel, "TranslatorProvider", "Google");
+        SetPropertyValue(viewModel, "SourceLanguage", "ja");
+        SetPropertyValue(viewModel, "TargetLanguage", "en");
+
+        InvokeMethodWithArguments(viewModel, "StartZoneSelection", 10d, 20d);
+        InvokeMethodWithArguments(viewModel, "CompleteZoneSelection", 110d, 70d);
+        InvokeMethod(viewModel, "StartSelectedZoneResize");
+        InvokeMethodWithArguments(viewModel, "UpdateSelectedZoneResize", 150d, 100d);
+        InvokeMethodWithArguments(viewModel, "CompleteSelectedZoneResize", 150d, 100d);
+        await InvokeTaskMethodAsync(viewModel, "SaveAsync");
+
+        var storedProfile = Assert.Single(await repository.ListAsync());
+        var storedZone = Assert.Single(storedProfile.OcrZones);
+
+        Assert.Equal(new AbsoluteRectangle(30, 60, 420, 240), storedZone.AbsoluteBounds);
+    }
+
+    [Fact]
     public async Task CloneAndDeleteSelectedProfileAsync_UpdateProfileCollection()
     {
         var repository = new InMemoryProfileRepository();
@@ -484,6 +533,14 @@ public sealed class ProfileManagerViewModelTests
             ?? throw new InvalidOperationException($"Method '{methodName}' was not found.");
 
         method.Invoke(instance, Array.Empty<object?>());
+    }
+
+    private static void InvokeMethodWithArguments(object instance, string methodName, params object?[] arguments)
+    {
+        var method = instance.GetType().GetMethod(methodName)
+            ?? throw new InvalidOperationException($"Method '{methodName}' was not found.");
+
+        method.Invoke(instance, arguments);
     }
 
     private static object? GetPropertyValue(object instance, string propertyName)

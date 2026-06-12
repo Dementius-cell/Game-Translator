@@ -8,6 +8,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
     public const int ReferenceSurfaceHeight = 1080;
     public const double PreviewSurfaceWidth = 640;
     public const double PreviewSurfaceHeight = 360;
+    private const double RelativeBoundsTolerance = 0.000001;
 
     private readonly List<string> absoluteOverlapErrors = new();
 
@@ -275,7 +276,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
             relativePositionErrors.Add("Relative X and Y must stay within 0..1.");
         }
 
-        if (RelativeX + RelativeWidth > 1 || RelativeY + RelativeHeight > 1)
+        if (RelativeX + RelativeWidth > 1 + RelativeBoundsTolerance || RelativeY + RelativeHeight > 1 + RelativeBoundsTolerance)
         {
             relativePositionErrors.Add("Relative bounds must fit within 0..1.");
         }

@@ -347,6 +347,179 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
+    public async Task InteractiveZoneSelection_WhenDraggedInReverse_CreatesNormalizedBounds()
+    {
+        var repository = new InMemoryProfileRepository();
+        var viewModel = CreateMainViewModel(repository, new TestSettingsService());
+
+        ConfigureValidDraftProfile(viewModel, "Reverse drag zone");
+
+        InvokeMethodWithArguments(viewModel, "StartZoneSelection", 110d, 70d);
+        InvokeMethodWithArguments(viewModel, "UpdateZoneSelection", 10d, 20d);
+        InvokeMethodWithArguments(viewModel, "CompleteZoneSelection", 10d, 20d);
+        await InvokeTaskMethodAsync(viewModel, "SaveAsync");
+
+        var storedProfile = Assert.Single(await repository.ListAsync());
+        var storedZone = Assert.Single(storedProfile.OcrZones);
+
+        Assert.Equal(new AbsoluteRectangle(30, 60, 300, 150), storedZone.AbsoluteBounds);
+        Assert.Equal(new RelativeRectangle(0.0156, 0.0556, 0.1563, 0.1389), storedZone.RelativeBounds);
+    }
+
+    [Fact]
+    public async Task InteractiveZoneSelection_WhenDraggedOutsideSurface_ClampsToReferenceBounds()
+    {
+        var repository = new InMemoryProfileRepository();
+        var viewModel = CreateMainViewModel(repository, new TestSettingsService());
+
+        ConfigureValidDraftProfile(viewModel, "Clamped create zone");
+
+        InvokeMethodWithArguments(viewModel, "StartZoneSelection", -20d, -30d);
+        InvokeMethodWithArguments(viewModel, "UpdateZoneSelection", 700d, 420d);
+        InvokeMethodWithArguments(viewModel, "CompleteZoneSelection", 700d, 420d);
+        await InvokeTaskMethodAsync(viewModel, "SaveAsync");
+
+        var storedProfile = Assert.Single(await repository.ListAsync());
+        var storedZone = Assert.Single(storedProfile.OcrZones);
+
+        Assert.Equal(new AbsoluteRectangle(0, 0, 1920, 1080), storedZone.AbsoluteBounds);
+        Assert.Equal(new RelativeRectangle(0, 0, 1, 1), storedZone.RelativeBounds);
+    }
+
+    [Fact]
+    public async Task InteractiveZoneResize_WhenDraggedOutsideSurface_ClampsToReferenceBounds()
+    {
+        var repository = new InMemoryProfileRepository();
+        var viewModel = CreateMainViewModel(repository, new TestSettingsService());
+
+        ConfigureValidDraftProfile(viewModel, "Clamped resize zone");
+
+        InvokeMethodWithArguments(viewModel, "StartZoneSelection", 100d, 100d);
+        InvokeMethodWithArguments(viewModel, "CompleteZoneSelection", 200d, 200d);
+        InvokeMethod(viewModel, "StartSelectedZoneResize");
+        InvokeMethodWithArguments(viewModel, "UpdateSelectedZoneResize", 800d, 500d);
+        InvokeMethodWithArguments(viewModel, "CompleteSelectedZoneResize", 800d, 500d);
+
+        Assert.False(
+            (bool)(GetPropertyValue(viewModel, "HasValidationErrors") ?? false),
+            $"{GetPropertyValue(GetPropertyValue(viewModel, "SelectedZone")!, "RelativeBoundsSummary")} | {string.Join(" | ", GetValidationErrorMessages(viewModel))}");
+
+        await InvokeTaskMethodAsync(viewModel, "SaveAsync");
+
+        var storedProfile = Assert.Single(await repository.ListAsync());
+        var storedZone = Assert.Single(storedProfile.OcrZones);
+
+        Assert.Equal(new AbsoluteRectangle(300, 300, 1620, 780), storedZone.AbsoluteBounds);
+        Assert.Equal(1920, storedZone.AbsoluteBounds.X + storedZone.AbsoluteBounds.Width);
+        Assert.Equal(1080, storedZone.AbsoluteBounds.Y + storedZone.AbsoluteBounds.Height);
+    }
+
+    [Fact]
+    public void InteractiveZoneSelection_WhenDragIsTooSmall_DoesNotCreateBrokenZone()
+    {
+        var repository = new InMemoryProfileRepository();
+        var viewModel = CreateMainViewModel(repository, new TestSettingsService());
+
+        ConfigureValidDraftProfile(viewModel, "Tiny drag zone");
+
+        InvokeMethodWithArguments(viewModel, "StartZoneSelection", 100d, 100d);
+        InvokeMethodWithArguments(viewModel, "UpdateZoneSelection", 102d, 103d);
+        InvokeMethodWithArguments(viewModel, "CompleteZoneSelection", 102d, 103d);
+
+        var zones = Assert.IsAssignableFrom<System.Collections.IEnumerable>(
+            GetPropertyValue(viewModel, "OcrZones"));
+
+        Assert.Empty(zones.Cast<object>());
+        Assert.Equal("Zone selection canceled.", GetPropertyValue(viewModel, "StatusMessage"));
+    }
+
+    [Fact]
+    public async Task InteractiveZoneSelection_WhenCreatedZoneOverlaps_BlocksSave()
+    {
+        var repository = new InMemoryProfileRepository();
+        var viewModel = CreateMainViewModel(repository, new TestSettingsService());
+
+        ConfigureValidDraftProfile(viewModel, "Overlapping create zone");
+
+        InvokeMethodWithArguments(viewModel, "StartZoneSelection", 10d, 10d);
+        InvokeMethodWithArguments(viewModel, "CompleteZoneSelection", 110d, 70d);
+        InvokeMethodWithArguments(viewModel, "StartZoneSelection", 50d, 30d);
+        InvokeMethodWithArguments(viewModel, "CompleteZoneSelection", 150d, 90d);
+        await InvokeTaskMethodAsync(viewModel, "SaveAsync");
+
+        Assert.Empty(await repository.ListAsync());
+        Assert.True((bool)(GetPropertyValue(viewModel, "HasValidationErrors") ?? false));
+
+        var validationErrors = Assert.IsAssignableFrom<System.Collections.IEnumerable>(
+            GetPropertyValue(viewModel, "ValidationErrors"));
+        Assert.Contains(
+            validationErrors.Cast<object>().Select(error => error.ToString()),
+            error => error is not null && error.Contains("overlap", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task InteractiveZoneResize_WhenResizedZoneOverlaps_BlocksSave()
+    {
+        var repository = new InMemoryProfileRepository();
+        var viewModel = CreateMainViewModel(repository, new TestSettingsService());
+
+        ConfigureValidDraftProfile(viewModel, "Overlapping resize zone");
+
+        InvokeMethodWithArguments(viewModel, "StartZoneSelection", 10d, 10d);
+        InvokeMethodWithArguments(viewModel, "CompleteZoneSelection", 60d, 60d);
+        var firstZone = GetPropertyValue(viewModel, "SelectedZone")
+            ?? throw new InvalidOperationException("First zone was not selected.");
+
+        InvokeMethodWithArguments(viewModel, "StartZoneSelection", 120d, 10d);
+        InvokeMethodWithArguments(viewModel, "CompleteZoneSelection", 170d, 60d);
+        InvokeMethodWithArguments(viewModel, "SelectZone", GetPropertyValue(firstZone, "Id"));
+        InvokeMethod(viewModel, "StartSelectedZoneResize");
+        InvokeMethodWithArguments(viewModel, "UpdateSelectedZoneResize", 140d, 60d);
+        InvokeMethodWithArguments(viewModel, "CompleteSelectedZoneResize", 140d, 60d);
+        await InvokeTaskMethodAsync(viewModel, "SaveAsync");
+
+        Assert.Empty(await repository.ListAsync());
+        Assert.True((bool)(GetPropertyValue(viewModel, "HasValidationErrors") ?? false));
+
+        var validationErrors = Assert.IsAssignableFrom<System.Collections.IEnumerable>(
+            GetPropertyValue(viewModel, "ValidationErrors"));
+        Assert.Contains(
+            validationErrors.Cast<object>().Select(error => error.ToString()),
+            error => error is not null && error.Contains("overlap", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void RemoveSelectedZone_UpdatesSelectionAndDraftState()
+    {
+        var repository = new InMemoryProfileRepository();
+        var settings = new TestSettingsService();
+        var viewModel = CreateMainViewModel(repository, settings);
+
+        ConfigureValidDraftProfile(viewModel, "Delete selected zone");
+
+        InvokeMethodWithArguments(viewModel, "StartZoneSelection", 10d, 10d);
+        InvokeMethodWithArguments(viewModel, "CompleteZoneSelection", 60d, 60d);
+        var firstZone = GetPropertyValue(viewModel, "SelectedZone")
+            ?? throw new InvalidOperationException("First zone was not selected.");
+        var firstZoneId = Assert.IsType<string>(GetPropertyValue(firstZone, "Id"));
+
+        InvokeMethodWithArguments(viewModel, "StartZoneSelection", 120d, 10d);
+        InvokeMethodWithArguments(viewModel, "CompleteZoneSelection", 170d, 60d);
+        InvokeMethod(viewModel, "RemoveSelectedZone");
+
+        var selectedZone = GetPropertyValue(viewModel, "SelectedZone")
+            ?? throw new InvalidOperationException("A remaining zone should be selected.");
+        var persistedZones = settings.GetValue<OcrZone[]>("shell.draft.ocrZones")
+            ?? throw new InvalidOperationException("Persisted draft zones were not found.");
+
+        Assert.Equal(firstZoneId, GetPropertyValue(selectedZone, "Id"));
+        Assert.True((bool)(GetPropertyValue(selectedZone, "IsSelected") ?? false));
+        Assert.Single(persistedZones);
+        Assert.Equal(firstZoneId, persistedZones[0].Id);
+        Assert.Equal(firstZoneId, settings.GetValue<string>("shell.draft.selectedZoneId"));
+    }
+
+    [Fact]
     public async Task CloneAndDeleteSelectedProfileAsync_UpdateProfileCollection()
     {
         var repository = new InMemoryProfileRepository();
@@ -517,6 +690,15 @@ public sealed class ProfileManagerViewModelTests
             ?? throw new InvalidOperationException("MainViewModel instance was not created.");
     }
 
+    private static void ConfigureValidDraftProfile(object viewModel, string name)
+    {
+        InvokeMethod(viewModel, "BeginCreateProfile");
+        SetPropertyValue(viewModel, "ProfileName", name);
+        SetPropertyValue(viewModel, "TranslatorProvider", "Google");
+        SetPropertyValue(viewModel, "SourceLanguage", "ja");
+        SetPropertyValue(viewModel, "TargetLanguage", "en");
+    }
+
     private static Task InvokeTaskMethodAsync(object instance, string methodName)
     {
         var method = instance.GetType().GetMethod(methodName)
@@ -546,6 +728,16 @@ public sealed class ProfileManagerViewModelTests
     private static object? GetPropertyValue(object instance, string propertyName)
     {
         return instance.GetType().GetProperty(propertyName)?.GetValue(instance);
+    }
+
+    private static IReadOnlyList<string> GetValidationErrorMessages(object viewModel)
+    {
+        var validationErrors = Assert.IsAssignableFrom<System.Collections.IEnumerable>(
+            GetPropertyValue(viewModel, "ValidationErrors"));
+
+        return validationErrors.Cast<object>()
+            .Select(error => error.ToString() ?? string.Empty)
+            .ToArray();
     }
 
     private static void SetPropertyValue(object instance, string propertyName, object? value)

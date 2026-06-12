@@ -1336,10 +1336,15 @@ public sealed class MainViewModel : ValidatableObservableObject
         zone.AbsoluteY = absoluteTop;
         zone.AbsoluteWidth = Math.Max(1, absoluteRight - absoluteLeft);
         zone.AbsoluteHeight = Math.Max(1, absoluteBottom - absoluteTop);
-        zone.RelativeX = Math.Round(left / ZoneSurfaceWidth, 4, MidpointRounding.AwayFromZero);
-        zone.RelativeY = Math.Round(top / ZoneSurfaceHeight, 4, MidpointRounding.AwayFromZero);
-        zone.RelativeWidth = Math.Round((right - left) / ZoneSurfaceWidth, 4, MidpointRounding.AwayFromZero);
-        zone.RelativeHeight = Math.Round((bottom - top) / ZoneSurfaceHeight, 4, MidpointRounding.AwayFromZero);
+        var relativeX = RoundRelativeCoordinate(left / ZoneSurfaceWidth);
+        var relativeY = RoundRelativeCoordinate(top / ZoneSurfaceHeight);
+        var relativeWidth = RoundRelativeCoordinate((right - left) / ZoneSurfaceWidth);
+        var relativeHeight = RoundRelativeCoordinate((bottom - top) / ZoneSurfaceHeight);
+
+        zone.RelativeX = relativeX;
+        zone.RelativeY = relativeY;
+        zone.RelativeWidth = ClampRelativeSizeToBounds(relativeX, relativeWidth);
+        zone.RelativeHeight = ClampRelativeSizeToBounds(relativeY, relativeHeight);
     }
 
     private void UpdateZoneSelectionPreview(double left, double top, double width, double height)
@@ -1376,6 +1381,16 @@ public sealed class MainViewModel : ValidatableObservableObject
     private static double ConvertAbsoluteToSurface(int coordinate, int referenceSize, double surfaceSize)
     {
         return coordinate * surfaceSize / referenceSize;
+    }
+
+    private static double RoundRelativeCoordinate(double value)
+    {
+        return Math.Round(value, 4, MidpointRounding.AwayFromZero);
+    }
+
+    private static double ClampRelativeSizeToBounds(double relativePosition, double relativeSize)
+    {
+        return Math.Max(0.0001, Math.Min(relativeSize, RoundRelativeCoordinate(1 - relativePosition)));
     }
 
     private bool IsDraftEditor => SelectedProfile is null && string.IsNullOrWhiteSpace(editingProfileId);

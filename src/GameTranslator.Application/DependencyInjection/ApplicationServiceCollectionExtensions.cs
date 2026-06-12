@@ -1,3 +1,4 @@
+using GameTranslator.Application.Capture;
 using GameTranslator.Application.Profiles;
 using GameTranslator.Domain.Profiles;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,6 +15,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddSingleton<ProfileMigrationService>();
         services.AddSingleton<ProfileService>();
         services.AddSingleton<ProfileExchangeService>();
+        services.AddSingleton<CaptureService>();
 
         return services;
     }

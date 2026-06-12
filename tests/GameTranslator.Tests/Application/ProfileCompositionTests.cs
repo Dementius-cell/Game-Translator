@@ -1,3 +1,4 @@
+using GameTranslator.Application.Capture;
 using GameTranslator.Application.DependencyInjection;
 using GameTranslator.Application.Profiles;
 using GameTranslator.Domain.Profiles;
@@ -19,6 +20,7 @@ public sealed class ProfileCompositionTests
         Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(ProfileExchangeService));
         Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(ProfileMigrationService));
         Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(ProfileValidator));
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(CaptureService));
     }
 
     [Fact]

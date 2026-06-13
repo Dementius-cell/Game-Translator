@@ -4,6 +4,7 @@ using System.Runtime.Loader;
 using GameTranslator.Application.Abstractions;
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Ocr;
+using GameTranslator.Application.Overlay;
 using GameTranslator.Application.Profiles;
 using GameTranslator.Domain.Profiles;
 
@@ -868,6 +869,53 @@ public sealed class ProfileManagerViewModelTests
         Assert.Contains("X 0  Y 0  W 4  H 2", debugText, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ShowOverlayPreview_ShowsTestTextSnapshotAndUpdatesStatus()
+    {
+        var overlay = new TestOverlayService();
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            overlayService: overlay);
+
+        InvokeMethod(viewModel, "ShowOverlayPreview");
+
+        Assert.True(overlay.IsVisible);
+        Assert.True((bool)(GetPropertyValue(viewModel, "IsOverlayPreviewVisible") ?? false));
+        Assert.Equal(
+            "Overlay preview shown with 2 test text item(s).",
+            GetPropertyValue(viewModel, "OverlayPreviewStatus"));
+        Assert.NotNull(overlay.CurrentSnapshot);
+        Assert.Equal(2, overlay.CurrentSnapshot.TextItems.Count);
+        Assert.Contains(
+            overlay.CurrentSnapshot.TextItems,
+            item => string.Equals(item.Text, "Game Translator overlay test", StringComparison.Ordinal));
+        Assert.All(
+            overlay.CurrentSnapshot.TextItems,
+            item =>
+            {
+                Assert.True(item.Width > 0);
+                Assert.True(item.Height > 0);
+            });
+    }
+
+    [Fact]
+    public void HideOverlayPreview_HidesOverlayAndUpdatesStatus()
+    {
+        var overlay = new TestOverlayService();
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            overlayService: overlay);
+
+        InvokeMethod(viewModel, "ShowOverlayPreview");
+        InvokeMethod(viewModel, "HideOverlayPreview");
+
+        Assert.False(overlay.IsVisible);
+        Assert.False((bool)(GetPropertyValue(viewModel, "IsOverlayPreviewVisible") ?? true));
+        Assert.Equal("Overlay preview hidden.", GetPropertyValue(viewModel, "OverlayPreviewStatus"));
+    }
+
     private static object CreateMainViewModel(
         InMemoryProfileRepository repository,
         TestSettingsService settings,
@@ -875,7 +923,8 @@ public sealed class ProfileManagerViewModelTests
         TestProfileExchangeGateway? exchangeGateway = null,
         TestApplicationLogger? logger = null,
         TestCaptureFrameSource? frameSource = null,
-        TestOcrEngine? ocrEngine = null)
+        TestOcrEngine? ocrEngine = null,
+        TestOverlayService? overlayService = null)
     {
         var profileService = new ProfileService(repository, new ProfileValidator());
         var profileExchangeService = new ProfileExchangeService(
@@ -897,6 +946,7 @@ public sealed class ProfileManagerViewModelTests
                 profileExchangeService,
                 captureService,
                 ocrService,
+                overlayService ?? new TestOverlayService(),
                 dialog ?? new TestDialogService(),
                 settings,
                 applicationLogger)
@@ -1180,6 +1230,24 @@ public sealed class ProfileManagerViewModelTests
 
             var blocks = BlocksFactory?.Invoke(request) ?? Array.Empty<OcrTextBlock>();
             return Task.FromResult(new OcrResult(request, blocks, RecognizedAt));
+        }
+    }
+
+    private sealed class TestOverlayService : IOverlayService
+    {
+        public bool IsVisible { get; private set; }
+
+        public OverlaySnapshot? CurrentSnapshot { get; private set; }
+
+        public void Show(OverlaySnapshot snapshot)
+        {
+            CurrentSnapshot = snapshot;
+            IsVisible = true;
+        }
+
+        public void Hide()
+        {
+            IsVisible = false;
         }
     }
 

@@ -8,6 +8,7 @@ using System.Windows.Input;
 using GameTranslator.Application.Abstractions;
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Ocr;
+using GameTranslator.Application.Overlay;
 using GameTranslator.Application.Profiles;
 using GameTranslator.Domain.Profiles;
 using GameTranslator.UI.Commands;
@@ -35,6 +36,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private readonly ProfileExchangeService profileExchangeService;
     private readonly CaptureService captureService;
     private readonly OcrService ocrService;
+    private readonly IOverlayService overlayService;
     private readonly IDialogService dialogService;
     private readonly ISettingsService settings;
     private readonly IApplicationLogger logger;
@@ -56,6 +58,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private string capturePreviewStatus = "No capture preview yet.";
     private string captureRefreshMetricsSummary = "Refresh rate not measured.";
     private string ocrPreviewStatus = "No OCR preview yet.";
+    private string overlayPreviewStatus = "Overlay preview hidden.";
     private int capturePreviewWidth;
     private int capturePreviewHeight;
     private string statusMessage = "Loading profiles...";
@@ -78,6 +81,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         ProfileExchangeService profileExchangeService,
         CaptureService captureService,
         OcrService ocrService,
+        IOverlayService overlayService,
         IDialogService dialogService,
         ISettingsService settings,
         IApplicationLogger logger)
@@ -86,6 +90,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         this.profileExchangeService = profileExchangeService;
         this.captureService = captureService;
         this.ocrService = ocrService;
+        this.overlayService = overlayService;
         this.dialogService = dialogService;
         this.settings = settings;
         this.logger = logger;
@@ -115,6 +120,8 @@ public sealed class MainViewModel : ValidatableObservableObject
         RefreshCapturePreviewCommand = new AsyncRelayCommand(RefreshCapturePreviewAsync, CanRefreshCapturePreview);
         MeasureCaptureRefreshCommand = new AsyncRelayCommand(MeasureCaptureRefreshAsync, CanRefreshCapturePreview);
         RecognizeOcrPreviewCommand = new AsyncRelayCommand(RecognizeOcrPreviewAsync, CanRecognizeOcrPreview);
+        ShowOverlayPreviewCommand = new RelayCommand(ShowOverlayPreview, () => !IsBusy);
+        HideOverlayPreviewCommand = new RelayCommand(HideOverlayPreview, () => !IsBusy && IsOverlayPreviewVisible);
 
         BeginCreateProfile();
         StatusMessage = "Ready to manage game profiles.";
@@ -122,7 +129,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public string ApplicationName => "Game Translator";
 
-    public string CurrentStage => "Sprint 7";
+    public string CurrentStage => "Sprint 8";
 
     public double ZoneSurfaceWidth => OcrZoneEditorViewModel.PreviewSurfaceWidth;
 
@@ -454,6 +461,14 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public string OcrPreviewText => string.Join(Environment.NewLine, OcrDebugTextBlocks.Select(block => block.Text));
 
+    public string OverlayPreviewStatus
+    {
+        get => overlayPreviewStatus;
+        private set => SetProperty(ref overlayPreviewStatus, value);
+    }
+
+    public bool IsOverlayPreviewVisible => overlayService.IsVisible;
+
     public ICommand BeginCreateProfileCommand { get; }
 
     public ICommand RefreshProfilesCommand { get; }
@@ -485,6 +500,10 @@ public sealed class MainViewModel : ValidatableObservableObject
     public ICommand MeasureCaptureRefreshCommand { get; }
 
     public ICommand RecognizeOcrPreviewCommand { get; }
+
+    public ICommand ShowOverlayPreviewCommand { get; }
+
+    public ICommand HideOverlayPreviewCommand { get; }
 
     public async Task LoadAsync()
     {
@@ -1064,6 +1083,56 @@ public sealed class MainViewModel : ValidatableObservableObject
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    public void ShowOverlayPreview()
+    {
+        try
+        {
+            var snapshot = new OverlaySnapshot(
+                new[]
+                {
+                    new OverlayTextItem("Game Translator overlay test", 120, 120, 520, 72),
+                    new OverlayTextItem("Click-through smoke text", 120, 212, 420, 64),
+                },
+                DateTimeOffset.UtcNow);
+
+            overlayService.Show(snapshot);
+            OverlayPreviewStatus = $"Overlay preview shown with {snapshot.TextItems.Count} test text item(s).";
+            StatusMessage = OverlayPreviewStatus;
+            OnPropertyChanged(nameof(IsOverlayPreviewVisible));
+            NotifyCommandStateChanged();
+            logger.Information("Overlay preview shown with test text.");
+        }
+        catch (Exception exception)
+        {
+            logger.Error(exception, "Overlay preview failed.");
+            OverlayPreviewStatus = "Overlay preview failed. Check logs for details.";
+            StatusMessage = OverlayPreviewStatus;
+            OnPropertyChanged(nameof(IsOverlayPreviewVisible));
+            NotifyCommandStateChanged();
+        }
+    }
+
+    public void HideOverlayPreview()
+    {
+        try
+        {
+            overlayService.Hide();
+            OverlayPreviewStatus = "Overlay preview hidden.";
+            StatusMessage = OverlayPreviewStatus;
+            OnPropertyChanged(nameof(IsOverlayPreviewVisible));
+            NotifyCommandStateChanged();
+            logger.Information("Overlay preview hidden.");
+        }
+        catch (Exception exception)
+        {
+            logger.Error(exception, "Overlay preview hide failed.");
+            OverlayPreviewStatus = "Overlay preview hide failed. Check logs for details.";
+            StatusMessage = OverlayPreviewStatus;
+            OnPropertyChanged(nameof(IsOverlayPreviewVisible));
+            NotifyCommandStateChanged();
         }
     }
 
@@ -1747,5 +1816,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         ((AsyncRelayCommand)RefreshCapturePreviewCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)MeasureCaptureRefreshCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)RecognizeOcrPreviewCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)ShowOverlayPreviewCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)HideOverlayPreviewCommand).RaiseCanExecuteChanged();
     }
 }

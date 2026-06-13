@@ -2,6 +2,7 @@ using System.IO;
 using System.Reflection;
 using System.Runtime.Loader;
 using GameTranslator.Application.Abstractions;
+using GameTranslator.Application.Overlay;
 using GameTranslator.Application.Profiles;
 using GameTranslator.Application.Settings;
 using Microsoft.Extensions.DependencyInjection;
@@ -30,7 +31,7 @@ public sealed class PresentationCompositionTests
     }
 
     [Fact]
-    public void PresentationCompositionRoot_DoesNotRegisterOcrTranslationCaptureOrOverlayServices()
+    public void PresentationCompositionRoot_DoesNotRegisterOcrTranslationOrCaptureServices()
     {
         var services = InvokePresentationCompositionRoot();
         var registeredTypeNames = services
@@ -39,7 +40,7 @@ public sealed class PresentationCompositionTests
             .Select(type => type!.Name)
             .ToArray();
 
-        var forbiddenTerms = new[] { "Ocr", "Translator", "Translation", "Capture", "Overlay" };
+        var forbiddenTerms = new[] { "Ocr", "Translator", "Translation", "Capture" };
 
         foreach (var forbiddenTerm in forbiddenTerms)
         {
@@ -47,6 +48,20 @@ public sealed class PresentationCompositionTests
                 registeredTypeNames,
                 typeName => typeName.Contains(forbiddenTerm, StringComparison.OrdinalIgnoreCase));
         }
+    }
+
+    [Fact]
+    public void PresentationCompositionRoot_RegistersOverlayPresentationService()
+    {
+        var services = InvokePresentationCompositionRoot();
+
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(IOverlayService)
+                && descriptor.ImplementationType?.FullName == "GameTranslator.UI.Services.WpfOverlayService");
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType.FullName == "GameTranslator.UI.Views.OverlayWindow");
     }
 
     [Fact]

@@ -23,8 +23,12 @@ This folder contains the source-of-truth documents for Game-Translator. Read the
 - [Master Prompt](prompts/master-prompt.md)
 - [Agent Startup Manifest](ai/agent-startup-manifest.md)
 
+## Smoke Checks
+
+- [Sprint 8 overlay click-through smoke](smoke/sprint-08-overlay-click-through.md)
+
 ## Current Project State
 
-- Current roadmap stage: Stage 0, project preparation.
-- Current sprint: Sprint 0, project initialization.
-- Required first implementation result: empty WPF application that compiles and runs without translation, OCR, or screen-capture functionality.
+- Current roadmap stage: Stage 4, Overlay MVP.
+- Current sprint: Sprint 8, render a click-through overlay window.
+- Required implementation result: transparent always-on-top WPF overlay with test text, show/hide controls, click-through behavior, and no translation pipeline yet.

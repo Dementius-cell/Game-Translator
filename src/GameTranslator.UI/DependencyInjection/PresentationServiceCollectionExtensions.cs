@@ -1,4 +1,5 @@
 using GameTranslator.Application.Abstractions;
+using GameTranslator.Application.Overlay;
 using GameTranslator.UI.Services;
 using GameTranslator.UI.ViewModels;
 using GameTranslator.UI.Views;
@@ -19,7 +20,9 @@ public static class PresentationServiceCollectionExtensions
         services.AddSingleton<ShellViewModel>();
 
         services.AddSingleton<ShellView>();
+        services.AddSingleton<OverlayWindow>();
         services.AddSingleton<MainWindow>();
+        services.AddSingleton<IOverlayService, WpfOverlayService>();
 
         return services;
     }

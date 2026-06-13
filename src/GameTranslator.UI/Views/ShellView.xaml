@@ -243,6 +243,54 @@
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock
+                                        Grid.Row="0"
+                                        Grid.ColumnSpan="3"
+                                        FontSize="16"
+                                        FontWeight="SemiBold"
+                                        Foreground="#253238"
+                                        Text="Overlay preview" />
+                                    <Button
+                                        Grid.Row="1"
+                                        Grid.Column="0"
+                                        Margin="0,12,0,0"
+                                        Padding="12,6"
+                                        Command="{Binding ShowOverlayPreviewCommand}"
+                                        Content="Show test overlay" />
+                                    <Button
+                                        Grid.Row="1"
+                                        Grid.Column="1"
+                                        Margin="8,12,0,0"
+                                        Padding="12,6"
+                                        Command="{Binding HideOverlayPreviewCommand}"
+                                        Content="Hide overlay" />
+                                    <TextBlock
+                                        Grid.Row="1"
+                                        Grid.Column="2"
+                                        Margin="12,12,0,0"
+                                        VerticalAlignment="Center"
+                                        Foreground="#56616F"
+                                        Text="{Binding OverlayPreviewStatus}" />
+                                </Grid>
+                            </Border>
+
+                            <Border
+                                Margin="0,16,0,0"
+                                BorderBrush="#E3E8EE"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="16">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />

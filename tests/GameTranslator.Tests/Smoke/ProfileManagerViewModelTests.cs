@@ -790,8 +790,18 @@ public sealed class ProfileManagerViewModelTests
         Assert.Equal(GetPropertyValue(selectedZone, "Id"), request.ZoneId);
         Assert.True((bool)(GetPropertyValue(viewModel, "HasCapturePreview") ?? false));
         Assert.True((bool)(GetPropertyValue(viewModel, "HasOcrPreview") ?? false));
+        Assert.Equal(4, GetPropertyValue(viewModel, "CapturePreviewWidth"));
+        Assert.Equal(3, GetPropertyValue(viewModel, "CapturePreviewHeight"));
         Assert.Equal("Press start\r\nto continue", GetPropertyValue(viewModel, "OcrPreviewText"));
         Assert.Equal("Recognized 2 text block(s) for 'Zone 1'.", GetPropertyValue(viewModel, "OcrPreviewStatus"));
+
+        var debugBlocks = Assert.IsAssignableFrom<System.Collections.IEnumerable>(
+            GetPropertyValue(viewModel, "OcrDebugTextBlocks"));
+        var debugBlockArray = debugBlocks.Cast<object>().ToArray();
+        Assert.Equal(2, debugBlockArray.Length);
+        Assert.Equal("X 0  Y 0  W 3  H 1", GetPropertyValue(debugBlockArray[0], "CoordinatesSummary"));
+        Assert.Equal("X 0  Y 1  W 4  H 2", GetPropertyValue(debugBlockArray[1], "CoordinatesSummary"));
+        Assert.Equal("X 0  Y 0  W 3  H 1 | Press start", GetPropertyValue(debugBlockArray[0], "DebugLabel"));
     }
 
     [Fact]
@@ -818,6 +828,44 @@ public sealed class ProfileManagerViewModelTests
             GetPropertyValue(viewModel, "OcrPreviewStatus"));
         Assert.False((bool)(GetPropertyValue(viewModel, "HasOcrPreview") ?? true));
         Assert.Contains(logger.Errors, error => error.Contains("OCR preview failed.", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task RecognizeOcrPreviewAsync_DebugOutputDoesNotExposeProfileSettings()
+    {
+        var repository = new InMemoryProfileRepository();
+        var viewModel = CreateMainViewModel(
+            repository,
+            new TestSettingsService(),
+            frameSource: new TestCaptureFrameSource(),
+            ocrEngine: new TestOcrEngine
+            {
+                BlocksFactory = _ => new[]
+                {
+                    new OcrTextBlock("Visible game text", new BoundingBox(0, 0, 4, 2)),
+                },
+            });
+        ConfigureValidDraftProfile(viewModel, "OCR debug privacy");
+        SetPropertyValue(viewModel, "ProfileDescription", "SECRET_PROFILE_NOTE");
+        SetPropertyValue(viewModel, "TranslatorProvider", "SECRET_PROVIDER_TOKEN");
+        SetPropertyValue(viewModel, "TargetLanguage", "SECRET_TARGET_LANGUAGE");
+        InvokeMethod(viewModel, "AddZone");
+
+        await InvokeTaskMethodAsync(viewModel, "RecognizeOcrPreviewAsync");
+
+        var debugBlocks = Assert.IsAssignableFrom<System.Collections.IEnumerable>(
+            GetPropertyValue(viewModel, "OcrDebugTextBlocks"));
+        var debugText = string.Join(
+            " ",
+            debugBlocks.Cast<object>().Select(block => GetPropertyValue(block, "DebugLabel")?.ToString() ?? string.Empty));
+        debugText += " " + (GetPropertyValue(viewModel, "OcrPreviewStatus")?.ToString() ?? string.Empty);
+        debugText += " " + (GetPropertyValue(viewModel, "OcrPreviewText")?.ToString() ?? string.Empty);
+
+        Assert.DoesNotContain("SECRET_PROFILE_NOTE", debugText, StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRET_PROVIDER_TOKEN", debugText, StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRET_TARGET_LANGUAGE", debugText, StringComparison.Ordinal);
+        Assert.Contains("Visible game text", debugText, StringComparison.Ordinal);
+        Assert.Contains("X 0  Y 0  W 4  H 2", debugText, StringComparison.Ordinal);
     }
 
     private static object CreateMainViewModel(

@@ -882,7 +882,7 @@
                                                             Grid.Row="3"
                                                             Grid.ColumnSpan="3"
                                                             Margin="0,10,0,0"
-                                                            ItemsSource="{Binding OcrPreviewTextBlocks}"
+                                                            ItemsSource="{Binding OcrDebugTextBlocks}"
                                                             Visibility="{Binding HasOcrPreview, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                             <ItemsControl.ItemTemplate>
                                                                 <DataTemplate>
@@ -897,16 +897,8 @@
                                                                             <TextBlock
                                                                                 DockPanel.Dock="Right"
                                                                                 Margin="12,0,0,0"
-                                                                                Foreground="#2A5D67">
-                                                                                <TextBlock.Text>
-                                                                                    <MultiBinding StringFormat="{}{0},{1} {2}x{3}">
-                                                                                        <Binding Path="Bounds.X" />
-                                                                                        <Binding Path="Bounds.Y" />
-                                                                                        <Binding Path="Bounds.Width" />
-                                                                                        <Binding Path="Bounds.Height" />
-                                                                                    </MultiBinding>
-                                                                                </TextBlock.Text>
-                                                                            </TextBlock>
+                                                                                Foreground="#2A5D67"
+                                                                                Text="{Binding CoordinatesSummary}" />
                                                                             <TextBlock
                                                                                 Foreground="#253238"
                                                                                 Text="{Binding Text}"
@@ -925,10 +917,55 @@
                                                             BorderThickness="1"
                                                             Height="160"
                                                             Visibility="{Binding HasCapturePreview, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                            <Image
-                                                                Source="{Binding CapturePreviewImage}"
-                                                                Stretch="Uniform"
-                                                                SnapsToDevicePixels="True" />
+                                                            <Viewbox Stretch="Uniform">
+                                                                <Grid
+                                                                    Width="{Binding CapturePreviewWidth}"
+                                                                    Height="{Binding CapturePreviewHeight}">
+                                                                    <Image
+                                                                        Source="{Binding CapturePreviewImage}"
+                                                                        Stretch="Fill"
+                                                                        SnapsToDevicePixels="True" />
+                                                                    <ItemsControl
+                                                                        IsHitTestVisible="False"
+                                                                        ItemsSource="{Binding OcrDebugTextBlocks}"
+                                                                        Visibility="{Binding HasOcrPreview, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                                        <ItemsControl.ItemsPanel>
+                                                                            <ItemsPanelTemplate>
+                                                                                <Canvas />
+                                                                            </ItemsPanelTemplate>
+                                                                        </ItemsControl.ItemsPanel>
+                                                                        <ItemsControl.ItemContainerStyle>
+                                                                            <Style TargetType="ContentPresenter">
+                                                                                <Setter Property="Canvas.Left" Value="{Binding X}" />
+                                                                                <Setter Property="Canvas.Top" Value="{Binding Y}" />
+                                                                            </Style>
+                                                                        </ItemsControl.ItemContainerStyle>
+                                                                        <ItemsControl.ItemTemplate>
+                                                                            <DataTemplate>
+                                                                                <Grid
+                                                                                    Width="{Binding Width}"
+                                                                                    Height="{Binding Height}">
+                                                                                    <Border
+                                                                                        Background="#3300828A"
+                                                                                        BorderBrush="#00828A"
+                                                                                        BorderThickness="2" />
+                                                                                    <TextBlock
+                                                                                        Margin="3"
+                                                                                        Padding="3,1"
+                                                                                        HorizontalAlignment="Left"
+                                                                                        VerticalAlignment="Top"
+                                                                                        Background="#EFFFFFFF"
+                                                                                        Foreground="#253238"
+                                                                                        FontSize="12"
+                                                                                        Text="{Binding CoordinatesSummary}"
+                                                                                        TextTrimming="CharacterEllipsis"
+                                                                                        ToolTip="{Binding DebugLabel}" />
+                                                                                </Grid>
+                                                                            </DataTemplate>
+                                                                        </ItemsControl.ItemTemplate>
+                                                                    </ItemsControl>
+                                                                </Grid>
+                                                            </Viewbox>
                                                         </Border>
                                                     </Grid>
                                                 </Border>

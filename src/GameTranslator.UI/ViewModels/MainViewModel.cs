@@ -7,6 +7,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Input;
 using GameTranslator.Application.Abstractions;
 using GameTranslator.Application.Capture;
+using GameTranslator.Application.Ocr;
 using GameTranslator.Application.Profiles;
 using GameTranslator.Domain.Profiles;
 using GameTranslator.UI.Commands;
@@ -33,6 +34,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private readonly ProfileService profileService;
     private readonly ProfileExchangeService profileExchangeService;
     private readonly CaptureService captureService;
+    private readonly OcrService ocrService;
     private readonly IDialogService dialogService;
     private readonly ISettingsService settings;
     private readonly IApplicationLogger logger;
@@ -53,6 +55,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private ImageSource? capturePreviewImage;
     private string capturePreviewStatus = "No capture preview yet.";
     private string captureRefreshMetricsSummary = "Refresh rate not measured.";
+    private string ocrPreviewStatus = "No OCR preview yet.";
     private string statusMessage = "Loading profiles...";
     private bool isBusy;
     private bool isLoaded;
@@ -72,6 +75,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         ProfileService profileService,
         ProfileExchangeService profileExchangeService,
         CaptureService captureService,
+        OcrService ocrService,
         IDialogService dialogService,
         ISettingsService settings,
         IApplicationLogger logger)
@@ -79,6 +83,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         this.profileService = profileService;
         this.profileExchangeService = profileExchangeService;
         this.captureService = captureService;
+        this.ocrService = ocrService;
         this.dialogService = dialogService;
         this.settings = settings;
         this.logger = logger;
@@ -86,6 +91,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
         Profiles = new ObservableCollection<GameProfile>();
         OcrZones = new ObservableCollection<OcrZoneEditorViewModel>();
+        OcrPreviewTextBlocks = new ObservableCollection<OcrTextBlock>();
         ValidationErrors = new ObservableCollection<string>();
         OverlayMaskModes = Enum.GetValues<OverlayMaskMode>();
         TranslatorProviderOptions = new[] { "Google", "Azure", "Yandex" };
@@ -105,6 +111,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         RemoveSelectedZoneCommand = new RelayCommand(RemoveSelectedZone, CanRemoveSelectedZone);
         RefreshCapturePreviewCommand = new AsyncRelayCommand(RefreshCapturePreviewAsync, CanRefreshCapturePreview);
         MeasureCaptureRefreshCommand = new AsyncRelayCommand(MeasureCaptureRefreshAsync, CanRefreshCapturePreview);
+        RecognizeOcrPreviewCommand = new AsyncRelayCommand(RecognizeOcrPreviewAsync, CanRecognizeOcrPreview);
 
         BeginCreateProfile();
         StatusMessage = "Ready to manage game profiles.";
@@ -112,7 +119,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public string ApplicationName => "Game Translator";
 
-    public string CurrentStage => "Sprint 5";
+    public string CurrentStage => "Sprint 6";
 
     public double ZoneSurfaceWidth => OcrZoneEditorViewModel.PreviewSurfaceWidth;
 
@@ -123,6 +130,8 @@ public sealed class MainViewModel : ValidatableObservableObject
     public ObservableCollection<GameProfile> Profiles { get; }
 
     public ObservableCollection<OcrZoneEditorViewModel> OcrZones { get; }
+
+    public ObservableCollection<OcrTextBlock> OcrPreviewTextBlocks { get; }
 
     public ObservableCollection<string> ValidationErrors { get; }
 
@@ -202,6 +211,7 @@ public sealed class MainViewModel : ValidatableObservableObject
                 OnPropertyChanged(nameof(ProfileSummary));
                 PersistDraftShellStateIfNeeded();
                 RefreshValidationState();
+                NotifyCommandStateChanged();
             }
         }
     }
@@ -417,6 +427,16 @@ public sealed class MainViewModel : ValidatableObservableObject
         private set => SetProperty(ref captureRefreshMetricsSummary, value);
     }
 
+    public string OcrPreviewStatus
+    {
+        get => ocrPreviewStatus;
+        private set => SetProperty(ref ocrPreviewStatus, value);
+    }
+
+    public bool HasOcrPreview => OcrPreviewTextBlocks.Count > 0;
+
+    public string OcrPreviewText => string.Join(Environment.NewLine, OcrPreviewTextBlocks.Select(block => block.Text));
+
     public ICommand BeginCreateProfileCommand { get; }
 
     public ICommand RefreshProfilesCommand { get; }
@@ -446,6 +466,8 @@ public sealed class MainViewModel : ValidatableObservableObject
     public ICommand RefreshCapturePreviewCommand { get; }
 
     public ICommand MeasureCaptureRefreshCommand { get; }
+
+    public ICommand RecognizeOcrPreviewCommand { get; }
 
     public async Task LoadAsync()
     {
@@ -952,6 +974,80 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
     }
 
+    public async Task RecognizeOcrPreviewAsync()
+    {
+        if (SelectedZone is null)
+        {
+            OcrPreviewStatus = "Select an OCR zone to recognize text.";
+            StatusMessage = OcrPreviewStatus;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(SourceLanguage))
+        {
+            OcrPreviewStatus = "Source language is required for OCR.";
+            StatusMessage = OcrPreviewStatus;
+            return;
+        }
+
+        var zone = SelectedZone;
+
+        try
+        {
+            IsBusy = true;
+            var region = new CaptureRegion(
+                zone.AbsoluteX,
+                zone.AbsoluteY,
+                zone.AbsoluteWidth,
+                zone.AbsoluteHeight);
+
+            StatusMessage = $"Recognizing text for '{zone.DisplayName}'...";
+            var frame = await captureService.CaptureAsync(region);
+            CapturePreviewImage = CreateCapturePreviewImage(frame);
+            CapturePreviewStatus = $"Captured {frame.Width}x{frame.Height} at {frame.CapturedAt:HH:mm:ss}.";
+
+            var result = await ocrService.RecognizeAsync(
+                new OcrRequest(frame, SourceLanguage.Trim(), zone.Id));
+            ReplaceOcrPreviewTextBlocks(result.TextBlocks);
+
+            OcrPreviewStatus = result.TextBlocks.Count == 0
+                ? $"No text recognized for '{zone.DisplayName}'."
+                : $"Recognized {result.TextBlocks.Count} text block(s) for '{zone.DisplayName}'.";
+            StatusMessage = OcrPreviewStatus;
+            logger.Information($"OCR preview recognized {result.TextBlocks.Count} text block(s) for zone '{zone.DisplayName}'.");
+        }
+        catch (CaptureFrameSourceException exception)
+        {
+            logger.Error(exception, "OCR preview capture failed.");
+            OcrPreviewStatus = $"OCR preview capture failed: {exception.Message}";
+            StatusMessage = OcrPreviewStatus;
+            ReplaceOcrPreviewTextBlocks(Array.Empty<OcrTextBlock>());
+        }
+        catch (OcrEngineException exception)
+        {
+            logger.Error(exception, "OCR preview failed.");
+            OcrPreviewStatus = $"OCR preview failed: {exception.Message}";
+            StatusMessage = OcrPreviewStatus;
+            ReplaceOcrPreviewTextBlocks(Array.Empty<OcrTextBlock>());
+        }
+        catch (OperationCanceledException)
+        {
+            OcrPreviewStatus = "OCR preview canceled.";
+            StatusMessage = OcrPreviewStatus;
+        }
+        catch (Exception exception)
+        {
+            logger.Error(exception, "Unexpected OCR preview failure.");
+            OcrPreviewStatus = "OCR preview failed. Check logs for details.";
+            StatusMessage = OcrPreviewStatus;
+            ReplaceOcrPreviewTextBlocks(Array.Empty<OcrTextBlock>());
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     private async Task RefreshProfilesAsync(string? preferredProfileId)
     {
         await RunProfileOperationAsync(
@@ -1151,6 +1247,13 @@ public sealed class MainViewModel : ValidatableObservableObject
     private bool CanRefreshCapturePreview()
     {
         return !IsBusy && SelectedZone is not null;
+    }
+
+    private bool CanRecognizeOcrPreview()
+    {
+        return !IsBusy
+            && SelectedZone is not null
+            && !string.IsNullOrWhiteSpace(SourceLanguage);
     }
 
     private bool CanDuplicateSelectedZone()
@@ -1527,6 +1630,28 @@ public sealed class MainViewModel : ValidatableObservableObject
         CaptureRefreshMetricsSummary = SelectedZone is null
             ? "Select an OCR zone to measure capture refresh."
             : "Refresh rate not measured.";
+        ClearOcrPreview();
+    }
+
+    private void ClearOcrPreview()
+    {
+        ReplaceOcrPreviewTextBlocks(Array.Empty<OcrTextBlock>());
+        OcrPreviewStatus = SelectedZone is null
+            ? "Select an OCR zone to recognize text."
+            : "No OCR preview yet.";
+    }
+
+    private void ReplaceOcrPreviewTextBlocks(IEnumerable<OcrTextBlock> textBlocks)
+    {
+        OcrPreviewTextBlocks.Clear();
+
+        foreach (var textBlock in textBlocks)
+        {
+            OcrPreviewTextBlocks.Add(textBlock);
+        }
+
+        OnPropertyChanged(nameof(HasOcrPreview));
+        OnPropertyChanged(nameof(OcrPreviewText));
     }
 
     private static BitmapSource CreateCapturePreviewImage(CapturedFrame frame)
@@ -1591,5 +1716,6 @@ public sealed class MainViewModel : ValidatableObservableObject
         ((RelayCommand)RemoveSelectedZoneCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)RefreshCapturePreviewCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)MeasureCaptureRefreshCommand).RaiseCanExecuteChanged();
+        ((AsyncRelayCommand)RecognizeOcrPreviewCommand).RaiseCanExecuteChanged();
     }
 }

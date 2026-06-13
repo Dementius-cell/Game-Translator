@@ -1,9 +1,11 @@
 using GameTranslator.Application.Abstractions;
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Composition;
+using GameTranslator.Application.Ocr;
 using GameTranslator.Application.Profiles;
 using GameTranslator.Application.Settings;
 using GameTranslator.Infrastructure.Capture;
+using GameTranslator.Infrastructure.Ocr;
 using GameTranslator.Infrastructure.Profiles;
 using GameTranslator.Infrastructure.Settings;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,6 +26,7 @@ public sealed class InfrastructureServiceModule : IApplicationServiceModule
         });
         services.AddSingleton<IProfileExchangeGateway, JsonProfileExchangeGateway>();
         services.AddSingleton<ICaptureFrameSource, WindowsGraphicsCaptureFrameSource>();
+        services.AddSingleton<IOcrEngine, WindowsOcrEngine>();
         services.AddSingleton<ISettingsService>(provider =>
         {
             var options = provider.GetRequiredService<SettingsStorageOptions>();

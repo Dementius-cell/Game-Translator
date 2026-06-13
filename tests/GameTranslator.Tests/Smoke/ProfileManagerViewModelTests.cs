@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Runtime.Loader;
 using GameTranslator.Application.Abstractions;
 using GameTranslator.Application.Capture;
+using GameTranslator.Application.Ocr;
 using GameTranslator.Application.Profiles;
 using GameTranslator.Domain.Profiles;
 
@@ -752,13 +753,81 @@ public sealed class ProfileManagerViewModelTests
         Assert.Contains("target 30+", summary, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task RecognizeOcrPreviewAsync_WhenZoneSelected_CapturesZoneAndExposesTextBlocks()
+    {
+        var repository = new InMemoryProfileRepository();
+        var frameSource = new TestCaptureFrameSource();
+        var ocrEngine = new TestOcrEngine
+        {
+            BlocksFactory = _ => new[]
+            {
+                new OcrTextBlock("Press start", new BoundingBox(0, 0, 3, 1)),
+                new OcrTextBlock("to continue", new BoundingBox(0, 1, 4, 2)),
+            },
+        };
+        var viewModel = CreateMainViewModel(
+            repository,
+            new TestSettingsService(),
+            frameSource: frameSource,
+            ocrEngine: ocrEngine);
+        ConfigureValidDraftProfile(viewModel, "OCR preview");
+        InvokeMethod(viewModel, "AddZone");
+
+        var selectedZone = GetPropertyValue(viewModel, "SelectedZone")
+            ?? throw new InvalidOperationException("Selected zone was not created.");
+        SetPropertyValue(selectedZone, "AbsoluteX", 10);
+        SetPropertyValue(selectedZone, "AbsoluteY", 20);
+        SetPropertyValue(selectedZone, "AbsoluteWidth", 4);
+        SetPropertyValue(selectedZone, "AbsoluteHeight", 3);
+
+        await InvokeTaskMethodAsync(viewModel, "RecognizeOcrPreviewAsync");
+
+        Assert.Equal(new[] { new CaptureRegion(10, 20, 4, 3) }, frameSource.CapturedRegions);
+        var request = Assert.Single(ocrEngine.Requests);
+        Assert.Equal(new CaptureRegion(10, 20, 4, 3), request.Region);
+        Assert.Equal("ja", request.Language);
+        Assert.Equal(GetPropertyValue(selectedZone, "Id"), request.ZoneId);
+        Assert.True((bool)(GetPropertyValue(viewModel, "HasCapturePreview") ?? false));
+        Assert.True((bool)(GetPropertyValue(viewModel, "HasOcrPreview") ?? false));
+        Assert.Equal("Press start\r\nto continue", GetPropertyValue(viewModel, "OcrPreviewText"));
+        Assert.Equal("Recognized 2 text block(s) for 'Zone 1'.", GetPropertyValue(viewModel, "OcrPreviewStatus"));
+    }
+
+    [Fact]
+    public async Task RecognizeOcrPreviewAsync_WhenOcrFails_ReportsStatusAndLogsError()
+    {
+        var repository = new InMemoryProfileRepository();
+        var logger = new TestApplicationLogger();
+        var viewModel = CreateMainViewModel(
+            repository,
+            new TestSettingsService(),
+            logger: logger,
+            frameSource: new TestCaptureFrameSource(),
+            ocrEngine: new TestOcrEngine
+            {
+                Failure = new OcrEngineException("ocr engine unavailable"),
+            });
+        ConfigureValidDraftProfile(viewModel, "OCR failure");
+        InvokeMethod(viewModel, "AddZone");
+
+        await InvokeTaskMethodAsync(viewModel, "RecognizeOcrPreviewAsync");
+
+        Assert.Equal(
+            "OCR preview failed: ocr engine unavailable",
+            GetPropertyValue(viewModel, "OcrPreviewStatus"));
+        Assert.False((bool)(GetPropertyValue(viewModel, "HasOcrPreview") ?? true));
+        Assert.Contains(logger.Errors, error => error.Contains("OCR preview failed.", StringComparison.Ordinal));
+    }
+
     private static object CreateMainViewModel(
         InMemoryProfileRepository repository,
         TestSettingsService settings,
         TestDialogService? dialog = null,
         TestProfileExchangeGateway? exchangeGateway = null,
         TestApplicationLogger? logger = null,
-        TestCaptureFrameSource? frameSource = null)
+        TestCaptureFrameSource? frameSource = null,
+        TestOcrEngine? ocrEngine = null)
     {
         var profileService = new ProfileService(repository, new ProfileValidator());
         var profileExchangeService = new ProfileExchangeService(
@@ -766,6 +835,7 @@ public sealed class ProfileManagerViewModelTests
             new ProfileMigrationService(),
             new ProfileValidator());
         var captureService = new CaptureService(frameSource ?? new TestCaptureFrameSource());
+        var ocrService = new OcrService(ocrEngine ?? new TestOcrEngine());
         var applicationLogger = logger ?? new TestApplicationLogger();
         var assembly = LoadUiAssembly();
         var viewModelType = assembly.GetType(
@@ -778,6 +848,7 @@ public sealed class ProfileManagerViewModelTests
                 profileService,
                 profileExchangeService,
                 captureService,
+                ocrService,
                 dialog ?? new TestDialogService(),
                 settings,
                 applicationLogger)
@@ -1035,6 +1106,32 @@ public sealed class ProfileManagerViewModelTests
                     "Bgra32",
                     pixels,
                     FrameTime));
+        }
+    }
+
+    private sealed class TestOcrEngine : IOcrEngine
+    {
+        private static readonly DateTimeOffset RecognizedAt = new(2026, 6, 13, 12, 0, 2, TimeSpan.Zero);
+
+        public List<OcrRequest> Requests { get; } = new();
+
+        public Exception? Failure { get; init; }
+
+        public Func<OcrRequest, IReadOnlyList<OcrTextBlock>>? BlocksFactory { get; init; }
+
+        public Task<OcrResult> RecognizeAsync(OcrRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (Failure is not null)
+            {
+                return Task.FromException<OcrResult>(Failure);
+            }
+
+            Requests.Add(request);
+
+            var blocks = BlocksFactory?.Invoke(request) ?? Array.Empty<OcrTextBlock>();
+            return Task.FromResult(new OcrResult(request, blocks, RecognizedAt));
         }
     }
 

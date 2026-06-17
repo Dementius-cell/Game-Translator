@@ -27,16 +27,19 @@ public sealed class OverlayWindowSourceTests
     }
 
     [Fact]
-    public void OverlayWindow_KeepsOcrPositionMarkersButPreventsUnreadableTextBars()
+    public void OverlayWindow_RendersPreviewTextInsideOcrBounds()
     {
         var source = ReadSource("src/GameTranslator.UI/Views/OverlayWindow.xaml");
 
         Assert.Contains("Width=\"{Binding Width}\"", source, StringComparison.Ordinal);
         Assert.Contains("Height=\"{Binding Height}\"", source, StringComparison.Ordinal);
-        Assert.Contains("MinWidth=\"96\"", source, StringComparison.Ordinal);
-        Assert.Contains("MinHeight=\"30\"", source, StringComparison.Ordinal);
-        Assert.Contains("MaxWidth=\"420\"", source, StringComparison.Ordinal);
-        Assert.Contains("TextWrapping=\"Wrap\"", source, StringComparison.Ordinal);
+        Assert.Contains("<Viewbox", source, StringComparison.Ordinal);
+        Assert.Contains("Stretch=\"Uniform\"", source, StringComparison.Ordinal);
+        Assert.Contains("StretchDirection=\"Both\"", source, StringComparison.Ordinal);
+        Assert.Contains("TextWrapping=\"NoWrap\"", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("MinWidth=", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("MinHeight=", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("MaxWidth=", source, StringComparison.Ordinal);
         Assert.DoesNotContain("TextTrimming", source, StringComparison.Ordinal);
     }
 

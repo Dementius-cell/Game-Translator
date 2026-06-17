@@ -806,6 +806,88 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
+    public async Task ShowOverlayPreview_WhenOcrPreviewExists_PositionsTextFromOcrBounds()
+    {
+        var overlay = new TestOverlayService();
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            frameSource: new TestCaptureFrameSource(),
+            ocrEngine: new TestOcrEngine
+            {
+                BlocksFactory = _ => new[]
+                {
+                    new OcrTextBlock("Press start", new BoundingBox(2, 1, 3, 2)),
+                },
+            },
+            overlayService: overlay);
+        ConfigureValidDraftProfile(viewModel, "OCR overlay positioning");
+        InvokeMethod(viewModel, "AddZone");
+
+        var selectedZone = GetPropertyValue(viewModel, "SelectedZone")
+            ?? throw new InvalidOperationException("Selected zone was not created.");
+        SetPropertyValue(selectedZone, "AbsoluteX", 10);
+        SetPropertyValue(selectedZone, "AbsoluteY", 20);
+        SetPropertyValue(selectedZone, "AbsoluteWidth", 8);
+        SetPropertyValue(selectedZone, "AbsoluteHeight", 6);
+
+        await InvokeTaskMethodAsync(viewModel, "RecognizeOcrPreviewAsync");
+        InvokeMethod(viewModel, "ShowOverlayPreview");
+
+        Assert.True(overlay.IsVisible);
+        Assert.Equal(
+            "Overlay preview shown with 1 OCR text item(s).",
+            GetPropertyValue(viewModel, "OverlayPreviewStatus"));
+        var item = Assert.Single(overlay.CurrentSnapshot?.TextItems ?? Array.Empty<OverlayTextItem>());
+        Assert.Equal("Press start", item.Text);
+        Assert.Equal(12, item.X);
+        Assert.Equal(21, item.Y);
+        Assert.Equal(3, item.Width);
+        Assert.Equal(2, item.Height);
+    }
+
+    [Fact]
+    public async Task RecognizeOcrPreviewAsync_WhenOverlayVisible_UpdatesOverlayFromLatestOcrBounds()
+    {
+        var overlay = new TestOverlayService();
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            frameSource: new TestCaptureFrameSource(),
+            ocrEngine: new TestOcrEngine
+            {
+                BlocksFactory = _ => new[]
+                {
+                    new OcrTextBlock("Updated text", new BoundingBox(1, 2, 4, 3)),
+                },
+            },
+            overlayService: overlay);
+        ConfigureValidDraftProfile(viewModel, "OCR overlay auto update");
+        InvokeMethod(viewModel, "AddZone");
+
+        var selectedZone = GetPropertyValue(viewModel, "SelectedZone")
+            ?? throw new InvalidOperationException("Selected zone was not created.");
+        SetPropertyValue(selectedZone, "AbsoluteX", 30);
+        SetPropertyValue(selectedZone, "AbsoluteY", 40);
+        SetPropertyValue(selectedZone, "AbsoluteWidth", 8);
+        SetPropertyValue(selectedZone, "AbsoluteHeight", 6);
+
+        InvokeMethod(viewModel, "ShowOverlayPreview");
+        await InvokeTaskMethodAsync(viewModel, "RecognizeOcrPreviewAsync");
+
+        Assert.True(overlay.IsVisible);
+        Assert.Equal(
+            "Overlay preview updated with 1 OCR text item(s).",
+            GetPropertyValue(viewModel, "OverlayPreviewStatus"));
+        var item = Assert.Single(overlay.CurrentSnapshot?.TextItems ?? Array.Empty<OverlayTextItem>());
+        Assert.Equal("Updated text", item.Text);
+        Assert.Equal(31, item.X);
+        Assert.Equal(42, item.Y);
+        Assert.Equal(4, item.Width);
+        Assert.Equal(3, item.Height);
+    }
+
+    [Fact]
     public async Task RecognizeOcrPreviewAsync_WhenOcrFails_ReportsStatusAndLogsError()
     {
         var repository = new InMemoryProfileRepository();
@@ -947,6 +1029,7 @@ public sealed class ProfileManagerViewModelTests
                 captureService,
                 ocrService,
                 overlayService ?? new TestOverlayService(),
+                new OverlayPositioningService(),
                 dialog ?? new TestDialogService(),
                 settings,
                 applicationLogger)

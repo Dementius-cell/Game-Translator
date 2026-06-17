@@ -1,5 +1,6 @@
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Ocr;
+using GameTranslator.Application.Overlay;
 using GameTranslator.Application.Profiles;
 using GameTranslator.Domain.Profiles;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,6 +19,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddSingleton<ProfileExchangeService>();
         services.AddSingleton<CaptureService>();
         services.AddSingleton<OcrService>();
+        services.AddSingleton<OverlayPositioningService>();
 
         return services;
     }

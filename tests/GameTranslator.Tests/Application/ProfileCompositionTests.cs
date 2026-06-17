@@ -1,6 +1,7 @@
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.DependencyInjection;
 using GameTranslator.Application.Ocr;
+using GameTranslator.Application.Overlay;
 using GameTranslator.Application.Profiles;
 using GameTranslator.Domain.Profiles;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,6 +24,7 @@ public sealed class ProfileCompositionTests
         Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(ProfileValidator));
         Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(CaptureService));
         Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(OcrService));
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(OverlayPositioningService));
     }
 
     [Fact]

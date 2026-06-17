@@ -37,6 +37,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private readonly CaptureService captureService;
     private readonly OcrService ocrService;
     private readonly IOverlayService overlayService;
+    private readonly OverlayPositioningService overlayPositioningService;
     private readonly IDialogService dialogService;
     private readonly ISettingsService settings;
     private readonly IApplicationLogger logger;
@@ -54,6 +55,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private double overlayOpacity = 1;
     private double overlayPadding;
     private OcrZoneEditorViewModel? selectedZone;
+    private OcrResult? latestOcrPreviewResult;
     private ImageSource? capturePreviewImage;
     private string capturePreviewStatus = "No capture preview yet.";
     private string captureRefreshMetricsSummary = "Refresh rate not measured.";
@@ -82,6 +84,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         CaptureService captureService,
         OcrService ocrService,
         IOverlayService overlayService,
+        OverlayPositioningService overlayPositioningService,
         IDialogService dialogService,
         ISettingsService settings,
         IApplicationLogger logger)
@@ -91,6 +94,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         this.captureService = captureService;
         this.ocrService = ocrService;
         this.overlayService = overlayService;
+        this.overlayPositioningService = overlayPositioningService;
         this.dialogService = dialogService;
         this.settings = settings;
         this.logger = logger;
@@ -129,7 +133,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public string ApplicationName => "Game Translator";
 
-    public string CurrentStage => "Sprint 8";
+    public string CurrentStage => "Sprint 9";
 
     public double ZoneSurfaceWidth => OcrZoneEditorViewModel.PreviewSurfaceWidth;
 
@@ -1046,7 +1050,9 @@ public sealed class MainViewModel : ValidatableObservableObject
 
             var result = await ocrService.RecognizeAsync(
                 new OcrRequest(frame, SourceLanguage.Trim(), zone.Id));
+            latestOcrPreviewResult = result;
             ReplaceOcrPreviewTextBlocks(result.TextBlocks);
+            UpdateVisibleOverlayPreview(result);
 
             OcrPreviewStatus = result.TextBlocks.Count == 0
                 ? $"No text recognized for '{zone.DisplayName}'."
@@ -1059,6 +1065,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             logger.Error(exception, "OCR preview capture failed.");
             OcrPreviewStatus = $"OCR preview capture failed: {exception.Message}";
             StatusMessage = OcrPreviewStatus;
+            latestOcrPreviewResult = null;
             ReplaceOcrPreviewTextBlocks(Array.Empty<OcrTextBlock>());
         }
         catch (OcrEngineException exception)
@@ -1066,6 +1073,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             logger.Error(exception, "OCR preview failed.");
             OcrPreviewStatus = $"OCR preview failed: {exception.Message}";
             StatusMessage = OcrPreviewStatus;
+            latestOcrPreviewResult = null;
             ReplaceOcrPreviewTextBlocks(Array.Empty<OcrTextBlock>());
         }
         catch (OperationCanceledException)
@@ -1078,6 +1086,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             logger.Error(exception, "Unexpected OCR preview failure.");
             OcrPreviewStatus = "OCR preview failed. Check logs for details.";
             StatusMessage = OcrPreviewStatus;
+            latestOcrPreviewResult = null;
             ReplaceOcrPreviewTextBlocks(Array.Empty<OcrTextBlock>());
         }
         finally
@@ -1090,20 +1099,14 @@ public sealed class MainViewModel : ValidatableObservableObject
     {
         try
         {
-            var snapshot = new OverlaySnapshot(
-                new[]
-                {
-                    new OverlayTextItem("Game Translator overlay test", 120, 120, 520, 72),
-                    new OverlayTextItem("Click-through smoke text", 120, 212, 420, 64),
-                },
-                DateTimeOffset.UtcNow);
+            var snapshot = CreateOverlayPreviewSnapshot(DateTimeOffset.UtcNow, out var snapshotSource);
 
             overlayService.Show(snapshot);
-            OverlayPreviewStatus = $"Overlay preview shown with {snapshot.TextItems.Count} test text item(s).";
+            OverlayPreviewStatus = $"Overlay preview shown with {snapshot.TextItems.Count} {snapshotSource} text item(s).";
             StatusMessage = OverlayPreviewStatus;
             OnPropertyChanged(nameof(IsOverlayPreviewVisible));
             NotifyCommandStateChanged();
-            logger.Information("Overlay preview shown with test text.");
+            logger.Information($"Overlay preview shown with {snapshotSource} text.");
         }
         catch (Exception exception)
         {
@@ -1134,6 +1137,44 @@ public sealed class MainViewModel : ValidatableObservableObject
             OnPropertyChanged(nameof(IsOverlayPreviewVisible));
             NotifyCommandStateChanged();
         }
+    }
+
+    private OverlaySnapshot CreateOverlayPreviewSnapshot(DateTimeOffset shownAt, out string snapshotSource)
+    {
+        if (latestOcrPreviewResult is { TextBlocks.Count: > 0 } result)
+        {
+            snapshotSource = "OCR";
+            return overlayPositioningService.CreateSnapshot(result, shownAt);
+        }
+
+        snapshotSource = "test";
+        return CreateTestOverlaySnapshot(shownAt);
+    }
+
+    private static OverlaySnapshot CreateTestOverlaySnapshot(DateTimeOffset shownAt)
+    {
+        return new OverlaySnapshot(
+            new[]
+            {
+                new OverlayTextItem("Game Translator overlay test", 120, 120, 520, 72),
+                new OverlayTextItem("Click-through smoke text", 120, 212, 420, 64),
+            },
+            shownAt);
+    }
+
+    private void UpdateVisibleOverlayPreview(OcrResult result)
+    {
+        if (!overlayService.IsVisible)
+        {
+            return;
+        }
+
+        var snapshot = overlayPositioningService.CreateSnapshot(result, DateTimeOffset.UtcNow);
+        overlayService.Show(snapshot);
+        OverlayPreviewStatus = $"Overlay preview updated with {snapshot.TextItems.Count} OCR text item(s).";
+        OnPropertyChanged(nameof(IsOverlayPreviewVisible));
+        NotifyCommandStateChanged();
+        logger.Information("Overlay preview updated from OCR text blocks.");
     }
 
     private async Task RefreshProfilesAsync(string? preferredProfileId)
@@ -1725,6 +1766,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     private void ClearOcrPreview()
     {
+        latestOcrPreviewResult = null;
         ReplaceOcrPreviewTextBlocks(Array.Empty<OcrTextBlock>());
         OcrPreviewStatus = SelectedZone is null
             ? "Select an OCR zone to recognize text."

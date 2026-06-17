@@ -10,6 +10,7 @@ public sealed class OverlayPublicSeamTests
         AssertPublicApplicationType<IOverlayService>();
         AssertPublicApplicationType<OverlaySnapshot>();
         AssertPublicApplicationType<OverlayTextItem>();
+        AssertPublicApplicationType<OverlayPositioningService>();
     }
 
     [Fact]
@@ -20,6 +21,7 @@ public sealed class OverlayPublicSeamTests
             typeof(IOverlayService),
             typeof(OverlaySnapshot),
             typeof(OverlayTextItem),
+            typeof(OverlayPositioningService),
         };
 
         foreach (var overlayType in overlayTypes)

@@ -26,9 +26,10 @@ This folder contains the source-of-truth documents for Game-Translator. Read the
 ## Smoke Checks
 
 - [Sprint 8 overlay click-through smoke](smoke/sprint-08-overlay-click-through.md)
+- [Sprint 9 overlay positioning smoke](smoke/sprint-09-overlay-positioning.md)
 
 ## Current Project State
 
 - Current roadmap stage: Stage 4, Overlay MVP.
-- Current sprint: Sprint 8, render a click-through overlay window.
-- Required implementation result: transparent always-on-top WPF overlay with test text, show/hide controls, click-through behavior, and no translation pipeline yet.
+- Current sprint: Sprint 9, position overlay content from OCR bounding boxes.
+- Required implementation result: overlay text items aligned from OCR bounds with region offsets and scaling, and no translation pipeline yet.

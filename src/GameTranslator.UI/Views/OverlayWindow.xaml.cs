@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Media;
 using GameTranslator.Application.Overlay;
 
 namespace GameTranslator.UI.Views;
@@ -19,6 +20,9 @@ public partial class OverlayWindow : Window
     private const int SwpFrameChanged = 0x0020;
     private const int SwpNoOwnerZOrder = 0x0200;
     private const int WmNcHitTest = 0x0084;
+    private const double PreviewPadding = 2;
+    private const double MinReadableItemWidth = 40;
+    private const double MinReadableItemHeight = 16;
     private static readonly nint HtTransparent = new(-1);
 
     public OverlayWindow()
@@ -31,7 +35,6 @@ public partial class OverlayWindow : Window
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
-        DataContext = snapshot;
         Left = 0;
         Top = 0;
         Width = SystemParameters.PrimaryScreenWidth;
@@ -41,6 +44,8 @@ public partial class OverlayWindow : Window
         {
             Show();
         }
+
+        DataContext = CreateViewModel(snapshot);
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e)
@@ -86,6 +91,68 @@ public partial class OverlayWindow : Window
             0,
             0,
             SwpNoMove | SwpNoSize | SwpNoZOrder | SwpNoActivate | SwpFrameChanged | SwpNoOwnerZOrder);
+    }
+
+    private OverlayWindowSnapshotViewModel CreateViewModel(OverlaySnapshot snapshot)
+    {
+        var transformFromDevice = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformFromDevice
+            ?? Matrix.Identity;
+
+        return new OverlayWindowSnapshotViewModel(
+            snapshot.TextItems.Select(item => OverlayWindowTextItemViewModel.FromDevicePixels(item, transformFromDevice)));
+    }
+
+    private sealed class OverlayWindowSnapshotViewModel
+    {
+        public OverlayWindowSnapshotViewModel(IEnumerable<OverlayWindowTextItemViewModel> textItems)
+        {
+            TextItems = textItems.ToArray();
+        }
+
+        public IReadOnlyList<OverlayWindowTextItemViewModel> TextItems { get; }
+    }
+
+    private sealed class OverlayWindowTextItemViewModel
+    {
+        private OverlayWindowTextItemViewModel(string text, double x, double y, double width, double height)
+        {
+            Text = text;
+            X = x;
+            Y = y;
+            Width = width;
+            Height = height;
+        }
+
+        public string Text { get; }
+
+        public double X { get; }
+
+        public double Y { get; }
+
+        public double Width { get; }
+
+        public double Height { get; }
+
+        public static OverlayWindowTextItemViewModel FromDevicePixels(
+            OverlayTextItem item,
+            Matrix transformFromDevice)
+        {
+            var topLeft = transformFromDevice.Transform(new Point(item.X, item.Y));
+            var bottomRight = transformFromDevice.Transform(new Point(item.X + item.Width, item.Y + item.Height));
+            var rawWidth = Math.Max(1, bottomRight.X - topLeft.X);
+            var rawHeight = Math.Max(1, bottomRight.Y - topLeft.Y);
+            var paddedWidth = rawWidth + PreviewPadding * 2;
+            var paddedHeight = rawHeight + PreviewPadding * 2;
+            var width = Math.Max(MinReadableItemWidth, paddedWidth);
+            var height = Math.Max(MinReadableItemHeight, paddedHeight);
+
+            return new OverlayWindowTextItemViewModel(
+                item.Text,
+                Math.Max(0, topLeft.X - (width - rawWidth) / 2),
+                Math.Max(0, topLeft.Y - (height - rawHeight) / 2),
+                width,
+                height);
+        }
     }
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]

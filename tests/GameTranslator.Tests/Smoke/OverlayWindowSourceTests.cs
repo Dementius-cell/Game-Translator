@@ -21,6 +21,7 @@ public sealed class OverlayWindowSourceTests
         Assert.Contains("WindowStyle=\"None\"", source, StringComparison.Ordinal);
         Assert.Contains("Background=\"Transparent\"", source, StringComparison.Ordinal);
         Assert.Contains("Topmost=\"True\"", source, StringComparison.Ordinal);
+        Assert.Contains("UseLayoutRounding=\"True\"", source, StringComparison.Ordinal);
         Assert.Contains("ShowInTaskbar=\"False\"", source, StringComparison.Ordinal);
         Assert.Contains("ShowActivated=\"False\"", source, StringComparison.Ordinal);
         Assert.Contains("ItemsSource=\"{Binding TextItems}\"", source, StringComparison.Ordinal);
@@ -41,6 +42,18 @@ public sealed class OverlayWindowSourceTests
         Assert.DoesNotContain("MinHeight=", source, StringComparison.Ordinal);
         Assert.DoesNotContain("MaxWidth=", source, StringComparison.Ordinal);
         Assert.DoesNotContain("TextTrimming", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void OverlayWindow_ConvertsDevicePixelsToWpfCoordinates()
+    {
+        var source = ReadSource("src/GameTranslator.UI/Views/OverlayWindow.xaml.cs");
+
+        Assert.Contains("TransformFromDevice", source, StringComparison.Ordinal);
+        Assert.Contains("FromDevicePixels", source, StringComparison.Ordinal);
+        Assert.Contains("MinReadableItemWidth", source, StringComparison.Ordinal);
+        Assert.Contains("MinReadableItemHeight", source, StringComparison.Ordinal);
+        Assert.Contains("PreviewPadding", source, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -9,6 +9,7 @@
         ShowActivated="False"
         ShowInTaskbar="False"
         Topmost="True"
+        UseLayoutRounding="True"
         WindowStyle="None">
     <Canvas
         Background="Transparent"
@@ -35,6 +36,7 @@
                         Background="#B0142430"
                         BorderBrush="#F1F5F9"
                         BorderThickness="1"
+                        RenderOptions.ClearTypeHint="Enabled"
                         SnapsToDevicePixels="True">
                         <Viewbox
                             Margin="1"

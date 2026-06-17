@@ -15,6 +15,7 @@ Confirm that overlay text can be positioned from OCR text block bounding boxes.
 7. Confirm that overlay text appears inside the recognized source text bounds instead of only at the fixed Sprint 8 smoke location.
 8. Move or change the OCR source text, then click `Recognize OCR` again while the overlay is still visible.
 9. Confirm that overlay text updates to the latest OCR text blocks and remains click-through.
+10. Confirm that repeated OCR does not add text from the already rendered overlay to the OCR debug output.
 
 ## Expected Result
 
@@ -22,6 +23,7 @@ Confirm that overlay text can be positioned from OCR text block bounding boxes.
 - Overlay text positions remain aligned when Windows display scaling is not 100%.
 - Overlay text bounds are derived from OCR bounding box dimensions.
 - Preview text scales inside OCR bounding boxes with only a small readability floor for tiny OCR lines.
-- Re-running OCR while overlay is visible updates the overlay snapshot.
+- Re-running OCR while overlay is visible briefly hides the previous overlay during capture, then updates the overlay snapshot.
+- Re-running OCR while overlay is visible does not feed overlay text back into the next OCR result.
 - The overlay still remains transparent outside text items and click-through.
 - No profile, provider, settings, or credential secrets appear in debug output.

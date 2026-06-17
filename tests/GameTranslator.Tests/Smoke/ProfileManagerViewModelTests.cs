@@ -850,10 +850,14 @@ public sealed class ProfileManagerViewModelTests
     public async Task RecognizeOcrPreviewAsync_WhenOverlayVisible_UpdatesOverlayFromLatestOcrBounds()
     {
         var overlay = new TestOverlayService();
+        var frameSource = new TestCaptureFrameSource
+        {
+            OnCapture = () => Assert.False(overlay.IsVisible),
+        };
         var viewModel = CreateMainViewModel(
             new InMemoryProfileRepository(),
             new TestSettingsService(),
-            frameSource: new TestCaptureFrameSource(),
+            frameSource: frameSource,
             ocrEngine: new TestOcrEngine
             {
                 BlocksFactory = _ => new[]
@@ -876,6 +880,7 @@ public sealed class ProfileManagerViewModelTests
         await InvokeTaskMethodAsync(viewModel, "RecognizeOcrPreviewAsync");
 
         Assert.True(overlay.IsVisible);
+        Assert.Equal(new[] { "Show:2", "Hide", "Show:1" }, overlay.Events);
         Assert.Equal(
             "Overlay preview updated with 1 OCR text item(s).",
             GetPropertyValue(viewModel, "OverlayPreviewStatus"));
@@ -885,6 +890,40 @@ public sealed class ProfileManagerViewModelTests
         Assert.Equal(42, item.Y);
         Assert.Equal(4, item.Width);
         Assert.Equal(3, item.Height);
+    }
+
+    [Fact]
+    public async Task RecognizeOcrPreviewAsync_WhenOverlayVisibleAndOcrFails_RestoresPreviousOverlay()
+    {
+        var overlay = new TestOverlayService();
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            frameSource: new TestCaptureFrameSource
+            {
+                OnCapture = () => Assert.False(overlay.IsVisible),
+            },
+            ocrEngine: new TestOcrEngine
+            {
+                Failure = new OcrEngineException("ocr engine unavailable"),
+            },
+            overlayService: overlay);
+        ConfigureValidDraftProfile(viewModel, "OCR overlay restore");
+        InvokeMethod(viewModel, "AddZone");
+
+        InvokeMethod(viewModel, "ShowOverlayPreview");
+        var previousSnapshot = overlay.CurrentSnapshot;
+        await InvokeTaskMethodAsync(viewModel, "RecognizeOcrPreviewAsync");
+
+        Assert.True(overlay.IsVisible);
+        Assert.Same(previousSnapshot, overlay.CurrentSnapshot);
+        Assert.Equal(new[] { "Show:2", "Hide", "Show:2" }, overlay.Events);
+        Assert.Equal(
+            "OCR preview failed: ocr engine unavailable",
+            GetPropertyValue(viewModel, "OcrPreviewStatus"));
+        Assert.Equal(
+            "Overlay preview shown with 2 test text item(s).",
+            GetPropertyValue(viewModel, "OverlayPreviewStatus"));
     }
 
     [Fact]
@@ -1264,9 +1303,12 @@ public sealed class ProfileManagerViewModelTests
 
         public Exception? Failure { get; init; }
 
+        public Action? OnCapture { get; init; }
+
         public Task<CapturedFrame> CaptureAsync(CaptureRegion region, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            OnCapture?.Invoke();
 
             if (Failure is not null)
             {
@@ -1322,15 +1364,19 @@ public sealed class ProfileManagerViewModelTests
 
         public OverlaySnapshot? CurrentSnapshot { get; private set; }
 
+        public List<string> Events { get; } = new();
+
         public void Show(OverlaySnapshot snapshot)
         {
             CurrentSnapshot = snapshot;
             IsVisible = true;
+            Events.Add($"Show:{snapshot.TextItems.Count}");
         }
 
         public void Hide()
         {
             IsVisible = false;
+            Events.Add("Hide");
         }
     }
 

@@ -1033,10 +1033,15 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
 
         var zone = SelectedZone;
+        var overlayWasVisibleBeforeCapture = false;
+        OverlaySnapshot? overlaySnapshotBeforeCapture = null;
 
         try
         {
             IsBusy = true;
+            overlayWasVisibleBeforeCapture = overlayService.IsVisible;
+            overlaySnapshotBeforeCapture = await HideOverlayPreviewForCaptureAsync();
+
             var region = new CaptureRegion(
                 zone.AbsoluteX,
                 zone.AbsoluteY,
@@ -1052,7 +1057,7 @@ public sealed class MainViewModel : ValidatableObservableObject
                 new OcrRequest(frame, SourceLanguage.Trim(), zone.Id));
             latestOcrPreviewResult = result;
             ReplaceOcrPreviewTextBlocks(result.TextBlocks);
-            UpdateVisibleOverlayPreview(result);
+            UpdateVisibleOverlayPreview(result, overlayWasVisibleBeforeCapture);
 
             OcrPreviewStatus = result.TextBlocks.Count == 0
                 ? $"No text recognized for '{zone.DisplayName}'."
@@ -1062,6 +1067,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
         catch (CaptureFrameSourceException exception)
         {
+            RestoreOverlayPreviewAfterFailedCapture(overlayWasVisibleBeforeCapture, overlaySnapshotBeforeCapture);
             logger.Error(exception, "OCR preview capture failed.");
             OcrPreviewStatus = $"OCR preview capture failed: {exception.Message}";
             StatusMessage = OcrPreviewStatus;
@@ -1070,6 +1076,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
         catch (OcrEngineException exception)
         {
+            RestoreOverlayPreviewAfterFailedCapture(overlayWasVisibleBeforeCapture, overlaySnapshotBeforeCapture);
             logger.Error(exception, "OCR preview failed.");
             OcrPreviewStatus = $"OCR preview failed: {exception.Message}";
             StatusMessage = OcrPreviewStatus;
@@ -1078,11 +1085,13 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
         catch (OperationCanceledException)
         {
+            RestoreOverlayPreviewAfterFailedCapture(overlayWasVisibleBeforeCapture, overlaySnapshotBeforeCapture);
             OcrPreviewStatus = "OCR preview canceled.";
             StatusMessage = OcrPreviewStatus;
         }
         catch (Exception exception)
         {
+            RestoreOverlayPreviewAfterFailedCapture(overlayWasVisibleBeforeCapture, overlaySnapshotBeforeCapture);
             logger.Error(exception, "Unexpected OCR preview failure.");
             OcrPreviewStatus = "OCR preview failed. Check logs for details.";
             StatusMessage = OcrPreviewStatus;
@@ -1093,6 +1102,21 @@ public sealed class MainViewModel : ValidatableObservableObject
         {
             IsBusy = false;
         }
+    }
+
+    private async Task<OverlaySnapshot?> HideOverlayPreviewForCaptureAsync()
+    {
+        if (!overlayService.IsVisible)
+        {
+            return null;
+        }
+
+        var snapshot = overlayService.CurrentSnapshot;
+        overlayService.Hide();
+        OnPropertyChanged(nameof(IsOverlayPreviewVisible));
+        NotifyCommandStateChanged();
+        await Task.Yield();
+        return snapshot;
     }
 
     public void ShowOverlayPreview()
@@ -1162,9 +1186,9 @@ public sealed class MainViewModel : ValidatableObservableObject
             shownAt);
     }
 
-    private void UpdateVisibleOverlayPreview(OcrResult result)
+    private void UpdateVisibleOverlayPreview(OcrResult result, bool showWhenHidden = false)
     {
-        if (!overlayService.IsVisible)
+        if (!overlayService.IsVisible && !showWhenHidden)
         {
             return;
         }
@@ -1175,6 +1199,33 @@ public sealed class MainViewModel : ValidatableObservableObject
         OnPropertyChanged(nameof(IsOverlayPreviewVisible));
         NotifyCommandStateChanged();
         logger.Information("Overlay preview updated from OCR text blocks.");
+    }
+
+    private void RestoreOverlayPreviewAfterFailedCapture(bool wasVisible, OverlaySnapshot? snapshot)
+    {
+        if (!wasVisible)
+        {
+            return;
+        }
+
+        try
+        {
+            if (snapshot is not null)
+            {
+                overlayService.Show(snapshot);
+            }
+
+            OnPropertyChanged(nameof(IsOverlayPreviewVisible));
+            NotifyCommandStateChanged();
+            logger.Information("Overlay preview restored after OCR capture did not complete.");
+        }
+        catch (Exception exception)
+        {
+            logger.Error(exception, "Overlay preview restore failed after OCR capture.");
+            OverlayPreviewStatus = "Overlay preview restore failed. Check logs for details.";
+            OnPropertyChanged(nameof(IsOverlayPreviewVisible));
+            NotifyCommandStateChanged();
+        }
     }
 
     private async Task RefreshProfilesAsync(string? preferredProfileId)

@@ -29,23 +29,34 @@
             </ItemsControl.ItemContainerStyle>
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                    <Border
-                        Width="{Binding Width}"
-                        Height="{Binding Height}"
-                        Background="#D9142430"
-                        BorderBrush="#F1F5F9"
-                        BorderThickness="1"
-                        CornerRadius="4"
-                        Padding="12,8">
-                        <TextBlock
-                            VerticalAlignment="Center"
-                            Foreground="#FFFFFF"
-                            FontSize="24"
-                            FontWeight="SemiBold"
-                            Text="{Binding Text}"
-                            TextTrimming="CharacterEllipsis"
-                            TextWrapping="Wrap" />
-                    </Border>
+                    <Grid>
+                        <Border
+                            Width="{Binding Width}"
+                            Height="{Binding Height}"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Top"
+                            Background="#6600828A"
+                            BorderBrush="#F1F5F9"
+                            BorderThickness="1"
+                            CornerRadius="2" />
+                        <Border
+                            MinWidth="96"
+                            MinHeight="30"
+                            MaxWidth="420"
+                            Background="#D9142430"
+                            BorderBrush="#F1F5F9"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="8,5">
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Foreground="#FFFFFF"
+                                FontSize="14"
+                                FontWeight="SemiBold"
+                                Text="{Binding Text}"
+                                TextWrapping="Wrap" />
+                        </Border>
+                    </Grid>
                 </DataTemplate>
             </ItemsControl.ItemTemplate>
         </ItemsControl>

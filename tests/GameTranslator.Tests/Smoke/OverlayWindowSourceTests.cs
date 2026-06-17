@@ -27,6 +27,20 @@ public sealed class OverlayWindowSourceTests
     }
 
     [Fact]
+    public void OverlayWindow_KeepsOcrPositionMarkersButPreventsUnreadableTextBars()
+    {
+        var source = ReadSource("src/GameTranslator.UI/Views/OverlayWindow.xaml");
+
+        Assert.Contains("Width=\"{Binding Width}\"", source, StringComparison.Ordinal);
+        Assert.Contains("Height=\"{Binding Height}\"", source, StringComparison.Ordinal);
+        Assert.Contains("MinWidth=\"96\"", source, StringComparison.Ordinal);
+        Assert.Contains("MinHeight=\"30\"", source, StringComparison.Ordinal);
+        Assert.Contains("MaxWidth=\"420\"", source, StringComparison.Ordinal);
+        Assert.Contains("TextWrapping=\"Wrap\"", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("TextTrimming", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void OverlayWindow_AppliesClickThroughStylesWithoutForbiddenGameProcessApis()
     {
         var source = ReadSource("src/GameTranslator.UI/Views/OverlayWindow.xaml.cs");

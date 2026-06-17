@@ -19,7 +19,8 @@ Confirm that overlay text can be positioned from OCR text block bounding boxes.
 ## Expected Result
 
 - Overlay text positions include the OCR zone screen offset.
-- Overlay text sizes follow OCR bounding box dimensions.
+- OCR position markers follow OCR bounding box dimensions.
+- Recognized text remains readable when OCR bounding boxes are very small.
 - Re-running OCR while overlay is visible updates the overlay snapshot.
 - The overlay still remains transparent outside text items and click-through.
 - No profile, provider, settings, or credential secrets appear in debug output.

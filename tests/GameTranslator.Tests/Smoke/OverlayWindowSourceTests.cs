@@ -5,6 +5,14 @@ namespace GameTranslator.Tests.Smoke;
 public sealed class OverlayWindowSourceTests
 {
     [Fact]
+    public void Application_ShutsDownWhenMainWindowClosesEvenIfOverlayIsOpen()
+    {
+        var source = ReadSource("src/GameTranslator.UI/App.xaml");
+
+        Assert.Contains("ShutdownMode=\"OnMainWindowClose\"", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void OverlayWindow_UsesTransparentTopmostWpfWindowSettings()
     {
         var source = ReadSource("src/GameTranslator.UI/Views/OverlayWindow.xaml");

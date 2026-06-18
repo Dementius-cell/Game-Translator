@@ -7,6 +7,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Input;
 using GameTranslator.Application.Abstractions;
 using GameTranslator.Application.Capture;
+using GameTranslator.Application.Credentials;
 using GameTranslator.Application.Ocr;
 using GameTranslator.Application.Overlay;
 using GameTranslator.Application.Profiles;
@@ -36,6 +37,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private readonly ProfileExchangeService profileExchangeService;
     private readonly CaptureService captureService;
     private readonly OcrService ocrService;
+    private readonly TranslatorCredentialService credentialService;
     private readonly IOverlayService overlayService;
     private readonly OverlayPositioningService overlayPositioningService;
     private readonly IDialogService dialogService;
@@ -50,6 +52,12 @@ public sealed class MainViewModel : ValidatableObservableObject
     private string translatorProvider = string.Empty;
     private string sourceLanguage = string.Empty;
     private string targetLanguage = string.Empty;
+    private string translatorCredentialSecret = string.Empty;
+    private string translatorCredentialProjectId = string.Empty;
+    private string translatorCredentialLocation = "global";
+    private string translatorCredentialEndpoint = TranslatorCredentialService.GetDefaultEndpoint("Google");
+    private string translatorCredentialStatus = "Translator credentials not checked.";
+    private bool hasStoredTranslatorCredentials;
     private OverlayMaskMode overlayMaskMode = OverlayMaskMode.Solid;
     private string overlayMaskColor = "#000000";
     private double overlayOpacity = 1;
@@ -83,6 +91,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         ProfileExchangeService profileExchangeService,
         CaptureService captureService,
         OcrService ocrService,
+        TranslatorCredentialService credentialService,
         IOverlayService overlayService,
         OverlayPositioningService overlayPositioningService,
         IDialogService dialogService,
@@ -93,6 +102,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         this.profileExchangeService = profileExchangeService;
         this.captureService = captureService;
         this.ocrService = ocrService;
+        this.credentialService = credentialService;
         this.overlayService = overlayService;
         this.overlayPositioningService = overlayPositioningService;
         this.dialogService = dialogService;
@@ -126,6 +136,9 @@ public sealed class MainViewModel : ValidatableObservableObject
         RecognizeOcrPreviewCommand = new AsyncRelayCommand(RecognizeOcrPreviewAsync, CanRecognizeOcrPreview);
         ShowOverlayPreviewCommand = new RelayCommand(ShowOverlayPreview, () => !IsBusy);
         HideOverlayPreviewCommand = new RelayCommand(HideOverlayPreview, () => !IsBusy && IsOverlayPreviewVisible);
+        SaveTranslatorCredentialsCommand = new AsyncRelayCommand(SaveTranslatorCredentialsAsync, CanSaveTranslatorCredentials);
+        ValidateTranslatorCredentialsCommand = new AsyncRelayCommand(ValidateTranslatorCredentialsAsync, CanSelectTranslatorProvider);
+        DeleteTranslatorCredentialsCommand = new AsyncRelayCommand(DeleteTranslatorCredentialsAsync, CanSelectTranslatorProvider);
 
         BeginCreateProfile();
         StatusMessage = "Ready to manage game profiles.";
@@ -133,7 +146,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public string ApplicationName => "Game Translator";
 
-    public string CurrentStage => "Sprint 9";
+    public string CurrentStage => "Sprint 12";
 
     public double ZoneSurfaceWidth => OcrZoneEditorViewModel.PreviewSurfaceWidth;
 
@@ -225,6 +238,8 @@ public sealed class MainViewModel : ValidatableObservableObject
             {
                 OnPropertyChanged(nameof(TranslatorSettingsSummary));
                 OnPropertyChanged(nameof(ProfileSummary));
+                RefreshTranslatorCredentialDefaults();
+                _ = ValidateTranslatorCredentialsAsync();
                 PersistDraftShellStateIfNeeded();
                 RefreshValidationState();
                 NotifyCommandStateChanged();
@@ -260,6 +275,66 @@ public sealed class MainViewModel : ValidatableObservableObject
                 RefreshValidationState();
             }
         }
+    }
+
+    public string TranslatorCredentialSecret
+    {
+        get => translatorCredentialSecret;
+        set
+        {
+            if (SetProperty(ref translatorCredentialSecret, value))
+            {
+                NotifyCommandStateChanged();
+            }
+        }
+    }
+
+    public string TranslatorCredentialProjectId
+    {
+        get => translatorCredentialProjectId;
+        set
+        {
+            if (SetProperty(ref translatorCredentialProjectId, value))
+            {
+                NotifyCommandStateChanged();
+            }
+        }
+    }
+
+    public string TranslatorCredentialLocation
+    {
+        get => translatorCredentialLocation;
+        set
+        {
+            if (SetProperty(ref translatorCredentialLocation, value))
+            {
+                NotifyCommandStateChanged();
+            }
+        }
+    }
+
+    public string TranslatorCredentialEndpoint
+    {
+        get => translatorCredentialEndpoint;
+        set
+        {
+            if (SetProperty(ref translatorCredentialEndpoint, value))
+            {
+                NotifyCommandStateChanged();
+            }
+        }
+    }
+
+    public string TranslatorCredentialStatus
+    {
+        get => translatorCredentialStatus;
+        private set => SetProperty(ref translatorCredentialStatus, value);
+    }
+
+    public bool HasStoredTranslatorCredentials
+    {
+        get => hasStoredTranslatorCredentials;
+        private set => SetProperty(ref hasStoredTranslatorCredentials, value);
     }
 
     public OverlayMaskMode OverlayMaskMode
@@ -508,6 +583,138 @@ public sealed class MainViewModel : ValidatableObservableObject
     public ICommand ShowOverlayPreviewCommand { get; }
 
     public ICommand HideOverlayPreviewCommand { get; }
+
+    public ICommand SaveTranslatorCredentialsCommand { get; }
+
+    public ICommand ValidateTranslatorCredentialsCommand { get; }
+
+    public ICommand DeleteTranslatorCredentialsCommand { get; }
+
+    public async Task SaveTranslatorCredentialsAsync()
+    {
+        if (!CanSaveTranslatorCredentials())
+        {
+            TranslatorCredentialStatus = "Translator credential fields are incomplete.";
+            return;
+        }
+
+        try
+        {
+            IsBusy = true;
+            await credentialService.SaveAsync(
+                TranslatorProvider,
+                TranslatorCredentialSecret,
+                TranslatorCredentialProjectId,
+                TranslatorCredentialLocation,
+                TranslatorCredentialEndpoint);
+
+            TranslatorCredentialSecret = string.Empty;
+            HasStoredTranslatorCredentials = true;
+            TranslatorCredentialStatus = $"Stored translator credentials for {TranslatorCredentialService.NormalizeProvider(TranslatorProvider)}.";
+            StatusMessage = TranslatorCredentialStatus;
+        }
+        catch (ArgumentException exception)
+        {
+            logger.Warning(exception.Message);
+            TranslatorCredentialStatus = exception.Message;
+            StatusMessage = "Translator credentials were not saved.";
+        }
+        catch (CredentialStorageException exception)
+        {
+            logger.Warning(exception.Message);
+            TranslatorCredentialStatus = exception.Message;
+            StatusMessage = "Translator credentials were not saved.";
+        }
+        catch (Exception exception)
+        {
+            logger.Error(exception, "Translator credential save failed.");
+            TranslatorCredentialStatus = "Translator credential save failed. Check logs for details.";
+            StatusMessage = "Translator credentials were not saved.";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task ValidateTranslatorCredentialsAsync()
+    {
+        if (!CanSelectTranslatorProvider())
+        {
+            HasStoredTranslatorCredentials = false;
+            TranslatorCredentialStatus = "Select a translator provider to check credentials.";
+            return;
+        }
+
+        try
+        {
+            var record = await credentialService.ReadAsync(TranslatorProvider);
+            if (record is null)
+            {
+                HasStoredTranslatorCredentials = false;
+                TranslatorCredentialStatus = $"No stored translator credentials for {TranslatorCredentialService.NormalizeProvider(TranslatorProvider)}.";
+                return;
+            }
+
+            TranslatorCredentialProjectId = record.ProjectId;
+            TranslatorCredentialLocation = record.Location;
+            TranslatorCredentialEndpoint = record.Endpoint.ToString();
+            HasStoredTranslatorCredentials = !string.IsNullOrWhiteSpace(record.AccessToken)
+                && !string.IsNullOrWhiteSpace(record.ProjectId)
+                && !string.IsNullOrWhiteSpace(record.Location)
+                && record.Endpoint.IsAbsoluteUri;
+            TranslatorCredentialStatus = HasStoredTranslatorCredentials
+                ? $"Stored translator credentials found for {record.Provider}."
+                : $"Stored translator credentials for {record.Provider} are incomplete.";
+        }
+        catch (CredentialStorageException exception)
+        {
+            logger.Warning(exception.Message);
+            HasStoredTranslatorCredentials = false;
+            TranslatorCredentialStatus = exception.Message;
+        }
+        catch (Exception exception)
+        {
+            logger.Error(exception, "Translator credential validation failed.");
+            HasStoredTranslatorCredentials = false;
+            TranslatorCredentialStatus = "Translator credential validation failed. Check logs for details.";
+        }
+    }
+
+    public async Task DeleteTranslatorCredentialsAsync()
+    {
+        if (!CanSelectTranslatorProvider())
+        {
+            TranslatorCredentialStatus = "Select a translator provider to delete credentials.";
+            return;
+        }
+
+        try
+        {
+            IsBusy = true;
+            await credentialService.DeleteAsync(TranslatorProvider);
+            TranslatorCredentialSecret = string.Empty;
+            HasStoredTranslatorCredentials = false;
+            TranslatorCredentialStatus = $"Deleted translator credentials for {TranslatorCredentialService.NormalizeProvider(TranslatorProvider)}.";
+            StatusMessage = TranslatorCredentialStatus;
+        }
+        catch (CredentialStorageException exception)
+        {
+            logger.Warning(exception.Message);
+            TranslatorCredentialStatus = exception.Message;
+            StatusMessage = "Translator credentials were not deleted.";
+        }
+        catch (Exception exception)
+        {
+            logger.Error(exception, "Translator credential delete failed.");
+            TranslatorCredentialStatus = "Translator credential delete failed. Check logs for details.";
+            StatusMessage = "Translator credentials were not deleted.";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 
     public async Task LoadAsync()
     {
@@ -1439,6 +1646,56 @@ public sealed class MainViewModel : ValidatableObservableObject
             && !string.IsNullOrWhiteSpace(SourceLanguage);
     }
 
+    private bool CanSelectTranslatorProvider()
+    {
+        return !IsBusy && !string.IsNullOrWhiteSpace(TranslatorProvider);
+    }
+
+    private bool CanSaveTranslatorCredentials()
+    {
+        return CanSelectTranslatorProvider()
+            && !string.IsNullOrWhiteSpace(TranslatorCredentialSecret)
+            && !string.IsNullOrWhiteSpace(TranslatorCredentialProjectId)
+            && !string.IsNullOrWhiteSpace(TranslatorCredentialEndpoint);
+    }
+
+    private void RefreshTranslatorCredentialDefaults()
+    {
+        if (string.IsNullOrWhiteSpace(TranslatorProvider))
+        {
+            HasStoredTranslatorCredentials = false;
+            TranslatorCredentialStatus = "Select a translator provider to check credentials.";
+            NotifyCommandStateChanged();
+            return;
+        }
+
+        var defaultEndpoint = TranslatorCredentialService.GetDefaultEndpoint(TranslatorProvider);
+        if (string.IsNullOrWhiteSpace(TranslatorCredentialEndpoint)
+            || IsKnownDefaultTranslatorEndpoint(TranslatorCredentialEndpoint))
+        {
+            TranslatorCredentialEndpoint = defaultEndpoint;
+        }
+
+        if (string.IsNullOrWhiteSpace(TranslatorCredentialLocation))
+        {
+            TranslatorCredentialLocation = "global";
+        }
+
+        HasStoredTranslatorCredentials = false;
+        TranslatorCredentialStatus = "Translator credentials not checked.";
+        NotifyCommandStateChanged();
+    }
+
+    private static bool IsKnownDefaultTranslatorEndpoint(string endpoint)
+    {
+        return new[] { "Google", "Azure", "Yandex" }
+            .Select(TranslatorCredentialService.GetDefaultEndpoint)
+            .Any(defaultEndpoint => string.Equals(
+                endpoint.Trim().TrimEnd('/'),
+                defaultEndpoint.TrimEnd('/'),
+                StringComparison.OrdinalIgnoreCase));
+    }
+
     private bool CanDuplicateSelectedZone()
     {
         return !IsBusy && SelectedZone is not null;
@@ -1914,5 +2171,8 @@ public sealed class MainViewModel : ValidatableObservableObject
         ((AsyncRelayCommand)RecognizeOcrPreviewCommand).RaiseCanExecuteChanged();
         ((RelayCommand)ShowOverlayPreviewCommand).RaiseCanExecuteChanged();
         ((RelayCommand)HideOverlayPreviewCommand).RaiseCanExecuteChanged();
+        ((AsyncRelayCommand)SaveTranslatorCredentialsCommand).RaiseCanExecuteChanged();
+        ((AsyncRelayCommand)ValidateTranslatorCredentialsCommand).RaiseCanExecuteChanged();
+        ((AsyncRelayCommand)DeleteTranslatorCredentialsCommand).RaiseCanExecuteChanged();
     }
 }

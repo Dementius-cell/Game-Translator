@@ -1,4 +1,5 @@
 using GameTranslator.Application.Capture;
+using GameTranslator.Application.Credentials;
 using GameTranslator.Application.Ocr;
 using GameTranslator.Application.Overlay;
 using GameTranslator.Application.Profiles;
@@ -22,6 +23,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddSingleton<OcrService>();
         services.AddSingleton<OverlayPositioningService>();
         services.AddSingleton<TranslatorManager>();
+        services.AddSingleton<TranslatorCredentialService>();
 
         return services;
     }

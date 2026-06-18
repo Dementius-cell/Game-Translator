@@ -1,11 +1,13 @@
 using GameTranslator.Application.Abstractions;
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Composition;
+using GameTranslator.Application.Credentials;
 using GameTranslator.Application.Ocr;
 using GameTranslator.Application.Profiles;
 using GameTranslator.Application.Settings;
 using GameTranslator.Application.Translation;
 using GameTranslator.Infrastructure.Capture;
+using GameTranslator.Infrastructure.Credentials;
 using GameTranslator.Infrastructure.Ocr;
 using GameTranslator.Infrastructure.Profiles;
 using GameTranslator.Infrastructure.Settings;
@@ -30,6 +32,7 @@ public sealed class InfrastructureServiceModule : IApplicationServiceModule
         services.AddSingleton<ICaptureFrameSource, WindowsGraphicsCaptureFrameSource>();
         services.AddSingleton<IOcrEngine, WindowsOcrEngine>();
         services.AddSingleton<HttpClient>();
+        services.AddSingleton<ICredentialStorage, WindowsCredentialStorage>();
         services.AddSingleton<ITranslatorProvider, GoogleTranslatorProvider>();
         services.AddSingleton<ITranslatorProvider, AzureTranslatorProvider>();
         services.AddSingleton<ITranslatorProvider, YandexTranslatorProvider>();

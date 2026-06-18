@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:behaviors="clr-namespace:GameTranslator.UI.Behaviors"
              xmlns:viewModels="clr-namespace:GameTranslator.UI.ViewModels"
              mc:Ignorable="d"
              d:DesignHeight="450"
@@ -295,6 +296,12 @@
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="150" />
@@ -365,6 +372,90 @@
 
                                     <TextBlock
                                         Grid.Row="4"
+                                        Grid.Column="0"
+                                        Margin="0,12,0,0"
+                                        VerticalAlignment="Center"
+                                        Foreground="#253238"
+                                        Text="Endpoint" />
+                                    <TextBox
+                                        Grid.Row="4"
+                                        Grid.Column="1"
+                                        Margin="0,12,0,0"
+                                        Padding="6,4"
+                                        Text="{Binding TranslatorCredentialEndpoint, UpdateSourceTrigger=PropertyChanged}" />
+
+                                    <TextBlock
+                                        Grid.Row="5"
+                                        Grid.Column="0"
+                                        Margin="0,12,0,0"
+                                        VerticalAlignment="Center"
+                                        Foreground="#253238"
+                                        Text="Project / folder id" />
+                                    <TextBox
+                                        Grid.Row="5"
+                                        Grid.Column="1"
+                                        Margin="0,12,0,0"
+                                        Padding="6,4"
+                                        Text="{Binding TranslatorCredentialProjectId, UpdateSourceTrigger=PropertyChanged}" />
+
+                                    <TextBlock
+                                        Grid.Row="6"
+                                        Grid.Column="0"
+                                        Margin="0,12,0,0"
+                                        VerticalAlignment="Center"
+                                        Foreground="#253238"
+                                        Text="Region / location" />
+                                    <TextBox
+                                        Grid.Row="6"
+                                        Grid.Column="1"
+                                        Margin="0,12,0,0"
+                                        Padding="6,4"
+                                        Text="{Binding TranslatorCredentialLocation, UpdateSourceTrigger=PropertyChanged}" />
+
+                                    <TextBlock
+                                        Grid.Row="7"
+                                        Grid.Column="0"
+                                        Margin="0,12,0,0"
+                                        VerticalAlignment="Center"
+                                        Foreground="#253238"
+                                        Text="API key / token" />
+                                    <PasswordBox
+                                        Grid.Row="7"
+                                        Grid.Column="1"
+                                        Margin="0,12,0,0"
+                                        Padding="6,4"
+                                        behaviors:PasswordBoxBinding.BoundPassword="{Binding TranslatorCredentialSecret, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                                    <StackPanel
+                                        Grid.Row="8"
+                                        Grid.Column="1"
+                                        Margin="0,12,0,0"
+                                        Orientation="Horizontal">
+                                        <Button
+                                            MinWidth="120"
+                                            Command="{Binding SaveTranslatorCredentialsCommand}"
+                                            Content="Save credentials" />
+                                        <Button
+                                            MinWidth="88"
+                                            Margin="8,0,0,0"
+                                            Command="{Binding ValidateTranslatorCredentialsCommand}"
+                                            Content="Validate" />
+                                        <Button
+                                            MinWidth="80"
+                                            Margin="8,0,0,0"
+                                            Command="{Binding DeleteTranslatorCredentialsCommand}"
+                                            Content="Delete" />
+                                    </StackPanel>
+
+                                    <TextBlock
+                                        Grid.Row="9"
+                                        Grid.Column="1"
+                                        Margin="0,8,0,0"
+                                        Foreground="#56616F"
+                                        Text="{Binding TranslatorCredentialStatus}" />
+
+                                    <TextBlock
+                                        Grid.Row="10"
                                         Grid.ColumnSpan="2"
                                         Margin="0,12,0,0"
                                         Foreground="#56616F"

@@ -1,8 +1,10 @@
 using System.IO;
 using System.Reflection;
 using System.Runtime.Loader;
+using System.Text.Json;
 using GameTranslator.Application.Abstractions;
 using GameTranslator.Application.Capture;
+using GameTranslator.Application.Credentials;
 using GameTranslator.Application.Ocr;
 using GameTranslator.Application.Overlay;
 using GameTranslator.Application.Profiles;
@@ -1038,6 +1040,97 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
+    public async Task SaveTranslatorCredentialsAsync_StoresCredentialsOnlyInCredentialStorage()
+    {
+        var repository = new InMemoryProfileRepository();
+        var settings = new TestSettingsService();
+        var credentialStorage = new TestCredentialStorage();
+        var viewModel = CreateMainViewModel(
+            repository,
+            settings,
+            credentialStorage: credentialStorage);
+        ConfigureValidDraftProfile(viewModel, "Credential privacy");
+        SetPropertyValue(viewModel, "TranslatorCredentialProjectId", "project-a");
+        SetPropertyValue(viewModel, "TranslatorCredentialLocation", "us-central1");
+        SetPropertyValue(viewModel, "TranslatorCredentialEndpoint", "https://translation.test");
+        SetPropertyValue(viewModel, "TranslatorCredentialSecret", "SECRET_TRANSLATOR_TOKEN");
+
+        await InvokeTaskMethodAsync(viewModel, "SaveTranslatorCredentialsAsync");
+        await InvokeTaskMethodAsync(viewModel, "SaveAsync");
+
+        var storedCredential = await credentialStorage.ReadAsync("Google");
+        var storedProfiles = await repository.ListAsync();
+        var profileJson = JsonSerializer.Serialize(storedProfiles);
+        var statusText = $"{GetPropertyValue(viewModel, "TranslatorCredentialStatus")} {GetPropertyValue(viewModel, "StatusMessage")}";
+
+        Assert.NotNull(storedCredential);
+        Assert.Equal("SECRET_TRANSLATOR_TOKEN", storedCredential.AccessToken);
+        Assert.Equal(string.Empty, GetPropertyValue(viewModel, "TranslatorCredentialSecret"));
+        Assert.True((bool)(GetPropertyValue(viewModel, "HasStoredTranslatorCredentials") ?? false));
+        Assert.DoesNotContain("SECRET_TRANSLATOR_TOKEN", profileJson, StringComparison.Ordinal);
+        Assert.False(settings.ContainsSerializedText("SECRET_TRANSLATOR_TOKEN"));
+        Assert.DoesNotContain("SECRET_TRANSLATOR_TOKEN", statusText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ValidateTranslatorCredentialsAsync_LoadsStoredMetadataWithoutExposingSecret()
+    {
+        var credentialStorage = new TestCredentialStorage();
+        await credentialStorage.SaveAsync(
+            new TranslatorCredentialRecord(
+                "Google",
+                "SECRET_TRANSLATOR_TOKEN",
+                "project-a",
+                "us-central1",
+                new Uri("https://translation.test")));
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            credentialStorage: credentialStorage);
+        SetPropertyValue(viewModel, "TranslatorProvider", "Google");
+
+        await InvokeTaskMethodAsync(viewModel, "ValidateTranslatorCredentialsAsync");
+
+        var statusText = GetPropertyValue(viewModel, "TranslatorCredentialStatus")?.ToString() ?? string.Empty;
+
+        Assert.Equal("project-a", GetPropertyValue(viewModel, "TranslatorCredentialProjectId"));
+        Assert.Equal("us-central1", GetPropertyValue(viewModel, "TranslatorCredentialLocation"));
+        Assert.Equal("https://translation.test/", GetPropertyValue(viewModel, "TranslatorCredentialEndpoint"));
+        Assert.Equal(string.Empty, GetPropertyValue(viewModel, "TranslatorCredentialSecret"));
+        Assert.True((bool)(GetPropertyValue(viewModel, "HasStoredTranslatorCredentials") ?? false));
+        Assert.DoesNotContain("SECRET_TRANSLATOR_TOKEN", statusText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DeleteTranslatorCredentialsAsync_RemovesCredentialAndClearsSecret()
+    {
+        var credentialStorage = new TestCredentialStorage();
+        await credentialStorage.SaveAsync(
+            new TranslatorCredentialRecord(
+                "Google",
+                "SECRET_TRANSLATOR_TOKEN",
+                "project-a",
+                "global",
+                new Uri("https://translation.test")));
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            credentialStorage: credentialStorage);
+        SetPropertyValue(viewModel, "TranslatorProvider", "Google");
+        SetPropertyValue(viewModel, "TranslatorCredentialSecret", "SECRET_TRANSLATOR_TOKEN");
+
+        await InvokeTaskMethodAsync(viewModel, "DeleteTranslatorCredentialsAsync");
+
+        Assert.Null(await credentialStorage.ReadAsync("Google"));
+        Assert.Equal(string.Empty, GetPropertyValue(viewModel, "TranslatorCredentialSecret"));
+        Assert.False((bool)(GetPropertyValue(viewModel, "HasStoredTranslatorCredentials") ?? true));
+        Assert.DoesNotContain(
+            "SECRET_TRANSLATOR_TOKEN",
+            GetPropertyValue(viewModel, "TranslatorCredentialStatus")?.ToString() ?? string.Empty,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ShowOverlayPreview_ShowsTestTextSnapshotAndUpdatesStatus()
     {
         var overlay = new TestOverlayService();
@@ -1092,7 +1185,8 @@ public sealed class ProfileManagerViewModelTests
         TestApplicationLogger? logger = null,
         TestCaptureFrameSource? frameSource = null,
         TestOcrEngine? ocrEngine = null,
-        TestOverlayService? overlayService = null)
+        TestOverlayService? overlayService = null,
+        TestCredentialStorage? credentialStorage = null)
     {
         var profileService = new ProfileService(repository, new ProfileValidator());
         var profileExchangeService = new ProfileExchangeService(
@@ -1114,6 +1208,7 @@ public sealed class ProfileManagerViewModelTests
                 profileExchangeService,
                 captureService,
                 ocrService,
+                new TranslatorCredentialService(credentialStorage ?? new TestCredentialStorage()),
                 overlayService ?? new TestOverlayService(),
                 new OverlayPositioningService(),
                 dialog ?? new TestDialogService(),
@@ -1267,6 +1362,11 @@ public sealed class ProfileManagerViewModelTests
         public void SetValue<TValue>(string key, TValue? value)
         {
             values[key] = value;
+        }
+
+        public bool ContainsSerializedText(string text)
+        {
+            return JsonSerializer.Serialize(values).Contains(text, StringComparison.Ordinal);
         }
     }
 
@@ -1424,6 +1524,36 @@ public sealed class ProfileManagerViewModelTests
         {
             IsVisible = false;
             Events.Add("Hide");
+        }
+    }
+
+    private sealed class TestCredentialStorage : ICredentialStorage
+    {
+        private readonly Dictionary<string, TranslatorCredentialRecord> records = new(StringComparer.OrdinalIgnoreCase);
+
+        public Task SaveAsync(
+            TranslatorCredentialRecord credential,
+            CancellationToken cancellationToken = default)
+        {
+            records[credential.Provider] = credential;
+
+            return Task.CompletedTask;
+        }
+
+        public Task<TranslatorCredentialRecord?> ReadAsync(
+            string provider,
+            CancellationToken cancellationToken = default)
+        {
+            records.TryGetValue(provider, out var credential);
+
+            return Task.FromResult(credential);
+        }
+
+        public Task DeleteAsync(string provider, CancellationToken cancellationToken = default)
+        {
+            records.Remove(provider);
+
+            return Task.CompletedTask;
         }
     }
 

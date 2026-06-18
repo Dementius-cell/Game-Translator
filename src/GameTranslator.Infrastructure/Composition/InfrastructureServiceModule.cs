@@ -31,6 +31,8 @@ public sealed class InfrastructureServiceModule : IApplicationServiceModule
         services.AddSingleton<IOcrEngine, WindowsOcrEngine>();
         services.AddSingleton<HttpClient>();
         services.AddSingleton<ITranslatorProvider, GoogleTranslatorProvider>();
+        services.AddSingleton<ITranslatorProvider, AzureTranslatorProvider>();
+        services.AddSingleton<ITranslatorProvider, YandexTranslatorProvider>();
         services.AddSingleton<ISettingsService>(provider =>
         {
             var options = provider.GetRequiredService<SettingsStorageOptions>();

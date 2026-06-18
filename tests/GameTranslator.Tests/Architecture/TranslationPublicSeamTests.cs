@@ -12,6 +12,7 @@ public sealed class TranslationPublicSeamTests
         AssertPublicApplicationType<TranslateResponse>();
         AssertPublicApplicationType<TranslatorCredentials>();
         AssertPublicApplicationType<TranslatorProviderException>();
+        AssertPublicApplicationType<TranslatorManager>();
     }
 
     [Fact]
@@ -35,6 +36,7 @@ public sealed class TranslationPublicSeamTests
             typeof(TranslateResponse),
             typeof(TranslatorCredentials),
             typeof(TranslatorProviderException),
+            typeof(TranslatorManager),
         };
 
         foreach (var translationType in translationTypes)

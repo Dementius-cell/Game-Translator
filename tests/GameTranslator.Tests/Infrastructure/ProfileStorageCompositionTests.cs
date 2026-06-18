@@ -53,7 +53,7 @@ public sealed class ProfileStorageCompositionTests : IDisposable
     }
 
     [Fact]
-    public void RegisterServices_RegistersGoogleTranslatorProvider()
+    public void RegisterServices_RegistersTranslatorProviders()
     {
         var services = new ServiceCollection();
         services.AddSingleton(new ProfileStorageOptions(profilesDirectory));
@@ -65,6 +65,14 @@ public sealed class ProfileStorageCompositionTests : IDisposable
             services,
             descriptor => descriptor.ServiceType == typeof(ITranslatorProvider)
                 && descriptor.ImplementationType == typeof(GoogleTranslatorProvider));
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(ITranslatorProvider)
+                && descriptor.ImplementationType == typeof(AzureTranslatorProvider));
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(ITranslatorProvider)
+                && descriptor.ImplementationType == typeof(YandexTranslatorProvider));
     }
 
     [Fact]

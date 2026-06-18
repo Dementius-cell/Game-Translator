@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -7,17 +6,17 @@ using GameTranslator.Application.Translation;
 
 namespace GameTranslator.Infrastructure.Translation;
 
-public sealed class GoogleTranslatorProvider : ITranslatorProvider
+public sealed class AzureTranslatorProvider : ITranslatorProvider
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly HttpClient httpClient;
 
-    public GoogleTranslatorProvider(HttpClient httpClient)
+    public AzureTranslatorProvider(HttpClient httpClient)
     {
         this.httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
     }
 
-    public string ProviderId => "Google";
+    public string ProviderId => "Azure";
 
     public async Task<TranslateResponse> TranslateAsync(
         TranslateRequest request,
@@ -34,29 +33,30 @@ public sealed class GoogleTranslatorProvider : ITranslatorProvider
             throw CreateProviderException(response.StatusCode, responseBody, request.Credentials.AccessToken);
         }
 
-        GoogleTranslateTextResponse? payload;
+        AzureTranslateResponseItem[]? payload;
         try
         {
-            payload = JsonSerializer.Deserialize<GoogleTranslateTextResponse>(responseBody, JsonOptions);
+            payload = JsonSerializer.Deserialize<AzureTranslateResponseItem[]>(responseBody, JsonOptions);
         }
         catch (JsonException exception)
         {
             throw new TranslatorProviderException(
                 ProviderId,
-                "Google translation response could not be parsed.",
+                "Azure translation response could not be parsed.",
                 exception);
         }
 
-        var translations = payload?.Translations ?? Array.Empty<GoogleTranslation>();
-        if (translations.Length != request.Texts.Count || translations.Any(translation => string.IsNullOrWhiteSpace(translation.TranslatedText)))
+        var translations = payload ?? Array.Empty<AzureTranslateResponseItem>();
+        if (translations.Length != request.Texts.Count
+            || translations.Any(item => string.IsNullOrWhiteSpace(item.Translations?.FirstOrDefault()?.Text)))
         {
             throw new TranslatorProviderException(
                 ProviderId,
-                "Google translation response did not contain the expected translated text items.");
+                "Azure translation response did not contain the expected translated text items.");
         }
 
         return new TranslateResponse(
-            translations.Select(translation => translation.TranslatedText!),
+            translations.Select(item => item.Translations!.First().Text!),
             DateTimeOffset.UtcNow);
     }
 
@@ -65,26 +65,30 @@ public sealed class GoogleTranslatorProvider : ITranslatorProvider
         var credentials = request.Credentials;
         var httpRequest = new HttpRequestMessage(
             HttpMethod.Post,
-            CreateTranslateUri(credentials));
-        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credentials.AccessToken);
-        httpRequest.Headers.TryAddWithoutValidation("x-goog-user-project", credentials.ProjectId);
+            CreateTranslateUri(credentials, request.SourceLanguage, request.TargetLanguage));
+        httpRequest.Headers.TryAddWithoutValidation("Ocp-Apim-Subscription-Key", credentials.AccessToken);
+        if (!string.Equals(credentials.Location, "global", StringComparison.OrdinalIgnoreCase))
+        {
+            httpRequest.Headers.TryAddWithoutValidation("Ocp-Apim-Subscription-Region", credentials.Location);
+        }
+
         httpRequest.Content = JsonContent.Create(
-            new GoogleTranslateTextRequest(
-                request.SourceLanguage,
-                request.TargetLanguage,
-                request.Texts),
+            request.Texts.Select(text => new AzureTranslateRequestItem(text)).ToArray(),
             options: JsonOptions);
 
         return httpRequest;
     }
 
-    private static Uri CreateTranslateUri(TranslatorCredentials credentials)
+    private static Uri CreateTranslateUri(
+        TranslatorCredentials credentials,
+        string sourceLanguage,
+        string targetLanguage)
     {
         var endpoint = credentials.Endpoint.ToString().TrimEnd('/');
-        var projectId = Uri.EscapeDataString(credentials.ProjectId);
-        var location = Uri.EscapeDataString(credentials.Location);
+        var source = Uri.EscapeDataString(sourceLanguage);
+        var target = Uri.EscapeDataString(targetLanguage);
 
-        return new Uri($"{endpoint}/v3/projects/{projectId}/locations/{location}:translateText");
+        return new Uri($"{endpoint}/translate?api-version=3.0&from={source}&to={target}");
     }
 
     private TranslatorProviderException CreateProviderException(
@@ -92,16 +96,16 @@ public sealed class GoogleTranslatorProvider : ITranslatorProvider
         string responseBody,
         string accessToken)
     {
-        var errorMessage = ExtractGoogleErrorMessage(responseBody);
+        var errorMessage = ExtractAzureErrorMessage(responseBody);
         var sanitizedMessage = TranslatorSecretRedactor.Redact(errorMessage, accessToken);
 
         return new TranslatorProviderException(
             ProviderId,
             statusCode,
-            $"Google translation request failed with HTTP {(int)statusCode}: {sanitizedMessage}");
+            $"Azure translation request failed with HTTP {(int)statusCode}: {sanitizedMessage}");
     }
 
-    private static string ExtractGoogleErrorMessage(string responseBody)
+    private static string ExtractAzureErrorMessage(string responseBody)
     {
         if (string.IsNullOrWhiteSpace(responseBody))
         {
@@ -110,7 +114,7 @@ public sealed class GoogleTranslatorProvider : ITranslatorProvider
 
         try
         {
-            var error = JsonSerializer.Deserialize<GoogleErrorResponse>(responseBody, JsonOptions);
+            var error = JsonSerializer.Deserialize<AzureErrorResponse>(responseBody, JsonOptions);
 
             if (!string.IsNullOrWhiteSpace(error?.Error?.Message))
             {
@@ -125,44 +129,35 @@ public sealed class GoogleTranslatorProvider : ITranslatorProvider
         return responseBody;
     }
 
-    private sealed class GoogleTranslateTextRequest
+    private sealed class AzureTranslateRequestItem
     {
-        public GoogleTranslateTextRequest(
-            string sourceLanguageCode,
-            string targetLanguageCode,
-            IEnumerable<string> contents)
+        public AzureTranslateRequestItem(string text)
         {
-            SourceLanguageCode = sourceLanguageCode;
-            TargetLanguageCode = targetLanguageCode;
-            Contents = contents.ToArray();
+            Text = text;
         }
 
-        public string SourceLanguageCode { get; }
-
-        public string TargetLanguageCode { get; }
-
-        public IReadOnlyList<string> Contents { get; }
+        public string Text { get; }
     }
 
-    private sealed class GoogleTranslateTextResponse
+    private sealed class AzureTranslateResponseItem
     {
         [JsonPropertyName("translations")]
-        public GoogleTranslation[]? Translations { get; init; }
+        public AzureTranslation[]? Translations { get; init; }
     }
 
-    private sealed class GoogleTranslation
+    private sealed class AzureTranslation
     {
-        [JsonPropertyName("translatedText")]
-        public string? TranslatedText { get; init; }
+        [JsonPropertyName("text")]
+        public string? Text { get; init; }
     }
 
-    private sealed class GoogleErrorResponse
+    private sealed class AzureErrorResponse
     {
         [JsonPropertyName("error")]
-        public GoogleError? Error { get; init; }
+        public AzureError? Error { get; init; }
     }
 
-    private sealed class GoogleError
+    private sealed class AzureError
     {
         [JsonPropertyName("message")]
         public string? Message { get; init; }

@@ -7,17 +7,17 @@ using GameTranslator.Application.Translation;
 
 namespace GameTranslator.Infrastructure.Translation;
 
-public sealed class GoogleTranslatorProvider : ITranslatorProvider
+public sealed class YandexTranslatorProvider : ITranslatorProvider
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly HttpClient httpClient;
 
-    public GoogleTranslatorProvider(HttpClient httpClient)
+    public YandexTranslatorProvider(HttpClient httpClient)
     {
         this.httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
     }
 
-    public string ProviderId => "Google";
+    public string ProviderId => "Yandex";
 
     public async Task<TranslateResponse> TranslateAsync(
         TranslateRequest request,
@@ -34,29 +34,29 @@ public sealed class GoogleTranslatorProvider : ITranslatorProvider
             throw CreateProviderException(response.StatusCode, responseBody, request.Credentials.AccessToken);
         }
 
-        GoogleTranslateTextResponse? payload;
+        YandexTranslateResponse? payload;
         try
         {
-            payload = JsonSerializer.Deserialize<GoogleTranslateTextResponse>(responseBody, JsonOptions);
+            payload = JsonSerializer.Deserialize<YandexTranslateResponse>(responseBody, JsonOptions);
         }
         catch (JsonException exception)
         {
             throw new TranslatorProviderException(
                 ProviderId,
-                "Google translation response could not be parsed.",
+                "Yandex translation response could not be parsed.",
                 exception);
         }
 
-        var translations = payload?.Translations ?? Array.Empty<GoogleTranslation>();
-        if (translations.Length != request.Texts.Count || translations.Any(translation => string.IsNullOrWhiteSpace(translation.TranslatedText)))
+        var translations = payload?.Translations ?? Array.Empty<YandexTranslation>();
+        if (translations.Length != request.Texts.Count || translations.Any(translation => string.IsNullOrWhiteSpace(translation.Text)))
         {
             throw new TranslatorProviderException(
                 ProviderId,
-                "Google translation response did not contain the expected translated text items.");
+                "Yandex translation response did not contain the expected translated text items.");
         }
 
         return new TranslateResponse(
-            translations.Select(translation => translation.TranslatedText!),
+            translations.Select(translation => translation.Text!),
             DateTimeOffset.UtcNow);
     }
 
@@ -66,10 +66,10 @@ public sealed class GoogleTranslatorProvider : ITranslatorProvider
         var httpRequest = new HttpRequestMessage(
             HttpMethod.Post,
             CreateTranslateUri(credentials));
-        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credentials.AccessToken);
-        httpRequest.Headers.TryAddWithoutValidation("x-goog-user-project", credentials.ProjectId);
+        httpRequest.Headers.Authorization = CreateAuthorizationHeader(credentials.AccessToken);
         httpRequest.Content = JsonContent.Create(
-            new GoogleTranslateTextRequest(
+            new YandexTranslateRequest(
+                credentials.ProjectId,
                 request.SourceLanguage,
                 request.TargetLanguage,
                 request.Texts),
@@ -81,10 +81,22 @@ public sealed class GoogleTranslatorProvider : ITranslatorProvider
     private static Uri CreateTranslateUri(TranslatorCredentials credentials)
     {
         var endpoint = credentials.Endpoint.ToString().TrimEnd('/');
-        var projectId = Uri.EscapeDataString(credentials.ProjectId);
-        var location = Uri.EscapeDataString(credentials.Location);
 
-        return new Uri($"{endpoint}/v3/projects/{projectId}/locations/{location}:translateText");
+        return new Uri($"{endpoint}/translate/v2/translate");
+    }
+
+    private static AuthenticationHeaderValue CreateAuthorizationHeader(string accessToken)
+    {
+        var trimmed = accessToken.Trim();
+        var separatorIndex = trimmed.IndexOf(' ', StringComparison.Ordinal);
+        if (separatorIndex > 0 && separatorIndex < trimmed.Length - 1)
+        {
+            return new AuthenticationHeaderValue(
+                trimmed[..separatorIndex],
+                trimmed[(separatorIndex + 1)..].Trim());
+        }
+
+        return new AuthenticationHeaderValue("Bearer", trimmed);
     }
 
     private TranslatorProviderException CreateProviderException(
@@ -92,16 +104,16 @@ public sealed class GoogleTranslatorProvider : ITranslatorProvider
         string responseBody,
         string accessToken)
     {
-        var errorMessage = ExtractGoogleErrorMessage(responseBody);
+        var errorMessage = ExtractYandexErrorMessage(responseBody);
         var sanitizedMessage = TranslatorSecretRedactor.Redact(errorMessage, accessToken);
 
         return new TranslatorProviderException(
             ProviderId,
             statusCode,
-            $"Google translation request failed with HTTP {(int)statusCode}: {sanitizedMessage}");
+            $"Yandex translation request failed with HTTP {(int)statusCode}: {sanitizedMessage}");
     }
 
-    private static string ExtractGoogleErrorMessage(string responseBody)
+    private static string ExtractYandexErrorMessage(string responseBody)
     {
         if (string.IsNullOrWhiteSpace(responseBody))
         {
@@ -110,11 +122,11 @@ public sealed class GoogleTranslatorProvider : ITranslatorProvider
 
         try
         {
-            var error = JsonSerializer.Deserialize<GoogleErrorResponse>(responseBody, JsonOptions);
+            var error = JsonSerializer.Deserialize<YandexErrorResponse>(responseBody, JsonOptions);
 
-            if (!string.IsNullOrWhiteSpace(error?.Error?.Message))
+            if (!string.IsNullOrWhiteSpace(error?.Message))
             {
-                return error.Error.Message;
+                return error.Message;
             }
         }
         catch (JsonException)
@@ -125,44 +137,44 @@ public sealed class GoogleTranslatorProvider : ITranslatorProvider
         return responseBody;
     }
 
-    private sealed class GoogleTranslateTextRequest
+    private sealed class YandexTranslateRequest
     {
-        public GoogleTranslateTextRequest(
+        public YandexTranslateRequest(
+            string folderId,
             string sourceLanguageCode,
             string targetLanguageCode,
-            IEnumerable<string> contents)
+            IEnumerable<string> texts)
         {
+            FolderId = folderId;
             SourceLanguageCode = sourceLanguageCode;
             TargetLanguageCode = targetLanguageCode;
-            Contents = contents.ToArray();
+            Texts = texts.ToArray();
         }
+
+        public string FolderId { get; }
 
         public string SourceLanguageCode { get; }
 
         public string TargetLanguageCode { get; }
 
-        public IReadOnlyList<string> Contents { get; }
+        public string Format => "PLAIN_TEXT";
+
+        public IReadOnlyList<string> Texts { get; }
     }
 
-    private sealed class GoogleTranslateTextResponse
+    private sealed class YandexTranslateResponse
     {
         [JsonPropertyName("translations")]
-        public GoogleTranslation[]? Translations { get; init; }
+        public YandexTranslation[]? Translations { get; init; }
     }
 
-    private sealed class GoogleTranslation
+    private sealed class YandexTranslation
     {
-        [JsonPropertyName("translatedText")]
-        public string? TranslatedText { get; init; }
+        [JsonPropertyName("text")]
+        public string? Text { get; init; }
     }
 
-    private sealed class GoogleErrorResponse
-    {
-        [JsonPropertyName("error")]
-        public GoogleError? Error { get; init; }
-    }
-
-    private sealed class GoogleError
+    private sealed class YandexErrorResponse
     {
         [JsonPropertyName("message")]
         public string? Message { get; init; }

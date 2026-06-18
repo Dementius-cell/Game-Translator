@@ -893,6 +893,53 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
+    public async Task RecognizeOcrPreviewAsync_WhenOverlayVisibleAndOcrBoundsJitter_KeepsPreviousOverlayBounds()
+    {
+        var overlay = new TestOverlayService();
+        var recognitionCount = 0;
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            frameSource: new TestCaptureFrameSource
+            {
+                OnCapture = () => Assert.False(overlay.IsVisible),
+            },
+            ocrEngine: new TestOcrEngine
+            {
+                BlocksFactory = _ =>
+                {
+                    recognitionCount++;
+                    return recognitionCount == 1
+                        ? new[] { new OcrTextBlock("Stable text", new BoundingBox(1, 2, 4, 3)) }
+                        : new[] { new OcrTextBlock("Stable text", new BoundingBox(3, 0, 6, 5)) };
+                },
+            },
+            overlayService: overlay);
+        ConfigureValidDraftProfile(viewModel, "OCR overlay jitter");
+        InvokeMethod(viewModel, "AddZone");
+
+        var selectedZone = GetPropertyValue(viewModel, "SelectedZone")
+            ?? throw new InvalidOperationException("Selected zone was not created.");
+        SetPropertyValue(selectedZone, "AbsoluteX", 30);
+        SetPropertyValue(selectedZone, "AbsoluteY", 40);
+        SetPropertyValue(selectedZone, "AbsoluteWidth", 8);
+        SetPropertyValue(selectedZone, "AbsoluteHeight", 6);
+
+        InvokeMethod(viewModel, "ShowOverlayPreview");
+        await InvokeTaskMethodAsync(viewModel, "RecognizeOcrPreviewAsync");
+        await InvokeTaskMethodAsync(viewModel, "RecognizeOcrPreviewAsync");
+
+        Assert.True(overlay.IsVisible);
+        Assert.Equal(new[] { "Show:2", "Hide", "Show:1", "Hide", "Show:1" }, overlay.Events);
+        var item = Assert.Single(overlay.CurrentSnapshot?.TextItems ?? Array.Empty<OverlayTextItem>());
+        Assert.Equal("Stable text", item.Text);
+        Assert.Equal(31, item.X);
+        Assert.Equal(42, item.Y);
+        Assert.Equal(4, item.Width);
+        Assert.Equal(3, item.Height);
+    }
+
+    [Fact]
     public async Task RecognizeOcrPreviewAsync_WhenOverlayVisibleAndOcrFails_RestoresPreviousOverlay()
     {
         var overlay = new TestOverlayService();

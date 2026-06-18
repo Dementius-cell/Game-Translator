@@ -1193,7 +1193,10 @@ public sealed class MainViewModel : ValidatableObservableObject
             return;
         }
 
-        var snapshot = overlayPositioningService.CreateSnapshot(result, DateTimeOffset.UtcNow);
+        var snapshot = overlayPositioningService.CreateSnapshot(
+            result,
+            DateTimeOffset.UtcNow,
+            overlayService.CurrentSnapshot);
         overlayService.Show(snapshot);
         OverlayPreviewStatus = $"Overlay preview updated with {snapshot.TextItems.Count} OCR text item(s).";
         OnPropertyChanged(nameof(IsOverlayPreviewVisible));

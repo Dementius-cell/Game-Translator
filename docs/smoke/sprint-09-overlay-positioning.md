@@ -16,6 +16,7 @@ Confirm that overlay text can be positioned from OCR text block bounding boxes.
 8. Move or change the OCR source text, then click `Recognize OCR` again while the overlay is still visible.
 9. Confirm that overlay text updates to the latest OCR text blocks and remains click-through.
 10. Confirm that repeated OCR does not add text from the already rendered overlay to the OCR debug output.
+11. Click `Recognize OCR` several times without moving the source text.
 
 ## Expected Result
 
@@ -25,5 +26,6 @@ Confirm that overlay text can be positioned from OCR text block bounding boxes.
 - Preview text scales inside OCR bounding boxes with only a small readability floor for tiny OCR lines.
 - Re-running OCR while overlay is visible briefly hides the previous overlay during capture, then updates the overlay snapshot.
 - Re-running OCR while overlay is visible does not feed overlay text back into the next OCR result.
+- Re-running OCR while the source text is stationary keeps overlay bounds stable when OCR coordinates jitter by 4 px or less.
 - The overlay still remains transparent outside text items and click-through.
 - No profile, provider, settings, or credential secrets appear in debug output.

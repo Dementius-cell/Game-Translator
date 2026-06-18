@@ -67,6 +67,69 @@ public sealed class OverlayPositioningServiceTests
     }
 
     [Fact]
+    public void CreateSnapshot_WhenMatchingTextOnlyJittersWithinTolerance_ReusesPreviousBounds()
+    {
+        var service = new OverlayPositioningService();
+        var previousSnapshot = CreateSnapshot(new OverlayTextItem("Start", 14, 25, 24, 10));
+        var result = CreateResult(
+            new CaptureRegion(10, 20, 100, 40),
+            inputWidth: 100,
+            inputHeight: 40,
+            new OcrTextBlock("Start", new BoundingBox(7, 2, 27, 8)));
+
+        var snapshot = service.CreateSnapshot(result, ShownAt, previousSnapshot);
+
+        var item = Assert.Single(snapshot.TextItems);
+        Assert.Equal("Start", item.Text);
+        Assert.Equal(14, item.X);
+        Assert.Equal(25, item.Y);
+        Assert.Equal(24, item.Width);
+        Assert.Equal(10, item.Height);
+    }
+
+    [Fact]
+    public void CreateSnapshot_WhenMatchingTextMovesBeyondTolerance_UsesCurrentBounds()
+    {
+        var service = new OverlayPositioningService();
+        var previousSnapshot = CreateSnapshot(new OverlayTextItem("Start", 14, 25, 24, 10));
+        var result = CreateResult(
+            new CaptureRegion(10, 20, 100, 40),
+            inputWidth: 100,
+            inputHeight: 40,
+            new OcrTextBlock("Start", new BoundingBox(9, 5, 24, 10)));
+
+        var snapshot = service.CreateSnapshot(result, ShownAt, previousSnapshot);
+
+        var item = Assert.Single(snapshot.TextItems);
+        Assert.Equal("Start", item.Text);
+        Assert.Equal(19, item.X);
+        Assert.Equal(25, item.Y);
+        Assert.Equal(24, item.Width);
+        Assert.Equal(10, item.Height);
+    }
+
+    [Fact]
+    public void CreateSnapshot_WhenTextChangesWithinTolerance_UsesCurrentBounds()
+    {
+        var service = new OverlayPositioningService();
+        var previousSnapshot = CreateSnapshot(new OverlayTextItem("Start", 14, 25, 24, 10));
+        var result = CreateResult(
+            new CaptureRegion(10, 20, 100, 40),
+            inputWidth: 100,
+            inputHeight: 40,
+            new OcrTextBlock("Continue", new BoundingBox(7, 2, 27, 8)));
+
+        var snapshot = service.CreateSnapshot(result, ShownAt, previousSnapshot);
+
+        var item = Assert.Single(snapshot.TextItems);
+        Assert.Equal("Continue", item.Text);
+        Assert.Equal(17, item.X);
+        Assert.Equal(22, item.Y);
+        Assert.Equal(27, item.Width);
+        Assert.Equal(8, item.Height);
+    }
+
+    [Fact]
     public void CreateSnapshot_WhenNoTextBlocks_ReturnsEmptySnapshot()
     {
         var service = new OverlayPositioningService();
@@ -76,6 +139,11 @@ public sealed class OverlayPositioningServiceTests
 
         Assert.Empty(snapshot.TextItems);
         Assert.Equal(ShownAt, snapshot.ShownAt);
+    }
+
+    private static OverlaySnapshot CreateSnapshot(params OverlayTextItem[] textItems)
+    {
+        return new OverlaySnapshot(textItems, ShownAt.AddSeconds(-1));
     }
 
     private static OcrResult CreateResult(

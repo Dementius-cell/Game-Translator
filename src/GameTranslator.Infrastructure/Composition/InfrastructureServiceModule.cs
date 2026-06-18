@@ -4,10 +4,12 @@ using GameTranslator.Application.Composition;
 using GameTranslator.Application.Ocr;
 using GameTranslator.Application.Profiles;
 using GameTranslator.Application.Settings;
+using GameTranslator.Application.Translation;
 using GameTranslator.Infrastructure.Capture;
 using GameTranslator.Infrastructure.Ocr;
 using GameTranslator.Infrastructure.Profiles;
 using GameTranslator.Infrastructure.Settings;
+using GameTranslator.Infrastructure.Translation;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace GameTranslator.Infrastructure.Composition;
@@ -27,6 +29,8 @@ public sealed class InfrastructureServiceModule : IApplicationServiceModule
         services.AddSingleton<IProfileExchangeGateway, JsonProfileExchangeGateway>();
         services.AddSingleton<ICaptureFrameSource, WindowsGraphicsCaptureFrameSource>();
         services.AddSingleton<IOcrEngine, WindowsOcrEngine>();
+        services.AddSingleton<HttpClient>();
+        services.AddSingleton<ITranslatorProvider, GoogleTranslatorProvider>();
         services.AddSingleton<ISettingsService>(provider =>
         {
             var options = provider.GetRequiredService<SettingsStorageOptions>();

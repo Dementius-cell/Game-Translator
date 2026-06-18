@@ -2,8 +2,10 @@ using System.IO;
 using GameTranslator.Application.Abstractions;
 using GameTranslator.Application.Profiles;
 using GameTranslator.Application.Settings;
+using GameTranslator.Application.Translation;
 using GameTranslator.Domain.Profiles;
 using GameTranslator.Infrastructure.Composition;
+using GameTranslator.Infrastructure.Translation;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace GameTranslator.Tests.Infrastructure;
@@ -48,6 +50,21 @@ public sealed class ProfileStorageCompositionTests : IDisposable
         Assert.Contains(
             services,
             descriptor => descriptor.ServiceType == typeof(IProfileExchangeGateway));
+    }
+
+    [Fact]
+    public void RegisterServices_RegistersGoogleTranslatorProvider()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(new ProfileStorageOptions(profilesDirectory));
+        services.AddSingleton(new SettingsStorageOptions(Path.Combine(profilesDirectory, "state", "settings.json")));
+
+        new InfrastructureServiceModule().RegisterServices(services);
+
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(ITranslatorProvider)
+                && descriptor.ImplementationType == typeof(GoogleTranslatorProvider));
     }
 
     [Fact]

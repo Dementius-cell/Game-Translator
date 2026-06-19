@@ -424,6 +424,7 @@
                                         Grid.Column="1"
                                         Margin="0,12,0,0"
                                         Padding="6,4"
+                                        behaviors:PasswordBoxBinding.IsEnabled="True"
                                         behaviors:PasswordBoxBinding.BoundPassword="{Binding TranslatorCredentialSecret, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
                                     <StackPanel

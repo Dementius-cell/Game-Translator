@@ -5,13 +5,20 @@ namespace GameTranslator.UI.Behaviors;
 
 public static class PasswordBoxBinding
 {
+    public static readonly DependencyProperty IsEnabledProperty =
+        DependencyProperty.RegisterAttached(
+            "IsEnabled",
+            typeof(bool),
+            typeof(PasswordBoxBinding),
+            new PropertyMetadata(false, OnIsEnabledChanged));
+
     public static readonly DependencyProperty BoundPasswordProperty =
         DependencyProperty.RegisterAttached(
             "BoundPassword",
             typeof(string),
             typeof(PasswordBoxBinding),
             new FrameworkPropertyMetadata(
-                string.Empty,
+                null,
                 FrameworkPropertyMetadataOptions.BindsTwoWayByDefault,
                 OnBoundPasswordChanged));
 
@@ -22,9 +29,19 @@ public static class PasswordBoxBinding
             typeof(PasswordBoxBinding),
             new PropertyMetadata(false));
 
+    public static bool GetIsEnabled(DependencyObject dependencyObject)
+    {
+        return (bool)dependencyObject.GetValue(IsEnabledProperty);
+    }
+
+    public static void SetIsEnabled(DependencyObject dependencyObject, bool value)
+    {
+        dependencyObject.SetValue(IsEnabledProperty, value);
+    }
+
     public static string GetBoundPassword(DependencyObject dependencyObject)
     {
-        return (string)dependencyObject.GetValue(BoundPasswordProperty);
+        return (string?)dependencyObject.GetValue(BoundPasswordProperty) ?? string.Empty;
     }
 
     public static void SetBoundPassword(DependencyObject dependencyObject, string value)
@@ -40,6 +57,22 @@ public static class PasswordBoxBinding
     private static void SetIsUpdating(DependencyObject dependencyObject, bool value)
     {
         dependencyObject.SetValue(IsUpdatingProperty, value);
+    }
+
+    private static void OnIsEnabledChanged(
+        DependencyObject dependencyObject,
+        DependencyPropertyChangedEventArgs e)
+    {
+        if (dependencyObject is not PasswordBox passwordBox)
+        {
+            return;
+        }
+
+        passwordBox.PasswordChanged -= OnPasswordChanged;
+        if ((bool)e.NewValue)
+        {
+            passwordBox.PasswordChanged += OnPasswordChanged;
+        }
     }
 
     private static void OnBoundPasswordChanged(

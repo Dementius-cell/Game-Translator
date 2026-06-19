@@ -35,10 +35,34 @@ public sealed class OverlayPositioningService
             textItems = StabilizeTextItems(textItems, previousSnapshot.TextItems);
         }
 
+        var settings = overlaySettings ?? previousSnapshot?.OverlaySettings ?? OverlaySettings.Default;
+        var maskItems = textItems
+            .Select(textItem => CreateMaskItem(textItem, settings))
+            .ToArray();
+
         return new OverlaySnapshot(
             textItems,
             shownAt,
-            overlaySettings ?? previousSnapshot?.OverlaySettings);
+            settings,
+            maskItems);
+    }
+
+    private static OverlayMaskItem CreateMaskItem(OverlayTextItem textItem, OverlaySettings settings)
+    {
+        var padding = Math.Max(0, (int)Math.Round(settings.Padding, MidpointRounding.AwayFromZero));
+        var x = Math.Max(0, textItem.X - padding);
+        var y = Math.Max(0, textItem.Y - padding);
+        var width = checked(textItem.Width + padding * 2);
+        var height = checked(textItem.Height + padding * 2);
+
+        return new OverlayMaskItem(
+            settings.MaskMode,
+            settings.MaskColor,
+            settings.Opacity,
+            x,
+            y,
+            width,
+            height);
     }
 
     private static OverlayTextItem CreateTextItem(OcrResult result, OcrTextBlock block)

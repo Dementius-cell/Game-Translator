@@ -23,7 +23,7 @@ public sealed class ShellViewModel
 
     public string ApplicationName => "Game Translator";
 
-    public string CurrentStage => "Sprint 13";
+    public string CurrentStage => "Sprint 14";
 
     public INavigationService Navigation { get; }
 

@@ -100,40 +100,96 @@ public partial class OverlayWindow : Window
             ?? Matrix.Identity;
 
         return new OverlayWindowSnapshotViewModel(
-            snapshot.TextItems.Select(item => OverlayWindowTextItemViewModel.FromDevicePixels(
-                item,
-                snapshot.OverlaySettings,
-                transformFromDevice)));
+            snapshot.MaskItems.Select(item => OverlayWindowMaskItemViewModel.FromDevicePixels(item, transformFromDevice)),
+            snapshot.TextItems.Select(item => OverlayWindowTextItemViewModel.FromDevicePixels(item, transformFromDevice)));
     }
 
     private sealed class OverlayWindowSnapshotViewModel
     {
-        public OverlayWindowSnapshotViewModel(IEnumerable<OverlayWindowTextItemViewModel> textItems)
+        public OverlayWindowSnapshotViewModel(
+            IEnumerable<OverlayWindowMaskItemViewModel> maskItems,
+            IEnumerable<OverlayWindowTextItemViewModel> textItems)
         {
+            MaskItems = maskItems.ToArray();
             TextItems = textItems.ToArray();
         }
+
+        public IReadOnlyList<OverlayWindowMaskItemViewModel> MaskItems { get; }
 
         public IReadOnlyList<OverlayWindowTextItemViewModel> TextItems { get; }
     }
 
-    private sealed class OverlayWindowTextItemViewModel
+    private sealed class OverlayWindowMaskItemViewModel
     {
-        private OverlayWindowTextItemViewModel(
-            string text,
+        private OverlayWindowMaskItemViewModel(
             double x,
             double y,
             double width,
             double height,
-            Brush maskBrush,
-            Thickness padding)
+            string mode,
+            Brush brush,
+            double opacity)
+        {
+            X = x;
+            Y = y;
+            Width = width;
+            Height = height;
+            Mode = mode;
+            Brush = brush;
+            Opacity = opacity;
+        }
+
+        public double X { get; }
+
+        public double Y { get; }
+
+        public double Width { get; }
+
+        public double Height { get; }
+
+        public string Mode { get; }
+
+        public Brush Brush { get; }
+
+        public double Opacity { get; }
+
+        public static OverlayWindowMaskItemViewModel FromDevicePixels(
+            OverlayMaskItem item,
+            Matrix transformFromDevice)
+        {
+            var topLeft = transformFromDevice.Transform(new Point(item.X, item.Y));
+            var bottomRight = transformFromDevice.Transform(new Point(item.X + item.Width, item.Y + item.Height));
+
+            return new OverlayWindowMaskItemViewModel(
+                Math.Max(0, topLeft.X),
+                Math.Max(0, topLeft.Y),
+                Math.Max(1, bottomRight.X - topLeft.X),
+                Math.Max(1, bottomRight.Y - topLeft.Y),
+                item.Mode.ToString(),
+                CreateMaskBrush(item),
+                item.Opacity);
+        }
+
+        private static Brush CreateMaskBrush(OverlayMaskItem item)
+        {
+            var color = (Color)ColorConverter.ConvertFromString(item.Color);
+
+            var brush = new SolidColorBrush(color);
+            brush.Freeze();
+
+            return brush;
+        }
+    }
+
+    private sealed class OverlayWindowTextItemViewModel
+    {
+        private OverlayWindowTextItemViewModel(string text, double x, double y, double width, double height)
         {
             Text = text;
             X = x;
             Y = y;
             Width = width;
             Height = height;
-            MaskBrush = maskBrush;
-            Padding = padding;
         }
 
         public string Text { get; }
@@ -146,49 +202,23 @@ public partial class OverlayWindow : Window
 
         public double Height { get; }
 
-        public Brush MaskBrush { get; }
-
-        public Thickness Padding { get; }
-
         public static OverlayWindowTextItemViewModel FromDevicePixels(
             OverlayTextItem item,
-            OverlaySettings overlaySettings,
             Matrix transformFromDevice)
         {
-            ArgumentNullException.ThrowIfNull(overlaySettings);
-
             var topLeft = transformFromDevice.Transform(new Point(item.X, item.Y));
             var bottomRight = transformFromDevice.Transform(new Point(item.X + item.Width, item.Y + item.Height));
             var rawWidth = Math.Max(1, bottomRight.X - topLeft.X);
             var rawHeight = Math.Max(1, bottomRight.Y - topLeft.Y);
-            var padding = Math.Max(0, overlaySettings.Padding) + PreviewPadding;
-            var paddedWidth = rawWidth + padding * 2;
-            var paddedHeight = rawHeight + padding * 2;
-            var width = Math.Max(MinReadableItemWidth, paddedWidth);
-            var height = Math.Max(MinReadableItemHeight, paddedHeight);
+            var width = Math.Max(MinReadableItemWidth, rawWidth + PreviewPadding * 2);
+            var height = Math.Max(MinReadableItemHeight, rawHeight + PreviewPadding * 2);
 
             return new OverlayWindowTextItemViewModel(
                 item.Text,
                 Math.Max(0, topLeft.X - (width - rawWidth) / 2),
                 Math.Max(0, topLeft.Y - (height - rawHeight) / 2),
                 width,
-                height,
-                CreateMaskBrush(overlaySettings),
-                new Thickness(padding));
-        }
-
-        private static Brush CreateMaskBrush(OverlaySettings overlaySettings)
-        {
-            var color = (Color)ColorConverter.ConvertFromString(overlaySettings.MaskColor);
-            color.A = (byte)Math.Clamp(
-                Math.Round(overlaySettings.Opacity * byte.MaxValue, MidpointRounding.AwayFromZero),
-                0,
-                byte.MaxValue);
-
-            var brush = new SolidColorBrush(color);
-            brush.Freeze();
-
-            return brush;
+                height);
         }
     }
 

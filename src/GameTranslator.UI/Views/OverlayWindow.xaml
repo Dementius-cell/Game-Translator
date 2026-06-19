@@ -16,6 +16,33 @@
         IsHitTestVisible="False">
         <ItemsControl
             IsHitTestVisible="False"
+            ItemsSource="{Binding MaskItems}">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <Canvas />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemContainerStyle>
+                <Style TargetType="ContentPresenter">
+                    <Setter Property="Canvas.Left" Value="{Binding X}" />
+                    <Setter Property="Canvas.Top" Value="{Binding Y}" />
+                </Style>
+            </ItemsControl.ItemContainerStyle>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Border
+                        Width="{Binding Width}"
+                        Height="{Binding Height}"
+                        Background="{Binding Brush}"
+                        Opacity="{Binding Opacity}"
+                        Tag="{Binding Mode}"
+                        RenderOptions.ClearTypeHint="Enabled"
+                        SnapsToDevicePixels="True" />
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <ItemsControl
+            IsHitTestVisible="False"
             ItemsSource="{Binding TextItems}">
             <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
@@ -33,8 +60,7 @@
                     <Border
                         Width="{Binding Width}"
                         Height="{Binding Height}"
-                        Padding="{Binding Padding}"
-                        Background="{Binding MaskBrush}"
+                        Background="Transparent"
                         BorderBrush="#F1F5F9"
                         BorderThickness="1"
                         RenderOptions.ClearTypeHint="Enabled"

@@ -1,4 +1,5 @@
 using GameTranslator.Application.Overlay;
+using GameTranslator.Domain.Profiles;
 
 namespace GameTranslator.Tests.Architecture;
 
@@ -10,6 +11,7 @@ public sealed class OverlayPublicSeamTests
         AssertPublicApplicationType<IOverlayService>();
         AssertPublicApplicationType<OverlaySnapshot>();
         AssertPublicApplicationType<OverlayTextItem>();
+        AssertPublicApplicationType<OverlayMaskItem>();
         AssertPublicApplicationType<OverlayPositioningService>();
     }
 
@@ -21,6 +23,7 @@ public sealed class OverlayPublicSeamTests
             typeof(IOverlayService),
             typeof(OverlaySnapshot),
             typeof(OverlayTextItem),
+            typeof(OverlayMaskItem),
             typeof(OverlayPositioningService),
         };
 
@@ -46,6 +49,18 @@ public sealed class OverlayPublicSeamTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new OverlayTextItem("text", 0, -1, 10, 10));
         Assert.Throws<ArgumentOutOfRangeException>(() => new OverlayTextItem("text", 0, 0, 0, 10));
         Assert.Throws<ArgumentOutOfRangeException>(() => new OverlayTextItem("text", 0, 0, 10, 0));
+    }
+
+    [Fact]
+    public void OverlayMaskItem_RejectsInvalidMaskSettingsAndBounds()
+    {
+        Assert.Throws<ArgumentException>(() => new OverlayMaskItem(OverlayMaskMode.Solid, string.Empty, 1, 0, 0, 10, 10));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new OverlayMaskItem(OverlayMaskMode.Solid, "#000000", -0.1, 0, 0, 10, 10));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new OverlayMaskItem(OverlayMaskMode.Solid, "#000000", 1.1, 0, 0, 10, 10));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new OverlayMaskItem(OverlayMaskMode.Solid, "#000000", 1, -1, 0, 10, 10));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new OverlayMaskItem(OverlayMaskMode.Solid, "#000000", 1, 0, -1, 10, 10));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new OverlayMaskItem(OverlayMaskMode.Solid, "#000000", 1, 0, 0, 0, 10));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new OverlayMaskItem(OverlayMaskMode.Solid, "#000000", 1, 0, 0, 10, 0));
     }
 
     private static void AssertPublicApplicationType<TType>()

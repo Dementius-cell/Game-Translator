@@ -24,7 +24,23 @@ public sealed class OverlayWindowSourceTests
         Assert.Contains("UseLayoutRounding=\"True\"", source, StringComparison.Ordinal);
         Assert.Contains("ShowInTaskbar=\"False\"", source, StringComparison.Ordinal);
         Assert.Contains("ShowActivated=\"False\"", source, StringComparison.Ordinal);
+        Assert.Contains("ItemsSource=\"{Binding MaskItems}\"", source, StringComparison.Ordinal);
         Assert.Contains("ItemsSource=\"{Binding TextItems}\"", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void OverlayWindow_RendersMaskLayerBelowTextLayerWithoutBlur()
+    {
+        var source = ReadSource("src/GameTranslator.UI/Views/OverlayWindow.xaml");
+
+        Assert.True(
+            source.IndexOf("ItemsSource=\"{Binding MaskItems}\"", StringComparison.Ordinal)
+            < source.IndexOf("ItemsSource=\"{Binding TextItems}\"", StringComparison.Ordinal));
+        Assert.Contains("Background=\"{Binding Brush}\"", source, StringComparison.Ordinal);
+        Assert.Contains("Opacity=\"{Binding Opacity}\"", source, StringComparison.Ordinal);
+        Assert.Contains("Tag=\"{Binding Mode}\"", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("BlurEffect", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Effect=", source, StringComparison.Ordinal);
     }
 
     [Fact]

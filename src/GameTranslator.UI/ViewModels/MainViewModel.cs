@@ -152,7 +152,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public string ApplicationName => "Game Translator";
 
-    public string CurrentStage => "Sprint 13";
+    public string CurrentStage => "Sprint 14";
 
     public double ZoneSurfaceWidth => OcrZoneEditorViewModel.PreviewSurfaceWidth;
 

@@ -1,6 +1,7 @@
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Ocr;
 using GameTranslator.Application.Overlay;
+using GameTranslator.Domain.Profiles;
 
 namespace GameTranslator.Tests.Application;
 
@@ -28,6 +29,15 @@ public sealed class OverlayPositioningServiceTests
         Assert.Equal(25, item.Y);
         Assert.Equal(24, item.Width);
         Assert.Equal(10, item.Height);
+
+        var mask = Assert.Single(snapshot.MaskItems);
+        Assert.Equal(OverlayMaskMode.Solid, mask.Mode);
+        Assert.Equal("#000000", mask.Color);
+        Assert.Equal(1, mask.Opacity);
+        Assert.Equal(item.X, mask.X);
+        Assert.Equal(item.Y, mask.Y);
+        Assert.Equal(item.Width, mask.Width);
+        Assert.Equal(item.Height, mask.Height);
     }
 
     [Fact]
@@ -138,7 +148,65 @@ public sealed class OverlayPositioningServiceTests
         var snapshot = service.CreateSnapshot(result, ShownAt);
 
         Assert.Empty(snapshot.TextItems);
+        Assert.Empty(snapshot.MaskItems);
         Assert.Equal(ShownAt, snapshot.ShownAt);
+    }
+
+    [Fact]
+    public void CreateSnapshot_WithOverlaySettings_ExpandsMaskByPaddingAndPreservesMaskSettings()
+    {
+        var service = new OverlayPositioningService();
+        var settings = new OverlaySettings
+        {
+            MaskMode = OverlayMaskMode.Darken,
+            MaskColor = "#202020",
+            Opacity = 0.65,
+            Padding = 6,
+        };
+        var result = CreateResult(
+            new CaptureRegion(10, 20, 100, 40),
+            inputWidth: 100,
+            inputHeight: 40,
+            new OcrTextBlock("Start", new BoundingBox(4, 5, 24, 10)));
+
+        var snapshot = service.CreateSnapshot(result, ShownAt, settings);
+
+        Assert.Equal(settings, snapshot.OverlaySettings);
+        var text = Assert.Single(snapshot.TextItems);
+        var mask = Assert.Single(snapshot.MaskItems);
+        Assert.Equal(OverlayMaskMode.Darken, mask.Mode);
+        Assert.Equal("#202020", mask.Color);
+        Assert.Equal(0.65, mask.Opacity);
+        Assert.Equal(text.X - 6, mask.X);
+        Assert.Equal(text.Y - 6, mask.Y);
+        Assert.Equal(text.Width + 12, mask.Width);
+        Assert.Equal(text.Height + 12, mask.Height);
+    }
+
+    [Fact]
+    public void CreateSnapshot_WhenPaddingWouldMoveMaskOffScreen_ClampsMaskOrigin()
+    {
+        var service = new OverlayPositioningService();
+        var settings = new OverlaySettings
+        {
+            MaskMode = OverlayMaskMode.Solid,
+            MaskColor = "#101010",
+            Opacity = 0.5,
+            Padding = 8,
+        };
+        var result = CreateResult(
+            new CaptureRegion(0, 0, 100, 40),
+            inputWidth: 100,
+            inputHeight: 40,
+            new OcrTextBlock("Edge", new BoundingBox(2, 3, 20, 10)));
+
+        var snapshot = service.CreateSnapshot(result, ShownAt, settings);
+
+        var mask = Assert.Single(snapshot.MaskItems);
+        Assert.Equal(0, mask.X);
+        Assert.Equal(0, mask.Y);
+        Assert.Equal(36, mask.Width);
+        Assert.Equal(26, mask.Height);
     }
 
     private static OverlaySnapshot CreateSnapshot(params OverlayTextItem[] textItems)

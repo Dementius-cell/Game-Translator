@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using GameTranslator.Application.Overlay;
+using GameTranslator.Domain.Profiles;
 
 namespace GameTranslator.UI.Views;
 
@@ -99,7 +100,10 @@ public partial class OverlayWindow : Window
             ?? Matrix.Identity;
 
         return new OverlayWindowSnapshotViewModel(
-            snapshot.TextItems.Select(item => OverlayWindowTextItemViewModel.FromDevicePixels(item, transformFromDevice)));
+            snapshot.TextItems.Select(item => OverlayWindowTextItemViewModel.FromDevicePixels(
+                item,
+                snapshot.OverlaySettings,
+                transformFromDevice)));
     }
 
     private sealed class OverlayWindowSnapshotViewModel
@@ -114,13 +118,22 @@ public partial class OverlayWindow : Window
 
     private sealed class OverlayWindowTextItemViewModel
     {
-        private OverlayWindowTextItemViewModel(string text, double x, double y, double width, double height)
+        private OverlayWindowTextItemViewModel(
+            string text,
+            double x,
+            double y,
+            double width,
+            double height,
+            Brush maskBrush,
+            Thickness padding)
         {
             Text = text;
             X = x;
             Y = y;
             Width = width;
             Height = height;
+            MaskBrush = maskBrush;
+            Padding = padding;
         }
 
         public string Text { get; }
@@ -133,16 +146,24 @@ public partial class OverlayWindow : Window
 
         public double Height { get; }
 
+        public Brush MaskBrush { get; }
+
+        public Thickness Padding { get; }
+
         public static OverlayWindowTextItemViewModel FromDevicePixels(
             OverlayTextItem item,
+            OverlaySettings overlaySettings,
             Matrix transformFromDevice)
         {
+            ArgumentNullException.ThrowIfNull(overlaySettings);
+
             var topLeft = transformFromDevice.Transform(new Point(item.X, item.Y));
             var bottomRight = transformFromDevice.Transform(new Point(item.X + item.Width, item.Y + item.Height));
             var rawWidth = Math.Max(1, bottomRight.X - topLeft.X);
             var rawHeight = Math.Max(1, bottomRight.Y - topLeft.Y);
-            var paddedWidth = rawWidth + PreviewPadding * 2;
-            var paddedHeight = rawHeight + PreviewPadding * 2;
+            var padding = Math.Max(0, overlaySettings.Padding) + PreviewPadding;
+            var paddedWidth = rawWidth + padding * 2;
+            var paddedHeight = rawHeight + padding * 2;
             var width = Math.Max(MinReadableItemWidth, paddedWidth);
             var height = Math.Max(MinReadableItemHeight, paddedHeight);
 
@@ -151,7 +172,23 @@ public partial class OverlayWindow : Window
                 Math.Max(0, topLeft.X - (width - rawWidth) / 2),
                 Math.Max(0, topLeft.Y - (height - rawHeight) / 2),
                 width,
-                height);
+                height,
+                CreateMaskBrush(overlaySettings),
+                new Thickness(padding));
+        }
+
+        private static Brush CreateMaskBrush(OverlaySettings overlaySettings)
+        {
+            var color = (Color)ColorConverter.ConvertFromString(overlaySettings.MaskColor);
+            color.A = (byte)Math.Clamp(
+                Math.Round(overlaySettings.Opacity * byte.MaxValue, MidpointRounding.AwayFromZero),
+                0,
+                byte.MaxValue);
+
+            var brush = new SolidColorBrush(color);
+            brush.Freeze();
+
+            return brush;
         }
     }
 

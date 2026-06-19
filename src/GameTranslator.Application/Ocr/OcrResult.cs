@@ -26,6 +26,7 @@ public sealed class OcrResult
             }
         }
 
+        Request = request;
         ZoneId = request.ZoneId;
         Region = request.Region;
         Language = request.Language;
@@ -34,6 +35,8 @@ public sealed class OcrResult
         TextBlocks = blockList;
         RecognizedAt = recognizedAt;
     }
+
+    public OcrRequest Request { get; }
 
     public string? ZoneId { get; }
 

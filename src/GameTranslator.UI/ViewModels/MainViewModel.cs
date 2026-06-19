@@ -10,6 +10,7 @@ using GameTranslator.Application.Capture;
 using GameTranslator.Application.Credentials;
 using GameTranslator.Application.Ocr;
 using GameTranslator.Application.Overlay;
+using GameTranslator.Application.Pipeline;
 using GameTranslator.Application.Profiles;
 using GameTranslator.Domain.Profiles;
 using GameTranslator.UI.Commands;
@@ -38,6 +39,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private readonly CaptureService captureService;
     private readonly OcrService ocrService;
     private readonly TranslatorCredentialService credentialService;
+    private readonly TranslationPipelineService translationPipelineService;
     private readonly IOverlayService overlayService;
     private readonly OverlayPositioningService overlayPositioningService;
     private readonly IDialogService dialogService;
@@ -69,6 +71,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private string captureRefreshMetricsSummary = "Refresh rate not measured.";
     private string ocrPreviewStatus = "No OCR preview yet.";
     private string overlayPreviewStatus = "Overlay preview hidden.";
+    private string pipelineStatus = "Full translation pipeline not run yet.";
     private int capturePreviewWidth;
     private int capturePreviewHeight;
     private string statusMessage = "Loading profiles...";
@@ -92,6 +95,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         CaptureService captureService,
         OcrService ocrService,
         TranslatorCredentialService credentialService,
+        TranslationPipelineService translationPipelineService,
         IOverlayService overlayService,
         OverlayPositioningService overlayPositioningService,
         IDialogService dialogService,
@@ -103,6 +107,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         this.captureService = captureService;
         this.ocrService = ocrService;
         this.credentialService = credentialService;
+        this.translationPipelineService = translationPipelineService;
         this.overlayService = overlayService;
         this.overlayPositioningService = overlayPositioningService;
         this.dialogService = dialogService;
@@ -134,6 +139,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         RefreshCapturePreviewCommand = new AsyncRelayCommand(RefreshCapturePreviewAsync, CanRefreshCapturePreview);
         MeasureCaptureRefreshCommand = new AsyncRelayCommand(MeasureCaptureRefreshAsync, CanRefreshCapturePreview);
         RecognizeOcrPreviewCommand = new AsyncRelayCommand(RecognizeOcrPreviewAsync, CanRecognizeOcrPreview);
+        RunTranslationPipelineCommand = new AsyncRelayCommand(RunTranslationPipelineAsync, CanRunTranslationPipeline);
         ShowOverlayPreviewCommand = new RelayCommand(ShowOverlayPreview, () => !IsBusy);
         HideOverlayPreviewCommand = new RelayCommand(HideOverlayPreview, () => !IsBusy && IsOverlayPreviewVisible);
         SaveTranslatorCredentialsCommand = new AsyncRelayCommand(SaveTranslatorCredentialsAsync, CanSaveTranslatorCredentials);
@@ -146,7 +152,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public string ApplicationName => "Game Translator";
 
-    public string CurrentStage => "Sprint 12";
+    public string CurrentStage => "Sprint 13";
 
     public double ZoneSurfaceWidth => OcrZoneEditorViewModel.PreviewSurfaceWidth;
 
@@ -546,6 +552,12 @@ public sealed class MainViewModel : ValidatableObservableObject
         private set => SetProperty(ref overlayPreviewStatus, value);
     }
 
+    public string PipelineStatus
+    {
+        get => pipelineStatus;
+        private set => SetProperty(ref pipelineStatus, value);
+    }
+
     public bool IsOverlayPreviewVisible => overlayService.IsVisible;
 
     public ICommand BeginCreateProfileCommand { get; }
@@ -579,6 +591,8 @@ public sealed class MainViewModel : ValidatableObservableObject
     public ICommand MeasureCaptureRefreshCommand { get; }
 
     public ICommand RecognizeOcrPreviewCommand { get; }
+
+    public ICommand RunTranslationPipelineCommand { get; }
 
     public ICommand ShowOverlayPreviewCommand { get; }
 
@@ -1311,6 +1325,89 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
     }
 
+    public async Task RunTranslationPipelineAsync()
+    {
+        RefreshValidationState();
+        if (SelectedZone is null)
+        {
+            PipelineStatus = "Select an OCR zone before running the full pipeline.";
+            StatusMessage = PipelineStatus;
+            return;
+        }
+
+        if (HasValidationErrors)
+        {
+            PipelineStatus = ValidationErrors[0];
+            StatusMessage = PipelineStatus;
+            return;
+        }
+
+        var overlayWasVisibleBeforeCapture = false;
+        OverlaySnapshot? overlaySnapshotBeforeCapture = null;
+
+        try
+        {
+            IsBusy = true;
+            overlayWasVisibleBeforeCapture = overlayService.IsVisible;
+            overlaySnapshotBeforeCapture = await HideOverlayPreviewForCaptureAsync();
+
+            var profile = BuildProfileFromEditor();
+            var zone = profile.OcrZones.First(profileZone => string.Equals(profileZone.Id, SelectedZone.Id, StringComparison.Ordinal));
+
+            PipelineStatus = $"Running full pipeline for '{zone.Name}'...";
+            StatusMessage = PipelineStatus;
+
+            var result = await translationPipelineService.RunAsync(
+                profile,
+                zone,
+                overlaySnapshotBeforeCapture);
+
+            UpdateCapturePreview(result.CapturedFrame);
+            latestOcrPreviewResult = result.SourceOcrResult;
+            ReplaceOcrPreviewTextBlocks(result.SourceOcrResult.TextBlocks);
+            CapturePreviewStatus = $"Captured {result.CapturedFrame.Width}x{result.CapturedFrame.Height} at {result.CapturedFrame.CapturedAt:HH:mm:ss}.";
+            OcrPreviewStatus = result.RecognizedBlockCount == 0
+                ? $"No text recognized for '{zone.Name}'."
+                : $"Recognized {result.RecognizedBlockCount} text block(s) for '{zone.Name}'.";
+            OverlayPreviewStatus = $"Full pipeline overlay shown with {result.OverlaySnapshot.TextItems.Count} translated text item(s).";
+            PipelineStatus = result.RecognizedBlockCount == 0
+                ? $"Full pipeline completed for '{zone.Name}' with no recognized text."
+                : $"Full pipeline translated {result.TranslatedBlockCount} text block(s) for '{zone.Name}'.";
+            StatusMessage = PipelineStatus;
+            OnPropertyChanged(nameof(IsOverlayPreviewVisible));
+            NotifyCommandStateChanged();
+            logger.Information($"Full pipeline completed for profile '{profile.Name}' zone '{zone.Name}'.");
+        }
+        catch (TranslationPipelineException exception)
+        {
+            RestoreOverlayPreviewAfterFailedCapture(overlayWasVisibleBeforeCapture, overlaySnapshotBeforeCapture);
+            logger.Error(exception, "Full translation pipeline failed.");
+            PipelineStatus = exception.Message;
+            StatusMessage = PipelineStatus;
+            latestOcrPreviewResult = null;
+            ReplaceOcrPreviewTextBlocks(Array.Empty<OcrTextBlock>());
+        }
+        catch (OperationCanceledException)
+        {
+            RestoreOverlayPreviewAfterFailedCapture(overlayWasVisibleBeforeCapture, overlaySnapshotBeforeCapture);
+            PipelineStatus = "Full translation pipeline canceled.";
+            StatusMessage = PipelineStatus;
+        }
+        catch (Exception exception)
+        {
+            RestoreOverlayPreviewAfterFailedCapture(overlayWasVisibleBeforeCapture, overlaySnapshotBeforeCapture);
+            logger.Error(exception, "Unexpected full translation pipeline failure.");
+            PipelineStatus = "Full translation pipeline failed. Check logs for details.";
+            StatusMessage = PipelineStatus;
+            latestOcrPreviewResult = null;
+            ReplaceOcrPreviewTextBlocks(Array.Empty<OcrTextBlock>());
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     private async Task<OverlaySnapshot?> HideOverlayPreviewForCaptureAsync()
     {
         if (!overlayService.IsVisible)
@@ -1644,6 +1741,15 @@ public sealed class MainViewModel : ValidatableObservableObject
         return !IsBusy
             && SelectedZone is not null
             && !string.IsNullOrWhiteSpace(SourceLanguage);
+    }
+
+    private bool CanRunTranslationPipeline()
+    {
+        return !IsBusy
+            && SelectedZone is not null
+            && !string.IsNullOrWhiteSpace(TranslatorProvider)
+            && !string.IsNullOrWhiteSpace(SourceLanguage)
+            && !string.IsNullOrWhiteSpace(TargetLanguage);
     }
 
     private bool CanSelectTranslatorProvider()
@@ -2169,6 +2275,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         ((AsyncRelayCommand)RefreshCapturePreviewCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)MeasureCaptureRefreshCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)RecognizeOcrPreviewCommand).RaiseCanExecuteChanged();
+        ((AsyncRelayCommand)RunTranslationPipelineCommand).RaiseCanExecuteChanged();
         ((RelayCommand)ShowOverlayPreviewCommand).RaiseCanExecuteChanged();
         ((RelayCommand)HideOverlayPreviewCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)SaveTranslatorCredentialsCommand).RaiseCanExecuteChanged();

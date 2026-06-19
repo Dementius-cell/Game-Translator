@@ -7,7 +7,9 @@ using GameTranslator.Application.Capture;
 using GameTranslator.Application.Credentials;
 using GameTranslator.Application.Ocr;
 using GameTranslator.Application.Overlay;
+using GameTranslator.Application.Pipeline;
 using GameTranslator.Application.Profiles;
+using GameTranslator.Application.Translation;
 using GameTranslator.Domain.Profiles;
 
 namespace GameTranslator.Tests.Smoke;
@@ -1177,6 +1179,53 @@ public sealed class ProfileManagerViewModelTests
         Assert.Equal("Overlay preview hidden.", GetPropertyValue(viewModel, "OverlayPreviewStatus"));
     }
 
+    [Fact]
+    public async Task RunTranslationPipelineAsync_UsesSelectedZoneCredentialsAndShowsTranslatedOverlay()
+    {
+        var credentialStorage = new TestCredentialStorage();
+        await credentialStorage.SaveAsync(
+            new TranslatorCredentialRecord(
+                "Google",
+                "SECRET_TRANSLATOR_TOKEN",
+                "project-a",
+                "global",
+                new Uri("https://translation.test")));
+        var translator = new TestTranslatorProvider("Google", new[] { "Translated subtitle" });
+        var overlay = new TestOverlayService();
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            ocrEngine: new TestOcrEngine
+            {
+                BlocksFactory = _ => new[]
+                {
+                    new OcrTextBlock("Original subtitle", new BoundingBox(0, 0, 40, 12)),
+                },
+            },
+            translatorProvider: translator,
+            overlayService: overlay,
+            credentialStorage: credentialStorage);
+
+        ConfigureValidDraftProfile(viewModel, "Pipeline draft");
+        InvokeMethodWithArguments(viewModel, "StartZoneSelection", 10d, 20d);
+        InvokeMethodWithArguments(viewModel, "CompleteZoneSelection", 110d, 70d);
+
+        await InvokeTaskMethodAsync(viewModel, "RunTranslationPipelineAsync");
+
+        Assert.NotNull(translator.Request);
+        Assert.Equal("SECRET_TRANSLATOR_TOKEN", translator.Request?.Credentials.AccessToken);
+        Assert.True(overlay.IsVisible);
+        Assert.Equal("Translated subtitle", Assert.Single(overlay.CurrentSnapshot!.TextItems).Text);
+        Assert.Contains(
+            "Full pipeline translated 1 text block(s)",
+            GetPropertyValue(viewModel, "PipelineStatus")?.ToString(),
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "SECRET_TRANSLATOR_TOKEN",
+            GetPropertyValue(viewModel, "PipelineStatus")?.ToString() ?? string.Empty,
+            StringComparison.Ordinal);
+    }
+
     private static object CreateMainViewModel(
         InMemoryProfileRepository repository,
         TestSettingsService settings,
@@ -1185,6 +1234,7 @@ public sealed class ProfileManagerViewModelTests
         TestApplicationLogger? logger = null,
         TestCaptureFrameSource? frameSource = null,
         TestOcrEngine? ocrEngine = null,
+        TestTranslatorProvider? translatorProvider = null,
         TestOverlayService? overlayService = null,
         TestCredentialStorage? credentialStorage = null)
     {
@@ -1195,6 +1245,16 @@ public sealed class ProfileManagerViewModelTests
             new ProfileValidator());
         var captureService = new CaptureService(frameSource ?? new TestCaptureFrameSource());
         var ocrService = new OcrService(ocrEngine ?? new TestOcrEngine());
+        var credentialService = new TranslatorCredentialService(credentialStorage ?? new TestCredentialStorage());
+        var overlayPositioningService = new OverlayPositioningService();
+        var overlay = overlayService ?? new TestOverlayService();
+        var translationPipelineService = new TranslationPipelineService(
+            captureService,
+            ocrService,
+            new TranslatorManager(new ITranslatorProvider[] { translatorProvider ?? new TestTranslatorProvider("Google") }),
+            credentialService,
+            overlayPositioningService,
+            overlay);
         var applicationLogger = logger ?? new TestApplicationLogger();
         var assembly = LoadUiAssembly();
         var viewModelType = assembly.GetType(
@@ -1208,9 +1268,10 @@ public sealed class ProfileManagerViewModelTests
                 profileExchangeService,
                 captureService,
                 ocrService,
-                new TranslatorCredentialService(credentialStorage ?? new TestCredentialStorage()),
-                overlayService ?? new TestOverlayService(),
-                new OverlayPositioningService(),
+                credentialService,
+                translationPipelineService,
+                overlay,
+                overlayPositioningService,
                 dialog ?? new TestDialogService(),
                 settings,
                 applicationLogger)
@@ -1502,6 +1563,36 @@ public sealed class ProfileManagerViewModelTests
 
             var blocks = BlocksFactory?.Invoke(request) ?? Array.Empty<OcrTextBlock>();
             return Task.FromResult(new OcrResult(request, blocks, RecognizedAt));
+        }
+    }
+
+    private sealed class TestTranslatorProvider : ITranslatorProvider
+    {
+        private static readonly DateTimeOffset TranslatedAt = new(2026, 6, 19, 12, 0, 3, TimeSpan.Zero);
+
+        private readonly IReadOnlyList<string>? translatedTexts;
+
+        public TestTranslatorProvider(string providerId, IReadOnlyList<string>? translatedTexts = null)
+        {
+            ProviderId = providerId;
+            this.translatedTexts = translatedTexts;
+        }
+
+        public string ProviderId { get; }
+
+        public TranslateRequest? Request { get; private set; }
+
+        public Task<TranslateResponse> TranslateAsync(
+            TranslateRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Request = request;
+
+            return Task.FromResult(
+                new TranslateResponse(
+                    translatedTexts ?? request.Texts.Select(text => $"Translated {text}"),
+                    TranslatedAt));
         }
     }
 

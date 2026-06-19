@@ -1,4 +1,5 @@
 using GameTranslator.Application.Ocr;
+using GameTranslator.Domain.Profiles;
 
 namespace GameTranslator.Application.Overlay;
 
@@ -9,15 +10,19 @@ public sealed class OverlayPositioningService
 {
     private const int DefaultJitterTolerancePixels = 4;
 
-    public OverlaySnapshot CreateSnapshot(OcrResult result, DateTimeOffset shownAt)
+    public OverlaySnapshot CreateSnapshot(
+        OcrResult result,
+        DateTimeOffset shownAt,
+        OverlaySettings? overlaySettings = null)
     {
-        return CreateSnapshot(result, shownAt, previousSnapshot: null);
+        return CreateSnapshot(result, shownAt, previousSnapshot: null, overlaySettings);
     }
 
     public OverlaySnapshot CreateSnapshot(
         OcrResult result,
         DateTimeOffset shownAt,
-        OverlaySnapshot? previousSnapshot)
+        OverlaySnapshot? previousSnapshot,
+        OverlaySettings? overlaySettings = null)
     {
         ArgumentNullException.ThrowIfNull(result);
 
@@ -32,7 +37,8 @@ public sealed class OverlayPositioningService
 
         return new OverlaySnapshot(
             textItems,
-            shownAt);
+            shownAt,
+            overlaySettings ?? previousSnapshot?.OverlaySettings);
     }
 
     private static OverlayTextItem CreateTextItem(OcrResult result, OcrTextBlock block)

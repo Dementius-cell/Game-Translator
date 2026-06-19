@@ -33,13 +33,13 @@
                     <Border
                         Width="{Binding Width}"
                         Height="{Binding Height}"
-                        Background="#B0142430"
+                        Padding="{Binding Padding}"
+                        Background="{Binding MaskBrush}"
                         BorderBrush="#F1F5F9"
                         BorderThickness="1"
                         RenderOptions.ClearTypeHint="Enabled"
                         SnapsToDevicePixels="True">
                         <Viewbox
-                            Margin="1"
                             Stretch="Uniform"
                             StretchDirection="Both">
                             <TextBlock

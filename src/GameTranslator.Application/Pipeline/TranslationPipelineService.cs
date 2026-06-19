@@ -1,3 +1,4 @@
+using GameTranslator.Application.Cache;
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Credentials;
 using GameTranslator.Application.Ocr;
@@ -13,6 +14,7 @@ public sealed class TranslationPipelineService
     private readonly OcrService ocrService;
     private readonly TranslatorManager translatorManager;
     private readonly TranslatorCredentialService credentialService;
+    private readonly TranslationCacheService cacheService;
     private readonly OverlayPositioningService overlayPositioningService;
     private readonly IOverlayService overlayService;
 
@@ -21,6 +23,7 @@ public sealed class TranslationPipelineService
         OcrService ocrService,
         TranslatorManager translatorManager,
         TranslatorCredentialService credentialService,
+        TranslationCacheService cacheService,
         OverlayPositioningService overlayPositioningService,
         IOverlayService overlayService)
     {
@@ -28,6 +31,7 @@ public sealed class TranslationPipelineService
         this.ocrService = ocrService ?? throw new ArgumentNullException(nameof(ocrService));
         this.translatorManager = translatorManager ?? throw new ArgumentNullException(nameof(translatorManager));
         this.credentialService = credentialService ?? throw new ArgumentNullException(nameof(credentialService));
+        this.cacheService = cacheService ?? throw new ArgumentNullException(nameof(cacheService));
         this.overlayPositioningService = overlayPositioningService ?? throw new ArgumentNullException(nameof(overlayPositioningService));
         this.overlayService = overlayService ?? throw new ArgumentNullException(nameof(overlayService));
     }
@@ -74,13 +78,25 @@ public sealed class TranslationPipelineService
                 emptySnapshot);
         }
 
-        var credentials = await RunStageAsync(
-            TranslationPipelineStage.Credentials,
-            () => credentialService.CreateCredentialsAsync(profile.TranslatorSettings.Provider, cancellationToken));
         var texts = sourceResult.TextBlocks.Select(block => block.Text).ToArray();
-        var translateResponse = await RunStageAsync(
-            TranslationPipelineStage.Translation,
-            () => translatorManager.TranslateAsync(profile.TranslatorSettings, texts, credentials, cancellationToken));
+        var cacheResult = await RunStageAsync(
+            TranslationPipelineStage.Cache,
+            () => cacheService.GetOrAddAsync(
+                profile.TranslatorSettings,
+                texts,
+                async missingTexts =>
+                {
+                    var credentials = await RunStageAsync(
+                        TranslationPipelineStage.Credentials,
+                        () => credentialService.CreateCredentialsAsync(profile.TranslatorSettings.Provider, cancellationToken));
+
+                    return await RunStageAsync(
+                        TranslationPipelineStage.Translation,
+                        () => translatorManager.TranslateAsync(profile.TranslatorSettings, missingTexts, credentials, cancellationToken));
+                },
+                DateTimeOffset.UtcNow,
+                cancellationToken));
+        var translateResponse = cacheResult.ToTranslateResponse();
 
         if (translateResponse.TranslatedTexts.Count != sourceResult.TextBlocks.Count)
         {
@@ -104,7 +120,8 @@ public sealed class TranslationPipelineService
             frame,
             sourceResult,
             translateResponse,
-            snapshot);
+            snapshot,
+            cacheResult);
     }
 
     private async Task ShowOverlayAsync(OverlaySnapshot snapshot)

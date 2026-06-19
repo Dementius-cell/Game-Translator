@@ -1,4 +1,5 @@
 using GameTranslator.Application.Capture;
+using GameTranslator.Application.Cache;
 using GameTranslator.Application.Ocr;
 using GameTranslator.Application.Overlay;
 using GameTranslator.Application.Translation;
@@ -13,7 +14,8 @@ public sealed class TranslationPipelineResult
         CapturedFrame capturedFrame,
         OcrResult sourceOcrResult,
         TranslateResponse? translateResponse,
-        OverlaySnapshot overlaySnapshot)
+        OverlaySnapshot overlaySnapshot,
+        TranslationCacheResult? cacheResult = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(zoneId);
         ProfileId = profileId?.Trim() ?? string.Empty;
@@ -22,6 +24,7 @@ public sealed class TranslationPipelineResult
         SourceOcrResult = sourceOcrResult ?? throw new ArgumentNullException(nameof(sourceOcrResult));
         TranslateResponse = translateResponse;
         OverlaySnapshot = overlaySnapshot ?? throw new ArgumentNullException(nameof(overlaySnapshot));
+        CacheResult = cacheResult;
     }
 
     public string ProfileId { get; }
@@ -35,6 +38,8 @@ public sealed class TranslationPipelineResult
     public TranslateResponse? TranslateResponse { get; }
 
     public OverlaySnapshot OverlaySnapshot { get; }
+
+    public TranslationCacheResult? CacheResult { get; }
 
     public int RecognizedBlockCount => SourceOcrResult.TextBlocks.Count;
 

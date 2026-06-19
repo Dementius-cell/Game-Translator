@@ -1,4 +1,5 @@
 using GameTranslator.Application.Abstractions;
+using GameTranslator.Application.Cache;
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Composition;
 using GameTranslator.Application.Credentials;
@@ -7,6 +8,7 @@ using GameTranslator.Application.Profiles;
 using GameTranslator.Application.Settings;
 using GameTranslator.Application.Translation;
 using GameTranslator.Infrastructure.Capture;
+using GameTranslator.Infrastructure.Cache;
 using GameTranslator.Infrastructure.Credentials;
 using GameTranslator.Infrastructure.Ocr;
 using GameTranslator.Infrastructure.Profiles;
@@ -29,6 +31,7 @@ public sealed class InfrastructureServiceModule : IApplicationServiceModule
             return new JsonProfileRepository(options.ProfilesDirectory);
         });
         services.AddSingleton<IProfileExchangeGateway, JsonProfileExchangeGateway>();
+        services.AddSingleton<ITranslationCacheRepository, SqliteTranslationCacheRepository>();
         services.AddSingleton<ICaptureFrameSource, WindowsGraphicsCaptureFrameSource>();
         services.AddSingleton<IOcrEngine, WindowsOcrEngine>();
         services.AddSingleton<HttpClient>();

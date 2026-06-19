@@ -1,6 +1,7 @@
 using System.IO;
 using System.Reflection;
 using System.Runtime.Loader;
+using GameTranslator.Application.Cache;
 using GameTranslator.Application.Abstractions;
 using GameTranslator.Application.Overlay;
 using GameTranslator.Application.Profiles;
@@ -84,6 +85,7 @@ public sealed class PresentationCompositionTests
             Guid.NewGuid().ToString("N"));
         services.AddSingleton(new ProfileStorageOptions(rootDirectory));
         services.AddSingleton(new SettingsStorageOptions(Path.Combine(rootDirectory, "state", "settings.json")));
+        services.AddSingleton(new TranslationCacheStorageOptions(Path.Combine(rootDirectory, "cache", "translations.db")));
 
         var uiAssembly = LoadUiAssembly();
         var extensionType = uiAssembly.GetType(
@@ -104,6 +106,9 @@ public sealed class PresentationCompositionTests
         Assert.Contains(
             services,
             descriptor => descriptor.ServiceType == typeof(ISettingsService));
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(ITranslationCacheRepository));
     }
 
     private static IServiceCollection InvokePresentationCompositionRoot()

@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Runtime.Loader;
 using System.Text.Json;
 using GameTranslator.Application.Abstractions;
+using GameTranslator.Application.Cache;
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Credentials;
 using GameTranslator.Application.Ocr;
@@ -1226,6 +1227,33 @@ public sealed class ProfileManagerViewModelTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task CleanupTranslationCacheAsync_RemovesExpiredEntriesAndUpdatesStatus()
+    {
+        var cacheRepository = new TestTranslationCacheRepository();
+        var key = new TranslationCacheKey("Google", "en", "ru", "Hello");
+        await cacheRepository.SaveAsync(
+            new TranslationCacheEntry(
+                key,
+                "Expired",
+                new DateTimeOffset(2026, 6, 1, 12, 0, 0, TimeSpan.Zero),
+                new DateTimeOffset(2026, 6, 2, 12, 0, 0, TimeSpan.Zero),
+                new DateTimeOffset(2026, 6, 1, 12, 0, 0, TimeSpan.Zero),
+                hitCount: 0));
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            translationCacheRepository: cacheRepository);
+
+        await InvokeTaskMethodAsync(viewModel, "CleanupTranslationCacheAsync");
+
+        Assert.Empty(cacheRepository.Entries);
+        Assert.Contains(
+            "Translation cache cleanup removed 1 expired entry.",
+            GetPropertyValue(viewModel, "TranslationCacheStatus")?.ToString(),
+            StringComparison.Ordinal);
+    }
+
     private static object CreateMainViewModel(
         InMemoryProfileRepository repository,
         TestSettingsService settings,
@@ -1236,7 +1264,8 @@ public sealed class ProfileManagerViewModelTests
         TestOcrEngine? ocrEngine = null,
         TestTranslatorProvider? translatorProvider = null,
         TestOverlayService? overlayService = null,
-        TestCredentialStorage? credentialStorage = null)
+        TestCredentialStorage? credentialStorage = null,
+        TestTranslationCacheRepository? translationCacheRepository = null)
     {
         var profileService = new ProfileService(repository, new ProfileValidator());
         var profileExchangeService = new ProfileExchangeService(
@@ -1248,11 +1277,15 @@ public sealed class ProfileManagerViewModelTests
         var credentialService = new TranslatorCredentialService(credentialStorage ?? new TestCredentialStorage());
         var overlayPositioningService = new OverlayPositioningService();
         var overlay = overlayService ?? new TestOverlayService();
+        var translationCacheService = new TranslationCacheService(
+            translationCacheRepository ?? new TestTranslationCacheRepository(),
+            new TranslationCacheOptions());
         var translationPipelineService = new TranslationPipelineService(
             captureService,
             ocrService,
             new TranslatorManager(new ITranslatorProvider[] { translatorProvider ?? new TestTranslatorProvider("Google") }),
             credentialService,
+            translationCacheService,
             overlayPositioningService,
             overlay);
         var applicationLogger = logger ?? new TestApplicationLogger();
@@ -1270,6 +1303,7 @@ public sealed class ProfileManagerViewModelTests
                 ocrService,
                 credentialService,
                 translationPipelineService,
+                translationCacheService,
                 overlay,
                 overlayPositioningService,
                 dialog ?? new TestDialogService(),
@@ -1615,6 +1649,47 @@ public sealed class ProfileManagerViewModelTests
         {
             IsVisible = false;
             Events.Add("Hide");
+        }
+    }
+
+    private sealed class TestTranslationCacheRepository : ITranslationCacheRepository
+    {
+        private readonly Dictionary<TranslationCacheKey, TranslationCacheEntry> entries = new();
+
+        public IReadOnlyDictionary<TranslationCacheKey, TranslationCacheEntry> Entries => entries;
+
+        public Task<TranslationCacheEntry?> GetAsync(
+            TranslationCacheKey key,
+            DateTimeOffset now,
+            CancellationToken cancellationToken = default)
+        {
+            entries.TryGetValue(key, out var entry);
+
+            return Task.FromResult(entry?.IsExpired(now) == true ? null : entry);
+        }
+
+        public Task SaveAsync(
+            TranslationCacheEntry entry,
+            CancellationToken cancellationToken = default)
+        {
+            entries[entry.Key] = entry;
+            return Task.CompletedTask;
+        }
+
+        public Task<int> DeleteExpiredAsync(
+            DateTimeOffset now,
+            CancellationToken cancellationToken = default)
+        {
+            var expiredKeys = entries
+                .Where(pair => pair.Value.IsExpired(now))
+                .Select(pair => pair.Key)
+                .ToArray();
+            foreach (var key in expiredKeys)
+            {
+                entries.Remove(key);
+            }
+
+            return Task.FromResult(expiredKeys.Length);
         }
     }
 

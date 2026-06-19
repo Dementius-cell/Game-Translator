@@ -18,6 +18,7 @@ public enum TranslationPipelineStage
 {
     Capture,
     Ocr,
+    Cache,
     Credentials,
     Translation,
     Overlay,

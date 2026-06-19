@@ -1,3 +1,4 @@
+using GameTranslator.Application.Cache;
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Credentials;
 using GameTranslator.Application.DependencyInjection;
@@ -21,6 +22,8 @@ public sealed class ProfileCompositionTests
 
         Assert.Same(services, result);
         Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(ProfileService));
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(TranslationCacheService));
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(TranslationCacheOptions));
         Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(ProfileExchangeService));
         Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(ProfileMigrationService));
         Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(ProfileValidator));
@@ -35,5 +38,19 @@ public sealed class ProfileCompositionTests
     public void ProfileStorageOptions_WhenDirectoryIsEmpty_ThrowsArgumentException()
     {
         Assert.Throws<ArgumentException>(() => new ProfileStorageOptions(string.Empty));
+    }
+
+    [Fact]
+    public void TranslationCacheStorageOptions_WhenPathIsEmpty_ThrowsArgumentException()
+    {
+        Assert.Throws<ArgumentException>(() => new TranslationCacheStorageOptions(string.Empty));
+    }
+
+    [Fact]
+    public void TranslationCacheOptions_DefaultToThirtyDayTtl()
+    {
+        var options = new TranslationCacheOptions();
+
+        Assert.Equal(TimeSpan.FromDays(30), options.TimeToLive);
     }
 }

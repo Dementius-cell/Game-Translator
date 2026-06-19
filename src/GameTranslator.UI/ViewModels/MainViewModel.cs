@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Input;
 using GameTranslator.Application.Abstractions;
+using GameTranslator.Application.Cache;
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Credentials;
 using GameTranslator.Application.Ocr;
@@ -40,6 +41,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private readonly OcrService ocrService;
     private readonly TranslatorCredentialService credentialService;
     private readonly TranslationPipelineService translationPipelineService;
+    private readonly TranslationCacheService translationCacheService;
     private readonly IOverlayService overlayService;
     private readonly OverlayPositioningService overlayPositioningService;
     private readonly IDialogService dialogService;
@@ -72,6 +74,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private string ocrPreviewStatus = "No OCR preview yet.";
     private string overlayPreviewStatus = "Overlay preview hidden.";
     private string pipelineStatus = "Full translation pipeline not run yet.";
+    private string translationCacheStatus = "Translation cache not cleaned yet.";
     private int capturePreviewWidth;
     private int capturePreviewHeight;
     private string statusMessage = "Loading profiles...";
@@ -96,6 +99,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         OcrService ocrService,
         TranslatorCredentialService credentialService,
         TranslationPipelineService translationPipelineService,
+        TranslationCacheService translationCacheService,
         IOverlayService overlayService,
         OverlayPositioningService overlayPositioningService,
         IDialogService dialogService,
@@ -108,6 +112,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         this.ocrService = ocrService;
         this.credentialService = credentialService;
         this.translationPipelineService = translationPipelineService;
+        this.translationCacheService = translationCacheService;
         this.overlayService = overlayService;
         this.overlayPositioningService = overlayPositioningService;
         this.dialogService = dialogService;
@@ -140,6 +145,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         MeasureCaptureRefreshCommand = new AsyncRelayCommand(MeasureCaptureRefreshAsync, CanRefreshCapturePreview);
         RecognizeOcrPreviewCommand = new AsyncRelayCommand(RecognizeOcrPreviewAsync, CanRecognizeOcrPreview);
         RunTranslationPipelineCommand = new AsyncRelayCommand(RunTranslationPipelineAsync, CanRunTranslationPipeline);
+        CleanupTranslationCacheCommand = new AsyncRelayCommand(CleanupTranslationCacheAsync, () => !IsBusy);
         ShowOverlayPreviewCommand = new RelayCommand(ShowOverlayPreview, () => !IsBusy);
         HideOverlayPreviewCommand = new RelayCommand(HideOverlayPreview, () => !IsBusy && IsOverlayPreviewVisible);
         SaveTranslatorCredentialsCommand = new AsyncRelayCommand(SaveTranslatorCredentialsAsync, CanSaveTranslatorCredentials);
@@ -152,7 +158,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public string ApplicationName => "Game Translator";
 
-    public string CurrentStage => "Sprint 14";
+    public string CurrentStage => "Sprint 15";
 
     public double ZoneSurfaceWidth => OcrZoneEditorViewModel.PreviewSurfaceWidth;
 
@@ -558,6 +564,12 @@ public sealed class MainViewModel : ValidatableObservableObject
         private set => SetProperty(ref pipelineStatus, value);
     }
 
+    public string TranslationCacheStatus
+    {
+        get => translationCacheStatus;
+        private set => SetProperty(ref translationCacheStatus, value);
+    }
+
     public bool IsOverlayPreviewVisible => overlayService.IsVisible;
 
     public ICommand BeginCreateProfileCommand { get; }
@@ -593,6 +605,8 @@ public sealed class MainViewModel : ValidatableObservableObject
     public ICommand RecognizeOcrPreviewCommand { get; }
 
     public ICommand RunTranslationPipelineCommand { get; }
+
+    public ICommand CleanupTranslationCacheCommand { get; }
 
     public ICommand ShowOverlayPreviewCommand { get; }
 
@@ -1401,6 +1415,32 @@ public sealed class MainViewModel : ValidatableObservableObject
             StatusMessage = PipelineStatus;
             latestOcrPreviewResult = null;
             ReplaceOcrPreviewTextBlocks(Array.Empty<OcrTextBlock>());
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task CleanupTranslationCacheAsync()
+    {
+        try
+        {
+            IsBusy = true;
+            TranslationCacheStatus = "Cleaning expired translation cache entries...";
+            StatusMessage = TranslationCacheStatus;
+
+            var result = await translationCacheService.CleanupExpiredAsync(DateTimeOffset.UtcNow);
+
+            TranslationCacheStatus = $"Translation cache cleanup removed {result.TotalEntryCount} expired entr{(result.TotalEntryCount == 1 ? "y" : "ies")}.";
+            StatusMessage = TranslationCacheStatus;
+            logger.Information($"Translation cache cleanup removed {result.TotalEntryCount} expired entries.");
+        }
+        catch (Exception exception)
+        {
+            logger.Error(exception, "Translation cache cleanup failed.");
+            TranslationCacheStatus = "Translation cache cleanup failed. Check logs for details.";
+            StatusMessage = TranslationCacheStatus;
         }
         finally
         {
@@ -2276,6 +2316,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         ((AsyncRelayCommand)MeasureCaptureRefreshCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)RecognizeOcrPreviewCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)RunTranslationPipelineCommand).RaiseCanExecuteChanged();
+        ((AsyncRelayCommand)CleanupTranslationCacheCommand).RaiseCanExecuteChanged();
         ((RelayCommand)ShowOverlayPreviewCommand).RaiseCanExecuteChanged();
         ((RelayCommand)HideOverlayPreviewCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)SaveTranslatorCredentialsCommand).RaiseCanExecuteChanged();

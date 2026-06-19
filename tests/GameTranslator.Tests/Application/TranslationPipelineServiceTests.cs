@@ -1,3 +1,4 @@
+using GameTranslator.Application.Cache;
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Credentials;
 using GameTranslator.Application.Ocr;
@@ -78,6 +79,33 @@ public sealed class TranslationPipelineServiceTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenTranslationIsCached_SkipsTranslatorProviderOnRepeatedRun()
+    {
+        var zone = CreateZone();
+        var profile = CreateProfile(zone);
+        var translator = new FakeTranslatorProvider("Google", new[] { "Привет" });
+        var service = CreateService(
+            new FakeCaptureFrameSource(),
+            new FakeOcrEngine
+            {
+                BlocksFactory = _ => new[]
+                {
+                    new OcrTextBlock("Hello", new BoundingBox(4, 5, 24, 10)),
+                },
+            },
+            translator,
+            new FakeOverlayService());
+
+        var first = await service.RunAsync(profile, zone);
+        var second = await service.RunAsync(profile, zone, first.OverlaySnapshot);
+
+        Assert.Equal(1, translator.CallCount);
+        Assert.Equal(1, second.CacheResult?.MemoryHitCount);
+        Assert.Equal(0, second.CacheResult?.MissCount);
+        Assert.Equal(new[] { "Привет" }, second.TranslateResponse?.TranslatedTexts);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenCaptureFails_WrapsStageFailure()
     {
         var zone = CreateZone();
@@ -116,8 +144,8 @@ public sealed class TranslationPipelineServiceTests
         var exception = await Assert.ThrowsAsync<TranslationPipelineException>(
             () => service.RunAsync(CreateProfile(zone), zone));
 
-        Assert.Equal(TranslationPipelineStage.Translation, exception.Stage);
-        Assert.Contains("Translation", exception.Message, StringComparison.Ordinal);
+        Assert.Equal(TranslationPipelineStage.Cache, exception.Stage);
+        Assert.Contains("Cache", exception.Message, StringComparison.Ordinal);
     }
 
     private static TranslationPipelineService CreateService(
@@ -132,6 +160,7 @@ public sealed class TranslationPipelineServiceTests
             new OcrService(ocrEngine),
             new TranslatorManager(new ITranslatorProvider[] { translator }),
             new TranslatorCredentialService(credentialStorage ?? FakeCredentialStorage.WithGoogleCredentials()),
+            new TranslationCacheService(new FakeTranslationCacheRepository(), new TranslationCacheOptions()),
             new OverlayPositioningService(),
             overlay);
     }
@@ -231,6 +260,8 @@ public sealed class TranslationPipelineServiceTests
 
         public string ProviderId { get; }
 
+        public int CallCount { get; private set; }
+
         public TranslateRequest? Request { get; private set; }
 
         public Task<TranslateResponse> TranslateAsync(
@@ -238,6 +269,7 @@ public sealed class TranslationPipelineServiceTests
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            CallCount++;
             Request = request;
 
             return Task.FromResult(
@@ -302,6 +334,49 @@ public sealed class TranslationPipelineServiceTests
         public void Hide()
         {
             IsVisible = false;
+        }
+    }
+
+    private sealed class FakeTranslationCacheRepository : ITranslationCacheRepository
+    {
+        private readonly Dictionary<TranslationCacheKey, TranslationCacheEntry> entries = new();
+
+        public Task<TranslationCacheEntry?> GetAsync(
+            TranslationCacheKey key,
+            DateTimeOffset now,
+            CancellationToken cancellationToken = default)
+        {
+            entries.TryGetValue(key, out var entry);
+            if (entry?.IsExpired(now) == true)
+            {
+                return Task.FromResult<TranslationCacheEntry?>(null);
+            }
+
+            return Task.FromResult(entry);
+        }
+
+        public Task SaveAsync(
+            TranslationCacheEntry entry,
+            CancellationToken cancellationToken = default)
+        {
+            entries[entry.Key] = entry;
+            return Task.CompletedTask;
+        }
+
+        public Task<int> DeleteExpiredAsync(
+            DateTimeOffset now,
+            CancellationToken cancellationToken = default)
+        {
+            var expiredKeys = entries
+                .Where(pair => pair.Value.IsExpired(now))
+                .Select(pair => pair.Key)
+                .ToArray();
+            foreach (var key in expiredKeys)
+            {
+                entries.Remove(key);
+            }
+
+            return Task.FromResult(expiredKeys.Length);
         }
     }
 }

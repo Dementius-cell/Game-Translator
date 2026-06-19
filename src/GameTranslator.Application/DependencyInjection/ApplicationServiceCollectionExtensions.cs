@@ -1,3 +1,4 @@
+using GameTranslator.Application.Cache;
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Credentials;
 using GameTranslator.Application.Ocr;
@@ -17,6 +18,8 @@ public static class ApplicationServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddSingleton<ProfileValidator>();
+        services.AddSingleton(new TranslationCacheOptions());
+        services.AddSingleton<TranslationCacheService>();
         services.AddSingleton<ProfileMigrationService>();
         services.AddSingleton<ProfileService>();
         services.AddSingleton<ProfileExchangeService>();

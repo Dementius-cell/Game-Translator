@@ -1,4 +1,5 @@
 using GameTranslator.Application.Abstractions;
+using GameTranslator.Application.Hotkeys;
 using GameTranslator.Application.Overlay;
 using GameTranslator.UI.Services;
 using GameTranslator.UI.ViewModels;
@@ -15,6 +16,8 @@ public static class PresentationServiceCollectionExtensions
         services.AddSingleton<IDialogService, DialogService>();
         services.AddSingleton<ISettingsService, InMemorySettingsService>();
         services.AddSingleton<INavigationService, NavigationService>();
+        services.AddSingleton<WpfGlobalHotkeyRegistrar>();
+        services.AddSingleton<IGlobalHotkeyRegistrar>(provider => provider.GetRequiredService<WpfGlobalHotkeyRegistrar>());
 
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<ShellViewModel>();

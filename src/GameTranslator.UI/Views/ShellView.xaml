@@ -293,6 +293,86 @@
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock
+                                        Grid.Row="0"
+                                        Grid.ColumnSpan="3"
+                                        FontSize="16"
+                                        FontWeight="SemiBold"
+                                        Foreground="#253238"
+                                        Text="Global hotkeys" />
+                                    <ItemsControl
+                                        Grid.Row="1"
+                                        Grid.ColumnSpan="3"
+                                        Margin="0,12,0,0"
+                                        ItemsSource="{Binding HotkeyBindings}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,0,0,8">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="180" />
+                                                        <ColumnDefinition Width="90" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock
+                                                        Grid.Column="0"
+                                                        VerticalAlignment="Center"
+                                                        Foreground="#253238"
+                                                        Text="{Binding DisplayName}" />
+                                                    <CheckBox
+                                                        Grid.Column="1"
+                                                        VerticalAlignment="Center"
+                                                        Content="Enabled"
+                                                        IsChecked="{Binding IsEnabled, Mode=TwoWay}" />
+                                                    <TextBox
+                                                        Grid.Column="2"
+                                                        Padding="8,6"
+                                                        Text="{Binding GestureText, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock
+                                        Grid.Row="2"
+                                        Grid.Column="0"
+                                        Margin="0,8,12,0"
+                                        VerticalAlignment="Center"
+                                        Foreground="#56616F"
+                                        Text="{Binding GlobalHotkeyStatus}"
+                                        TextWrapping="Wrap" />
+                                    <Button
+                                        Grid.Row="2"
+                                        Grid.Column="1"
+                                        Margin="8,8,0,0"
+                                        Padding="12,6"
+                                        Command="{Binding ResetGlobalHotkeysCommand}"
+                                        Content="Reset" />
+                                    <Button
+                                        Grid.Row="2"
+                                        Grid.Column="2"
+                                        Margin="8,8,0,0"
+                                        Padding="12,6"
+                                        Command="{Binding ApplyGlobalHotkeysCommand}"
+                                        Content="Apply" />
+                                </Grid>
+                            </Border>
+                            <Border
+                                Margin="0,16,0,0"
+                                BorderBrush="#E3E8EE"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="16">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />

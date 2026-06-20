@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Text.RegularExpressions;
+using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Input;
@@ -9,6 +10,7 @@ using GameTranslator.Application.Abstractions;
 using GameTranslator.Application.Cache;
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Credentials;
+using GameTranslator.Application.Hotkeys;
 using GameTranslator.Application.Ocr;
 using GameTranslator.Application.Overlay;
 using GameTranslator.Application.Pipeline;
@@ -47,6 +49,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private readonly IDialogService dialogService;
     private readonly ISettingsService settings;
     private readonly IApplicationLogger logger;
+    private readonly GlobalHotkeyService globalHotkeyService;
 
     private string? pendingSelectedProfileId;
     private string? editingProfileId;
@@ -75,6 +78,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private string overlayPreviewStatus = "Overlay preview hidden.";
     private string pipelineStatus = "Full translation pipeline not run yet.";
     private string translationCacheStatus = "Translation cache not cleaned yet.";
+    private string globalHotkeyStatus = "Global hotkeys not registered yet.";
     private int capturePreviewWidth;
     private int capturePreviewHeight;
     private string statusMessage = "Loading profiles...";
@@ -100,6 +104,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         TranslatorCredentialService credentialService,
         TranslationPipelineService translationPipelineService,
         TranslationCacheService translationCacheService,
+        GlobalHotkeyService globalHotkeyService,
         IOverlayService overlayService,
         OverlayPositioningService overlayPositioningService,
         IDialogService dialogService,
@@ -113,17 +118,20 @@ public sealed class MainViewModel : ValidatableObservableObject
         this.credentialService = credentialService;
         this.translationPipelineService = translationPipelineService;
         this.translationCacheService = translationCacheService;
+        this.globalHotkeyService = globalHotkeyService;
         this.overlayService = overlayService;
         this.overlayPositioningService = overlayPositioningService;
         this.dialogService = dialogService;
         this.settings = settings;
         this.logger = logger;
+        globalHotkeyService.HotkeyPressed += OnGlobalHotkeyPressed;
         pendingSelectedProfileId = settings.GetValue<string>(SelectedProfileSettingKey);
 
         Profiles = new ObservableCollection<GameProfile>();
         OcrZones = new ObservableCollection<OcrZoneEditorViewModel>();
         OcrPreviewTextBlocks = new ObservableCollection<OcrTextBlock>();
         OcrDebugTextBlocks = new ObservableCollection<OcrDebugTextBlockViewModel>();
+        HotkeyBindings = new ObservableCollection<HotkeyBindingViewModel>();
         ValidationErrors = new ObservableCollection<string>();
         OverlayMaskModes = Enum.GetValues<OverlayMaskMode>();
         TranslatorProviderOptions = new[] { "Google", "Azure", "Yandex" };
@@ -146,6 +154,8 @@ public sealed class MainViewModel : ValidatableObservableObject
         RecognizeOcrPreviewCommand = new AsyncRelayCommand(RecognizeOcrPreviewAsync, CanRecognizeOcrPreview);
         RunTranslationPipelineCommand = new AsyncRelayCommand(RunTranslationPipelineAsync, CanRunTranslationPipeline);
         CleanupTranslationCacheCommand = new AsyncRelayCommand(CleanupTranslationCacheAsync, () => !IsBusy);
+        ApplyGlobalHotkeysCommand = new RelayCommand(ApplyGlobalHotkeys, CanApplyGlobalHotkeys);
+        ResetGlobalHotkeysCommand = new RelayCommand(ResetGlobalHotkeys, () => !IsBusy);
         ShowOverlayPreviewCommand = new RelayCommand(ShowOverlayPreview, () => !IsBusy);
         HideOverlayPreviewCommand = new RelayCommand(HideOverlayPreview, () => !IsBusy && IsOverlayPreviewVisible);
         SaveTranslatorCredentialsCommand = new AsyncRelayCommand(SaveTranslatorCredentialsAsync, CanSaveTranslatorCredentials);
@@ -158,7 +168,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public string ApplicationName => "Game Translator";
 
-    public string CurrentStage => "Sprint 15";
+    public string CurrentStage => "Sprint 16";
 
     public double ZoneSurfaceWidth => OcrZoneEditorViewModel.PreviewSurfaceWidth;
 
@@ -173,6 +183,8 @@ public sealed class MainViewModel : ValidatableObservableObject
     public ObservableCollection<OcrTextBlock> OcrPreviewTextBlocks { get; }
 
     public ObservableCollection<OcrDebugTextBlockViewModel> OcrDebugTextBlocks { get; }
+
+    public ObservableCollection<HotkeyBindingViewModel> HotkeyBindings { get; }
 
     public ObservableCollection<string> ValidationErrors { get; }
 
@@ -570,6 +582,14 @@ public sealed class MainViewModel : ValidatableObservableObject
         private set => SetProperty(ref translationCacheStatus, value);
     }
 
+    public string GlobalHotkeyStatus
+    {
+        get => globalHotkeyStatus;
+        private set => SetProperty(ref globalHotkeyStatus, value);
+    }
+
+    public bool HasGlobalHotkeyValidationErrors => HotkeyBindings.Any(binding => binding.HasErrors);
+
     public bool IsOverlayPreviewVisible => overlayService.IsVisible;
 
     public ICommand BeginCreateProfileCommand { get; }
@@ -607,6 +627,10 @@ public sealed class MainViewModel : ValidatableObservableObject
     public ICommand RunTranslationPipelineCommand { get; }
 
     public ICommand CleanupTranslationCacheCommand { get; }
+
+    public ICommand ApplyGlobalHotkeysCommand { get; }
+
+    public ICommand ResetGlobalHotkeysCommand { get; }
 
     public ICommand ShowOverlayPreviewCommand { get; }
 
@@ -1446,6 +1470,139 @@ public sealed class MainViewModel : ValidatableObservableObject
         {
             IsBusy = false;
         }
+    }
+
+
+    public void ApplyGlobalHotkeys()
+    {
+        if (!CanApplyGlobalHotkeys())
+        {
+            GlobalHotkeyStatus = "Fix invalid global hotkeys before applying.";
+            StatusMessage = GlobalHotkeyStatus;
+            return;
+        }
+
+        try
+        {
+            var bindings = HotkeyBindings.Select(binding => binding.ToModel()).ToArray();
+            globalHotkeyService.SaveConfiguredHotkeys(bindings);
+            var result = globalHotkeyService.RegisterHotkeys(bindings);
+            UpdateGlobalHotkeyStatus(result);
+        }
+        catch (Exception exception)
+        {
+            logger.Warning(exception.Message);
+            GlobalHotkeyStatus = "Global hotkeys were not applied. Check values and try again.";
+            StatusMessage = GlobalHotkeyStatus;
+        }
+    }
+
+    public void ResetGlobalHotkeys()
+    {
+        LoadHotkeyBindings(globalHotkeyService.DefaultHotkeys);
+        ApplyGlobalHotkeys();
+    }
+
+    private void LoadHotkeyBindings(IEnumerable<GlobalHotkeyBinding> bindings)
+    {
+        foreach (var binding in HotkeyBindings)
+        {
+            binding.PropertyChanged -= OnHotkeyBindingPropertyChanged;
+        }
+
+        HotkeyBindings.Clear();
+
+        foreach (var binding in bindings.Select(HotkeyBindingViewModel.FromModel))
+        {
+            binding.PropertyChanged += OnHotkeyBindingPropertyChanged;
+            HotkeyBindings.Add(binding);
+        }
+
+        OnPropertyChanged(nameof(HasGlobalHotkeyValidationErrors));
+        NotifyCommandStateChanged();
+    }
+
+    private void OnHotkeyBindingPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        OnPropertyChanged(nameof(HasGlobalHotkeyValidationErrors));
+        NotifyCommandStateChanged();
+    }
+
+    private bool CanApplyGlobalHotkeys()
+    {
+        return !IsBusy && HotkeyBindings.Count > 0 && !HasGlobalHotkeyValidationErrors;
+    }
+
+    private void UpdateGlobalHotkeyStatus(GlobalHotkeyConfigurationResult result)
+    {
+        var conflictDetails = result.Statuses
+            .Where(status => !status.IsRegistered)
+            .Select(status => status.ErrorCode is null
+                ? status.Message
+                : $"{status.Message} (Win32 error {status.ErrorCode})")
+            .ToArray();
+
+        GlobalHotkeyStatus = conflictDetails.Length == 0
+            ? result.Summary
+            : $"{result.Summary} {string.Join(" ", conflictDetails)}";
+        StatusMessage = GlobalHotkeyStatus;
+        logger.Information(GlobalHotkeyStatus);
+    }
+
+    private void OnGlobalHotkeyPressed(object? sender, GlobalHotkeyPressedEventArgs e)
+    {
+        _ = HandleGlobalHotkeyAsync(e.Action);
+    }
+
+    private async Task HandleGlobalHotkeyAsync(GlobalHotkeyAction action)
+    {
+        switch (action)
+        {
+            case GlobalHotkeyAction.StartPausePipeline:
+                if (IsBusy)
+                {
+                    StatusMessage = "Pipeline hotkey received while an operation is already running.";
+                    return;
+                }
+
+                await RunTranslationPipelineAsync();
+                break;
+            case GlobalHotkeyAction.ToggleOverlay:
+                if (IsOverlayPreviewVisible)
+                {
+                    HideOverlayPreview();
+                }
+                else
+                {
+                    ShowOverlayPreview();
+                }
+
+                break;
+            case GlobalHotkeyAction.ShowSettings:
+                ShowMainWindowFromHotkey();
+                break;
+            case GlobalHotkeyAction.ExitApplication:
+                System.Windows.Application.Current.Shutdown();
+                break;
+        }
+    }
+
+    private void ShowMainWindowFromHotkey()
+    {
+        var window = System.Windows.Application.Current.MainWindow;
+        if (window is null)
+        {
+            return;
+        }
+
+        if (window.WindowState == WindowState.Minimized)
+        {
+            window.WindowState = WindowState.Normal;
+        }
+
+        window.Show();
+        window.Activate();
+        StatusMessage = "Settings hotkey focused the main window.";
     }
 
     private async Task<OverlaySnapshot?> HideOverlayPreviewForCaptureAsync()
@@ -2317,6 +2474,8 @@ public sealed class MainViewModel : ValidatableObservableObject
         ((AsyncRelayCommand)RecognizeOcrPreviewCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)RunTranslationPipelineCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)CleanupTranslationCacheCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)ApplyGlobalHotkeysCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)ResetGlobalHotkeysCommand).RaiseCanExecuteChanged();
         ((RelayCommand)ShowOverlayPreviewCommand).RaiseCanExecuteChanged();
         ((RelayCommand)HideOverlayPreviewCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)SaveTranslatorCredentialsCommand).RaiseCanExecuteChanged();

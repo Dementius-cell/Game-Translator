@@ -1,6 +1,7 @@
 using GameTranslator.Application.Cache;
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Credentials;
+using GameTranslator.Application.Hotkeys;
 using GameTranslator.Application.Ocr;
 using GameTranslator.Application.Overlay;
 using GameTranslator.Application.Pipeline;
@@ -29,6 +30,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddSingleton<TranslationPipelineService>();
         services.AddSingleton<TranslatorManager>();
         services.AddSingleton<TranslatorCredentialService>();
+        services.AddSingleton<GlobalHotkeyService>();
 
         return services;
     }

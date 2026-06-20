@@ -6,6 +6,7 @@ using GameTranslator.Application.Abstractions;
 using GameTranslator.Application.Cache;
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Credentials;
+using GameTranslator.Application.Hotkeys;
 using GameTranslator.Application.Ocr;
 using GameTranslator.Application.Overlay;
 using GameTranslator.Application.Pipeline;
@@ -1289,6 +1290,7 @@ public sealed class ProfileManagerViewModelTests
             overlayPositioningService,
             overlay);
         var applicationLogger = logger ?? new TestApplicationLogger();
+        var globalHotkeyService = new GlobalHotkeyService(settings, new TestGlobalHotkeyRegistrar());
         var assembly = LoadUiAssembly();
         var viewModelType = assembly.GetType(
             "GameTranslator.UI.ViewModels.MainViewModel",
@@ -1304,6 +1306,7 @@ public sealed class ProfileManagerViewModelTests
                 credentialService,
                 translationPipelineService,
                 translationCacheService,
+                globalHotkeyService,
                 overlay,
                 overlayPositioningService,
                 dialog ?? new TestDialogService(),
@@ -1751,4 +1754,26 @@ public sealed class ProfileManagerViewModelTests
             return Task.CompletedTask;
         }
     }
-}
+
+    private sealed class TestGlobalHotkeyRegistrar : IGlobalHotkeyRegistrar
+    {
+        public event EventHandler<GlobalHotkeyRegisteredEventArgs>? HotkeyPressed;
+
+        public GlobalHotkeyRegistrationResult Register(GlobalHotkeyRegistration registration)
+        {
+            return GlobalHotkeyRegistrationResult.Success();
+        }
+
+        public void Unregister(int id)
+        {
+        }
+
+        public void UnregisterAll()
+        {
+        }
+
+        public void RaisePressed(int id)
+        {
+            HotkeyPressed?.Invoke(this, new GlobalHotkeyRegisteredEventArgs(id));
+        }
+    }}

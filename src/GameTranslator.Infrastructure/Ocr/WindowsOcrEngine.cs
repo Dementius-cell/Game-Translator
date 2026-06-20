@@ -1,5 +1,6 @@
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Ocr;
+using GameTranslator.Domain.Profiles;
 using Windows.Globalization;
 using Windows.Graphics.Imaging;
 using Windows.Media.Ocr;
@@ -12,6 +13,8 @@ public sealed class WindowsOcrEngine : IOcrEngine
 {
     private const int BytesPerPixel = 4;
     private const string SupportedPixelFormat = "Bgra32";
+
+    public string EngineId => OcrSettings.WindowsEngineId;
 
     public async Task<ApplicationOcrResult> RecognizeAsync(
         OcrRequest request,

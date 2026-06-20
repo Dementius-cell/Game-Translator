@@ -10,6 +10,7 @@ public sealed class ProfileValidator
 
         ValidateSchemaVersion(profile, errors);
         ValidateOcrZones(profile, errors);
+        ValidateOcrSettings(profile.OcrSettings, errors);
         ValidateOcrPreprocessing(profile.OcrPreprocessingSettings, errors);
 
         return new ProfileValidationResult(errors.AsReadOnly());
@@ -61,6 +62,20 @@ public sealed class ProfileValidator
         }
     }
 
+    private static void ValidateOcrSettings(
+        OcrSettings? settings,
+        List<ProfileValidationError> errors)
+    {
+        var value = settings ?? OcrSettings.Default;
+
+        if (!OcrSettings.IsSupportedEngine(value.Engine))
+        {
+            errors.Add(new ProfileValidationError(
+                ProfileValidationErrorCodes.InvalidOcrSettings,
+                $"OCR engine '{value.Engine}' is not supported."));
+        }
+    }
+
     private static void ValidateOcrPreprocessing(
         OcrPreprocessingSettings? settings,
         List<ProfileValidationError> errors)
@@ -94,4 +109,5 @@ public sealed class ProfileValidator
                 ProfileValidationErrorCodes.InvalidOcrPreprocessingSettings,
                 "OCR preprocessing scale must be between 1 and 3."));
         }
-    }}
+    }
+}

@@ -754,6 +754,7 @@
                                                     <RowDefinition Height="Auto" />
                                                     <RowDefinition Height="Auto" />
                                                     <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
                                                 </Grid.RowDefinitions>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*" />
@@ -767,26 +768,36 @@
                                                     Foreground="#253238"
                                                     FontWeight="SemiBold"
                                                     Text="OCR preprocessing" />
-                                                <CheckBox
+                                                <StackPanel
                                                     Grid.Row="1"
+                                                    Grid.Column="0"
+                                                    Margin="0,10,12,0">
+                                                    <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="OCR engine" />
+                                                    <ComboBox
+                                                        Padding="8,6"
+                                                        ItemsSource="{Binding OcrEngines}"
+                                                        SelectedItem="{Binding OcrEngine, Mode=TwoWay}" />
+                                                </StackPanel>
+                                                <CheckBox
+                                                    Grid.Row="2"
                                                     Grid.Column="0"
                                                     Margin="0,10,12,0"
                                                     Content="Enabled"
                                                     IsChecked="{Binding OcrPreprocessingEnabled, Mode=TwoWay}" />
                                                 <CheckBox
-                                                    Grid.Row="1"
+                                                    Grid.Row="2"
                                                     Grid.Column="1"
                                                     Margin="0,10,12,0"
                                                     Content="Threshold"
                                                     IsChecked="{Binding OcrPreprocessingThresholdingEnabled, Mode=TwoWay}" />
                                                 <CheckBox
-                                                    Grid.Row="1"
+                                                    Grid.Row="2"
                                                     Grid.Column="2"
                                                     Margin="0,10,0,0"
                                                     Content="Noise reduction"
                                                     IsChecked="{Binding OcrPreprocessingNoiseReductionEnabled, Mode=TwoWay}" />
                                                 <UniformGrid
-                                                    Grid.Row="2"
+                                                    Grid.Row="3"
                                                     Grid.ColumnSpan="3"
                                                     Margin="0,10,0,0"
                                                     Columns="5">
@@ -1067,7 +1078,7 @@
                                                     Foreground="#253238"
                                                     Text="Absolute bounds" />
                                                 <UniformGrid
-                                                    Grid.Row="2"
+                                                    Grid.Row="3"
                                                     Grid.Column="1"
                                                     Margin="0,12,0,0"
                                                     Columns="4">

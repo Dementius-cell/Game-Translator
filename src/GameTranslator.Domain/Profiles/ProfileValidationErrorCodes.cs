@@ -10,5 +10,7 @@ public static class ProfileValidationErrorCodes
 
     public const string OverlappingOcrZones = "profile.ocrZone.overlap";
 
+    public const string InvalidOcrSettings = "profile.ocr.settings.invalid";
+
     public const string InvalidOcrPreprocessingSettings = "profile.ocr.preprocessing.invalid";
 }

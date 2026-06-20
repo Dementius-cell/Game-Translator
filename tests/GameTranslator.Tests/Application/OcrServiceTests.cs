@@ -129,6 +129,38 @@ public sealed class OcrServiceTests
     }
 
 
+
+    [Fact]
+    public async Task RecognizeAsync_WhenRequestSelectsEngine_UsesMatchingRegisteredEngine()
+    {
+        var windowsEngine = new FakeOcrEngine
+        {
+            EngineId = OcrSettings.WindowsEngineId,
+        };
+        var tesseractEngine = new FakeOcrEngine
+        {
+            EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = _ => new[]
+            {
+                new OcrTextBlock("Tesseract text", new BoundingBox(0, 0, 20, 10)),
+            },
+        };
+        var service = new OcrService(new IOcrEngine[] { windowsEngine, tesseractEngine });
+        var request = new OcrRequest(
+            CreateFrame(FirstRegion),
+            "en",
+            "zone-a",
+            preprocessingSettings: null,
+            OcrSettings.TesseractEngineId);
+
+        var result = await service.RecognizeAsync(request);
+
+        Assert.Empty(windowsEngine.Requests);
+        var engineRequest = Assert.Single(tesseractEngine.Requests);
+        Assert.Equal(OcrSettings.TesseractEngineId, engineRequest.EngineId);
+        Assert.Equal("Tesseract text", result.Text);
+    }
+
     [Fact]
     public async Task RecognizeAsync_WithPreprocessingSettings_PassesPreprocessedFrameToEngine()
     {
@@ -204,6 +236,8 @@ public sealed class OcrServiceTests
 
     private sealed class FakeOcrEngine : IOcrEngine
     {
+        public string EngineId { get; init; } = OcrSettings.WindowsEngineId;
+
         public List<OcrRequest> Requests { get; } = new();
 
         public Exception? Failure { get; init; }

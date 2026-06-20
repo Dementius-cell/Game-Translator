@@ -34,6 +34,7 @@ public sealed class InfrastructureServiceModule : IApplicationServiceModule
         services.AddSingleton<ITranslationCacheRepository, SqliteTranslationCacheRepository>();
         services.AddSingleton<ICaptureFrameSource, WindowsGraphicsCaptureFrameSource>();
         services.AddSingleton<IOcrEngine, WindowsOcrEngine>();
+        services.AddSingleton<IOcrEngine, TesseractOcrEngine>();
         services.AddSingleton<HttpClient>();
         services.AddSingleton<ICredentialStorage, WindowsCredentialStorage>();
         services.AddSingleton<ITranslatorProvider, GoogleTranslatorProvider>();

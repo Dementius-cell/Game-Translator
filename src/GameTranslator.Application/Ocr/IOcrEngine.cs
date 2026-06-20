@@ -5,5 +5,7 @@ namespace GameTranslator.Application.Ocr;
 /// </summary>
 public interface IOcrEngine
 {
+    string EngineId { get; }
+
     Task<OcrResult> RecognizeAsync(OcrRequest request, CancellationToken cancellationToken = default);
 }

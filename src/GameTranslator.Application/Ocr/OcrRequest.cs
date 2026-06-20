@@ -12,7 +12,8 @@ public sealed class OcrRequest
         CapturedFrame frame,
         string language,
         string? zoneId = null,
-        OcrPreprocessingSettings? preprocessingSettings = null)
+        OcrPreprocessingSettings? preprocessingSettings = null,
+        string? engineId = null)
     {
         Frame = frame ?? throw new ArgumentNullException(nameof(frame));
         ArgumentException.ThrowIfNullOrWhiteSpace(language);
@@ -25,6 +26,9 @@ public sealed class OcrRequest
         Language = language;
         ZoneId = zoneId;
         PreprocessingSettings = preprocessingSettings ?? OcrPreprocessingSettings.Default;
+        EngineId = string.IsNullOrWhiteSpace(engineId)
+            ? OcrSettings.Default.Engine
+            : engineId.Trim();
     }
 
     public CapturedFrame Frame { get; }
@@ -36,4 +40,6 @@ public sealed class OcrRequest
     public string? ZoneId { get; }
 
     public OcrPreprocessingSettings PreprocessingSettings { get; }
+
+    public string EngineId { get; }
 }

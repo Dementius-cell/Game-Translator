@@ -1608,6 +1608,8 @@ public sealed class ProfileManagerViewModelTests
     {
         private static readonly DateTimeOffset RecognizedAt = new(2026, 6, 13, 12, 0, 2, TimeSpan.Zero);
 
+        public string EngineId { get; init; } = OcrSettings.WindowsEngineId;
+
         public List<OcrRequest> Requests { get; } = new();
 
         public Exception? Failure { get; init; }

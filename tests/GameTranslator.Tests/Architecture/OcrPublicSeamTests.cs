@@ -33,6 +33,7 @@ public sealed class OcrPublicSeamTests
         Assert.Contains(requestProperties, property => property.PropertyType == typeof(CapturedFrame));
         Assert.Contains(requestProperties, property => property.PropertyType == typeof(CaptureRegion));
         Assert.Contains(requestProperties, property => property.PropertyType == typeof(OcrPreprocessingSettings));
+        Assert.Contains(requestProperties, property => property.Name == nameof(OcrRequest.EngineId) && property.PropertyType == typeof(string));
     }
 
     [Fact]

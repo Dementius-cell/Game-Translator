@@ -317,6 +317,8 @@ public sealed class TranslationPipelineServiceTests
 
     private sealed class FakeOcrEngine : IOcrEngine
     {
+        public string EngineId { get; init; } = OcrSettings.WindowsEngineId;
+
         public List<OcrRequest> Requests { get; } = new();
 
         public Func<OcrRequest, IReadOnlyList<OcrTextBlock>>? BlocksFactory { get; init; }

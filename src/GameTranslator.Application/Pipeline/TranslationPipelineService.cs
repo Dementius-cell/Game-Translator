@@ -37,11 +37,67 @@ public sealed class TranslationPipelineService
         this.overlayService = overlayService ?? throw new ArgumentNullException(nameof(overlayService));
     }
 
-    public async Task<TranslationPipelineResult> RunAsync(
+    public Task<TranslationPipelineResult> RunAsync(
         GameProfile profile,
         OcrZone zone,
         OverlaySnapshot? previousSnapshot = null,
         CancellationToken cancellationToken = default)
+    {
+        return RunZoneAsync(profile, zone, previousSnapshot, showOverlay: true, cancellationToken);
+    }
+
+    public async Task<TranslationPipelineBatchResult> RunAllZonesAsync(
+        GameProfile profile,
+        OverlaySnapshot? previousSnapshot = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var zones = (profile.OcrZones ?? Array.Empty<OcrZone>()).ToArray();
+        if (zones.Length == 0)
+        {
+            throw new ArgumentException("Profile must contain at least one OCR zone.", nameof(profile));
+        }
+
+        var results = new List<TranslationPipelineResult>(zones.Length);
+        var failures = new List<TranslationPipelineZoneFailure>();
+
+        foreach (var zone in zones)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                results.Add(await RunZoneAsync(profile, zone, previousSnapshot: null, showOverlay: false, cancellationToken));
+            }
+            catch (TranslationPipelineException exception)
+            {
+                failures.Add(new TranslationPipelineZoneFailure(
+                    zone.Id,
+                    zone.Name,
+                    exception.Stage,
+                    exception.Message,
+                    exception));
+            }
+        }
+
+        var combinedSnapshot = CreateCombinedSnapshot(results, previousSnapshot, profile.OverlaySettings);
+        await ShowOverlayAsync(combinedSnapshot);
+
+        return new TranslationPipelineBatchResult(
+            profile.Id,
+            results,
+            failures,
+            combinedSnapshot);
+    }
+
+    private async Task<TranslationPipelineResult> RunZoneAsync(
+        GameProfile profile,
+        OcrZone zone,
+        OverlaySnapshot? previousSnapshot,
+        bool showOverlay,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(zone);
@@ -80,7 +136,11 @@ public sealed class TranslationPipelineService
                 sourceResult.RecognizedAt,
                 previousSnapshot,
                 profile.OverlaySettings);
-            overlayElapsed = await ShowOverlayAsync(emptySnapshot);
+            if (showOverlay)
+            {
+                overlayElapsed = await ShowOverlayAsync(emptySnapshot);
+            }
+
             totalStopwatch.Stop();
 
             return new TranslationPipelineResult(
@@ -141,7 +201,11 @@ public sealed class TranslationPipelineService
             translateResponse.TranslatedAt,
             previousSnapshot,
             profile.OverlaySettings);
-        overlayElapsed = await ShowOverlayAsync(snapshot);
+        if (showOverlay)
+        {
+            overlayElapsed = await ShowOverlayAsync(snapshot);
+        }
+
         totalStopwatch.Stop();
 
         return new TranslationPipelineResult(
@@ -193,6 +257,26 @@ public sealed class TranslationPipelineService
             .ToArray();
 
         return new OcrResult(sourceResult.Request, translatedBlocks, translateResponse.TranslatedAt);
+    }
+
+    private static OverlaySnapshot CreateCombinedSnapshot(
+        IReadOnlyList<TranslationPipelineResult> results,
+        OverlaySnapshot? previousSnapshot,
+        OverlaySettings overlaySettings)
+    {
+        var successfulSnapshots = results.Select(result => result.OverlaySnapshot).ToArray();
+        var shownAt = successfulSnapshots.Length == 0
+            ? DateTimeOffset.UtcNow
+            : successfulSnapshots.Max(snapshot => snapshot.ShownAt);
+        var settings = overlaySettings ?? previousSnapshot?.OverlaySettings ?? OverlaySettings.Default;
+
+        return new OverlaySnapshot(
+            successfulSnapshots.SelectMany(snapshot => snapshot.TextItems),
+            shownAt,
+            settings,
+            successfulSnapshots.SelectMany(snapshot => snapshot.MaskItems),
+            successfulSnapshots.SelectMany(snapshot => snapshot.DebugItems),
+            successfulSnapshots.SelectMany(snapshot => snapshot.DebugMetricLines));
     }
 
     private static TranslationPipelineTimings CreateTimings(

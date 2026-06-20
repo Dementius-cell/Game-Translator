@@ -1190,7 +1190,7 @@
                                                             Margin="8,10,0,0"
                                                             Padding="12,6"
                                                             Command="{Binding RunTranslationPipelineCommand}"
-                                                            Content="Run pipeline" />
+                                                            Content="Run all zones" />
                                                         <TextBlock
                                                             Grid.Row="2"
                                                             Grid.Column="2"

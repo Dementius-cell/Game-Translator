@@ -106,6 +106,87 @@ public sealed class TranslationPipelineServiceTests
     }
 
     [Fact]
+    public async Task RunAllZonesAsync_WhenProfileHasMultipleZones_ProcessesEachZoneAndShowsCombinedOverlay()
+    {
+        var firstZone = CreateZone("zone-a", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
+        var secondZone = CreateZone("zone-b", "Choice", new AbsoluteRectangle(200, 120, 80, 30));
+        var profile = CreateProfile(firstZone, secondZone);
+        var frameSource = new FakeCaptureFrameSource();
+        var ocrEngine = new FakeOcrEngine
+        {
+            BlocksFactory = request => new[]
+            {
+                new OcrTextBlock($"Text {request.ZoneId}", new BoundingBox(0, 0, 20, 10)),
+            },
+        };
+        var overlay = new FakeOverlayService();
+        var service = CreateService(
+            frameSource,
+            ocrEngine,
+            new FakeTranslatorProvider("Google"),
+            overlay);
+
+        var result = await service.RunAllZonesAsync(profile);
+
+        Assert.Equal(
+            new[]
+            {
+                new CaptureRegion(10, 20, 100, 40),
+                new CaptureRegion(200, 120, 80, 30),
+            },
+            frameSource.CapturedRegions);
+        Assert.Equal(new[] { "zone-a", "zone-b" }, ocrEngine.Requests.Select(request => request.ZoneId));
+        Assert.Equal(2, result.ZoneResults.Count);
+        Assert.Empty(result.ZoneFailures);
+        Assert.Equal(2, result.RecognizedBlockCount);
+        Assert.Equal(2, result.TranslatedBlockCount);
+        Assert.Same(result.OverlaySnapshot, overlay.CurrentSnapshot);
+        Assert.True(overlay.IsVisible);
+        Assert.Equal(profile.OverlaySettings, result.OverlaySnapshot.OverlaySettings);
+        Assert.Equal(
+            new[] { "Translated Text zone-a", "Translated Text zone-b" },
+            result.OverlaySnapshot.TextItems.Select(item => item.Text));
+        Assert.Equal(new[] { 10, 200 }, result.OverlaySnapshot.TextItems.Select(item => item.X));
+    }
+
+    [Fact]
+    public async Task RunAllZonesAsync_WhenOneZoneFails_ContinuesWithSuccessfulZonesAndReportsFailure()
+    {
+        var firstZone = CreateZone("zone-a", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
+        var secondZone = CreateZone("zone-b", "Choice", new AbsoluteRectangle(200, 120, 80, 30));
+        var profile = CreateProfile(firstZone, secondZone);
+        var ocrFailure = new OcrEngineException("OCR unavailable for this zone.");
+        var ocrEngine = new FakeOcrEngine
+        {
+            FailureFactory = request => string.Equals(request.ZoneId, secondZone.Id, StringComparison.Ordinal)
+                ? ocrFailure
+                : null,
+            BlocksFactory = _ => new[]
+            {
+                new OcrTextBlock("Hello", new BoundingBox(0, 0, 20, 10)),
+            },
+        };
+        var overlay = new FakeOverlayService();
+        var service = CreateService(
+            new FakeCaptureFrameSource(),
+            ocrEngine,
+            new FakeTranslatorProvider("Google"),
+            overlay);
+
+        var result = await service.RunAllZonesAsync(profile);
+
+        var zoneResult = Assert.Single(result.ZoneResults);
+        Assert.Equal(firstZone.Id, zoneResult.ZoneId);
+        var failure = Assert.Single(result.ZoneFailures);
+        Assert.Equal(secondZone.Id, failure.ZoneId);
+        Assert.Equal(secondZone.Name, failure.ZoneName);
+        Assert.Equal(TranslationPipelineStage.Ocr, failure.Stage);
+        Assert.Same(ocrFailure, failure.Exception.InnerException);
+        Assert.Equal("Translated Hello", Assert.Single(result.OverlaySnapshot.TextItems).Text);
+        Assert.Same(result.OverlaySnapshot, overlay.CurrentSnapshot);
+        Assert.True(result.HasFailures);
+    }
+    [Fact]
     public async Task RunAsync_WhenCaptureFails_WrapsStageFailure()
     {
         var zone = CreateZone();
@@ -165,13 +246,13 @@ public sealed class TranslationPipelineServiceTests
             overlay);
     }
 
-    private static GameProfile CreateProfile(OcrZone zone)
+    private static GameProfile CreateProfile(params OcrZone[] zones)
     {
         return new GameProfile
         {
             Id = "profile-a",
             Name = "Pipeline profile",
-            OcrZones = new[] { zone },
+            OcrZones = zones,
             OverlaySettings = new OverlaySettings
             {
                 MaskMode = OverlayMaskMode.Darken,
@@ -190,11 +271,16 @@ public sealed class TranslationPipelineServiceTests
 
     private static OcrZone CreateZone()
     {
+        return CreateZone("zone-a", "Subtitles", new AbsoluteRectangle(10, 20, 100, 40));
+    }
+
+    private static OcrZone CreateZone(string id, string name, AbsoluteRectangle absoluteBounds)
+    {
         return new OcrZone
         {
-            Id = "zone-a",
-            Name = "Subtitles",
-            AbsoluteBounds = new AbsoluteRectangle(10, 20, 100, 40),
+            Id = id,
+            Name = name,
+            AbsoluteBounds = absoluteBounds,
             RelativeBounds = new RelativeRectangle(0.1, 0.2, 0.3, 0.1),
         };
     }
@@ -235,10 +321,18 @@ public sealed class TranslationPipelineServiceTests
 
         public Func<OcrRequest, IReadOnlyList<OcrTextBlock>>? BlocksFactory { get; init; }
 
+        public Func<OcrRequest, Exception?>? FailureFactory { get; init; }
+
         public Task<OcrResult> RecognizeAsync(OcrRequest request, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Requests.Add(request);
+
+            var failure = FailureFactory?.Invoke(request);
+            if (failure is not null)
+            {
+                return Task.FromException<OcrResult>(failure);
+            }
 
             return Task.FromResult(
                 new OcrResult(

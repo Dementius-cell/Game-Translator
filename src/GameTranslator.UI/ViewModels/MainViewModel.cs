@@ -1518,9 +1518,9 @@ public sealed class MainViewModel : ValidatableObservableObject
     public async Task RunTranslationPipelineAsync()
     {
         RefreshValidationState();
-        if (SelectedZone is null)
+        if (OcrZones.Count == 0)
         {
-            PipelineStatus = "Select an OCR zone before running the full pipeline.";
+            PipelineStatus = "Add at least one OCR zone before running the full pipeline.";
             StatusMessage = PipelineStatus;
             return;
         }
@@ -1542,25 +1542,36 @@ public sealed class MainViewModel : ValidatableObservableObject
             overlaySnapshotBeforeCapture = await HideOverlayPreviewForCaptureAsync();
 
             var profile = BuildProfileFromEditor();
-            var zone = profile.OcrZones.First(profileZone => string.Equals(profileZone.Id, SelectedZone.Id, StringComparison.Ordinal));
 
-            PipelineStatus = $"Running full pipeline for '{zone.Name}'...";
+            PipelineStatus = $"Running full pipeline for {profile.OcrZones.Count} OCR zone(s)...";
             StatusMessage = PipelineStatus;
 
-            var result = await translationPipelineService.RunAsync(
+            var result = await translationPipelineService.RunAllZonesAsync(
                 profile,
-                zone,
                 overlaySnapshotBeforeCapture);
 
-            UpdateCapturePreview(result.CapturedFrame);
-            latestOcrPreviewResult = result.SourceOcrResult;
-            ReplaceOcrPreviewTextBlocks(result.SourceOcrResult.TextBlocks);
-            CapturePreviewStatus = $"Captured {result.CapturedFrame.Width}x{result.CapturedFrame.Height} at {result.CapturedFrame.CapturedAt:HH:mm:ss}.";
-            OcrPreviewStatus = result.RecognizedBlockCount == 0
-                ? $"No text recognized for '{zone.Name}'."
-                : $"Recognized {result.RecognizedBlockCount} text block(s) for '{zone.Name}'.";
+            var previewResult = SelectPreviewResult(result);
+            if (previewResult is not null)
+            {
+                var previewZoneName = ResolveZoneName(profile, previewResult.ZoneId);
+                UpdateCapturePreview(previewResult.CapturedFrame);
+                latestOcrPreviewResult = previewResult.SourceOcrResult;
+                ReplaceOcrPreviewTextBlocks(previewResult.SourceOcrResult.TextBlocks);
+                CapturePreviewStatus = $"Captured {previewResult.CapturedFrame.Width}x{previewResult.CapturedFrame.Height} at {previewResult.CapturedFrame.CapturedAt:HH:mm:ss}.";
+                OcrPreviewStatus = previewResult.RecognizedBlockCount == 0
+                    ? $"No text recognized for '{previewZoneName}'."
+                    : $"Recognized {previewResult.RecognizedBlockCount} text block(s) for '{previewZoneName}'.";
+            }
+            else
+            {
+                latestOcrPreviewResult = null;
+                ReplaceOcrPreviewTextBlocks(Array.Empty<OcrTextBlock>());
+                CapturePreviewStatus = "No OCR zone captured successfully.";
+                OcrPreviewStatus = "No OCR results available.";
+            }
+
             var overlaySnapshot = IsDebugOverlayEnabled
-                ? CreateDebugOverlaySnapshot(result.OverlaySnapshot, result, zone.Name)
+                ? CreateDebugOverlaySnapshot(result.OverlaySnapshot, result)
                 : result.OverlaySnapshot;
             if (IsDebugOverlayEnabled)
             {
@@ -1570,13 +1581,11 @@ public sealed class MainViewModel : ValidatableObservableObject
             OverlayPreviewStatus = IsDebugOverlayEnabled
                 ? $"Full pipeline debug overlay shown with {overlaySnapshot.DebugItems.Count} OCR box(es)."
                 : $"Full pipeline overlay shown with {result.OverlaySnapshot.TextItems.Count} translated text item(s).";
-            PipelineStatus = result.RecognizedBlockCount == 0
-                ? $"Full pipeline completed for '{zone.Name}' with no recognized text."
-                : $"Full pipeline translated {result.TranslatedBlockCount} text block(s) for '{zone.Name}'.";
+            PipelineStatus = CreateBatchPipelineStatus(result);
             StatusMessage = PipelineStatus;
             OnPropertyChanged(nameof(IsOverlayPreviewVisible));
             NotifyCommandStateChanged();
-            logger.Information($"Full pipeline completed for profile '{profile.Name}' zone '{zone.Name}'.");
+            logger.Information($"Full pipeline completed for profile '{profile.Name}' across {result.SucceededZoneCount}/{result.TotalZoneCount} OCR zones.");
         }
         catch (TranslationPipelineException exception)
         {
@@ -1881,6 +1890,70 @@ public sealed class MainViewModel : ValidatableObservableObject
         DebugOverlayStatus = $"Debug overlay shows {debugItems.Length} OCR box(es), timings, resources, and cache metrics.";
 
         return CreateSnapshotWithDebug(baseSnapshot, debugItems, metricLines);
+    }
+
+
+    private OverlaySnapshot CreateDebugOverlaySnapshot(
+        OverlaySnapshot baseSnapshot,
+        TranslationPipelineBatchResult result)
+    {
+        var debugItems = baseSnapshot.TextItems
+            .Select(item => new OverlayDebugItem(item.Text, item.Text, item.X, item.Y, item.Width, item.Height))
+            .ToArray();
+        var metrics = new DebugMetricSnapshot(
+            $"{result.SucceededZoneCount}/{result.TotalZoneCount} OCR zones",
+            debugItems.Length,
+            result.TranslatedBlockCount,
+            SumElapsed(result.ZoneResults, zoneResult => zoneResult.Timings.CaptureElapsed),
+            SumElapsed(result.ZoneResults, zoneResult => zoneResult.Timings.OcrElapsed),
+            SumElapsed(result.ZoneResults, zoneResult => zoneResult.Timings.TranslationElapsed),
+            SumElapsed(result.ZoneResults, zoneResult => zoneResult.Timings.OverlayElapsed),
+            SumElapsed(result.ZoneResults, zoneResult => zoneResult.Timings.TotalElapsed),
+            latestCaptureRefreshMetrics?.FramesPerSecond,
+            debugResourceMonitor.Sample(),
+            result.ZoneResults.Sum(zoneResult => zoneResult.CacheResult?.HitCount ?? 0),
+            result.ZoneResults.Sum(zoneResult => zoneResult.CacheResult?.MissCount ?? 0));
+        var metricLines = debugMetricFormatter.Format(metrics);
+        DebugOverlayStatus = $"Debug overlay shows {debugItems.Length} OCR box(es), timings, resources, and cache metrics across {result.SucceededZoneCount} zone(s).";
+
+        return CreateSnapshotWithDebug(baseSnapshot, debugItems, metricLines);
+    }
+
+    private TranslationPipelineResult? SelectPreviewResult(TranslationPipelineBatchResult result)
+    {
+        return SelectedZone is null
+            ? result.ZoneResults.FirstOrDefault()
+            : result.ZoneResults.FirstOrDefault(zoneResult => string.Equals(zoneResult.ZoneId, SelectedZone.Id, StringComparison.Ordinal))
+                ?? result.ZoneResults.FirstOrDefault();
+    }
+
+    private static string ResolveZoneName(GameProfile profile, string zoneId)
+    {
+        return profile.OcrZones.FirstOrDefault(zone => string.Equals(zone.Id, zoneId, StringComparison.Ordinal))?.Name
+            ?? zoneId;
+    }
+
+    private static string CreateBatchPipelineStatus(TranslationPipelineBatchResult result)
+    {
+        if (result.SucceededZoneCount == 0)
+        {
+            return $"Full pipeline failed for all {result.TotalZoneCount} OCR zone(s).";
+        }
+
+        var translatedStatus = result.RecognizedBlockCount == 0
+            ? $"Full pipeline completed for {result.SucceededZoneCount} OCR zone(s) with no recognized text"
+            : $"Full pipeline translated {result.TranslatedBlockCount} text block(s) across {result.SucceededZoneCount} OCR zone(s)";
+
+        return result.HasFailures
+            ? $"{translatedStatus}; {result.FailedZoneCount} of {result.TotalZoneCount} zone(s) failed."
+            : $"{translatedStatus}.";
+    }
+
+    private static TimeSpan SumElapsed(
+        IEnumerable<TranslationPipelineResult> results,
+        Func<TranslationPipelineResult, TimeSpan> selector)
+    {
+        return TimeSpan.FromTicks(results.Sum(result => selector(result).Ticks));
     }
 
     private OverlaySnapshot CreateOcrDebugOverlaySnapshot(OverlaySnapshot baseSnapshot, OcrResult result)
@@ -2243,7 +2316,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private bool CanRunTranslationPipeline()
     {
         return !IsBusy
-            && SelectedZone is not null
+            && OcrZones.Count > 0
             && !string.IsNullOrWhiteSpace(TranslatorProvider)
             && !string.IsNullOrWhiteSpace(SourceLanguage)
             && !string.IsNullOrWhiteSpace(TargetLanguage);

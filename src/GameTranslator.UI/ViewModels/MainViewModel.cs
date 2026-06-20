@@ -10,6 +10,7 @@ using GameTranslator.Application.Abstractions;
 using GameTranslator.Application.Cache;
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Credentials;
+using GameTranslator.Application.Debug;
 using GameTranslator.Application.Hotkeys;
 using GameTranslator.Application.Ocr;
 using GameTranslator.Application.Overlay;
@@ -35,6 +36,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private const string DraftOverlayPaddingSettingKey = "shell.draft.overlay.padding";
     private const string DraftOcrZonesSettingKey = "shell.draft.ocrZones";
     private const string DraftSelectedZoneIdSettingKey = "shell.draft.selectedZoneId";
+    private const string DebugOverlayEnabledSettingKey = "debug.overlay.enabled";
     private static readonly Regex HexColorPattern = new("^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$", RegexOptions.Compiled);
 
     private readonly ProfileService profileService;
@@ -50,6 +52,8 @@ public sealed class MainViewModel : ValidatableObservableObject
     private readonly ISettingsService settings;
     private readonly IApplicationLogger logger;
     private readonly GlobalHotkeyService globalHotkeyService;
+    private readonly DebugMetricFormatter debugMetricFormatter;
+    private readonly IDebugResourceMonitor debugResourceMonitor;
 
     private string? pendingSelectedProfileId;
     private string? editingProfileId;
@@ -71,6 +75,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private double overlayPadding;
     private OcrZoneEditorViewModel? selectedZone;
     private OcrResult? latestOcrPreviewResult;
+    private CaptureRefreshMetrics? latestCaptureRefreshMetrics;
     private ImageSource? capturePreviewImage;
     private string capturePreviewStatus = "No capture preview yet.";
     private string captureRefreshMetricsSummary = "Refresh rate not measured.";
@@ -79,11 +84,13 @@ public sealed class MainViewModel : ValidatableObservableObject
     private string pipelineStatus = "Full translation pipeline not run yet.";
     private string translationCacheStatus = "Translation cache not cleaned yet.";
     private string globalHotkeyStatus = "Global hotkeys not registered yet.";
+    private string debugOverlayStatus = "Debug overlay disabled.";
     private int capturePreviewWidth;
     private int capturePreviewHeight;
     private string statusMessage = "Loading profiles...";
     private bool isBusy;
     private bool isLoaded;
+    private bool isDebugOverlayEnabled;
     private bool suppressDraftStatePersistence;
     private bool isZoneSelectionActive;
     private bool isZoneResizeActive;
@@ -105,6 +112,8 @@ public sealed class MainViewModel : ValidatableObservableObject
         TranslationPipelineService translationPipelineService,
         TranslationCacheService translationCacheService,
         GlobalHotkeyService globalHotkeyService,
+        DebugMetricFormatter debugMetricFormatter,
+        IDebugResourceMonitor debugResourceMonitor,
         IOverlayService overlayService,
         OverlayPositioningService overlayPositioningService,
         IDialogService dialogService,
@@ -119,6 +128,8 @@ public sealed class MainViewModel : ValidatableObservableObject
         this.translationPipelineService = translationPipelineService;
         this.translationCacheService = translationCacheService;
         this.globalHotkeyService = globalHotkeyService;
+        this.debugMetricFormatter = debugMetricFormatter;
+        this.debugResourceMonitor = debugResourceMonitor;
         this.overlayService = overlayService;
         this.overlayPositioningService = overlayPositioningService;
         this.dialogService = dialogService;
@@ -126,6 +137,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         this.logger = logger;
         globalHotkeyService.HotkeyPressed += OnGlobalHotkeyPressed;
         pendingSelectedProfileId = settings.GetValue<string>(SelectedProfileSettingKey);
+        isDebugOverlayEnabled = settings.GetValue<bool?>(DebugOverlayEnabledSettingKey) ?? false;
 
         Profiles = new ObservableCollection<GameProfile>();
         OcrZones = new ObservableCollection<OcrZoneEditorViewModel>();
@@ -589,6 +601,25 @@ public sealed class MainViewModel : ValidatableObservableObject
     }
 
     public bool HasGlobalHotkeyValidationErrors => HotkeyBindings.Any(binding => binding.HasErrors);
+
+    public bool IsDebugOverlayEnabled
+    {
+        get => isDebugOverlayEnabled;
+        set
+        {
+            if (SetProperty(ref isDebugOverlayEnabled, value))
+            {
+                settings.SetValue(DebugOverlayEnabledSettingKey, value);
+                DebugOverlayStatus = value ? "Debug overlay enabled." : "Debug overlay disabled.";
+            }
+        }
+    }
+
+    public string DebugOverlayStatus
+    {
+        get => debugOverlayStatus;
+        private set => SetProperty(ref debugOverlayStatus, value);
+    }
 
     public bool IsOverlayPreviewVisible => overlayService.IsVisible;
 
@@ -1245,6 +1276,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
             StatusMessage = $"Measuring capture refresh for '{SelectedZone.DisplayName}'...";
             var result = await session.MeasureRefreshAsync(CaptureSessionOptions.MvpTargetFramesPerSecond);
+            latestCaptureRefreshMetrics = result.Metrics;
             UpdateCapturePreview(result.LatestFrame);
             ClearOcrPreview();
             CapturePreviewStatus = $"Captured {result.LatestFrame.Width}x{result.LatestFrame.Height} at {result.LatestFrame.CapturedAt:HH:mm:ss}.";
@@ -1407,7 +1439,17 @@ public sealed class MainViewModel : ValidatableObservableObject
             OcrPreviewStatus = result.RecognizedBlockCount == 0
                 ? $"No text recognized for '{zone.Name}'."
                 : $"Recognized {result.RecognizedBlockCount} text block(s) for '{zone.Name}'.";
-            OverlayPreviewStatus = $"Full pipeline overlay shown with {result.OverlaySnapshot.TextItems.Count} translated text item(s).";
+            var overlaySnapshot = IsDebugOverlayEnabled
+                ? CreateDebugOverlaySnapshot(result.OverlaySnapshot, result, zone.Name)
+                : result.OverlaySnapshot;
+            if (IsDebugOverlayEnabled)
+            {
+                overlayService.Show(overlaySnapshot);
+            }
+
+            OverlayPreviewStatus = IsDebugOverlayEnabled
+                ? $"Full pipeline debug overlay shown with {overlaySnapshot.DebugItems.Count} OCR box(es)."
+                : $"Full pipeline overlay shown with {result.OverlaySnapshot.TextItems.Count} translated text item(s).";
             PipelineStatus = result.RecognizedBlockCount == 0
                 ? $"Full pipeline completed for '{zone.Name}' with no recognized text."
                 : $"Full pipeline translated {result.TranslatedBlockCount} text block(s) for '{zone.Name}'.";
@@ -1625,6 +1667,10 @@ public sealed class MainViewModel : ValidatableObservableObject
         try
         {
             var snapshot = CreateOverlayPreviewSnapshot(DateTimeOffset.UtcNow, out var snapshotSource);
+            if (IsDebugOverlayEnabled)
+            {
+                snapshot = CreatePreviewDebugOverlaySnapshot(snapshot, snapshotSource);
+            }
 
             overlayService.Show(snapshot);
             OverlayPreviewStatus = $"Overlay preview shown with {snapshot.TextItems.Count} {snapshotSource} text item(s).";
@@ -1687,6 +1733,108 @@ public sealed class MainViewModel : ValidatableObservableObject
             shownAt);
     }
 
+
+    private OverlaySnapshot CreateDebugOverlaySnapshot(
+        OverlaySnapshot baseSnapshot,
+        TranslationPipelineResult result,
+        string zoneName)
+    {
+        var debugItems = result.SourceOcrResult.TextBlocks
+            .Select((block, index) => CreateDebugItem(
+                block,
+                result.TranslateResponse?.TranslatedTexts.ElementAtOrDefault(index) ?? string.Empty))
+            .ToArray();
+        var metrics = new DebugMetricSnapshot(
+            zoneName,
+            debugItems.Length,
+            result.TranslatedBlockCount,
+            result.Timings.CaptureElapsed,
+            result.Timings.OcrElapsed,
+            result.Timings.TranslationElapsed,
+            result.Timings.OverlayElapsed,
+            result.Timings.TotalElapsed,
+            latestCaptureRefreshMetrics?.FramesPerSecond,
+            debugResourceMonitor.Sample(),
+            result.CacheResult?.HitCount ?? 0,
+            result.CacheResult?.MissCount ?? 0);
+        var metricLines = debugMetricFormatter.Format(metrics);
+        DebugOverlayStatus = $"Debug overlay shows {debugItems.Length} OCR box(es), timings, resources, and cache metrics.";
+
+        return CreateSnapshotWithDebug(baseSnapshot, debugItems, metricLines);
+    }
+
+    private OverlaySnapshot CreateOcrDebugOverlaySnapshot(OverlaySnapshot baseSnapshot, OcrResult result)
+    {
+        var debugItems = result.TextBlocks
+            .Select(block => CreateDebugItem(block, string.Empty))
+            .ToArray();
+        var metrics = new DebugMetricSnapshot(
+            SelectedZone?.DisplayName ?? "OCR preview",
+            debugItems.Length,
+            0,
+            TimeSpan.Zero,
+            TimeSpan.Zero,
+            TimeSpan.Zero,
+            TimeSpan.Zero,
+            TimeSpan.Zero,
+            latestCaptureRefreshMetrics?.FramesPerSecond,
+            debugResourceMonitor.Sample(),
+            0,
+            0);
+        var metricLines = debugMetricFormatter.Format(metrics);
+        DebugOverlayStatus = $"Debug overlay shows {debugItems.Length} OCR box(es).";
+
+        return CreateSnapshotWithDebug(baseSnapshot, debugItems, metricLines);
+    }
+
+    private OverlaySnapshot CreatePreviewDebugOverlaySnapshot(OverlaySnapshot baseSnapshot, string snapshotSource)
+    {
+        var debugItems = baseSnapshot.TextItems
+            .Select(item => new OverlayDebugItem(item.Text, string.Empty, item.X, item.Y, item.Width, item.Height))
+            .ToArray();
+        var metrics = new DebugMetricSnapshot(
+            $"{snapshotSource} preview",
+            debugItems.Length,
+            baseSnapshot.TextItems.Count,
+            TimeSpan.Zero,
+            TimeSpan.Zero,
+            TimeSpan.Zero,
+            TimeSpan.Zero,
+            TimeSpan.Zero,
+            latestCaptureRefreshMetrics?.FramesPerSecond,
+            debugResourceMonitor.Sample(),
+            0,
+            0);
+        var metricLines = debugMetricFormatter.Format(metrics);
+        DebugOverlayStatus = $"Debug overlay preview shows {debugItems.Length} box(es).";
+
+        return CreateSnapshotWithDebug(baseSnapshot, debugItems, metricLines);
+    }
+
+    private static OverlayDebugItem CreateDebugItem(OcrTextBlock block, string translatedText)
+    {
+        return new OverlayDebugItem(
+            block.Text,
+            translatedText,
+            block.Bounds.X,
+            block.Bounds.Y,
+            block.Bounds.Width,
+            block.Bounds.Height);
+    }
+
+    private static OverlaySnapshot CreateSnapshotWithDebug(
+        OverlaySnapshot baseSnapshot,
+        IReadOnlyList<OverlayDebugItem> debugItems,
+        IReadOnlyList<string> metricLines)
+    {
+        return new OverlaySnapshot(
+            baseSnapshot.TextItems,
+            baseSnapshot.ShownAt,
+            baseSnapshot.OverlaySettings,
+            baseSnapshot.MaskItems,
+            debugItems,
+            metricLines);
+    }
     private void UpdateVisibleOverlayPreview(OcrResult result, bool showWhenHidden = false)
     {
         if (!overlayService.IsVisible && !showWhenHidden)

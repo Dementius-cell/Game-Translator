@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using GameTranslator.Application.Cache;
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Credentials;
@@ -51,14 +52,26 @@ public sealed class TranslationPipelineService
             throw new ArgumentException("Pipeline OCR zone must belong to the supplied profile.", nameof(zone));
         }
 
-        var frame = await RunStageAsync(
+        var totalStopwatch = Stopwatch.StartNew();
+        var captureElapsed = TimeSpan.Zero;
+        var ocrElapsed = TimeSpan.Zero;
+        var credentialsElapsed = TimeSpan.Zero;
+        var translationElapsed = TimeSpan.Zero;
+        var cacheElapsed = TimeSpan.Zero;
+        var overlayElapsed = TimeSpan.Zero;
+
+        var frameMeasurement = await RunTimedStageAsync(
             TranslationPipelineStage.Capture,
             () => captureService.CaptureAsync(CreateCaptureRegion(zone), cancellationToken));
+        var frame = frameMeasurement.Value;
+        captureElapsed = frameMeasurement.Elapsed;
 
         var request = new OcrRequest(frame, profile.TranslatorSettings.SourceLanguage, zone.Id);
-        var sourceResult = await RunStageAsync(
+        var ocrMeasurement = await RunTimedStageAsync(
             TranslationPipelineStage.Ocr,
             () => ocrService.RecognizeAsync(request, cancellationToken));
+        var sourceResult = ocrMeasurement.Value;
+        ocrElapsed = ocrMeasurement.Elapsed;
 
         if (sourceResult.TextBlocks.Count == 0)
         {
@@ -67,7 +80,8 @@ public sealed class TranslationPipelineService
                 sourceResult.RecognizedAt,
                 previousSnapshot,
                 profile.OverlaySettings);
-            await ShowOverlayAsync(emptySnapshot);
+            overlayElapsed = await ShowOverlayAsync(emptySnapshot);
+            totalStopwatch.Stop();
 
             return new TranslationPipelineResult(
                 profile.Id,
@@ -75,27 +89,42 @@ public sealed class TranslationPipelineService
                 frame,
                 sourceResult,
                 translateResponse: null,
-                emptySnapshot);
+                emptySnapshot,
+                cacheResult: null,
+                CreateTimings(
+                    captureElapsed,
+                    ocrElapsed,
+                    credentialsElapsed,
+                    translationElapsed,
+                    cacheElapsed,
+                    overlayElapsed,
+                    totalStopwatch.Elapsed));
         }
 
         var texts = sourceResult.TextBlocks.Select(block => block.Text).ToArray();
-        var cacheResult = await RunStageAsync(
+        var cacheMeasurement = await RunTimedStageAsync(
             TranslationPipelineStage.Cache,
             () => cacheService.GetOrAddAsync(
                 profile.TranslatorSettings,
                 texts,
                 async missingTexts =>
                 {
-                    var credentials = await RunStageAsync(
+                    var credentialsMeasurement = await RunTimedStageAsync(
                         TranslationPipelineStage.Credentials,
                         () => credentialService.CreateCredentialsAsync(profile.TranslatorSettings.Provider, cancellationToken));
+                    credentialsElapsed += credentialsMeasurement.Elapsed;
 
-                    return await RunStageAsync(
+                    var translationMeasurement = await RunTimedStageAsync(
                         TranslationPipelineStage.Translation,
-                        () => translatorManager.TranslateAsync(profile.TranslatorSettings, missingTexts, credentials, cancellationToken));
+                        () => translatorManager.TranslateAsync(profile.TranslatorSettings, missingTexts, credentialsMeasurement.Value, cancellationToken));
+                    translationElapsed += translationMeasurement.Elapsed;
+
+                    return translationMeasurement.Value;
                 },
                 DateTimeOffset.UtcNow,
                 cancellationToken));
+        var cacheResult = cacheMeasurement.Value;
+        cacheElapsed = cacheMeasurement.Elapsed;
         var translateResponse = cacheResult.ToTranslateResponse();
 
         if (translateResponse.TranslatedTexts.Count != sourceResult.TextBlocks.Count)
@@ -112,7 +141,8 @@ public sealed class TranslationPipelineService
             translateResponse.TranslatedAt,
             previousSnapshot,
             profile.OverlaySettings);
-        await ShowOverlayAsync(snapshot);
+        overlayElapsed = await ShowOverlayAsync(snapshot);
+        totalStopwatch.Stop();
 
         return new TranslationPipelineResult(
             profile.Id,
@@ -121,18 +151,28 @@ public sealed class TranslationPipelineService
             sourceResult,
             translateResponse,
             snapshot,
-            cacheResult);
+            cacheResult,
+            CreateTimings(
+                captureElapsed,
+                ocrElapsed,
+                credentialsElapsed,
+                translationElapsed,
+                cacheElapsed,
+                overlayElapsed,
+                totalStopwatch.Elapsed));
     }
 
-    private async Task ShowOverlayAsync(OverlaySnapshot snapshot)
+    private async Task<TimeSpan> ShowOverlayAsync(OverlaySnapshot snapshot)
     {
-        await RunStageAsync(
+        var measurement = await RunTimedStageAsync(
             TranslationPipelineStage.Overlay,
             () =>
             {
                 overlayService.Show(snapshot);
-                return Task.CompletedTask;
+                return Task.FromResult(true);
             });
+
+        return measurement.Elapsed;
     }
 
     private static CaptureRegion CreateCaptureRegion(OcrZone zone)
@@ -155,38 +195,35 @@ public sealed class TranslationPipelineService
         return new OcrResult(sourceResult.Request, translatedBlocks, translateResponse.TranslatedAt);
     }
 
-    private static async Task<TValue> RunStageAsync<TValue>(
+    private static TranslationPipelineTimings CreateTimings(
+        TimeSpan captureElapsed,
+        TimeSpan ocrElapsed,
+        TimeSpan credentialsElapsed,
+        TimeSpan translationElapsed,
+        TimeSpan cacheElapsed,
+        TimeSpan overlayElapsed,
+        TimeSpan totalElapsed)
+    {
+        return new TranslationPipelineTimings(
+            captureElapsed,
+            ocrElapsed,
+            credentialsElapsed,
+            translationElapsed,
+            cacheElapsed,
+            overlayElapsed,
+            totalElapsed);
+    }
+
+    private static async Task<(TValue Value, TimeSpan Elapsed)> RunTimedStageAsync<TValue>(
         TranslationPipelineStage stage,
         Func<Task<TValue>> action)
     {
+        var stopwatch = Stopwatch.StartNew();
         try
         {
-            return await action();
-        }
-        catch (TranslationPipelineException)
-        {
-            throw;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            throw new TranslationPipelineException(
-                stage,
-                $"Translation pipeline failed during {stage}.",
-                exception);
-        }
-    }
-
-    private static async Task RunStageAsync(
-        TranslationPipelineStage stage,
-        Func<Task> action)
-    {
-        try
-        {
-            await action();
+            var value = await action();
+            stopwatch.Stop();
+            return (value, stopwatch.Elapsed);
         }
         catch (TranslationPipelineException)
         {

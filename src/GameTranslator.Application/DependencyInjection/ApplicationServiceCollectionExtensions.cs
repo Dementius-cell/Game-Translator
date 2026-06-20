@@ -1,6 +1,7 @@
 using GameTranslator.Application.Cache;
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Credentials;
+using GameTranslator.Application.Debug;
 using GameTranslator.Application.Hotkeys;
 using GameTranslator.Application.Ocr;
 using GameTranslator.Application.Overlay;
@@ -21,6 +22,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddSingleton<ProfileValidator>();
         services.AddSingleton(new TranslationCacheOptions());
         services.AddSingleton<TranslationCacheService>();
+        services.AddSingleton<DebugMetricFormatter>();
         services.AddSingleton<ProfileMigrationService>();
         services.AddSingleton<ProfileService>();
         services.AddSingleton<ProfileExchangeService>();

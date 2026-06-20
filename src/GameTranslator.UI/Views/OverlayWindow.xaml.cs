@@ -101,22 +101,34 @@ public partial class OverlayWindow : Window
 
         return new OverlayWindowSnapshotViewModel(
             snapshot.MaskItems.Select(item => OverlayWindowMaskItemViewModel.FromDevicePixels(item, transformFromDevice)),
-            snapshot.TextItems.Select(item => OverlayWindowTextItemViewModel.FromDevicePixels(item, transformFromDevice)));
+            snapshot.TextItems.Select(item => OverlayWindowTextItemViewModel.FromDevicePixels(item, transformFromDevice)),
+            snapshot.DebugItems.Select(item => OverlayWindowDebugItemViewModel.FromDevicePixels(item, transformFromDevice)),
+            snapshot.DebugMetricLines);
     }
 
     private sealed class OverlayWindowSnapshotViewModel
     {
         public OverlayWindowSnapshotViewModel(
             IEnumerable<OverlayWindowMaskItemViewModel> maskItems,
-            IEnumerable<OverlayWindowTextItemViewModel> textItems)
+            IEnumerable<OverlayWindowTextItemViewModel> textItems,
+            IEnumerable<OverlayWindowDebugItemViewModel> debugItems,
+            IEnumerable<string> debugMetricLines)
         {
             MaskItems = maskItems.ToArray();
             TextItems = textItems.ToArray();
+            DebugItems = debugItems.ToArray();
+            DebugMetricLines = debugMetricLines.ToArray();
         }
 
         public IReadOnlyList<OverlayWindowMaskItemViewModel> MaskItems { get; }
 
         public IReadOnlyList<OverlayWindowTextItemViewModel> TextItems { get; }
+
+        public IReadOnlyList<OverlayWindowDebugItemViewModel> DebugItems { get; }
+
+        public IReadOnlyList<string> DebugMetricLines { get; }
+
+        public bool HasDebugMetricLines => DebugMetricLines.Count > 0;
     }
 
     private sealed class OverlayWindowMaskItemViewModel
@@ -219,6 +231,53 @@ public partial class OverlayWindow : Window
                 Math.Max(0, topLeft.Y - (height - rawHeight) / 2),
                 width,
                 height);
+        }
+    }
+
+    private sealed class OverlayWindowDebugItemViewModel
+    {
+        private OverlayWindowDebugItemViewModel(string label, double x, double y, double width, double height)
+        {
+            Label = label;
+            X = x;
+            Y = y;
+            Width = width;
+            Height = height;
+        }
+
+        public string Label { get; }
+
+        public double X { get; }
+
+        public double Y { get; }
+
+        public double Width { get; }
+
+        public double Height { get; }
+
+        public static OverlayWindowDebugItemViewModel FromDevicePixels(
+            OverlayDebugItem item,
+            Matrix transformFromDevice)
+        {
+            var topLeft = transformFromDevice.Transform(new Point(item.X, item.Y));
+            var bottomRight = transformFromDevice.Transform(new Point(item.X + item.Width, item.Y + item.Height));
+
+            return new OverlayWindowDebugItemViewModel(
+                CreateLabel(item),
+                Math.Max(0, topLeft.X),
+                Math.Max(0, topLeft.Y),
+                Math.Max(1, bottomRight.X - topLeft.X),
+                Math.Max(1, bottomRight.Y - topLeft.Y));
+        }
+
+        private static string CreateLabel(OverlayDebugItem item)
+        {
+            if (string.IsNullOrWhiteSpace(item.TranslatedText))
+            {
+                return item.SourceText;
+            }
+
+            return $"{item.SourceText} -> {item.TranslatedText}";
         }
     }
 

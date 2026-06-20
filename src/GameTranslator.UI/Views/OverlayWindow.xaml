@@ -11,6 +11,9 @@
         Topmost="True"
         UseLayoutRounding="True"
         WindowStyle="None">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+    </Window.Resources>
     <Canvas
         Background="Transparent"
         IsHitTestVisible="False">
@@ -79,5 +82,64 @@
                 </DataTemplate>
             </ItemsControl.ItemTemplate>
         </ItemsControl>
+        <ItemsControl
+            IsHitTestVisible="False"
+            ItemsSource="{Binding DebugItems}">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <Canvas />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemContainerStyle>
+                <Style TargetType="ContentPresenter">
+                    <Setter Property="Canvas.Left" Value="{Binding X}" />
+                    <Setter Property="Canvas.Top" Value="{Binding Y}" />
+                </Style>
+            </ItemsControl.ItemContainerStyle>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Grid
+                        Width="{Binding Width}"
+                        Height="{Binding Height}">
+                        <Border
+                            Background="#1600D4FF"
+                            BorderBrush="#00D4FF"
+                            BorderThickness="2"
+                            SnapsToDevicePixels="True" />
+                        <TextBlock
+                            Margin="3"
+                            Padding="4,2"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Top"
+                            Background="#DD111827"
+                            Foreground="#E0F2FE"
+                            FontSize="11"
+                            Text="{Binding Label}"
+                            TextWrapping="NoWrap" />
+                    </Grid>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <Border
+            Canvas.Left="12"
+            Canvas.Top="12"
+            Padding="8"
+            Background="#DD111827"
+            BorderBrush="#00D4FF"
+            BorderThickness="1"
+            CornerRadius="4"
+            Visibility="{Binding HasDebugMetricLines, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <ItemsControl ItemsSource="{Binding DebugMetricLines}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock
+                            Margin="0,0,0,2"
+                            Foreground="#E0F2FE"
+                            FontSize="12"
+                            Text="{Binding}" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </Border>
     </Canvas>
 </Window>

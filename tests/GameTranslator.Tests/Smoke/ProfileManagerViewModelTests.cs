@@ -6,6 +6,7 @@ using GameTranslator.Application.Abstractions;
 using GameTranslator.Application.Cache;
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Credentials;
+using GameTranslator.Application.Debug;
 using GameTranslator.Application.Hotkeys;
 using GameTranslator.Application.Ocr;
 using GameTranslator.Application.Overlay;
@@ -1164,6 +1165,30 @@ public sealed class ProfileManagerViewModelTests
             });
     }
 
+
+    [Fact]
+    public void ShowOverlayPreview_WhenDebugOverlayEnabled_AddsDebugItemsAndMetrics()
+    {
+        var overlay = new TestOverlayService();
+        var settings = new TestSettingsService();
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            settings,
+            overlayService: overlay);
+        SetPropertyValue(viewModel, "IsDebugOverlayEnabled", true);
+
+        InvokeMethod(viewModel, "ShowOverlayPreview");
+
+        Assert.True(overlay.IsVisible);
+        Assert.NotNull(overlay.CurrentSnapshot);
+        Assert.Equal(2, overlay.CurrentSnapshot.DebugItems.Count);
+        Assert.Contains(overlay.CurrentSnapshot.DebugMetricLines, line => line.StartsWith("CPU:", StringComparison.Ordinal));
+        Assert.Contains(overlay.CurrentSnapshot.DebugMetricLines, line => line.StartsWith("Cache:", StringComparison.Ordinal));
+        Assert.Contains(
+            "Debug overlay preview shows 2 box(es).",
+            GetPropertyValue(viewModel, "DebugOverlayStatus")?.ToString(),
+            StringComparison.Ordinal);
+    }
     [Fact]
     public void HideOverlayPreview_HidesOverlayAndUpdatesStatus()
     {
@@ -1307,6 +1332,8 @@ public sealed class ProfileManagerViewModelTests
                 translationPipelineService,
                 translationCacheService,
                 globalHotkeyService,
+                new DebugMetricFormatter(),
+                new TestDebugResourceMonitor(),
                 overlay,
                 overlayPositioningService,
                 dialog ?? new TestDialogService(),
@@ -1775,5 +1802,12 @@ public sealed class ProfileManagerViewModelTests
         public void RaisePressed(int id)
         {
             HotkeyPressed?.Invoke(this, new GlobalHotkeyRegisteredEventArgs(id));
+        }
+    }
+    private sealed class TestDebugResourceMonitor : IDebugResourceMonitor
+    {
+        public DebugResourceSnapshot Sample()
+        {
+            return new DebugResourceSnapshot(12.5, 128 * 1024 * 1024);
         }
     }}

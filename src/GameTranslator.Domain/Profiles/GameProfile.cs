@@ -14,6 +14,8 @@ public sealed record GameProfile
 
     public IReadOnlyList<OcrZone> OcrZones { get; init; } = Array.Empty<OcrZone>();
 
+    public OcrPreprocessingSettings OcrPreprocessingSettings { get; init; } = OcrPreprocessingSettings.Default;
+
     public OverlaySettings OverlaySettings { get; init; } = OverlaySettings.Default;
 
     public TranslatorSettings TranslatorSettings { get; init; } = TranslatorSettings.Default;

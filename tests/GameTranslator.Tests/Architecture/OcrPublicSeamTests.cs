@@ -1,5 +1,6 @@
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Ocr;
+using GameTranslator.Domain.Profiles;
 
 namespace GameTranslator.Tests.Architecture;
 
@@ -15,6 +16,7 @@ public sealed class OcrPublicSeamTests
         AssertPublicApplicationType<BoundingBox>();
         AssertPublicApplicationType<OcrEngineException>();
         AssertPublicApplicationType<OcrService>();
+        AssertPublicApplicationType<OcrPreprocessor>();
     }
 
     [Fact]
@@ -30,6 +32,7 @@ public sealed class OcrPublicSeamTests
         var requestProperties = typeof(OcrRequest).GetProperties();
         Assert.Contains(requestProperties, property => property.PropertyType == typeof(CapturedFrame));
         Assert.Contains(requestProperties, property => property.PropertyType == typeof(CaptureRegion));
+        Assert.Contains(requestProperties, property => property.PropertyType == typeof(OcrPreprocessingSettings));
     }
 
     [Fact]
@@ -44,6 +47,7 @@ public sealed class OcrPublicSeamTests
             typeof(BoundingBox),
             typeof(OcrEngineException),
             typeof(OcrService),
+            typeof(OcrPreprocessor),
         };
 
         foreach (var ocrType in ocrTypes)

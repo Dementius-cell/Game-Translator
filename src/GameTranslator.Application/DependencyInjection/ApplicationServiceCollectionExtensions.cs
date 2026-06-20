@@ -27,6 +27,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddSingleton<ProfileService>();
         services.AddSingleton<ProfileExchangeService>();
         services.AddSingleton<CaptureService>();
+        services.AddSingleton<OcrPreprocessor>();
         services.AddSingleton<OcrService>();
         services.AddSingleton<OverlayPositioningService>();
         services.AddSingleton<TranslationPipelineService>();

@@ -10,6 +10,7 @@ public sealed class ProfileValidator
 
         ValidateSchemaVersion(profile, errors);
         ValidateOcrZones(profile, errors);
+        ValidateOcrPreprocessing(profile.OcrPreprocessingSettings, errors);
 
         return new ProfileValidationResult(errors.AsReadOnly());
     }
@@ -59,4 +60,38 @@ public sealed class ProfileValidator
             }
         }
     }
-}
+
+    private static void ValidateOcrPreprocessing(
+        OcrPreprocessingSettings? settings,
+        List<ProfileValidationError> errors)
+    {
+        var value = settings ?? OcrPreprocessingSettings.Default;
+
+        if (value.Contrast is < 0.5 or > 3)
+        {
+            errors.Add(new ProfileValidationError(
+                ProfileValidationErrorCodes.InvalidOcrPreprocessingSettings,
+                "OCR preprocessing contrast must be between 0.5 and 3."));
+        }
+
+        if (value.Brightness is < -100 or > 100)
+        {
+            errors.Add(new ProfileValidationError(
+                ProfileValidationErrorCodes.InvalidOcrPreprocessingSettings,
+                "OCR preprocessing brightness must be between -100 and 100."));
+        }
+
+        if (value.Sharpness is < 0 or > 2)
+        {
+            errors.Add(new ProfileValidationError(
+                ProfileValidationErrorCodes.InvalidOcrPreprocessingSettings,
+                "OCR preprocessing sharpness must be between 0 and 2."));
+        }
+
+        if (value.Scale is < 1 or > 3)
+        {
+            errors.Add(new ProfileValidationError(
+                ProfileValidationErrorCodes.InvalidOcrPreprocessingSettings,
+                "OCR preprocessing scale must be between 1 and 3."));
+        }
+    }}

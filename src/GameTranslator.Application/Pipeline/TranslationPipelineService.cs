@@ -66,7 +66,7 @@ public sealed class TranslationPipelineService
         var frame = frameMeasurement.Value;
         captureElapsed = frameMeasurement.Elapsed;
 
-        var request = new OcrRequest(frame, profile.TranslatorSettings.SourceLanguage, zone.Id);
+        var request = new OcrRequest(frame, profile.TranslatorSettings.SourceLanguage, zone.Id, profile.OcrPreprocessingSettings);
         var ocrMeasurement = await RunTimedStageAsync(
             TranslationPipelineStage.Ocr,
             () => ocrService.RecognizeAsync(request, cancellationToken));

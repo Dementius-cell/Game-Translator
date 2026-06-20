@@ -34,6 +34,14 @@ public sealed class MainViewModel : ValidatableObservableObject
     private const string DraftOverlayMaskColorSettingKey = "shell.draft.overlay.maskColor";
     private const string DraftOverlayOpacitySettingKey = "shell.draft.overlay.opacity";
     private const string DraftOverlayPaddingSettingKey = "shell.draft.overlay.padding";
+    private const string DraftOcrPreprocessingEnabledSettingKey = "shell.draft.ocr.preprocessing.enabled";
+    private const string DraftOcrPreprocessingContrastSettingKey = "shell.draft.ocr.preprocessing.contrast";
+    private const string DraftOcrPreprocessingBrightnessSettingKey = "shell.draft.ocr.preprocessing.brightness";
+    private const string DraftOcrPreprocessingSharpnessSettingKey = "shell.draft.ocr.preprocessing.sharpness";
+    private const string DraftOcrPreprocessingThresholdingSettingKey = "shell.draft.ocr.preprocessing.thresholding";
+    private const string DraftOcrPreprocessingThresholdSettingKey = "shell.draft.ocr.preprocessing.threshold";
+    private const string DraftOcrPreprocessingScaleSettingKey = "shell.draft.ocr.preprocessing.scale";
+    private const string DraftOcrPreprocessingNoiseReductionSettingKey = "shell.draft.ocr.preprocessing.noiseReduction";
     private const string DraftOcrZonesSettingKey = "shell.draft.ocrZones";
     private const string DraftSelectedZoneIdSettingKey = "shell.draft.selectedZoneId";
     private const string DebugOverlayEnabledSettingKey = "debug.overlay.enabled";
@@ -73,6 +81,14 @@ public sealed class MainViewModel : ValidatableObservableObject
     private string overlayMaskColor = "#000000";
     private double overlayOpacity = 1;
     private double overlayPadding;
+    private bool ocrPreprocessingEnabled;
+    private double ocrPreprocessingContrast = OcrPreprocessingSettings.Default.Contrast;
+    private int ocrPreprocessingBrightness = OcrPreprocessingSettings.Default.Brightness;
+    private double ocrPreprocessingSharpness = OcrPreprocessingSettings.Default.Sharpness;
+    private bool ocrPreprocessingThresholdingEnabled;
+    private int ocrPreprocessingThreshold = OcrPreprocessingSettings.Default.Threshold;
+    private double ocrPreprocessingScale = OcrPreprocessingSettings.Default.Scale;
+    private bool ocrPreprocessingNoiseReductionEnabled;
     private OcrZoneEditorViewModel? selectedZone;
     private OcrResult? latestOcrPreviewResult;
     private CaptureRefreshMetrics? latestCaptureRefreshMetrics;
@@ -425,6 +441,110 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
     }
 
+
+    public bool OcrPreprocessingEnabled
+    {
+        get => ocrPreprocessingEnabled;
+        set
+        {
+            if (SetProperty(ref ocrPreprocessingEnabled, value))
+            {
+                PersistDraftShellStateIfNeeded();
+                OnPropertyChanged(nameof(ProfileSummary));
+            }
+        }
+    }
+
+    public double OcrPreprocessingContrast
+    {
+        get => ocrPreprocessingContrast;
+        set
+        {
+            if (SetProperty(ref ocrPreprocessingContrast, value))
+            {
+                PersistDraftShellStateIfNeeded();
+                RefreshValidationState();
+            }
+        }
+    }
+
+    public int OcrPreprocessingBrightness
+    {
+        get => ocrPreprocessingBrightness;
+        set
+        {
+            if (SetProperty(ref ocrPreprocessingBrightness, value))
+            {
+                PersistDraftShellStateIfNeeded();
+                RefreshValidationState();
+            }
+        }
+    }
+
+    public double OcrPreprocessingSharpness
+    {
+        get => ocrPreprocessingSharpness;
+        set
+        {
+            if (SetProperty(ref ocrPreprocessingSharpness, value))
+            {
+                PersistDraftShellStateIfNeeded();
+                RefreshValidationState();
+            }
+        }
+    }
+
+    public bool OcrPreprocessingThresholdingEnabled
+    {
+        get => ocrPreprocessingThresholdingEnabled;
+        set
+        {
+            if (SetProperty(ref ocrPreprocessingThresholdingEnabled, value))
+            {
+                PersistDraftShellStateIfNeeded();
+                OnPropertyChanged(nameof(ProfileSummary));
+            }
+        }
+    }
+
+    public int OcrPreprocessingThreshold
+    {
+        get => ocrPreprocessingThreshold;
+        set
+        {
+            if (SetProperty(ref ocrPreprocessingThreshold, value))
+            {
+                PersistDraftShellStateIfNeeded();
+                RefreshValidationState();
+            }
+        }
+    }
+
+    public double OcrPreprocessingScale
+    {
+        get => ocrPreprocessingScale;
+        set
+        {
+            if (SetProperty(ref ocrPreprocessingScale, value))
+            {
+                PersistDraftShellStateIfNeeded();
+                RefreshValidationState();
+            }
+        }
+    }
+
+    public bool OcrPreprocessingNoiseReductionEnabled
+    {
+        get => ocrPreprocessingNoiseReductionEnabled;
+        set
+        {
+            if (SetProperty(ref ocrPreprocessingNoiseReductionEnabled, value))
+            {
+                PersistDraftShellStateIfNeeded();
+                OnPropertyChanged(nameof(ProfileSummary));
+            }
+        }
+    }
     public OcrZoneEditorViewModel? SelectedZone
     {
         get => selectedZone;
@@ -484,7 +604,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         {
             var schemaVersion = SelectedProfile?.SchemaVersion ?? GameProfile.CurrentSchemaVersion;
 
-            return $"schema {schemaVersion} | {TranslatorSettingsSummary} | zones {OcrZones.Count} | overlay {OverlayMaskMode}";
+            return $"schema {schemaVersion} | {TranslatorSettingsSummary} | zones {OcrZones.Count} | overlay {OverlayMaskMode} | preprocess {(OcrPreprocessingEnabled ? "on" : "off")}";
         }
     }
 
@@ -1345,7 +1465,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             CapturePreviewStatus = $"Captured {frame.Width}x{frame.Height} at {frame.CapturedAt:HH:mm:ss}.";
 
             var result = await ocrService.RecognizeAsync(
-                new OcrRequest(frame, SourceLanguage.Trim(), zone.Id));
+                new OcrRequest(frame, SourceLanguage.Trim(), zone.Id, BuildOcrPreprocessingSettings()));
             latestOcrPreviewResult = result;
             ReplaceOcrPreviewTextBlocks(result.TextBlocks);
             UpdateVisibleOverlayPreview(result, overlayWasVisibleBeforeCapture);
@@ -1954,6 +2074,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             Name = ProfileName.Trim(),
             Description = ProfileDescription.Trim(),
             OcrZones = OcrZones.Select(zone => zone.ToModel()).ToArray(),
+            OcrPreprocessingSettings = BuildOcrPreprocessingSettings(),
             OverlaySettings = new OverlaySettings
             {
                 MaskMode = OverlayMaskMode,
@@ -1970,6 +2091,21 @@ public sealed class MainViewModel : ValidatableObservableObject
         };
     }
 
+
+    private OcrPreprocessingSettings BuildOcrPreprocessingSettings()
+    {
+        return new OcrPreprocessingSettings
+        {
+            IsEnabled = OcrPreprocessingEnabled,
+            Contrast = OcrPreprocessingContrast,
+            Brightness = OcrPreprocessingBrightness,
+            Sharpness = OcrPreprocessingSharpness,
+            ThresholdingEnabled = OcrPreprocessingThresholdingEnabled,
+            Threshold = (byte)Math.Clamp(OcrPreprocessingThreshold, byte.MinValue, byte.MaxValue),
+            Scale = OcrPreprocessingScale,
+            NoiseReductionEnabled = OcrPreprocessingNoiseReductionEnabled,
+        };
+    }
     private string BuildCloneName(string sourceName)
     {
         var baseName = string.IsNullOrWhiteSpace(sourceName)
@@ -2010,6 +2146,14 @@ public sealed class MainViewModel : ValidatableObservableObject
             OverlayMaskColor = profile.OverlaySettings.MaskColor;
             OverlayOpacity = profile.OverlaySettings.Opacity;
             OverlayPadding = profile.OverlaySettings.Padding;
+            OcrPreprocessingEnabled = profile.OcrPreprocessingSettings.IsEnabled;
+            OcrPreprocessingContrast = profile.OcrPreprocessingSettings.Contrast;
+            OcrPreprocessingBrightness = profile.OcrPreprocessingSettings.Brightness;
+            OcrPreprocessingSharpness = profile.OcrPreprocessingSettings.Sharpness;
+            OcrPreprocessingThresholdingEnabled = profile.OcrPreprocessingSettings.ThresholdingEnabled;
+            OcrPreprocessingThreshold = profile.OcrPreprocessingSettings.Threshold;
+            OcrPreprocessingScale = profile.OcrPreprocessingSettings.Scale;
+            OcrPreprocessingNoiseReductionEnabled = profile.OcrPreprocessingSettings.NoiseReductionEnabled;
             ReplaceZones(profile.OcrZones.Select(OcrZoneEditorViewModel.FromModel));
         });
 
@@ -2036,6 +2180,14 @@ public sealed class MainViewModel : ValidatableObservableObject
             OverlayMaskColor = settings.GetValue<string>(DraftOverlayMaskColorSettingKey) ?? OverlaySettings.Default.MaskColor;
             OverlayOpacity = settings.GetValue<double?>(DraftOverlayOpacitySettingKey) ?? OverlaySettings.Default.Opacity;
             OverlayPadding = settings.GetValue<double?>(DraftOverlayPaddingSettingKey) ?? OverlaySettings.Default.Padding;
+            OcrPreprocessingEnabled = settings.GetValue<bool?>(DraftOcrPreprocessingEnabledSettingKey) ?? OcrPreprocessingSettings.Default.IsEnabled;
+            OcrPreprocessingContrast = settings.GetValue<double?>(DraftOcrPreprocessingContrastSettingKey) ?? OcrPreprocessingSettings.Default.Contrast;
+            OcrPreprocessingBrightness = settings.GetValue<int?>(DraftOcrPreprocessingBrightnessSettingKey) ?? OcrPreprocessingSettings.Default.Brightness;
+            OcrPreprocessingSharpness = settings.GetValue<double?>(DraftOcrPreprocessingSharpnessSettingKey) ?? OcrPreprocessingSettings.Default.Sharpness;
+            OcrPreprocessingThresholdingEnabled = settings.GetValue<bool?>(DraftOcrPreprocessingThresholdingSettingKey) ?? OcrPreprocessingSettings.Default.ThresholdingEnabled;
+            OcrPreprocessingThreshold = settings.GetValue<int?>(DraftOcrPreprocessingThresholdSettingKey) ?? OcrPreprocessingSettings.Default.Threshold;
+            OcrPreprocessingScale = settings.GetValue<double?>(DraftOcrPreprocessingScaleSettingKey) ?? OcrPreprocessingSettings.Default.Scale;
+            OcrPreprocessingNoiseReductionEnabled = settings.GetValue<bool?>(DraftOcrPreprocessingNoiseReductionSettingKey) ?? OcrPreprocessingSettings.Default.NoiseReductionEnabled;
             ReplaceZones(draftZones.Select(OcrZoneEditorViewModel.FromModel));
             if (!string.IsNullOrWhiteSpace(draftSelectedZoneId))
             {
@@ -2219,6 +2371,14 @@ public sealed class MainViewModel : ValidatableObservableObject
         settings.SetValue(DraftOverlayMaskColorSettingKey, OverlayMaskColor.Trim());
         settings.SetValue(DraftOverlayOpacitySettingKey, OverlayOpacity);
         settings.SetValue(DraftOverlayPaddingSettingKey, OverlayPadding);
+        settings.SetValue(DraftOcrPreprocessingEnabledSettingKey, OcrPreprocessingEnabled);
+        settings.SetValue(DraftOcrPreprocessingContrastSettingKey, OcrPreprocessingContrast);
+        settings.SetValue(DraftOcrPreprocessingBrightnessSettingKey, OcrPreprocessingBrightness);
+        settings.SetValue(DraftOcrPreprocessingSharpnessSettingKey, OcrPreprocessingSharpness);
+        settings.SetValue(DraftOcrPreprocessingThresholdingSettingKey, OcrPreprocessingThresholdingEnabled);
+        settings.SetValue(DraftOcrPreprocessingThresholdSettingKey, OcrPreprocessingThreshold);
+        settings.SetValue(DraftOcrPreprocessingScaleSettingKey, OcrPreprocessingScale);
+        settings.SetValue(DraftOcrPreprocessingNoiseReductionSettingKey, OcrPreprocessingNoiseReductionEnabled);
         settings.SetValue(DraftOcrZonesSettingKey, OcrZones.Select(zone => zone.ToModel()).ToArray());
         settings.SetValue(DraftSelectedZoneIdSettingKey, SelectedZone?.Id);
     }
@@ -2275,6 +2435,31 @@ public sealed class MainViewModel : ValidatableObservableObject
                 ? new[] { "Overlay padding must be zero or greater." }
                 : Array.Empty<string>());
 
+        SetErrors(
+            nameof(OcrPreprocessingContrast),
+            OcrPreprocessingContrast is < 0.5 or > 3
+                ? new[] { "OCR preprocessing contrast must be between 0.5 and 3." }
+                : Array.Empty<string>());
+        SetErrors(
+            nameof(OcrPreprocessingBrightness),
+            OcrPreprocessingBrightness is < -100 or > 100
+                ? new[] { "OCR preprocessing brightness must be between -100 and 100." }
+                : Array.Empty<string>());
+        SetErrors(
+            nameof(OcrPreprocessingSharpness),
+            OcrPreprocessingSharpness is < 0 or > 2
+                ? new[] { "OCR preprocessing sharpness must be between 0 and 2." }
+                : Array.Empty<string>());
+        SetErrors(
+            nameof(OcrPreprocessingThreshold),
+            OcrPreprocessingThreshold is < 0 or > 255
+                ? new[] { "OCR preprocessing threshold must be between 0 and 255." }
+                : Array.Empty<string>());
+        SetErrors(
+            nameof(OcrPreprocessingScale),
+            OcrPreprocessingScale is < 1 or > 3
+                ? new[] { "OCR preprocessing scale must be between 1 and 3." }
+                : Array.Empty<string>());
         var overlapErrorsByZoneId = OcrZones.ToDictionary(zone => zone.Id, _ => new List<string>(), StringComparer.Ordinal);
 
         for (var first = 0; first < OcrZones.Count; first++)

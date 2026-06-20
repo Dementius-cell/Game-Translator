@@ -737,11 +737,86 @@
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="16" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="16" />
                                             <RowDefinition Height="*" />
                                         </Grid.RowDefinitions>
 
                                         <Border
                                             Grid.Row="0"
+                                            Background="#F9FBFD"
+                                            BorderBrush="#D7DEE8"
+                                            BorderThickness="1"
+                                            CornerRadius="4"
+                                            Padding="12">
+                                            <Grid>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <TextBlock
+                                                    Grid.Row="0"
+                                                    Grid.ColumnSpan="3"
+                                                    Foreground="#253238"
+                                                    FontWeight="SemiBold"
+                                                    Text="OCR preprocessing" />
+                                                <CheckBox
+                                                    Grid.Row="1"
+                                                    Grid.Column="0"
+                                                    Margin="0,10,12,0"
+                                                    Content="Enabled"
+                                                    IsChecked="{Binding OcrPreprocessingEnabled, Mode=TwoWay}" />
+                                                <CheckBox
+                                                    Grid.Row="1"
+                                                    Grid.Column="1"
+                                                    Margin="0,10,12,0"
+                                                    Content="Threshold"
+                                                    IsChecked="{Binding OcrPreprocessingThresholdingEnabled, Mode=TwoWay}" />
+                                                <CheckBox
+                                                    Grid.Row="1"
+                                                    Grid.Column="2"
+                                                    Margin="0,10,0,0"
+                                                    Content="Noise reduction"
+                                                    IsChecked="{Binding OcrPreprocessingNoiseReductionEnabled, Mode=TwoWay}" />
+                                                <UniformGrid
+                                                    Grid.Row="2"
+                                                    Grid.ColumnSpan="3"
+                                                    Margin="0,10,0,0"
+                                                    Columns="5">
+                                                    <StackPanel Margin="0,0,8,0">
+                                                        <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="Contrast" />
+                                                        <TextBox Padding="8,6" Text="{Binding OcrPreprocessingContrast, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    </StackPanel>
+                                                    <StackPanel Margin="0,0,8,0">
+                                                        <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="Brightness" />
+                                                        <TextBox Padding="8,6" Text="{Binding OcrPreprocessingBrightness, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    </StackPanel>
+                                                    <StackPanel Margin="0,0,8,0">
+                                                        <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="Sharpness" />
+                                                        <TextBox Padding="8,6" Text="{Binding OcrPreprocessingSharpness, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    </StackPanel>
+                                                    <StackPanel Margin="0,0,8,0">
+                                                        <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="Threshold" />
+                                                        <TextBox Padding="8,6" Text="{Binding OcrPreprocessingThreshold, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    </StackPanel>
+                                                    <StackPanel>
+                                                        <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="Scale" />
+                                                        <TextBox Padding="8,6" Text="{Binding OcrPreprocessingScale, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    </StackPanel>
+                                                </UniformGrid>
+                                            </Grid>
+                                        </Border>
+
+
+                                        <Border
+                                            Grid.Row="2"
                                             Background="#F9FBFD"
                                             BorderBrush="#D7DEE8"
                                             BorderThickness="1"

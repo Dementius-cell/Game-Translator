@@ -1,4 +1,5 @@
 using GameTranslator.Application.Capture;
+using GameTranslator.Domain.Profiles;
 
 namespace GameTranslator.Application.Ocr;
 
@@ -7,7 +8,11 @@ namespace GameTranslator.Application.Ocr;
 /// </summary>
 public sealed class OcrRequest
 {
-    public OcrRequest(CapturedFrame frame, string language, string? zoneId = null)
+    public OcrRequest(
+        CapturedFrame frame,
+        string language,
+        string? zoneId = null,
+        OcrPreprocessingSettings? preprocessingSettings = null)
     {
         Frame = frame ?? throw new ArgumentNullException(nameof(frame));
         ArgumentException.ThrowIfNullOrWhiteSpace(language);
@@ -19,6 +24,7 @@ public sealed class OcrRequest
 
         Language = language;
         ZoneId = zoneId;
+        PreprocessingSettings = preprocessingSettings ?? OcrPreprocessingSettings.Default;
     }
 
     public CapturedFrame Frame { get; }
@@ -28,4 +34,6 @@ public sealed class OcrRequest
     public string Language { get; }
 
     public string? ZoneId { get; }
+
+    public OcrPreprocessingSettings PreprocessingSettings { get; }
 }

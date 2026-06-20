@@ -1,5 +1,6 @@
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Ocr;
+using GameTranslator.Domain.Profiles;
 
 namespace GameTranslator.Tests.Application;
 
@@ -127,6 +128,29 @@ public sealed class OcrServiceTests
             });
     }
 
+
+    [Fact]
+    public async Task RecognizeAsync_WithPreprocessingSettings_PassesPreprocessedFrameToEngine()
+    {
+        var engine = new FakeOcrEngine();
+        var service = new OcrService(engine, new OcrPreprocessor());
+        var request = new OcrRequest(
+            CreateFrame(FirstRegion),
+            "en",
+            "zone-a",
+            new OcrPreprocessingSettings
+            {
+                IsEnabled = true,
+                Scale = 2,
+            });
+
+        await service.RecognizeAsync(request);
+
+        var engineRequest = Assert.Single(engine.Requests);
+        Assert.Equal(200, engineRequest.Frame.Width);
+        Assert.Equal(80, engineRequest.Frame.Height);
+        Assert.Equal(request.PreprocessingSettings, engineRequest.PreprocessingSettings);
+    }
     [Fact]
     public void OcrResult_WhenTextBlockExceedsFrame_ThrowsArgumentException()
     {

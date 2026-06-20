@@ -80,6 +80,26 @@ public sealed class ProfileValidatorTests
         Assert.True(result.IsValid);
     }
 
+
+    [Fact]
+    public void Validate_WhenOcrPreprocessingSettingsAreOutOfRange_ReturnsInvalidPreprocessingError()
+    {
+        var profile = CreateValidProfile() with
+        {
+            OcrPreprocessingSettings = new OcrPreprocessingSettings
+            {
+                Contrast = 4,
+                Brightness = 101,
+                Sharpness = 3,
+                Scale = 4,
+            },
+        };
+
+        var result = validator.Validate(profile);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Code == ProfileValidationErrorCodes.InvalidOcrPreprocessingSettings);
+    }
     private static GameProfile CreateValidProfile()
     {
         return new GameProfile

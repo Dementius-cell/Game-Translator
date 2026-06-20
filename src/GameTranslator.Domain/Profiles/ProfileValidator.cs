@@ -74,6 +74,13 @@ public sealed class ProfileValidator
                 ProfileValidationErrorCodes.InvalidOcrSettings,
                 $"OCR engine '{value.Engine}' is not supported."));
         }
+
+        if (!OcrSettings.IsSupportedOrientationMode(value.OrientationMode))
+        {
+            errors.Add(new ProfileValidationError(
+                ProfileValidationErrorCodes.InvalidOcrSettings,
+                $"OCR orientation mode '{value.OrientationMode}' is not supported."));
+        }
     }
 
     private static void ValidateOcrPreprocessing(

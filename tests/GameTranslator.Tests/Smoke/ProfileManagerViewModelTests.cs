@@ -54,6 +54,7 @@ public sealed class ProfileManagerViewModelTests
         SetPropertyValue(viewModel, "TranslatorProvider", "Google");
         SetPropertyValue(viewModel, "SourceLanguage", "ja");
         SetPropertyValue(viewModel, "TargetLanguage", "en");
+        SetPropertyValue(viewModel, "OcrOrientationMode", OcrOrientationMode.Vertical);
 
         await InvokeTaskMethodAsync(viewModel, "SaveAsync");
 
@@ -62,6 +63,7 @@ public sealed class ProfileManagerViewModelTests
         Assert.Single(storedProfiles);
         Assert.Equal("Cyberpunk 2077", storedProfiles[0].Name);
         Assert.Equal("Google", storedProfiles[0].TranslatorSettings.Provider);
+        Assert.Equal(OcrOrientationMode.Vertical, storedProfiles[0].OcrSettings.OrientationMode);
         Assert.Equal(storedProfiles[0].Id, settings.GetValue<string>("profiles.selectedId"));
         Assert.Equal(storedProfiles[0].Id, GetPropertyValue(GetPropertyValue(viewModel, "SelectedProfile")!, "Id"));
     }
@@ -76,6 +78,7 @@ public sealed class ProfileManagerViewModelTests
         settings.SetValue("shell.draft.translator.provider", "Azure");
         settings.SetValue("shell.draft.translator.sourceLanguage", "ja");
         settings.SetValue("shell.draft.translator.targetLanguage", "en");
+        settings.SetValue("shell.draft.ocr.orientationMode", OcrOrientationMode.Vertical);
         settings.SetValue("shell.draft.overlay.maskMode", OverlayMaskMode.Darken);
         settings.SetValue("shell.draft.overlay.maskColor", "#202020");
         settings.SetValue("shell.draft.overlay.opacity", 0.65);
@@ -100,6 +103,7 @@ public sealed class ProfileManagerViewModelTests
         Assert.Equal("Azure", GetPropertyValue(viewModel, "TranslatorProvider"));
         Assert.Equal("ja", GetPropertyValue(viewModel, "SourceLanguage"));
         Assert.Equal("en", GetPropertyValue(viewModel, "TargetLanguage"));
+        Assert.Equal(OcrOrientationMode.Vertical, GetPropertyValue(viewModel, "OcrOrientationMode"));
         Assert.Equal(OverlayMaskMode.Darken, GetPropertyValue(viewModel, "OverlayMaskMode"));
         Assert.Equal("#202020", GetPropertyValue(viewModel, "OverlayMaskColor"));
         Assert.Equal(0.65, GetPropertyValue(viewModel, "OverlayOpacity"));
@@ -124,6 +128,7 @@ public sealed class ProfileManagerViewModelTests
         SetPropertyValue(viewModel, "TranslatorProvider", "Yandex");
         SetPropertyValue(viewModel, "SourceLanguage", "ru");
         SetPropertyValue(viewModel, "TargetLanguage", "en");
+        SetPropertyValue(viewModel, "OcrOrientationMode", OcrOrientationMode.Horizontal);
         SetPropertyValue(viewModel, "OverlayMaskMode", OverlayMaskMode.Darken);
         SetPropertyValue(viewModel, "OverlayMaskColor", "#303030");
         SetPropertyValue(viewModel, "OverlayOpacity", 0.55);
@@ -135,6 +140,7 @@ public sealed class ProfileManagerViewModelTests
         Assert.Equal("Yandex", settings.GetValue<string>("shell.draft.translator.provider"));
         Assert.Equal("ru", settings.GetValue<string>("shell.draft.translator.sourceLanguage"));
         Assert.Equal("en", settings.GetValue<string>("shell.draft.translator.targetLanguage"));
+        Assert.Equal(OcrOrientationMode.Horizontal, settings.GetValue<OcrOrientationMode>("shell.draft.ocr.orientationMode"));
         Assert.Equal(OverlayMaskMode.Darken, settings.GetValue<OverlayMaskMode>("shell.draft.overlay.maskMode"));
         Assert.Equal("#303030", settings.GetValue<string>("shell.draft.overlay.maskColor"));
         Assert.Equal(0.55, settings.GetValue<double>("shell.draft.overlay.opacity"));
@@ -216,6 +222,7 @@ public sealed class ProfileManagerViewModelTests
         SetPropertyValue(viewModel, "TranslatorProvider", "Google");
         SetPropertyValue(viewModel, "SourceLanguage", "ja");
         SetPropertyValue(viewModel, "TargetLanguage", "en");
+        SetPropertyValue(viewModel, "OcrOrientationMode", OcrOrientationMode.Horizontal);
         SetPropertyValue(viewModel, "OverlayMaskMode", OverlayMaskMode.Darken);
         SetPropertyValue(viewModel, "OverlayMaskColor", "#101010");
         SetPropertyValue(viewModel, "OverlayOpacity", 0.75);
@@ -796,6 +803,7 @@ public sealed class ProfileManagerViewModelTests
         Assert.Equal(new CaptureRegion(10, 20, 4, 3), request.Region);
         Assert.Equal("ja", request.Language);
         Assert.Equal(GetPropertyValue(selectedZone, "Id"), request.ZoneId);
+        Assert.Equal(OcrOrientationMode.Auto, request.OrientationMode);
         Assert.True((bool)(GetPropertyValue(viewModel, "HasCapturePreview") ?? false));
         Assert.True((bool)(GetPropertyValue(viewModel, "HasOcrPreview") ?? false));
         Assert.Equal(4, GetPropertyValue(viewModel, "CapturePreviewWidth"));

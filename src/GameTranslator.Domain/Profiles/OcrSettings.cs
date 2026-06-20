@@ -10,9 +10,16 @@ public sealed record OcrSettings
 
     public string Engine { get; init; } = WindowsEngineId;
 
+    public OcrOrientationMode OrientationMode { get; init; } = OcrOrientationMode.Auto;
+
     public static bool IsSupportedEngine(string? engine)
     {
         return string.Equals(engine, WindowsEngineId, StringComparison.OrdinalIgnoreCase)
             || string.Equals(engine, TesseractEngineId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool IsSupportedOrientationMode(OcrOrientationMode orientationMode)
+    {
+        return Enum.IsDefined(orientationMode);
     }
 }

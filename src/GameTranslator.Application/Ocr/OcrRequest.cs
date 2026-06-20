@@ -13,7 +13,8 @@ public sealed class OcrRequest
         string language,
         string? zoneId = null,
         OcrPreprocessingSettings? preprocessingSettings = null,
-        string? engineId = null)
+        string? engineId = null,
+        OcrOrientationMode? orientationMode = null)
     {
         Frame = frame ?? throw new ArgumentNullException(nameof(frame));
         ArgumentException.ThrowIfNullOrWhiteSpace(language);
@@ -29,6 +30,7 @@ public sealed class OcrRequest
         EngineId = string.IsNullOrWhiteSpace(engineId)
             ? OcrSettings.Default.Engine
             : engineId.Trim();
+        OrientationMode = orientationMode ?? OcrSettings.Default.OrientationMode;
     }
 
     public CapturedFrame Frame { get; }
@@ -42,4 +44,6 @@ public sealed class OcrRequest
     public OcrPreprocessingSettings PreprocessingSettings { get; }
 
     public string EngineId { get; }
+
+    public OcrOrientationMode OrientationMode { get; }
 }

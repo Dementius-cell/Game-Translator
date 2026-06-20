@@ -151,13 +151,15 @@ public sealed class OcrServiceTests
             "en",
             "zone-a",
             preprocessingSettings: null,
-            OcrSettings.TesseractEngineId);
+            OcrSettings.TesseractEngineId,
+            OcrOrientationMode.Vertical);
 
         var result = await service.RecognizeAsync(request);
 
         Assert.Empty(windowsEngine.Requests);
         var engineRequest = Assert.Single(tesseractEngine.Requests);
         Assert.Equal(OcrSettings.TesseractEngineId, engineRequest.EngineId);
+        Assert.Equal(OcrOrientationMode.Vertical, engineRequest.OrientationMode);
         Assert.Equal("Tesseract text", result.Text);
     }
 
@@ -174,7 +176,8 @@ public sealed class OcrServiceTests
             {
                 IsEnabled = true,
                 Scale = 2,
-            });
+            },
+            orientationMode: OcrOrientationMode.Horizontal);
 
         await service.RecognizeAsync(request);
 
@@ -182,6 +185,7 @@ public sealed class OcrServiceTests
         Assert.Equal(200, engineRequest.Frame.Width);
         Assert.Equal(80, engineRequest.Frame.Height);
         Assert.Equal(request.PreprocessingSettings, engineRequest.PreprocessingSettings);
+        Assert.Equal(OcrOrientationMode.Horizontal, engineRequest.OrientationMode);
     }
     [Fact]
     public void OcrResult_WhenTextBlockExceedsFrame_ThrowsArgumentException()

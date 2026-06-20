@@ -127,7 +127,8 @@ public sealed class TranslationPipelineService
             profile.TranslatorSettings.SourceLanguage,
             zone.Id,
             profile.OcrPreprocessingSettings,
-            profile.OcrSettings.Engine);
+            profile.OcrSettings.Engine,
+            profile.OcrSettings.OrientationMode);
         var ocrMeasurement = await RunTimedStageAsync(
             TranslationPipelineStage.Ocr,
             () => ocrService.RecognizeAsync(request, cancellationToken));

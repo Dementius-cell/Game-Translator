@@ -38,6 +38,7 @@ public sealed class TranslationPipelineServiceTests
         var request = Assert.Single(ocrEngine.Requests);
         Assert.Equal("en", request.Language);
         Assert.Equal(zone.Id, request.ZoneId);
+        Assert.Equal(profile.OcrSettings.OrientationMode, request.OrientationMode);
         Assert.Equal(new[] { "Hello" }, translator.Request?.Texts);
         Assert.Equal("en", translator.Request?.SourceLanguage);
         Assert.Equal("ru", translator.Request?.TargetLanguage);
@@ -253,6 +254,10 @@ public sealed class TranslationPipelineServiceTests
             Id = "profile-a",
             Name = "Pipeline profile",
             OcrZones = zones,
+            OcrSettings = new OcrSettings
+            {
+                OrientationMode = OcrOrientationMode.Vertical,
+            },
             OverlaySettings = new OverlaySettings
             {
                 MaskMode = OverlayMaskMode.Darken,

@@ -44,6 +44,7 @@ public sealed class JsonProfileRepositoryTests : IDisposable
         Assert.Equal(profile.OcrZones[0].AbsoluteBounds, loaded.OcrZones[0].AbsoluteBounds);
         Assert.Equal(profile.OcrZones[0].RelativeBounds, loaded.OcrZones[0].RelativeBounds);
         Assert.Equal(profile.OcrSettings.Engine, loaded.OcrSettings.Engine);
+        Assert.Equal(profile.OcrSettings.OrientationMode, loaded.OcrSettings.OrientationMode);
         Assert.Equal(profile.OcrPreprocessingSettings.Contrast, loaded.OcrPreprocessingSettings.Contrast);
         Assert.Equal(profile.OcrPreprocessingSettings.Brightness, loaded.OcrPreprocessingSettings.Brightness);
         Assert.Equal(profile.OcrPreprocessingSettings.ThresholdingEnabled, loaded.OcrPreprocessingSettings.ThresholdingEnabled);
@@ -111,6 +112,7 @@ public sealed class JsonProfileRepositoryTests : IDisposable
             OcrSettings = new OcrSettings
             {
                 Engine = OcrSettings.TesseractEngineId,
+                OrientationMode = OcrOrientationMode.Vertical,
             },
             OcrPreprocessingSettings = new OcrPreprocessingSettings
             {

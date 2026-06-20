@@ -100,6 +100,23 @@ public sealed class ProfileValidatorTests
     }
 
     [Fact]
+    public void Validate_WhenOcrOrientationModeIsUnsupported_ReturnsInvalidOcrSettingsError()
+    {
+        var profile = CreateValidProfile() with
+        {
+            OcrSettings = new OcrSettings
+            {
+                OrientationMode = (OcrOrientationMode)999,
+            },
+        };
+
+        var result = validator.Validate(profile);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Code == ProfileValidationErrorCodes.InvalidOcrSettings);
+    }
+
+    [Fact]
     public void Validate_WhenOcrPreprocessingSettingsAreOutOfRange_ReturnsInvalidPreprocessingError()
     {
         var profile = CreateValidProfile() with

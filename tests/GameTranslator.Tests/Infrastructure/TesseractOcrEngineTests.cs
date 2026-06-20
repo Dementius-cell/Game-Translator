@@ -44,6 +44,11 @@ public sealed class TesseractOcrEngineTests
         Assert.Contains("new Engine", source, StringComparison.Ordinal);
         Assert.Contains("PixImage.LoadFromMemory", source, StringComparison.Ordinal);
         Assert.Contains("PageSegMode.SingleBlock", source, StringComparison.Ordinal);
+        Assert.Contains("PageSegMode.OsdOnly", source, StringComparison.Ordinal);
+        Assert.Contains("PageSegMode.SingleBlockVertText", source, StringComparison.Ordinal);
+        Assert.Contains("DetectOrientation", source, StringComparison.Ordinal);
+        Assert.Contains("OrientationConfidenceThreshold", source, StringComparison.Ordinal);
+        Assert.Contains("catch (TesseractException)", source, StringComparison.Ordinal);
         Assert.Contains("page.Layout", source, StringComparison.Ordinal);
         Assert.Contains("textLine.BoundingBox", source, StringComparison.Ordinal);
         Assert.Contains("new OcrTextBlock", source, StringComparison.Ordinal);

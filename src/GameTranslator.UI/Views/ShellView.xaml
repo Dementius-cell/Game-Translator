@@ -778,6 +778,16 @@
                                                         ItemsSource="{Binding OcrEngines}"
                                                         SelectedItem="{Binding OcrEngine, Mode=TwoWay}" />
                                                 </StackPanel>
+                                                <StackPanel
+                                                    Grid.Row="1"
+                                                    Grid.Column="1"
+                                                    Margin="0,10,12,0">
+                                                    <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="Orientation" />
+                                                    <ComboBox
+                                                        Padding="8,6"
+                                                        ItemsSource="{Binding OcrOrientations}"
+                                                        SelectedItem="{Binding OcrOrientationMode, Mode=TwoWay}" />
+                                                </StackPanel>
                                                 <CheckBox
                                                     Grid.Row="2"
                                                     Grid.Column="0"

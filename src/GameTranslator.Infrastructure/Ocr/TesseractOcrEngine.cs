@@ -4,7 +4,6 @@ using GameTranslator.Domain.Profiles;
 using TesseractOCR;
 using TesseractOCR.Enums;
 using TesseractOCR.Exceptions;
-using TesseractOCR.Pix;
 using ApplicationOcrResult = GameTranslator.Application.Ocr.OcrResult;
 using PixImage = TesseractOCR.Pix.Image;
 
@@ -13,6 +12,7 @@ namespace GameTranslator.Infrastructure.Ocr;
 public sealed class TesseractOcrEngine : IOcrEngine
 {
     private const int BytesPerPixel = 4;
+    private const float OrientationConfidenceThreshold = 15f;
     private const string SupportedPixelFormat = "Bgra32";
     private readonly string tessdataPath;
 
@@ -43,9 +43,10 @@ public sealed class TesseractOcrEngine : IOcrEngine
             var bitmapBytes = CreateBitmapBytes(request.Frame);
 
             using var engine = new Engine(tessdataPath, language, EngineMode.Default);
-            engine.DefaultPageSegMode = PageSegMode.SingleBlock;
             using var image = PixImage.LoadFromMemory(bitmapBytes);
-            using var page = engine.Process(image, PageSegMode.SingleBlock);
+            var pageSegMode = SelectPageSegMode(engine, image, request.OrientationMode);
+            engine.DefaultPageSegMode = pageSegMode;
+            using var page = engine.Process(image, pageSegMode);
             cancellationToken.ThrowIfCancellationRequested();
 
             return Task.FromResult(
@@ -99,6 +100,16 @@ public sealed class TesseractOcrEngine : IOcrEngine
         return string.Join('+', parts);
     }
 
+    internal static PageSegMode MapOrientationMode(OcrOrientationMode orientationMode)
+    {
+        return orientationMode switch
+        {
+            OcrOrientationMode.Vertical => PageSegMode.SingleBlockVertText,
+            OcrOrientationMode.Auto or OcrOrientationMode.Horizontal => PageSegMode.SingleBlock,
+            _ => PageSegMode.SingleBlock,
+        };
+    }
+
     internal static byte[] CreateBitmapBytes(GameTranslator.Application.Capture.CapturedFrame frame)
     {
         ArgumentNullException.ThrowIfNull(frame);
@@ -149,6 +160,39 @@ public sealed class TesseractOcrEngine : IOcrEngine
         }
 
         return bitmapBytes;
+    }
+
+    private static PageSegMode SelectPageSegMode(
+        Engine engine,
+        PixImage image,
+        OcrOrientationMode orientationMode)
+    {
+        if (orientationMode is not OcrOrientationMode.Auto)
+        {
+            return MapOrientationMode(orientationMode);
+        }
+
+        try
+        {
+            using var orientationPage = engine.Process(image, PageSegMode.OsdOnly);
+            orientationPage.DetectOrientation(out var orientationDegrees, out var confidence);
+            if (confidence < OrientationConfidenceThreshold)
+            {
+                return PageSegMode.SingleBlock;
+            }
+
+            return orientationDegrees is 90 or 270
+                ? PageSegMode.SingleBlockVertText
+                : PageSegMode.SingleBlock;
+        }
+        catch (TesseractException)
+        {
+            return PageSegMode.SingleBlock;
+        }
+        catch (InvalidOperationException)
+        {
+            return PageSegMode.SingleBlock;
+        }
     }
 
     private static IReadOnlyList<OcrTextBlock> CreateTextBlocks(

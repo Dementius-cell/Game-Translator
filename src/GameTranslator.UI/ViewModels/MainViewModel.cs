@@ -35,6 +35,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private const string DraftOverlayOpacitySettingKey = "shell.draft.overlay.opacity";
     private const string DraftOverlayPaddingSettingKey = "shell.draft.overlay.padding";
     private const string DraftOcrEngineSettingKey = "shell.draft.ocr.engine";
+    private const string DraftOcrOrientationModeSettingKey = "shell.draft.ocr.orientationMode";
     private const string DraftOcrPreprocessingEnabledSettingKey = "shell.draft.ocr.preprocessing.enabled";
     private const string DraftOcrPreprocessingContrastSettingKey = "shell.draft.ocr.preprocessing.contrast";
     private const string DraftOcrPreprocessingBrightnessSettingKey = "shell.draft.ocr.preprocessing.brightness";
@@ -51,6 +52,13 @@ public sealed class MainViewModel : ValidatableObservableObject
     {
         OcrSettings.WindowsEngineId,
         OcrSettings.TesseractEngineId,
+    };
+
+    private static readonly OcrOrientationMode[] SupportedOcrOrientations =
+    {
+        OcrOrientationMode.Auto,
+        OcrOrientationMode.Horizontal,
+        OcrOrientationMode.Vertical,
     };
 
     private readonly ProfileService profileService;
@@ -78,6 +86,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private string sourceLanguage = string.Empty;
     private string targetLanguage = string.Empty;
     private string ocrEngine = OcrSettings.Default.Engine;
+    private OcrOrientationMode ocrOrientationMode = OcrSettings.Default.OrientationMode;
     private string translatorCredentialSecret = string.Empty;
     private string translatorCredentialProjectId = string.Empty;
     private string translatorCredentialLocation = "global";
@@ -338,6 +347,8 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public IReadOnlyList<string> OcrEngines => SupportedOcrEngines;
 
+    public IReadOnlyList<OcrOrientationMode> OcrOrientations => SupportedOcrOrientations;
+
     public string OcrEngine
     {
         get => ocrEngine;
@@ -349,6 +360,20 @@ public sealed class MainViewModel : ValidatableObservableObject
                 PersistDraftShellStateIfNeeded();
                 RefreshValidationState();
                 NotifyCommandStateChanged();
+            }
+        }
+    }
+
+    public OcrOrientationMode OcrOrientationMode
+    {
+        get => ocrOrientationMode;
+        set
+        {
+            if (SetProperty(ref ocrOrientationMode, value))
+            {
+                OnPropertyChanged(nameof(ProfileSummary));
+                PersistDraftShellStateIfNeeded();
+                RefreshValidationState();
             }
         }
     }
@@ -628,7 +653,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         {
             var schemaVersion = SelectedProfile?.SchemaVersion ?? GameProfile.CurrentSchemaVersion;
 
-            return $"schema {schemaVersion} | {TranslatorSettingsSummary} | OCR {OcrEngine} | zones {OcrZones.Count} | overlay {OverlayMaskMode} | preprocess {(OcrPreprocessingEnabled ? "on" : "off")}";
+            return $"schema {schemaVersion} | {TranslatorSettingsSummary} | OCR {OcrEngine}/{OcrOrientationMode} | zones {OcrZones.Count} | overlay {OverlayMaskMode} | preprocess {(OcrPreprocessingEnabled ? "on" : "off")}";
         }
     }
 
@@ -1489,7 +1514,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             CapturePreviewStatus = $"Captured {frame.Width}x{frame.Height} at {frame.CapturedAt:HH:mm:ss}.";
 
             var result = await ocrService.RecognizeAsync(
-                new OcrRequest(frame, SourceLanguage.Trim(), zone.Id, BuildOcrPreprocessingSettings(), OcrEngine));
+                new OcrRequest(frame, SourceLanguage.Trim(), zone.Id, BuildOcrPreprocessingSettings(), OcrEngine, OcrOrientationMode));
             latestOcrPreviewResult = result;
             ReplaceOcrPreviewTextBlocks(result.TextBlocks);
             UpdateVisibleOverlayPreview(result, overlayWasVisibleBeforeCapture);
@@ -2174,6 +2199,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             OcrSettings = new OcrSettings
             {
                 Engine = OcrEngine.Trim(),
+                OrientationMode = OcrOrientationMode,
             },
             OcrPreprocessingSettings = BuildOcrPreprocessingSettings(),
             OverlaySettings = new OverlaySettings
@@ -2246,6 +2272,9 @@ public sealed class MainViewModel : ValidatableObservableObject
             OcrEngine = string.IsNullOrWhiteSpace(profile.OcrSettings.Engine)
                 ? OcrSettings.Default.Engine
                 : profile.OcrSettings.Engine;
+            OcrOrientationMode = OcrSettings.IsSupportedOrientationMode(profile.OcrSettings.OrientationMode)
+                ? profile.OcrSettings.OrientationMode
+                : OcrSettings.Default.OrientationMode;
             OverlayMaskMode = profile.OverlaySettings.MaskMode;
             OverlayMaskColor = profile.OverlaySettings.MaskColor;
             OverlayOpacity = profile.OverlaySettings.Opacity;
@@ -2281,6 +2310,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             SourceLanguage = settings.GetValue<string>(DraftSourceLanguageSettingKey) ?? string.Empty;
             TargetLanguage = settings.GetValue<string>(DraftTargetLanguageSettingKey) ?? string.Empty;
             OcrEngine = settings.GetValue<string>(DraftOcrEngineSettingKey) ?? OcrSettings.Default.Engine;
+            OcrOrientationMode = settings.GetValue<OcrOrientationMode?>(DraftOcrOrientationModeSettingKey) ?? OcrSettings.Default.OrientationMode;
             OverlayMaskMode = settings.GetValue<OverlayMaskMode?>(DraftOverlayMaskModeSettingKey) ?? OverlaySettings.Default.MaskMode;
             OverlayMaskColor = settings.GetValue<string>(DraftOverlayMaskColorSettingKey) ?? OverlaySettings.Default.MaskColor;
             OverlayOpacity = settings.GetValue<double?>(DraftOverlayOpacitySettingKey) ?? OverlaySettings.Default.Opacity;
@@ -2474,6 +2504,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         settings.SetValue(DraftSourceLanguageSettingKey, NormalizeOptionalText(SourceLanguage));
         settings.SetValue(DraftTargetLanguageSettingKey, NormalizeOptionalText(TargetLanguage));
         settings.SetValue(DraftOcrEngineSettingKey, NormalizeOptionalText(OcrEngine));
+        settings.SetValue(DraftOcrOrientationModeSettingKey, OcrOrientationMode);
         settings.SetValue(DraftOverlayMaskModeSettingKey, OverlayMaskMode);
         settings.SetValue(DraftOverlayMaskColorSettingKey, OverlayMaskColor.Trim());
         settings.SetValue(DraftOverlayOpacitySettingKey, OverlayOpacity);
@@ -2530,6 +2561,11 @@ public sealed class MainViewModel : ValidatableObservableObject
             nameof(OcrEngine),
             !OcrSettings.IsSupportedEngine(OcrEngine)
                 ? new[] { "OCR engine must be Windows or Tesseract." }
+                : Array.Empty<string>());
+        SetErrors(
+            nameof(OcrOrientationMode),
+            !OcrSettings.IsSupportedOrientationMode(OcrOrientationMode)
+                ? new[] { "OCR orientation mode must be Auto, Horizontal, or Vertical." }
                 : Array.Empty<string>());
         SetErrors(
             nameof(OverlayMaskColor),

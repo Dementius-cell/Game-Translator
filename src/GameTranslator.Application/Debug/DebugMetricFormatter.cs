@@ -18,6 +18,7 @@ public sealed class DebugMetricFormatter
                 : $"FPS: {snapshot.FramesPerSecond.Value.ToString("F1", CultureInfo.InvariantCulture)}",
             $"CPU: {FormatCpu(snapshot.ResourceSnapshot.CpuPercent)} | RAM: {FormatMemory(snapshot.ResourceSnapshot.WorkingSetBytes)}",
             FormatCache(snapshot),
+            FormatOptimization(snapshot),
         };
 
         return lines;
@@ -52,6 +53,18 @@ public sealed class DebugMetricFormatter
         }
 
         return $"Cache: {snapshot.CacheHitCount}/{snapshot.CacheHitCount + snapshot.CacheMissCount} hits ({(snapshot.CacheHitRate.Value * 100).ToString("F1", CultureInfo.InvariantCulture)}%)";
+    }
+
+    private static string FormatOptimization(DebugMetricSnapshot snapshot)
+    {
+        return $"Optimization: OCR skipped {snapshot.SkippedOcrCount} | translation skipped {snapshot.SkippedTranslationCount} | debounced {snapshot.DebouncedZoneCount} | frame delta {FormatFrameDifference(snapshot.FrameDifferenceRatio)}";
+    }
+
+    private static string FormatFrameDifference(double? ratio)
+    {
+        return ratio is null
+            ? "n/a"
+            : $"{(ratio.Value * 100).ToString("F2", CultureInfo.InvariantCulture)}%";
     }
 
     private static string RedactSensitive(string value)

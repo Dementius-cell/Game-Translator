@@ -35,4 +35,24 @@ public sealed class TranslationPipelineBatchResult
     public int RecognizedBlockCount => ZoneResults.Sum(result => result.RecognizedBlockCount);
 
     public int TranslatedBlockCount => ZoneResults.Sum(result => result.TranslatedBlockCount);
+
+    public int SkippedOcrCount => ZoneResults.Count(result => result.Optimization.OcrSkipped);
+
+    public int SkippedTranslationCount => ZoneResults.Count(result => result.Optimization.TranslationSkipped);
+
+    public int DebouncedZoneCount => ZoneResults.Count(result => result.Optimization.Debounced);
+
+    public double? AverageFrameDifferenceRatio
+    {
+        get
+        {
+            var ratios = ZoneResults
+                .Select(result => result.Optimization.FrameDifferenceRatio)
+                .Where(ratio => ratio.HasValue)
+                .Select(ratio => ratio!.Value)
+                .ToArray();
+
+            return ratios.Length == 0 ? null : ratios.Average();
+        }
+    }
 }

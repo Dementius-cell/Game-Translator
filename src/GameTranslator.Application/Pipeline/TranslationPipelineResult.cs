@@ -16,7 +16,8 @@ public sealed class TranslationPipelineResult
         TranslateResponse? translateResponse,
         OverlaySnapshot overlaySnapshot,
         TranslationCacheResult? cacheResult = null,
-        TranslationPipelineTimings? timings = null)
+        TranslationPipelineTimings? timings = null,
+        TranslationPipelineOptimizationInfo? optimization = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(zoneId);
         ProfileId = profileId?.Trim() ?? string.Empty;
@@ -27,6 +28,7 @@ public sealed class TranslationPipelineResult
         OverlaySnapshot = overlaySnapshot ?? throw new ArgumentNullException(nameof(overlaySnapshot));
         CacheResult = cacheResult;
         Timings = timings ?? TranslationPipelineTimings.Empty;
+        Optimization = optimization ?? TranslationPipelineOptimizationInfo.None;
     }
 
     public string ProfileId { get; }
@@ -44,6 +46,8 @@ public sealed class TranslationPipelineResult
     public TranslationCacheResult? CacheResult { get; }
 
     public TranslationPipelineTimings Timings { get; }
+
+    public TranslationPipelineOptimizationInfo Optimization { get; }
 
     public int RecognizedBlockCount => SourceOcrResult.TextBlocks.Count;
 

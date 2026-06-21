@@ -1934,7 +1934,11 @@ public sealed class MainViewModel : ValidatableObservableObject
             latestCaptureRefreshMetrics?.FramesPerSecond,
             debugResourceMonitor.Sample(),
             result.CacheResult?.HitCount ?? 0,
-            result.CacheResult?.MissCount ?? 0);
+            result.CacheResult?.MissCount ?? 0,
+            skippedOcrCount: result.Optimization.OcrSkipped ? 1 : 0,
+            skippedTranslationCount: result.Optimization.TranslationSkipped ? 1 : 0,
+            debouncedZoneCount: result.Optimization.Debounced ? 1 : 0,
+            frameDifferenceRatio: result.Optimization.FrameDifferenceRatio);
         var metricLines = debugMetricFormatter.Format(metrics);
         DebugOverlayStatus = $"Debug overlay shows {debugItems.Length} OCR box(es), timings, resources, and cache metrics.";
 
@@ -1961,7 +1965,11 @@ public sealed class MainViewModel : ValidatableObservableObject
             latestCaptureRefreshMetrics?.FramesPerSecond,
             debugResourceMonitor.Sample(),
             result.ZoneResults.Sum(zoneResult => zoneResult.CacheResult?.HitCount ?? 0),
-            result.ZoneResults.Sum(zoneResult => zoneResult.CacheResult?.MissCount ?? 0));
+            result.ZoneResults.Sum(zoneResult => zoneResult.CacheResult?.MissCount ?? 0),
+            skippedOcrCount: result.SkippedOcrCount,
+            skippedTranslationCount: result.SkippedTranslationCount,
+            debouncedZoneCount: result.DebouncedZoneCount,
+            frameDifferenceRatio: result.AverageFrameDifferenceRatio);
         var metricLines = debugMetricFormatter.Format(metrics);
         DebugOverlayStatus = $"Debug overlay shows {debugItems.Length} OCR box(es), timings, resources, and cache metrics across {result.SucceededZoneCount} zone(s).";
 
@@ -1993,9 +2001,13 @@ public sealed class MainViewModel : ValidatableObservableObject
             ? $"Full pipeline completed for {result.SucceededZoneCount} OCR zone(s) with no recognized text"
             : $"Full pipeline translated {result.TranslatedBlockCount} text block(s) across {result.SucceededZoneCount} OCR zone(s)";
 
-        return result.HasFailures
+        var status = result.HasFailures
             ? $"{translatedStatus}; {result.FailedZoneCount} of {result.TotalZoneCount} zone(s) failed."
             : $"{translatedStatus}.";
+
+        return result.SkippedOcrCount == 0
+            ? status
+            : status.TrimEnd('.') + $"; skipped OCR/translation for {result.SkippedOcrCount} unchanged zone(s).";
     }
 
     private static TimeSpan SumElapsed(

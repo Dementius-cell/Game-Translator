@@ -18,6 +18,9 @@ public sealed class TranslationPipelineService
     private readonly TranslationCacheService cacheService;
     private readonly OverlayPositioningService overlayPositioningService;
     private readonly IOverlayService overlayService;
+    private readonly TranslationPipelineOptimizationOptions optimizationOptions;
+    private readonly object optimizationStateLock = new();
+    private readonly Dictionary<PipelineFrameStateKey, PipelineFrameState> optimizationStates = new();
 
     public TranslationPipelineService(
         CaptureService captureService,
@@ -26,7 +29,8 @@ public sealed class TranslationPipelineService
         TranslatorCredentialService credentialService,
         TranslationCacheService cacheService,
         OverlayPositioningService overlayPositioningService,
-        IOverlayService overlayService)
+        IOverlayService overlayService,
+        TranslationPipelineOptimizationOptions? optimizationOptions = null)
     {
         this.captureService = captureService ?? throw new ArgumentNullException(nameof(captureService));
         this.ocrService = ocrService ?? throw new ArgumentNullException(nameof(ocrService));
@@ -35,6 +39,7 @@ public sealed class TranslationPipelineService
         this.cacheService = cacheService ?? throw new ArgumentNullException(nameof(cacheService));
         this.overlayPositioningService = overlayPositioningService ?? throw new ArgumentNullException(nameof(overlayPositioningService));
         this.overlayService = overlayService ?? throw new ArgumentNullException(nameof(overlayService));
+        this.optimizationOptions = optimizationOptions ?? new TranslationPipelineOptimizationOptions();
     }
 
     public Task<TranslationPipelineResult> RunAsync(
@@ -122,6 +127,48 @@ public sealed class TranslationPipelineService
         var frame = frameMeasurement.Value;
         captureElapsed = frameMeasurement.Elapsed;
 
+        var optimizationContext = CreateOptimizationContext(profile, zone, frame);
+        if (optimizationContext.ShouldReusePreviousResult && optimizationContext.PreviousState is not null)
+        {
+            var reusedResult = CreateReusedResult(
+                profile,
+                zone,
+                frame,
+                optimizationContext.PreviousState.Result,
+                captureElapsed,
+                optimizationContext);
+            if (showOverlay)
+            {
+                overlayElapsed = await ShowOverlayAsync(reusedResult.OverlaySnapshot);
+                totalStopwatch.Stop();
+                reusedResult = ReplaceResultTimings(
+                    reusedResult,
+                    captureElapsed,
+                    ocrElapsed,
+                    credentialsElapsed,
+                    translationElapsed,
+                    cacheElapsed,
+                    overlayElapsed,
+                    totalStopwatch.Elapsed);
+            }
+            else
+            {
+                totalStopwatch.Stop();
+                reusedResult = ReplaceResultTimings(
+                    reusedResult,
+                    captureElapsed,
+                    ocrElapsed,
+                    credentialsElapsed,
+                    translationElapsed,
+                    cacheElapsed,
+                    overlayElapsed,
+                    totalStopwatch.Elapsed);
+            }
+
+            StoreOptimizationState(optimizationContext.StateKey, frame, reusedResult);
+            return reusedResult;
+        }
+
         var request = new OcrRequest(
             frame,
             profile.TranslatorSettings.SourceLanguage,
@@ -149,7 +196,7 @@ public sealed class TranslationPipelineService
 
             totalStopwatch.Stop();
 
-            return new TranslationPipelineResult(
+            var emptyResult = new TranslationPipelineResult(
                 profile.Id,
                 zone.Id,
                 frame,
@@ -164,7 +211,11 @@ public sealed class TranslationPipelineService
                     translationElapsed,
                     cacheElapsed,
                     overlayElapsed,
-                    totalStopwatch.Elapsed));
+                    totalStopwatch.Elapsed),
+                CreateProcessedOptimization(optimizationContext));
+            StoreOptimizationState(optimizationContext.StateKey, frame, emptyResult);
+
+            return emptyResult;
         }
 
         var texts = sourceResult.TextBlocks.Select(block => block.Text).ToArray();
@@ -214,7 +265,7 @@ public sealed class TranslationPipelineService
 
         totalStopwatch.Stop();
 
-        return new TranslationPipelineResult(
+        var result = new TranslationPipelineResult(
             profile.Id,
             zone.Id,
             frame,
@@ -229,7 +280,11 @@ public sealed class TranslationPipelineService
                 translationElapsed,
                 cacheElapsed,
                 overlayElapsed,
-                totalStopwatch.Elapsed));
+                totalStopwatch.Elapsed),
+            CreateProcessedOptimization(optimizationContext));
+        StoreOptimizationState(optimizationContext.StateKey, frame, result);
+
+        return result;
     }
 
     private async Task<TimeSpan> ShowOverlayAsync(OverlaySnapshot snapshot)
@@ -243,6 +298,216 @@ public sealed class TranslationPipelineService
             });
 
         return measurement.Elapsed;
+    }
+
+    private PipelineOptimizationContext CreateOptimizationContext(
+        GameProfile profile,
+        OcrZone zone,
+        CapturedFrame frame)
+    {
+        var stateKey = CreateStateKey(profile, zone);
+        if (!optimizationOptions.IsEnabled)
+        {
+            return new PipelineOptimizationContext(
+                stateKey,
+                PreviousState: null,
+                ShouldReusePreviousResult: false,
+                Debounced: false,
+                FrameDifferenceRatio: null);
+        }
+
+        var previousState = GetOptimizationState(stateKey);
+        if (previousState is null)
+        {
+            return new PipelineOptimizationContext(
+                stateKey,
+                PreviousState: null,
+                ShouldReusePreviousResult: false,
+                Debounced: false,
+                FrameDifferenceRatio: null);
+        }
+
+        var frameDifferenceRatio = CalculateFrameDifferenceRatio(previousState.Fingerprint, frame);
+        var shouldReusePreviousResult = frameDifferenceRatio <= optimizationOptions.FrameDifferenceThreshold;
+        var debounced = shouldReusePreviousResult
+            && IsWithinDebounceWindow(previousState.CapturedAt, frame.CapturedAt);
+
+        return new PipelineOptimizationContext(
+            stateKey,
+            previousState,
+            shouldReusePreviousResult,
+            debounced,
+            frameDifferenceRatio);
+    }
+
+    private PipelineFrameState? GetOptimizationState(PipelineFrameStateKey stateKey)
+    {
+        lock (optimizationStateLock)
+        {
+            return optimizationStates.TryGetValue(stateKey, out var state)
+                ? state
+                : null;
+        }
+    }
+
+    private void StoreOptimizationState(
+        PipelineFrameStateKey stateKey,
+        CapturedFrame frame,
+        TranslationPipelineResult result)
+    {
+        if (!optimizationOptions.IsEnabled)
+        {
+            return;
+        }
+
+        var state = new PipelineFrameState(
+            FrameFingerprint.FromFrame(frame),
+            result,
+            frame.CapturedAt);
+
+        lock (optimizationStateLock)
+        {
+            optimizationStates[stateKey] = state;
+        }
+    }
+
+    private bool IsWithinDebounceWindow(DateTimeOffset previousCapturedAt, DateTimeOffset currentCapturedAt)
+    {
+        var elapsed = currentCapturedAt >= previousCapturedAt
+            ? currentCapturedAt - previousCapturedAt
+            : previousCapturedAt - currentCapturedAt;
+
+        return elapsed <= optimizationOptions.DebounceInterval;
+    }
+
+    private static double CalculateFrameDifferenceRatio(FrameFingerprint previous, CapturedFrame current)
+    {
+        if (previous.Width != current.Width
+            || previous.Height != current.Height
+            || previous.Stride != current.Stride
+            || !string.Equals(previous.PixelFormat, current.PixelFormat, StringComparison.Ordinal))
+        {
+            return 1d;
+        }
+
+        var currentPixels = current.PixelData.Span;
+        if (previous.PixelData.Length != currentPixels.Length || currentPixels.Length == 0)
+        {
+            return 1d;
+        }
+
+        long totalDifference = 0;
+        for (var index = 0; index < currentPixels.Length; index++)
+        {
+            totalDifference += Math.Abs(previous.PixelData[index] - currentPixels[index]);
+        }
+
+        return totalDifference / (255d * currentPixels.Length);
+    }
+
+    private static TranslationPipelineResult CreateReusedResult(
+        GameProfile profile,
+        OcrZone zone,
+        CapturedFrame frame,
+        TranslationPipelineResult previousResult,
+        TimeSpan captureElapsed,
+        PipelineOptimizationContext optimizationContext)
+    {
+        var sourceResult = CreateReusedOcrResult(profile, zone, frame, previousResult.SourceOcrResult);
+        return new TranslationPipelineResult(
+            profile.Id,
+            zone.Id,
+            frame,
+            sourceResult,
+            previousResult.TranslateResponse,
+            previousResult.OverlaySnapshot,
+            cacheResult: null,
+            CreateTimings(
+                captureElapsed,
+                ocrElapsed: TimeSpan.Zero,
+                credentialsElapsed: TimeSpan.Zero,
+                translationElapsed: TimeSpan.Zero,
+                cacheElapsed: TimeSpan.Zero,
+                overlayElapsed: TimeSpan.Zero,
+                totalElapsed: captureElapsed),
+            new TranslationPipelineOptimizationInfo(
+                ocrSkipped: true,
+                translationSkipped: previousResult.TranslateResponse is not null,
+                debounced: optimizationContext.Debounced,
+                frameDifferenceRatio: optimizationContext.FrameDifferenceRatio));
+    }
+
+    private static TranslationPipelineResult ReplaceResultTimings(
+        TranslationPipelineResult result,
+        TimeSpan captureElapsed,
+        TimeSpan ocrElapsed,
+        TimeSpan credentialsElapsed,
+        TimeSpan translationElapsed,
+        TimeSpan cacheElapsed,
+        TimeSpan overlayElapsed,
+        TimeSpan totalElapsed)
+    {
+        return new TranslationPipelineResult(
+            result.ProfileId,
+            result.ZoneId,
+            result.CapturedFrame,
+            result.SourceOcrResult,
+            result.TranslateResponse,
+            result.OverlaySnapshot,
+            result.CacheResult,
+            CreateTimings(
+                captureElapsed,
+                ocrElapsed,
+                credentialsElapsed,
+                translationElapsed,
+                cacheElapsed,
+                overlayElapsed,
+                totalElapsed),
+            result.Optimization);
+    }
+
+    private static OcrResult CreateReusedOcrResult(
+        GameProfile profile,
+        OcrZone zone,
+        CapturedFrame frame,
+        OcrResult previousResult)
+    {
+        var request = new OcrRequest(
+            frame,
+            profile.TranslatorSettings.SourceLanguage,
+            zone.Id,
+            profile.OcrPreprocessingSettings,
+            profile.OcrSettings.Engine,
+            profile.OcrSettings.OrientationMode);
+
+        return new OcrResult(
+            request,
+            previousResult.TextBlocks,
+            previousResult.RecognizedAt);
+    }
+
+    private static TranslationPipelineOptimizationInfo CreateProcessedOptimization(PipelineOptimizationContext optimizationContext)
+    {
+        return optimizationContext.FrameDifferenceRatio is null
+            ? TranslationPipelineOptimizationInfo.None
+            : new TranslationPipelineOptimizationInfo(
+                ocrSkipped: false,
+                translationSkipped: false,
+                debounced: false,
+                frameDifferenceRatio: optimizationContext.FrameDifferenceRatio);
+    }
+
+    private static PipelineFrameStateKey CreateStateKey(GameProfile profile, OcrZone zone)
+    {
+        return new PipelineFrameStateKey(
+            profile.Id,
+            profile.Name,
+            zone.Id,
+            zone.AbsoluteBounds,
+            profile.TranslatorSettings,
+            profile.OcrSettings,
+            profile.OcrPreprocessingSettings,
+            profile.OverlaySettings);
     }
 
     private static CaptureRegion CreateCaptureRegion(OcrZone zone)
@@ -329,6 +594,65 @@ public sealed class TranslationPipelineService
                 stage,
                 $"Translation pipeline failed during {stage}.",
                 exception);
+        }
+    }
+
+    private sealed record PipelineOptimizationContext(
+        PipelineFrameStateKey StateKey,
+        PipelineFrameState? PreviousState,
+        bool ShouldReusePreviousResult,
+        bool Debounced,
+        double? FrameDifferenceRatio);
+
+    private sealed record PipelineFrameStateKey(
+        string ProfileId,
+        string ProfileName,
+        string ZoneId,
+        AbsoluteRectangle ZoneBounds,
+        TranslatorSettings TranslatorSettings,
+        OcrSettings OcrSettings,
+        OcrPreprocessingSettings PreprocessingSettings,
+        OverlaySettings OverlaySettings);
+
+    private sealed record PipelineFrameState(
+        FrameFingerprint Fingerprint,
+        TranslationPipelineResult Result,
+        DateTimeOffset CapturedAt);
+
+    private sealed class FrameFingerprint
+    {
+        private FrameFingerprint(
+            int width,
+            int height,
+            int stride,
+            string pixelFormat,
+            byte[] pixelData)
+        {
+            Width = width;
+            Height = height;
+            Stride = stride;
+            PixelFormat = pixelFormat;
+            PixelData = pixelData;
+        }
+
+        public int Width { get; }
+
+        public int Height { get; }
+
+        public int Stride { get; }
+
+        public string PixelFormat { get; }
+
+        public byte[] PixelData { get; }
+
+        public static FrameFingerprint FromFrame(CapturedFrame frame)
+        {
+            return new FrameFingerprint(
+                frame.Width,
+                frame.Height,
+                frame.Stride,
+                frame.PixelFormat,
+                frame.PixelData.ToArray());
         }
     }
 }

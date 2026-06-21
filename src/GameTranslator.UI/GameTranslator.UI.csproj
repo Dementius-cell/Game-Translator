@@ -33,11 +33,14 @@
   </Target>
 
   <Target Name="CopyInfrastructureCompositionModule" AfterTargets="Build">
+    <ItemGroup>
+      <InfrastructureCompositionModuleRuntime Include="..\GameTranslator.Infrastructure\bin\$(Configuration)\net9.0-windows10.0.19041.0\**\*" />
+    </ItemGroup>
     <Copy
-      SourceFiles="@(InfrastructureCompositionModule)"
-      DestinationFolder="$(OutDir)"
+      SourceFiles="@(InfrastructureCompositionModuleRuntime)"
+      DestinationFiles="@(InfrastructureCompositionModuleRuntime->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')"
       SkipUnchangedFiles="true"
-      Condition="Exists('%(InfrastructureCompositionModule.FullPath)')" />
+      Condition="'@(InfrastructureCompositionModuleRuntime)' != ''" />
   </Target>
 
 </Project>

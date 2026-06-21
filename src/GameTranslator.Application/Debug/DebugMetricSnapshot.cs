@@ -14,7 +14,11 @@ public sealed class DebugMetricSnapshot
         double? framesPerSecond,
         DebugResourceSnapshot resourceSnapshot,
         int cacheHitCount,
-        int cacheMissCount)
+        int cacheMissCount,
+        int skippedOcrCount = 0,
+        int skippedTranslationCount = 0,
+        int debouncedZoneCount = 0,
+        double? frameDifferenceRatio = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(zoneName);
 
@@ -43,6 +47,26 @@ public sealed class DebugMetricSnapshot
             throw new ArgumentOutOfRangeException(nameof(cacheMissCount));
         }
 
+        if (skippedOcrCount < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(skippedOcrCount));
+        }
+
+        if (skippedTranslationCount < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(skippedTranslationCount));
+        }
+
+        if (debouncedZoneCount < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(debouncedZoneCount));
+        }
+
+        if (frameDifferenceRatio is < 0d or > 1d)
+        {
+            throw new ArgumentOutOfRangeException(nameof(frameDifferenceRatio));
+        }
+
         ZoneName = zoneName.Trim();
         OcrBoundingBoxCount = ocrBoundingBoxCount;
         TranslatedTextCount = translatedTextCount;
@@ -55,6 +79,10 @@ public sealed class DebugMetricSnapshot
         ResourceSnapshot = resourceSnapshot ?? throw new ArgumentNullException(nameof(resourceSnapshot));
         CacheHitCount = cacheHitCount;
         CacheMissCount = cacheMissCount;
+        SkippedOcrCount = skippedOcrCount;
+        SkippedTranslationCount = skippedTranslationCount;
+        DebouncedZoneCount = debouncedZoneCount;
+        FrameDifferenceRatio = frameDifferenceRatio;
     }
 
     public string ZoneName { get; }
@@ -80,6 +108,14 @@ public sealed class DebugMetricSnapshot
     public int CacheHitCount { get; }
 
     public int CacheMissCount { get; }
+
+    public int SkippedOcrCount { get; }
+
+    public int SkippedTranslationCount { get; }
+
+    public int DebouncedZoneCount { get; }
+
+    public double? FrameDifferenceRatio { get; }
 
     public double? CacheHitRate => CacheHitCount + CacheMissCount == 0
         ? null

@@ -21,6 +21,7 @@ public static class ApplicationServiceCollectionExtensions
 
         services.AddSingleton<ProfileValidator>();
         services.AddSingleton(new TranslationCacheOptions());
+        services.AddSingleton(new TranslationPipelineOptimizationOptions());
         services.AddSingleton<TranslationCacheService>();
         services.AddSingleton<DebugMetricFormatter>();
         services.AddSingleton<ProfileMigrationService>();

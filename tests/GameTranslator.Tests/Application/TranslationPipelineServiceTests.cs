@@ -147,6 +147,93 @@ public sealed class TranslationPipelineServiceTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenFrameIsEffectivelyUnchanged_ReusesPreviousPipelineResult()
+    {
+        var zone = CreateZone();
+        var firstPixels = CreatePixels(zone, 42);
+        var secondPixels = firstPixels.ToArray();
+        secondPixels[0] = 43;
+        var frameSource = new FakeCaptureFrameSource
+        {
+            PixelFrames = new[] { firstPixels, secondPixels },
+            CapturedAtFrames = new[] { FrameTime, FrameTime.AddMilliseconds(20) },
+        };
+        var ocrEngine = new FakeOcrEngine
+        {
+            BlocksFactory = _ => new[]
+            {
+                new OcrTextBlock("Hello", new BoundingBox(4, 5, 24, 10)),
+            },
+        };
+        var translator = new FakeTranslatorProvider("Google", new[] { "Salut" });
+        var service = CreateService(
+            frameSource,
+            ocrEngine,
+            translator,
+            new FakeOverlayService(),
+            optimizationOptions: new TranslationPipelineOptimizationOptions(
+                frameDifferenceThreshold: 0.001d,
+                debounceInterval: TimeSpan.FromMilliseconds(250)));
+
+        var first = await service.RunAsync(CreateProfile(zone), zone);
+        var second = await service.RunAsync(CreateProfile(zone), zone, first.OverlaySnapshot);
+
+        Assert.Equal(2, frameSource.CapturedRegions.Count);
+        Assert.Single(ocrEngine.Requests);
+        Assert.Equal(1, translator.CallCount);
+        Assert.True(second.Optimization.OcrSkipped);
+        Assert.True(second.Optimization.TranslationSkipped);
+        Assert.True(second.Optimization.Debounced);
+        Assert.True(second.Optimization.FrameDifferenceRatio <= 0.001d);
+        Assert.Equal(TimeSpan.Zero, second.Timings.OcrElapsed);
+        Assert.Equal(TimeSpan.Zero, second.Timings.TranslationElapsed);
+        Assert.Equal(new[] { "Salut" }, second.TranslateResponse?.TranslatedTexts);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenFrameChangesBeyondThreshold_RunsOcrAndTranslationAgain()
+    {
+        var zone = CreateZone();
+        var frameSource = new FakeCaptureFrameSource
+        {
+            PixelFrames = new[]
+            {
+                CreatePixels(zone, 42),
+                CreatePixels(zone, 200),
+            },
+            CapturedAtFrames = new[] { FrameTime, FrameTime.AddMilliseconds(20) },
+        };
+        var ocrEngine = new FakeOcrEngine
+        {
+            BlocksFactory = request => new[]
+            {
+                new OcrTextBlock(
+                    request.Frame.PixelData.Span[0] == 42 ? "Hello" : "World",
+                    new BoundingBox(4, 5, 24, 10)),
+            },
+        };
+        var translator = new FakeTranslatorProvider("Google");
+        var service = CreateService(
+            frameSource,
+            ocrEngine,
+            translator,
+            new FakeOverlayService(),
+            optimizationOptions: new TranslationPipelineOptimizationOptions(
+                frameDifferenceThreshold: 0.001d,
+                debounceInterval: TimeSpan.FromMilliseconds(250)));
+
+        var first = await service.RunAsync(CreateProfile(zone), zone);
+        var second = await service.RunAsync(CreateProfile(zone), zone, first.OverlaySnapshot);
+
+        Assert.Equal(2, ocrEngine.Requests.Count);
+        Assert.Equal(2, translator.CallCount);
+        Assert.False(second.Optimization.OcrSkipped);
+        Assert.False(second.Optimization.TranslationSkipped);
+        Assert.NotNull(second.Optimization.FrameDifferenceRatio);
+        Assert.True(second.Optimization.FrameDifferenceRatio > 0.001d);
+        Assert.Equal(new[] { "Translated World" }, second.TranslateResponse?.TranslatedTexts);
+    }
+    [Fact]
     public async Task RunAllZonesAsync_WhenProfileHasMultipleZones_ProcessesEachZoneAndShowsCombinedOverlay()
     {
         var firstZone = CreateZone("zone-a", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
@@ -275,7 +362,8 @@ public sealed class TranslationPipelineServiceTests
         FakeOcrEngine ocrEngine,
         FakeTranslatorProvider translator,
         FakeOverlayService overlay,
-        FakeCredentialStorage? credentialStorage = null)
+        FakeCredentialStorage? credentialStorage = null,
+        TranslationPipelineOptimizationOptions? optimizationOptions = null)
     {
         return new TranslationPipelineService(
             new CaptureService(frameSource),
@@ -284,7 +372,8 @@ public sealed class TranslationPipelineServiceTests
             new TranslatorCredentialService(credentialStorage ?? FakeCredentialStorage.WithGoogleCredentials()),
             new TranslationCacheService(new FakeTranslationCacheRepository(), new TranslationCacheOptions()),
             new OverlayPositioningService(),
-            overlay);
+            overlay,
+            optimizationOptions ?? TranslationPipelineOptimizationOptions.Disabled);
     }
 
     private static GameProfile CreateProfile(params OcrZone[] zones)
@@ -330,11 +419,22 @@ public sealed class TranslationPipelineServiceTests
         };
     }
 
+    private static byte[] CreatePixels(OcrZone zone, byte value)
+    {
+        var stride = checked(zone.AbsoluteBounds.Width * 4);
+        return Enumerable.Repeat(value, checked(stride * zone.AbsoluteBounds.Height)).ToArray();
+    }
     private sealed class FakeCaptureFrameSource : ICaptureFrameSource
     {
+        private int captureCount;
+
         public List<CaptureRegion> CapturedRegions { get; } = new();
 
         public Exception? Failure { get; init; }
+
+        public IReadOnlyList<byte[]> PixelFrames { get; init; } = Array.Empty<byte[]>();
+
+        public IReadOnlyList<DateTimeOffset> CapturedAtFrames { get; init; } = Array.Empty<DateTimeOffset>();
 
         public Task<CapturedFrame> CaptureAsync(CaptureRegion region, CancellationToken cancellationToken = default)
         {
@@ -344,9 +444,21 @@ public sealed class TranslationPipelineServiceTests
                 return Task.FromException<CapturedFrame>(Failure);
             }
 
+            var captureIndex = captureCount++;
             CapturedRegions.Add(region);
             var stride = checked(region.Width * 4);
-            var pixels = Enumerable.Repeat((byte)42, checked(stride * region.Height)).ToArray();
+            var byteCount = checked(stride * region.Height);
+            var pixels = captureIndex < PixelFrames.Count
+                ? PixelFrames[captureIndex].ToArray()
+                : Enumerable.Repeat((byte)42, byteCount).ToArray();
+            if (pixels.Length != byteCount)
+            {
+                throw new InvalidOperationException("Fake capture frame pixel data length does not match the requested region.");
+            }
+
+            var capturedAt = captureIndex < CapturedAtFrames.Count
+                ? CapturedAtFrames[captureIndex]
+                : FrameTime.AddMilliseconds(captureIndex * 16);
 
             return Task.FromResult(
                 new CapturedFrame(
@@ -356,7 +468,7 @@ public sealed class TranslationPipelineServiceTests
                     stride,
                     "Bgra32",
                     pixels,
-                    FrameTime));
+                    capturedAt));
         }
     }
 

@@ -20,7 +20,11 @@ public sealed class DebugMetricFormatterTests
             framesPerSecond: 59.94,
             new DebugResourceSnapshot(12.34, 150 * 1024 * 1024),
             cacheHitCount: 3,
-            cacheMissCount: 1);
+            cacheMissCount: 1,
+            skippedOcrCount: 1,
+            skippedTranslationCount: 1,
+            debouncedZoneCount: 1,
+            frameDifferenceRatio: 0.0012d);
 
         var lines = formatter.Format(snapshot);
 
@@ -30,6 +34,7 @@ public sealed class DebugMetricFormatterTests
         Assert.Contains("FPS: 59.9", lines);
         Assert.Contains("CPU: 12.3% | RAM: 150.0 MB", lines);
         Assert.Contains("Cache: 3/4 hits (75.0%)", lines);
+        Assert.Contains("Optimization: OCR skipped 1 | translation skipped 1 | debounced 1 | frame delta 0.12%", lines);
     }
 
     [Fact]

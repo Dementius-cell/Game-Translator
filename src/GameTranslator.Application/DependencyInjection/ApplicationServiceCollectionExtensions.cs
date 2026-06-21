@@ -8,6 +8,7 @@ using GameTranslator.Application.Overlay;
 using GameTranslator.Application.Pipeline;
 using GameTranslator.Application.Profiles;
 using GameTranslator.Application.Translation;
+using GameTranslator.Application.Updates;
 using GameTranslator.Domain.Profiles;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -22,14 +23,19 @@ public static class ApplicationServiceCollectionExtensions
         services.AddSingleton<ProfileValidator>();
         services.AddSingleton(new TranslationCacheOptions());
         services.AddSingleton(new TranslationPipelineOptimizationOptions());
+        services.AddSingleton(new ApplicationUpdateOptions());
+        services.AddSingleton<IApplicationUpdateProvider, NoOpApplicationUpdateProvider>();
         services.AddSingleton<TranslationCacheService>();
+        services.AddSingleton<ApplicationUpdateService>();
         services.AddSingleton<DebugMetricFormatter>();
         services.AddSingleton<ProfileMigrationService>();
         services.AddSingleton<ProfileService>();
         services.AddSingleton<ProfileExchangeService>();
         services.AddSingleton<CaptureService>();
         services.AddSingleton<OcrPreprocessor>();
-        services.AddSingleton<OcrService>();
+        services.AddSingleton(provider => new OcrService(
+            provider.GetServices<IOcrEngine>(),
+            provider.GetRequiredService<OcrPreprocessor>()));
         services.AddSingleton<OverlayPositioningService>();
         services.AddSingleton<TranslationPipelineService>();
         services.AddSingleton<TranslatorManager>();

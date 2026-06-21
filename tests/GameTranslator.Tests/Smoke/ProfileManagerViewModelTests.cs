@@ -13,6 +13,7 @@ using GameTranslator.Application.Overlay;
 using GameTranslator.Application.Pipeline;
 using GameTranslator.Application.Profiles;
 using GameTranslator.Application.Translation;
+using GameTranslator.Application.Updates;
 using GameTranslator.Domain.Profiles;
 
 namespace GameTranslator.Tests.Smoke;
@@ -1262,6 +1263,47 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
+    public async Task RunTranslationPipelineAsync_WhenAllZonesFail_ShowsFirstFailureStageAndDetail()
+    {
+        var credentialStorage = new TestCredentialStorage();
+        await credentialStorage.SaveAsync(
+            new TranslatorCredentialRecord(
+                "Google",
+                "SECRET_TRANSLATOR_TOKEN",
+                "project-a",
+                "global",
+                new Uri("https://translation.test")));
+        var cacheRepository = new TestTranslationCacheRepository
+        {
+            GetFailure = new InvalidOperationException("SQLite native dependency missing."),
+        };
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            ocrEngine: new TestOcrEngine
+            {
+                BlocksFactory = _ => new[]
+                {
+                    new OcrTextBlock("Original subtitle", new BoundingBox(0, 0, 40, 12)),
+                },
+            },
+            credentialStorage: credentialStorage,
+            translationCacheRepository: cacheRepository);
+
+        ConfigureValidDraftProfile(viewModel, "Pipeline failure draft");
+        InvokeMethodWithArguments(viewModel, "StartZoneSelection", 10d, 20d);
+        InvokeMethodWithArguments(viewModel, "CompleteZoneSelection", 110d, 70d);
+
+        await InvokeTaskMethodAsync(viewModel, "RunTranslationPipelineAsync");
+
+        var pipelineStatus = GetPropertyValue(viewModel, "PipelineStatus")?.ToString() ?? string.Empty;
+        Assert.Contains("Full pipeline failed for all 1 OCR zone(s).", pipelineStatus, StringComparison.Ordinal);
+        Assert.Contains("failed during Cache", pipelineStatus, StringComparison.Ordinal);
+        Assert.Contains("SQLite native dependency missing.", pipelineStatus, StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRET_TRANSLATOR_TOKEN", pipelineStatus, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task CleanupTranslationCacheAsync_RemovesExpiredEntriesAndUpdatesStatus()
     {
         var cacheRepository = new TestTranslationCacheRepository();
@@ -1288,6 +1330,44 @@ public sealed class ProfileManagerViewModelTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task CheckForUpdatesAsync_WhenProviderCompletes_UpdatesStatus()
+    {
+        var updateProvider = new TestApplicationUpdateProvider
+        {
+            Result = ApplicationUpdateResult.CheckCompleted(),
+        };
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            updateProvider: updateProvider);
+
+        await InvokeTaskMethodAsync(viewModel, "CheckForUpdatesAsync");
+
+        Assert.Equal(new[] { ApplicationUpdateCheckMode.Manual }, updateProvider.CheckModes);
+        Assert.Contains(
+            "Squirrel.Windows update check completed",
+            GetPropertyValue(viewModel, "UpdateStatus")?.ToString(),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task LoadAsync_ChecksForUpdatesAtStartup()
+    {
+        var updateProvider = new TestApplicationUpdateProvider();
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            updateProvider: updateProvider);
+
+        await InvokeTaskMethodAsync(viewModel, "LoadAsync");
+
+        Assert.Contains(ApplicationUpdateCheckMode.Startup, updateProvider.CheckModes);
+        Assert.Equal(
+            "Squirrel.Windows installation was not detected; update check skipped.",
+            GetPropertyValue(viewModel, "UpdateStatus"));
+    }
+
     private static object CreateMainViewModel(
         InMemoryProfileRepository repository,
         TestSettingsService settings,
@@ -1299,7 +1379,8 @@ public sealed class ProfileManagerViewModelTests
         TestTranslatorProvider? translatorProvider = null,
         TestOverlayService? overlayService = null,
         TestCredentialStorage? credentialStorage = null,
-        TestTranslationCacheRepository? translationCacheRepository = null)
+        TestTranslationCacheRepository? translationCacheRepository = null,
+        TestApplicationUpdateProvider? updateProvider = null)
     {
         var profileService = new ProfileService(repository, new ProfileValidator());
         var profileExchangeService = new ProfileExchangeService(
@@ -1314,6 +1395,9 @@ public sealed class ProfileManagerViewModelTests
         var translationCacheService = new TranslationCacheService(
             translationCacheRepository ?? new TestTranslationCacheRepository(),
             new TranslationCacheOptions());
+        var applicationUpdateService = new ApplicationUpdateService(
+            updateProvider ?? new TestApplicationUpdateProvider(),
+            new ApplicationUpdateOptions("https://updates.test"));
         var translationPipelineService = new TranslationPipelineService(
             captureService,
             ocrService,
@@ -1339,6 +1423,7 @@ public sealed class ProfileManagerViewModelTests
                 credentialService,
                 translationPipelineService,
                 translationCacheService,
+                applicationUpdateService,
                 globalHotkeyService,
                 new DebugMetricFormatter(),
                 new TestDebugResourceMonitor(),
@@ -1698,11 +1783,18 @@ public sealed class ProfileManagerViewModelTests
 
         public IReadOnlyDictionary<TranslationCacheKey, TranslationCacheEntry> Entries => entries;
 
+        public Exception? GetFailure { get; init; }
+
         public Task<TranslationCacheEntry?> GetAsync(
             TranslationCacheKey key,
             DateTimeOffset now,
             CancellationToken cancellationToken = default)
         {
+            if (GetFailure is not null)
+            {
+                throw GetFailure;
+            }
+
             entries.TryGetValue(key, out var entry);
 
             return Task.FromResult(entry?.IsExpired(now) == true ? null : entry);
@@ -1730,6 +1822,24 @@ public sealed class ProfileManagerViewModelTests
             }
 
             return Task.FromResult(expiredKeys.Length);
+        }
+    }
+
+    private sealed class TestApplicationUpdateProvider : IApplicationUpdateProvider
+    {
+        public ApplicationUpdateResult Result { get; set; } = ApplicationUpdateResult.NotInstalled();
+
+        public List<ApplicationUpdateCheckMode> CheckModes { get; } = new();
+
+        public Task<ApplicationUpdateResult> CheckForUpdatesAsync(
+            ApplicationUpdateOptions options,
+            ApplicationUpdateCheckMode checkMode,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            CheckModes.Add(checkMode);
+
+            return Task.FromResult(Result);
         }
     }
 

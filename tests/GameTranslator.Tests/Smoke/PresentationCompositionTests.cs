@@ -6,6 +6,7 @@ using GameTranslator.Application.Abstractions;
 using GameTranslator.Application.Overlay;
 using GameTranslator.Application.Profiles;
 using GameTranslator.Application.Settings;
+using GameTranslator.Application.Updates;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace GameTranslator.Tests.Smoke;
@@ -76,7 +77,7 @@ public sealed class PresentationCompositionTests
     }
 
     [Fact]
-    public void ExternalServiceModuleLoader_LoadsInfrastructureProfileStorageWithoutUiProjectReference()
+    public async Task ExternalServiceModuleLoader_LoadsInfrastructureProfileStorageWithoutUiProjectReference()
     {
         var services = new ServiceCollection();
         var rootDirectory = Path.Combine(
@@ -109,6 +110,30 @@ public sealed class PresentationCompositionTests
         Assert.Contains(
             services,
             descriptor => descriptor.ServiceType == typeof(ITranslationCacheRepository));
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(IApplicationUpdateProvider));
+
+        using var provider = services.BuildServiceProvider();
+        var cacheRepository = provider.GetRequiredService<ITranslationCacheRepository>();
+        var deletedCount = await cacheRepository.DeleteExpiredAsync(DateTimeOffset.UtcNow);
+
+        Assert.Equal(0, deletedCount);
+    }
+
+    [Fact]
+    public void ExternalServiceModuleLoader_ConfiguresNativeDependencyResolutionForExternalModules()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            RepositoryRoot.Find(),
+            "src",
+            "GameTranslator.UI",
+            "DependencyInjection",
+            "ExternalServiceModuleLoader.cs"));
+
+        Assert.Contains("NativeLibrary.SetDllImportResolver", source, StringComparison.Ordinal);
+        Assert.Contains("\"runtimes\"", source, StringComparison.Ordinal);
+        Assert.Contains("\"native\"", source, StringComparison.Ordinal);
     }
 
     private static IServiceCollection InvokePresentationCompositionRoot()

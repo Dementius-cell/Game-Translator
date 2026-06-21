@@ -6,6 +6,7 @@ using GameTranslator.Application.Ocr;
 using GameTranslator.Application.Overlay;
 using GameTranslator.Application.Profiles;
 using GameTranslator.Application.Translation;
+using GameTranslator.Application.Updates;
 using GameTranslator.Domain.Profiles;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -32,6 +33,23 @@ public sealed class ProfileCompositionTests
         Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(OverlayPositioningService));
         Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(TranslatorManager));
         Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(TranslatorCredentialService));
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(ApplicationUpdateService));
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(ApplicationUpdateOptions));
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IApplicationUpdateProvider)
+            && descriptor.ImplementationType == typeof(NoOpApplicationUpdateProvider));
+    }
+
+    [Fact]
+    public void AddApplicationServices_WhenMultipleOcrEnginesAreRegistered_ResolvesOcrService()
+    {
+        var services = new ServiceCollection();
+        services.AddApplicationServices();
+        services.AddSingleton<IOcrEngine>(new TestOcrEngine("Windows"));
+        services.AddSingleton<IOcrEngine>(new TestOcrEngine("Tesseract"));
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.NotNull(provider.GetRequiredService<OcrService>());
     }
 
     [Fact]
@@ -52,5 +70,20 @@ public sealed class ProfileCompositionTests
         var options = new TranslationCacheOptions();
 
         Assert.Equal(TimeSpan.FromDays(30), options.TimeToLive);
+    }
+
+    private sealed class TestOcrEngine : IOcrEngine
+    {
+        public TestOcrEngine(string engineId)
+        {
+            EngineId = engineId;
+        }
+
+        public string EngineId { get; }
+
+        public Task<OcrResult> RecognizeAsync(OcrRequest request, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("Composition test OCR engine does not recognize frames.");
+        }
     }
 }

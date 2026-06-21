@@ -16,6 +16,7 @@ using GameTranslator.Application.Ocr;
 using GameTranslator.Application.Overlay;
 using GameTranslator.Application.Pipeline;
 using GameTranslator.Application.Profiles;
+using GameTranslator.Application.Updates;
 using GameTranslator.Domain.Profiles;
 using GameTranslator.UI.Commands;
 
@@ -68,6 +69,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private readonly TranslatorCredentialService credentialService;
     private readonly TranslationPipelineService translationPipelineService;
     private readonly TranslationCacheService translationCacheService;
+    private readonly ApplicationUpdateService applicationUpdateService;
     private readonly IOverlayService overlayService;
     private readonly OverlayPositioningService overlayPositioningService;
     private readonly IDialogService dialogService;
@@ -115,6 +117,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private string overlayPreviewStatus = "Overlay preview hidden.";
     private string pipelineStatus = "Full translation pipeline not run yet.";
     private string translationCacheStatus = "Translation cache not cleaned yet.";
+    private string updateStatus = "Update check not run yet.";
     private string globalHotkeyStatus = "Global hotkeys not registered yet.";
     private string debugOverlayStatus = "Debug overlay disabled.";
     private int capturePreviewWidth;
@@ -143,6 +146,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         TranslatorCredentialService credentialService,
         TranslationPipelineService translationPipelineService,
         TranslationCacheService translationCacheService,
+        ApplicationUpdateService applicationUpdateService,
         GlobalHotkeyService globalHotkeyService,
         DebugMetricFormatter debugMetricFormatter,
         IDebugResourceMonitor debugResourceMonitor,
@@ -159,6 +163,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         this.credentialService = credentialService;
         this.translationPipelineService = translationPipelineService;
         this.translationCacheService = translationCacheService;
+        this.applicationUpdateService = applicationUpdateService;
         this.globalHotkeyService = globalHotkeyService;
         this.debugMetricFormatter = debugMetricFormatter;
         this.debugResourceMonitor = debugResourceMonitor;
@@ -198,6 +203,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         RecognizeOcrPreviewCommand = new AsyncRelayCommand(RecognizeOcrPreviewAsync, CanRecognizeOcrPreview);
         RunTranslationPipelineCommand = new AsyncRelayCommand(RunTranslationPipelineAsync, CanRunTranslationPipeline);
         CleanupTranslationCacheCommand = new AsyncRelayCommand(CleanupTranslationCacheAsync, () => !IsBusy);
+        CheckForUpdatesCommand = new AsyncRelayCommand(CheckForUpdatesAsync, () => !IsBusy);
         ApplyGlobalHotkeysCommand = new RelayCommand(ApplyGlobalHotkeys, CanApplyGlobalHotkeys);
         ResetGlobalHotkeysCommand = new RelayCommand(ResetGlobalHotkeys, () => !IsBusy);
         ShowOverlayPreviewCommand = new RelayCommand(ShowOverlayPreview, () => !IsBusy);
@@ -212,7 +218,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public string ApplicationName => "Game Translator";
 
-    public string CurrentStage => "Sprint 16";
+    public string CurrentStage => "Sprint 24";
 
     public double ZoneSurfaceWidth => OcrZoneEditorViewModel.PreviewSurfaceWidth;
 
@@ -763,6 +769,12 @@ public sealed class MainViewModel : ValidatableObservableObject
         private set => SetProperty(ref translationCacheStatus, value);
     }
 
+    public string UpdateStatus
+    {
+        get => updateStatus;
+        private set => SetProperty(ref updateStatus, value);
+    }
+
     public string GlobalHotkeyStatus
     {
         get => globalHotkeyStatus;
@@ -827,6 +839,8 @@ public sealed class MainViewModel : ValidatableObservableObject
     public ICommand RunTranslationPipelineCommand { get; }
 
     public ICommand CleanupTranslationCacheCommand { get; }
+
+    public ICommand CheckForUpdatesCommand { get; }
 
     public ICommand ApplyGlobalHotkeysCommand { get; }
 
@@ -977,6 +991,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
         isLoaded = true;
         await RefreshProfilesAsync();
+        _ = CheckForUpdatesOnStartupAsync();
     }
 
     public void SelectZone(string zoneId)
@@ -1692,6 +1707,51 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
     }
 
+    public Task CheckForUpdatesAsync()
+    {
+        return CheckForUpdatesAsync(ApplicationUpdateCheckMode.Manual);
+    }
+
+    public Task CheckForUpdatesOnStartupAsync()
+    {
+        return CheckForUpdatesAsync(ApplicationUpdateCheckMode.Startup);
+    }
+
+    private async Task CheckForUpdatesAsync(ApplicationUpdateCheckMode checkMode)
+    {
+        try
+        {
+            IsBusy = true;
+            UpdateStatus = checkMode == ApplicationUpdateCheckMode.Startup
+                ? "Checking for application updates at startup..."
+                : "Checking for application updates...";
+            StatusMessage = UpdateStatus;
+
+            var result = await applicationUpdateService.CheckForUpdatesAsync(checkMode);
+
+            UpdateStatus = result.RestartRecommended
+                ? $"{result.Message} Restart the app to use an applied update."
+                : result.Message;
+            StatusMessage = UpdateStatus;
+            logger.Information($"Application update check completed: {result.Status}.");
+        }
+        catch (OperationCanceledException)
+        {
+            UpdateStatus = "Application update check canceled.";
+            StatusMessage = UpdateStatus;
+        }
+        catch (Exception exception)
+        {
+            logger.Error(exception, "Application update check failed.");
+            UpdateStatus = "Application update check failed. Check logs for details.";
+            StatusMessage = UpdateStatus;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
 
     public void ApplyGlobalHotkeys()
     {
@@ -1994,7 +2054,17 @@ public sealed class MainViewModel : ValidatableObservableObject
     {
         if (result.SucceededZoneCount == 0)
         {
-            return $"Full pipeline failed for all {result.TotalZoneCount} OCR zone(s).";
+            var firstFailure = result.ZoneFailures.FirstOrDefault();
+            if (firstFailure is null)
+            {
+                return $"Full pipeline failed for all {result.TotalZoneCount} OCR zone(s).";
+            }
+
+            var zoneName = string.IsNullOrWhiteSpace(firstFailure.ZoneName)
+                ? firstFailure.ZoneId
+                : firstFailure.ZoneName;
+
+            return $"Full pipeline failed for all {result.TotalZoneCount} OCR zone(s). First failure: '{zoneName}' failed during {firstFailure.Stage}. {CreatePipelineFailureDetail(firstFailure)}";
         }
 
         var translatedStatus = result.RecognizedBlockCount == 0
@@ -2008,6 +2078,18 @@ public sealed class MainViewModel : ValidatableObservableObject
         return result.SkippedOcrCount == 0
             ? status
             : status.TrimEnd('.') + $"; skipped OCR/translation for {result.SkippedOcrCount} unchanged zone(s).";
+    }
+
+    private static string CreatePipelineFailureDetail(TranslationPipelineZoneFailure failure)
+    {
+        var innerMessage = failure.Exception.InnerException?.Message;
+        if (string.IsNullOrWhiteSpace(innerMessage)
+            || string.Equals(innerMessage, failure.Message, StringComparison.Ordinal))
+        {
+            return failure.Message;
+        }
+
+        return $"{failure.Message} {innerMessage.Trim()}";
     }
 
     private static TimeSpan SumElapsed(
@@ -2967,6 +3049,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         ((AsyncRelayCommand)RecognizeOcrPreviewCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)RunTranslationPipelineCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)CleanupTranslationCacheCommand).RaiseCanExecuteChanged();
+        ((AsyncRelayCommand)CheckForUpdatesCommand).RaiseCanExecuteChanged();
         ((RelayCommand)ApplyGlobalHotkeysCommand).RaiseCanExecuteChanged();
         ((RelayCommand)ResetGlobalHotkeysCommand).RaiseCanExecuteChanged();
         ((RelayCommand)ShowOverlayPreviewCommand).RaiseCanExecuteChanged();

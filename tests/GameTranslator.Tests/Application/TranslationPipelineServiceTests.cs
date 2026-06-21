@@ -58,6 +58,46 @@ public sealed class TranslationPipelineServiceTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenChineseVerticalProfileUsesTesseract_PassesLanguageAndOrientationToOcr()
+    {
+        var zone = CreateZone();
+        var profile = CreateProfile(zone) with
+        {
+            OcrSettings = new OcrSettings
+            {
+                Engine = OcrSettings.TesseractEngineId,
+                OrientationMode = OcrOrientationMode.Vertical,
+            },
+            TranslatorSettings = new TranslatorSettings
+            {
+                Provider = "Google",
+                SourceLanguage = "zh-CN",
+                TargetLanguage = "en",
+            },
+        };
+        var ocrEngine = new FakeOcrEngine
+        {
+            EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = _ => new[]
+            {
+                new OcrTextBlock("Column text", new BoundingBox(0, 0, 20, 10)),
+            },
+        };
+        var service = CreateService(
+            new FakeCaptureFrameSource(),
+            ocrEngine,
+            new FakeTranslatorProvider("Google"),
+            new FakeOverlayService());
+
+        await service.RunAsync(profile, zone);
+
+        var request = Assert.Single(ocrEngine.Requests);
+        Assert.Equal(OcrSettings.TesseractEngineId, request.EngineId);
+        Assert.Equal("zh-CN", request.Language);
+        Assert.Equal(OcrOrientationMode.Vertical, request.OrientationMode);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenOcrFindsNoText_SkipsTranslationAndShowsEmptyOverlay()
     {
         var zone = CreateZone();

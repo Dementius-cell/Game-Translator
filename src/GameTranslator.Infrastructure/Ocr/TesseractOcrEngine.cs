@@ -39,12 +39,12 @@ public sealed class TesseractOcrEngine : IOcrEngine
 
         try
         {
-            var language = MapLanguage(request.Language);
             var bitmapBytes = CreateBitmapBytes(request.Frame);
 
-            using var engine = new Engine(tessdataPath, language, EngineMode.Default);
             using var image = PixImage.LoadFromMemory(bitmapBytes);
-            var pageSegMode = SelectPageSegMode(engine, image, request.OrientationMode);
+            var pageSegMode = SelectPageSegMode(tessdataPath, image, request.Language, request.OrientationMode);
+            var language = MapLanguage(request.Language, GetRecognitionOrientationMode(pageSegMode));
+            using var engine = new Engine(tessdataPath, language, EngineMode.Default);
             engine.DefaultPageSegMode = pageSegMode;
             using var page = engine.Process(image, pageSegMode);
             cancellationToken.ThrowIfCancellationRequested();
@@ -85,11 +85,16 @@ public sealed class TesseractOcrEngine : IOcrEngine
 
     internal static string MapLanguage(string languageTag)
     {
+        return MapLanguage(languageTag, OcrOrientationMode.Horizontal);
+    }
+
+    internal static string MapLanguage(string languageTag, OcrOrientationMode orientationMode)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(languageTag);
 
         var parts = languageTag
             .Split(new[] { '+', ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(MapSingleLanguage)
+            .Select(part => MapSingleLanguage(part, orientationMode))
             .ToArray();
 
         if (parts.Length == 0)
@@ -163,8 +168,9 @@ public sealed class TesseractOcrEngine : IOcrEngine
     }
 
     private static PageSegMode SelectPageSegMode(
-        Engine engine,
+        string tessdataPath,
         PixImage image,
+        string languageTag,
         OcrOrientationMode orientationMode)
     {
         if (orientationMode is not OcrOrientationMode.Auto)
@@ -174,6 +180,8 @@ public sealed class TesseractOcrEngine : IOcrEngine
 
         try
         {
+            var horizontalLanguage = MapLanguage(languageTag, OcrOrientationMode.Horizontal);
+            using var engine = new Engine(tessdataPath, horizontalLanguage, EngineMode.Default);
             using var orientationPage = engine.Process(image, PageSegMode.OsdOnly);
             orientationPage.DetectOrientation(out var orientationDegrees, out var confidence);
             if (confidence < OrientationConfidenceThreshold)
@@ -193,6 +201,13 @@ public sealed class TesseractOcrEngine : IOcrEngine
         {
             return PageSegMode.SingleBlock;
         }
+    }
+
+    private static OcrOrientationMode GetRecognitionOrientationMode(PageSegMode pageSegMode)
+    {
+        return pageSegMode is PageSegMode.SingleBlockVertText
+            ? OcrOrientationMode.Vertical
+            : OcrOrientationMode.Horizontal;
     }
 
     private static IReadOnlyList<OcrTextBlock> CreateTextBlocks(
@@ -239,17 +254,21 @@ public sealed class TesseractOcrEngine : IOcrEngine
             checked(bottom - y));
     }
 
-    private static string MapSingleLanguage(string languageTag)
+    private static string MapSingleLanguage(string languageTag, OcrOrientationMode orientationMode)
     {
         var normalized = languageTag.Trim().Replace('_', '-').ToLower(CultureInfo.InvariantCulture);
+        var useVerticalModel = orientationMode is OcrOrientationMode.Vertical;
 
         return normalized switch
         {
             "en" or "en-us" or "en-gb" or "eng" => "eng",
             "ru" or "ru-ru" or "rus" => "rus",
-            "ja" or "ja-jp" or "jpn" => "jpn",
-            "zh" or "zh-cn" or "zh-hans" or "chi-sim" or "chi_sim" => "chi_sim",
-            "zh-tw" or "zh-hant" or "chi-tra" or "chi_tra" => "chi_tra",
+            "ja" or "ja-jp" or "jpn" => useVerticalModel ? "jpn_vert" : "jpn",
+            "ja-vert" or "ja-jp-vert" or "jpn-vert" => "jpn_vert",
+            "zh" or "zh-cn" or "zh-hans" or "chi-sim" => useVerticalModel ? "chi_sim_vert" : "chi_sim",
+            "zh-vert" or "zh-cn-vert" or "zh-hans-vert" or "chi-sim-vert" => "chi_sim_vert",
+            "zh-tw" or "zh-hk" or "zh-mo" or "zh-hant" or "chi-tra" => useVerticalModel ? "chi_tra_vert" : "chi_tra",
+            "zh-tw-vert" or "zh-hk-vert" or "zh-mo-vert" or "zh-hant-vert" or "chi-tra-vert" => "chi_tra_vert",
             "ko" or "ko-kr" or "kor" => "kor",
             "fr" or "fr-fr" or "fra" => "fra",
             "de" or "de-de" or "deu" => "deu",

@@ -6,11 +6,13 @@ public sealed class GlobalHotkeyService
 {
     private const string HotkeyBindingsSettingKey = "hotkeys.bindings.v1";
     private const int RegistrationIdBase = 0x4700;
+    private static readonly GlobalHotkeyGesture PreviousRecognizeOcrPreviewDefault =
+        new(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Alt, "R");
 
     private static readonly GlobalHotkeyBinding[] DefaultBindings =
     {
         new(GlobalHotkeyAction.StartPausePipeline, new GlobalHotkeyGesture(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Alt, "T")),
-        new(GlobalHotkeyAction.RecognizeOcrPreview, new GlobalHotkeyGesture(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Alt, "R")),
+        new(GlobalHotkeyAction.RecognizeOcrPreview, new GlobalHotkeyGesture(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Shift, "F8")),
         new(GlobalHotkeyAction.ToggleOverlay, new GlobalHotkeyGesture(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Alt, "O")),
         new(GlobalHotkeyAction.ShowSettings, new GlobalHotkeyGesture(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Alt, "S")),
         new(GlobalHotkeyAction.ExitApplication, new GlobalHotkeyGesture(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Alt, "Q")),
@@ -129,7 +131,9 @@ public sealed class GlobalHotkeyService
 
     private static IReadOnlyList<GlobalHotkeyBinding> MergeWithDefaultBindings(IReadOnlyList<GlobalHotkeyBinding> configured)
     {
-        var merged = configured.ToList();
+        var merged = configured
+            .Select(MigrateConfiguredBinding)
+            .ToList();
         foreach (var defaultBinding in DefaultBindings)
         {
             if (merged.Any(binding => binding.Action == defaultBinding.Action))
@@ -141,6 +145,18 @@ public sealed class GlobalHotkeyService
         }
 
         return merged;
+    }
+
+    private static GlobalHotkeyBinding MigrateConfiguredBinding(GlobalHotkeyBinding binding)
+    {
+        if (binding.Action != GlobalHotkeyAction.RecognizeOcrPreview
+            || !binding.Gesture.HasSameChord(PreviousRecognizeOcrPreviewDefault))
+        {
+            return binding;
+        }
+
+        var defaultBinding = DefaultBindings.Single(defaultBinding => defaultBinding.Action == binding.Action);
+        return binding with { Gesture = defaultBinding.Gesture };
     }
 
     private void OnRegistrarHotkeyPressed(object? sender, GlobalHotkeyRegisteredEventArgs e)

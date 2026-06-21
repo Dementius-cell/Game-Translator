@@ -14,7 +14,7 @@ public sealed class GlobalHotkeyServiceTests
 
         Assert.Contains(bindings, binding => binding.Action == GlobalHotkeyAction.StartPausePipeline);
         var recognizeOcrBinding = Assert.Single(bindings, binding => binding.Action == GlobalHotkeyAction.RecognizeOcrPreview);
-        Assert.Equal("Ctrl+Alt+R", recognizeOcrBinding.Gesture.DisplayText);
+        Assert.Equal("Ctrl+Shift+F8", recognizeOcrBinding.Gesture.DisplayText);
         Assert.Contains(bindings, binding => binding.Action == GlobalHotkeyAction.ToggleOverlay);
         Assert.Contains(bindings, binding => binding.Action == GlobalHotkeyAction.ShowSettings);
         Assert.Contains(bindings, binding => binding.Action == GlobalHotkeyAction.ExitApplication);
@@ -46,8 +46,28 @@ public sealed class GlobalHotkeyServiceTests
         var bindings = service.LoadConfiguredHotkeys();
 
         var recognizeOcrBinding = Assert.Single(bindings, binding => binding.Action == GlobalHotkeyAction.RecognizeOcrPreview);
-        Assert.Equal("Ctrl+Alt+R", recognizeOcrBinding.Gesture.DisplayText);
+        Assert.Equal("Ctrl+Shift+F8", recognizeOcrBinding.Gesture.DisplayText);
         Assert.Equal(5, bindings.Count);
+    }
+
+    [Fact]
+    public void LoadConfiguredHotkeys_WhenRecognizeOcrUsesPreviousDefault_MigratesToCurrentDefault()
+    {
+        var settings = new TestSettingsService();
+        settings.SetValue(
+            "hotkeys.bindings.v1",
+            new[]
+            {
+                new GlobalHotkeyBinding(
+                    GlobalHotkeyAction.RecognizeOcrPreview,
+                    new GlobalHotkeyGesture(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Alt, "R")),
+            });
+        var service = new GlobalHotkeyService(settings, new FakeGlobalHotkeyRegistrar());
+
+        var bindings = service.LoadConfiguredHotkeys();
+
+        var recognizeOcrBinding = Assert.Single(bindings, binding => binding.Action == GlobalHotkeyAction.RecognizeOcrPreview);
+        Assert.Equal("Ctrl+Shift+F8", recognizeOcrBinding.Gesture.DisplayText);
     }
 
     [Fact]

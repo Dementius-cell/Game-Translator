@@ -990,6 +990,8 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
 
         isLoaded = true;
+        LoadHotkeyBindings(globalHotkeyService.LoadConfiguredHotkeys());
+        UpdateGlobalHotkeyStatus(globalHotkeyService.RegisterConfiguredHotkeys());
         await RefreshProfilesAsync();
         _ = CheckForUpdatesOnStartupAsync();
     }
@@ -1847,6 +1849,15 @@ public sealed class MainViewModel : ValidatableObservableObject
                 }
 
                 await RunTranslationPipelineAsync();
+                break;
+            case GlobalHotkeyAction.RecognizeOcrPreview:
+                if (IsBusy)
+                {
+                    StatusMessage = "OCR hotkey received while an operation is already running.";
+                    return;
+                }
+
+                await RecognizeOcrPreviewAsync();
                 break;
             case GlobalHotkeyAction.ToggleOverlay:
                 if (IsOverlayPreviewVisible)

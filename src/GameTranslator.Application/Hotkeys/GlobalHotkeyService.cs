@@ -10,6 +10,7 @@ public sealed class GlobalHotkeyService
     private static readonly GlobalHotkeyBinding[] DefaultBindings =
     {
         new(GlobalHotkeyAction.StartPausePipeline, new GlobalHotkeyGesture(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Alt, "T")),
+        new(GlobalHotkeyAction.RecognizeOcrPreview, new GlobalHotkeyGesture(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Alt, "R")),
         new(GlobalHotkeyAction.ToggleOverlay, new GlobalHotkeyGesture(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Alt, "O")),
         new(GlobalHotkeyAction.ShowSettings, new GlobalHotkeyGesture(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Alt, "S")),
         new(GlobalHotkeyAction.ExitApplication, new GlobalHotkeyGesture(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Alt, "Q")),
@@ -38,7 +39,7 @@ public sealed class GlobalHotkeyService
             return DefaultBindings;
         }
 
-        return configured;
+        return MergeWithDefaultBindings(configured);
     }
 
     public void SaveConfiguredHotkeys(IEnumerable<GlobalHotkeyBinding> bindings)
@@ -124,6 +125,22 @@ public sealed class GlobalHotkeyService
         }
 
         return duplicates.ToArray();
+    }
+
+    private static IReadOnlyList<GlobalHotkeyBinding> MergeWithDefaultBindings(IReadOnlyList<GlobalHotkeyBinding> configured)
+    {
+        var merged = configured.ToList();
+        foreach (var defaultBinding in DefaultBindings)
+        {
+            if (merged.Any(binding => binding.Action == defaultBinding.Action))
+            {
+                continue;
+            }
+
+            merged.Add(defaultBinding);
+        }
+
+        return merged;
     }
 
     private void OnRegistrarHotkeyPressed(object? sender, GlobalHotkeyRegisteredEventArgs e)

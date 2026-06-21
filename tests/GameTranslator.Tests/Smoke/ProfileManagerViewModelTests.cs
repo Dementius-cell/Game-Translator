@@ -822,6 +822,44 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
+    public async Task GlobalHotkeyPressed_ForRecognizeOcrPreview_CapturesSelectedZone()
+    {
+        var hotkeyRegistrar = new TestGlobalHotkeyRegistrar();
+        var ocrEngine = new TestOcrEngine
+        {
+            BlocksFactory = _ => new[]
+            {
+                new OcrTextBlock("Fullscreen text", new BoundingBox(0, 0, 3, 1)),
+            },
+        };
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            ocrEngine: ocrEngine,
+            hotkeyRegistrar: hotkeyRegistrar);
+        ConfigureValidDraftProfile(viewModel, "OCR hotkey preview");
+        InvokeMethod(viewModel, "AddZone");
+
+        var selectedZone = GetPropertyValue(viewModel, "SelectedZone")
+            ?? throw new InvalidOperationException("Selected zone was not created.");
+        SetPropertyValue(selectedZone, "AbsoluteX", 10);
+        SetPropertyValue(selectedZone, "AbsoluteY", 20);
+        SetPropertyValue(selectedZone, "AbsoluteWidth", 4);
+        SetPropertyValue(selectedZone, "AbsoluteHeight", 3);
+        InvokeMethod(viewModel, "ResetGlobalHotkeys");
+
+        var registration = Assert.Single(
+            hotkeyRegistrar.Registered,
+            hotkey => hotkey.Action == GlobalHotkeyAction.RecognizeOcrPreview);
+        hotkeyRegistrar.RaisePressed(registration.Id);
+        await WaitForConditionAsync(() => ocrEngine.Requests.Count == 1);
+
+        Assert.Equal(new CaptureRegion(10, 20, 4, 3), Assert.Single(ocrEngine.Requests).Region);
+        Assert.Equal("Fullscreen text", GetPropertyValue(viewModel, "OcrPreviewText"));
+        Assert.Equal("Recognized 1 text block(s) for 'Zone 1'.", GetPropertyValue(viewModel, "OcrPreviewStatus"));
+    }
+
+    [Fact]
     public async Task ShowOverlayPreview_WhenOcrPreviewExists_PositionsTextFromOcrBounds()
     {
         var overlay = new TestOverlayService();
@@ -1428,7 +1466,8 @@ public sealed class ProfileManagerViewModelTests
         TestOverlayService? overlayService = null,
         TestCredentialStorage? credentialStorage = null,
         TestTranslationCacheRepository? translationCacheRepository = null,
-        TestApplicationUpdateProvider? updateProvider = null)
+        TestApplicationUpdateProvider? updateProvider = null,
+        TestGlobalHotkeyRegistrar? hotkeyRegistrar = null)
     {
         var profileService = new ProfileService(repository, new ProfileValidator());
         var profileExchangeService = new ProfileExchangeService(
@@ -1455,7 +1494,7 @@ public sealed class ProfileManagerViewModelTests
             overlayPositioningService,
             overlay);
         var applicationLogger = logger ?? new TestApplicationLogger();
-        var globalHotkeyService = new GlobalHotkeyService(settings, new TestGlobalHotkeyRegistrar());
+        var globalHotkeyService = new GlobalHotkeyService(settings, hotkeyRegistrar ?? new TestGlobalHotkeyRegistrar());
         var assembly = LoadUiAssembly();
         var viewModelType = assembly.GetType(
             "GameTranslator.UI.ViewModels.MainViewModel",
@@ -1500,6 +1539,21 @@ public sealed class ProfileManagerViewModelTests
             ?? throw new InvalidOperationException($"Method '{methodName}' returned null.");
 
         return (Task)result;
+    }
+
+    private static async Task WaitForConditionAsync(Func<bool> condition)
+    {
+        for (var attempt = 0; attempt < 50; attempt++)
+        {
+            if (condition())
+            {
+                return;
+            }
+
+            await Task.Delay(10);
+        }
+
+        Assert.True(condition());
     }
 
     private static void InvokeMethod(object instance, string methodName)
@@ -1954,17 +2008,22 @@ public sealed class ProfileManagerViewModelTests
     {
         public event EventHandler<GlobalHotkeyRegisteredEventArgs>? HotkeyPressed;
 
+        public List<GlobalHotkeyRegistration> Registered { get; } = new();
+
         public GlobalHotkeyRegistrationResult Register(GlobalHotkeyRegistration registration)
         {
+            Registered.Add(registration);
             return GlobalHotkeyRegistrationResult.Success();
         }
 
         public void Unregister(int id)
         {
+            Registered.RemoveAll(registration => registration.Id == id);
         }
 
         public void UnregisterAll()
         {
+            Registered.Clear();
         }
 
         public void RaisePressed(int id)

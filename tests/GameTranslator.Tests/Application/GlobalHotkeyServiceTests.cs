@@ -13,9 +13,41 @@ public sealed class GlobalHotkeyServiceTests
         var bindings = service.LoadConfiguredHotkeys();
 
         Assert.Contains(bindings, binding => binding.Action == GlobalHotkeyAction.StartPausePipeline);
+        var recognizeOcrBinding = Assert.Single(bindings, binding => binding.Action == GlobalHotkeyAction.RecognizeOcrPreview);
+        Assert.Equal("Ctrl+Alt+R", recognizeOcrBinding.Gesture.DisplayText);
         Assert.Contains(bindings, binding => binding.Action == GlobalHotkeyAction.ToggleOverlay);
         Assert.Contains(bindings, binding => binding.Action == GlobalHotkeyAction.ShowSettings);
         Assert.Contains(bindings, binding => binding.Action == GlobalHotkeyAction.ExitApplication);
+    }
+
+    [Fact]
+    public void LoadConfiguredHotkeys_WhenSettingsAreMissingNewDefaultActions_AppendsMissingDefaults()
+    {
+        var settings = new TestSettingsService();
+        settings.SetValue(
+            "hotkeys.bindings.v1",
+            new[]
+            {
+                new GlobalHotkeyBinding(
+                    GlobalHotkeyAction.StartPausePipeline,
+                    new GlobalHotkeyGesture(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Alt, "T")),
+                new GlobalHotkeyBinding(
+                    GlobalHotkeyAction.ToggleOverlay,
+                    new GlobalHotkeyGesture(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Alt, "O")),
+                new GlobalHotkeyBinding(
+                    GlobalHotkeyAction.ShowSettings,
+                    new GlobalHotkeyGesture(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Alt, "S")),
+                new GlobalHotkeyBinding(
+                    GlobalHotkeyAction.ExitApplication,
+                    new GlobalHotkeyGesture(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Alt, "Q")),
+            });
+        var service = new GlobalHotkeyService(settings, new FakeGlobalHotkeyRegistrar());
+
+        var bindings = service.LoadConfiguredHotkeys();
+
+        var recognizeOcrBinding = Assert.Single(bindings, binding => binding.Action == GlobalHotkeyAction.RecognizeOcrPreview);
+        Assert.Equal("Ctrl+Alt+R", recognizeOcrBinding.Gesture.DisplayText);
+        Assert.Equal(5, bindings.Count);
     }
 
     [Fact]

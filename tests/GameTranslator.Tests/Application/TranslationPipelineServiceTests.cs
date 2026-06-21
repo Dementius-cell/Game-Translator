@@ -314,6 +314,47 @@ public sealed class TranslationPipelineServiceTests
         Assert.Same(result.OverlaySnapshot, overlay.CurrentSnapshot);
         Assert.True(result.HasFailures);
     }
+
+    [Fact]
+    public async Task RunAllZonesAsync_WhenCredentialsFailAfterOcr_ReportsPartialOcrForEachZone()
+    {
+        var firstZone = CreateZone("zone-a", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
+        var secondZone = CreateZone("zone-b", "Choice", new AbsoluteRectangle(200, 120, 80, 30));
+        var profile = CreateProfile(firstZone, secondZone);
+        var ocrEngine = new FakeOcrEngine
+        {
+            BlocksFactory = request => new[]
+            {
+                new OcrTextBlock($"Text {request.ZoneId}", new BoundingBox(0, 0, 20, 10)),
+            },
+        };
+        var overlay = new FakeOverlayService();
+        var service = CreateService(
+            new FakeCaptureFrameSource(),
+            ocrEngine,
+            new FakeTranslatorProvider("Google"),
+            overlay,
+            new FakeCredentialStorage());
+
+        var result = await service.RunAllZonesAsync(profile);
+
+        Assert.Empty(result.ZoneResults);
+        Assert.Equal(new[] { "zone-a", "zone-b" }, ocrEngine.Requests.Select(request => request.ZoneId));
+        Assert.Equal(new[] { "zone-a", "zone-b" }, result.ZoneFailures.Select(failure => failure.ZoneId));
+        Assert.All(result.ZoneFailures, failure =>
+        {
+            Assert.Equal(TranslationPipelineStage.Credentials, failure.Stage);
+            Assert.NotNull(failure.CapturedFrame);
+            var sourceResult = Assert.IsType<OcrResult>(failure.SourceOcrResult);
+            Assert.Single(sourceResult.TextBlocks);
+            Assert.Equal(1, failure.RecognizedBlockCount);
+        });
+        Assert.Equal(2, result.RecognizedBlockCount);
+        Assert.Empty(result.OverlaySnapshot.TextItems);
+        Assert.Same(result.OverlaySnapshot, overlay.CurrentSnapshot);
+        Assert.True(overlay.IsVisible);
+    }
+
     [Fact]
     public async Task RunAsync_WhenCaptureFails_WrapsStageFailure()
     {

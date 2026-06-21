@@ -4,15 +4,27 @@ namespace GameTranslator.UI.ViewModels;
 
 public sealed class OcrDebugTextBlockViewModel
 {
-    public OcrDebugTextBlockViewModel(OcrTextBlock textBlock)
+    public OcrDebugTextBlockViewModel(OcrTextBlock textBlock, bool isVisibleOnCapturePreview = true)
+        : this(
+            (textBlock ?? throw new ArgumentNullException(nameof(textBlock))).Text,
+            textBlock.Bounds,
+            isVisibleOnCapturePreview)
     {
-        ArgumentNullException.ThrowIfNull(textBlock);
+    }
 
-        Text = textBlock.Text;
-        X = textBlock.Bounds.X;
-        Y = textBlock.Bounds.Y;
-        Width = textBlock.Bounds.Width;
-        Height = textBlock.Bounds.Height;
+    public OcrDebugTextBlockViewModel(
+        string text,
+        BoundingBox bounds,
+        bool isVisibleOnCapturePreview = true)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(text);
+
+        Text = text;
+        X = bounds.X;
+        Y = bounds.Y;
+        Width = bounds.Width;
+        Height = bounds.Height;
+        IsVisibleOnCapturePreview = isVisibleOnCapturePreview;
     }
 
     public string Text { get; }
@@ -24,6 +36,8 @@ public sealed class OcrDebugTextBlockViewModel
     public int Width { get; }
 
     public int Height { get; }
+
+    public bool IsVisibleOnCapturePreview { get; }
 
     public string CoordinatesSummary => $"X {X}  Y {Y}  W {Width}  H {Height}";
 

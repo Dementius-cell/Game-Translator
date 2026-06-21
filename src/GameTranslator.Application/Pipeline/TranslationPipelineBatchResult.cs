@@ -32,7 +32,9 @@ public sealed class TranslationPipelineBatchResult
 
     public bool HasFailures => FailedZoneCount > 0;
 
-    public int RecognizedBlockCount => ZoneResults.Sum(result => result.RecognizedBlockCount);
+    public int RecognizedBlockCount =>
+        ZoneResults.Sum(result => result.RecognizedBlockCount)
+        + ZoneFailures.Sum(failure => failure.RecognizedBlockCount);
 
     public int TranslatedBlockCount => ZoneResults.Sum(result => result.TranslatedBlockCount);
 

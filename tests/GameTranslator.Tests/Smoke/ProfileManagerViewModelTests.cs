@@ -1304,6 +1304,54 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
+    public async Task RunTranslationPipelineAsync_WhenCredentialsAreMissing_ShowsOcrPreviewAcrossAllZones()
+    {
+        var ocrEngine = new TestOcrEngine
+        {
+            BlocksFactory = request => new[]
+            {
+                new OcrTextBlock($"Text {request.ZoneId}", new BoundingBox(0, 0, 40, 12)),
+            },
+        };
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            ocrEngine: ocrEngine,
+            credentialStorage: new TestCredentialStorage());
+
+        ConfigureValidDraftProfile(viewModel, "Pipeline OCR batch draft");
+        InvokeMethodWithArguments(viewModel, "StartZoneSelection", 10d, 20d);
+        InvokeMethodWithArguments(viewModel, "CompleteZoneSelection", 110d, 70d);
+        InvokeMethodWithArguments(viewModel, "StartZoneSelection", 150d, 20d);
+        InvokeMethodWithArguments(viewModel, "CompleteZoneSelection", 250d, 70d);
+        InvokeMethodWithArguments(viewModel, "StartZoneSelection", 290d, 20d);
+        InvokeMethodWithArguments(viewModel, "CompleteZoneSelection", 390d, 70d);
+
+        await InvokeTaskMethodAsync(viewModel, "RunTranslationPipelineAsync");
+
+        Assert.Equal(3, ocrEngine.Requests.Count);
+        var ocrPreviewText = GetPropertyValue(viewModel, "OcrPreviewText")?.ToString() ?? string.Empty;
+        Assert.Contains("[Zone 1] Text", ocrPreviewText, StringComparison.Ordinal);
+        Assert.Contains("[Zone 2] Text", ocrPreviewText, StringComparison.Ordinal);
+        Assert.Contains("[Zone 3] Text", ocrPreviewText, StringComparison.Ordinal);
+        Assert.Equal(
+            "Recognized 3 text block(s) across 3 OCR zone(s). Preview image shows 'Zone 3'.",
+            GetPropertyValue(viewModel, "OcrPreviewStatus"));
+
+        var pipelineStatus = GetPropertyValue(viewModel, "PipelineStatus")?.ToString() ?? string.Empty;
+        Assert.Contains("failed during Credentials", pipelineStatus, StringComparison.Ordinal);
+        Assert.Contains("OCR recognized 3 text block(s) before the failure.", pipelineStatus, StringComparison.Ordinal);
+
+        var debugBlocks = Assert.IsAssignableFrom<System.Collections.IEnumerable>(
+            GetPropertyValue(viewModel, "OcrDebugTextBlocks"));
+        var debugBlockArray = debugBlocks.Cast<object>().ToArray();
+        Assert.Equal(3, debugBlockArray.Length);
+        Assert.Equal(
+            1,
+            debugBlockArray.Count(block => (bool)(GetPropertyValue(block, "IsVisibleOnCapturePreview") ?? false)));
+    }
+
+    [Fact]
     public async Task CleanupTranslationCacheAsync_RemovesExpiredEntriesAndUpdatesStatus()
     {
         var cacheRepository = new TestTranslationCacheRepository();

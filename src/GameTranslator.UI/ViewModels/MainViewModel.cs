@@ -1614,17 +1614,18 @@ public sealed class MainViewModel : ValidatableObservableObject
                 profile,
                 overlaySnapshotBeforeCapture);
 
-            var previewResult = SelectPreviewResult(result);
-            if (previewResult is not null)
+            var previewEntries = CreateBatchOcrPreviewEntries(result, profile);
+            var previewEntry = SelectBatchOcrPreviewEntry(previewEntries);
+            if (previewEntry is not null)
             {
-                var previewZoneName = ResolveZoneName(profile, previewResult.ZoneId);
-                UpdateCapturePreview(previewResult.CapturedFrame);
-                latestOcrPreviewResult = previewResult.SourceOcrResult;
-                ReplaceOcrPreviewTextBlocks(previewResult.SourceOcrResult.TextBlocks);
-                CapturePreviewStatus = $"Captured {previewResult.CapturedFrame.Width}x{previewResult.CapturedFrame.Height} at {previewResult.CapturedFrame.CapturedAt:HH:mm:ss}.";
-                OcrPreviewStatus = previewResult.RecognizedBlockCount == 0
-                    ? $"No text recognized for '{previewZoneName}'."
-                    : $"Recognized {previewResult.RecognizedBlockCount} text block(s) for '{previewZoneName}'.";
+                var recognizedBlockCount = previewEntries.Sum(entry => entry.SourceOcrResult.TextBlocks.Count);
+                UpdateCapturePreview(previewEntry.CapturedFrame);
+                latestOcrPreviewResult = previewEntry.SourceOcrResult;
+                ReplaceBatchOcrPreviewTextBlocks(previewEntries, previewEntry.ZoneId);
+                CapturePreviewStatus = $"Captured {previewEntry.CapturedFrame.Width}x{previewEntry.CapturedFrame.Height} for '{previewEntry.ZoneName}' at {previewEntry.CapturedFrame.CapturedAt:HH:mm:ss}.";
+                OcrPreviewStatus = recognizedBlockCount == 0
+                    ? $"No text recognized across {previewEntries.Count} OCR zone(s)."
+                    : $"Recognized {recognizedBlockCount} text block(s) across {previewEntries.Count} OCR zone(s). Preview image shows '{previewEntry.ZoneName}'.";
             }
             else
             {
@@ -2036,12 +2037,51 @@ public sealed class MainViewModel : ValidatableObservableObject
         return CreateSnapshotWithDebug(baseSnapshot, debugItems, metricLines);
     }
 
-    private TranslationPipelineResult? SelectPreviewResult(TranslationPipelineBatchResult result)
+    private BatchOcrPreviewEntry? SelectBatchOcrPreviewEntry(IReadOnlyList<BatchOcrPreviewEntry> entries)
     {
         return SelectedZone is null
-            ? result.ZoneResults.FirstOrDefault()
-            : result.ZoneResults.FirstOrDefault(zoneResult => string.Equals(zoneResult.ZoneId, SelectedZone.Id, StringComparison.Ordinal))
-                ?? result.ZoneResults.FirstOrDefault();
+            ? entries.FirstOrDefault()
+            : entries.FirstOrDefault(entry => string.Equals(entry.ZoneId, SelectedZone.Id, StringComparison.Ordinal))
+                ?? entries.FirstOrDefault();
+    }
+
+    private static IReadOnlyList<BatchOcrPreviewEntry> CreateBatchOcrPreviewEntries(
+        TranslationPipelineBatchResult result,
+        GameProfile profile)
+    {
+        var entries = new List<BatchOcrPreviewEntry>();
+
+        foreach (var zoneResult in result.ZoneResults)
+        {
+            entries.Add(new BatchOcrPreviewEntry(
+                zoneResult.ZoneId,
+                ResolveZoneName(profile, zoneResult.ZoneId),
+                zoneResult.CapturedFrame,
+                zoneResult.SourceOcrResult));
+        }
+
+        foreach (var failure in result.ZoneFailures)
+        {
+            if (failure.CapturedFrame is null || failure.SourceOcrResult is null)
+            {
+                continue;
+            }
+
+            entries.Add(new BatchOcrPreviewEntry(
+                failure.ZoneId,
+                string.IsNullOrWhiteSpace(failure.ZoneName) ? ResolveZoneName(profile, failure.ZoneId) : failure.ZoneName,
+                failure.CapturedFrame,
+                failure.SourceOcrResult));
+        }
+
+        var zoneOrder = profile.OcrZones
+            .Select((zone, index) => new { zone.Id, Index = index })
+            .ToDictionary(item => item.Id, item => item.Index, StringComparer.Ordinal);
+
+        return entries
+            .OrderBy(entry => zoneOrder.TryGetValue(entry.ZoneId, out var index) ? index : int.MaxValue)
+            .ThenBy(entry => entry.ZoneName, StringComparer.Ordinal)
+            .ToArray();
     }
 
     private static string ResolveZoneName(GameProfile profile, string zoneId)
@@ -2049,6 +2089,12 @@ public sealed class MainViewModel : ValidatableObservableObject
         return profile.OcrZones.FirstOrDefault(zone => string.Equals(zone.Id, zoneId, StringComparison.Ordinal))?.Name
             ?? zoneId;
     }
+
+    private sealed record BatchOcrPreviewEntry(
+        string ZoneId,
+        string ZoneName,
+        CapturedFrame CapturedFrame,
+        OcrResult SourceOcrResult);
 
     private static string CreateBatchPipelineStatus(TranslationPipelineBatchResult result)
     {
@@ -2064,7 +2110,11 @@ public sealed class MainViewModel : ValidatableObservableObject
                 ? firstFailure.ZoneId
                 : firstFailure.ZoneName;
 
-            return $"Full pipeline failed for all {result.TotalZoneCount} OCR zone(s). First failure: '{zoneName}' failed during {firstFailure.Stage}. {CreatePipelineFailureDetail(firstFailure)}";
+            var ocrSummary = result.RecognizedBlockCount == 0
+                ? string.Empty
+                : $" OCR recognized {result.RecognizedBlockCount} text block(s) before the failure.";
+
+            return $"Full pipeline failed for all {result.TotalZoneCount} OCR zone(s). First failure: '{zoneName}' failed during {firstFailure.Stage}. {CreatePipelineFailureDetail(firstFailure)}{ocrSummary}";
         }
 
         var translatedStatus = result.RecognizedBlockCount == 0
@@ -2971,6 +3021,34 @@ public sealed class MainViewModel : ValidatableObservableObject
         {
             OcrPreviewTextBlocks.Add(textBlock);
             OcrDebugTextBlocks.Add(new OcrDebugTextBlockViewModel(textBlock));
+        }
+
+        OnPropertyChanged(nameof(HasOcrPreview));
+        OnPropertyChanged(nameof(OcrPreviewText));
+    }
+
+    private void ReplaceBatchOcrPreviewTextBlocks(
+        IReadOnlyList<BatchOcrPreviewEntry> entries,
+        string previewZoneId)
+    {
+        OcrPreviewTextBlocks.Clear();
+        OcrDebugTextBlocks.Clear();
+
+        var includeZoneName = entries.Count > 1;
+        foreach (var entry in entries)
+        {
+            var isVisibleOnCapturePreview = string.Equals(entry.ZoneId, previewZoneId, StringComparison.Ordinal);
+            foreach (var textBlock in entry.SourceOcrResult.TextBlocks)
+            {
+                var displayText = includeZoneName
+                    ? $"[{entry.ZoneName}] {textBlock.Text}"
+                    : textBlock.Text;
+                OcrPreviewTextBlocks.Add(new OcrTextBlock(displayText, textBlock.Bounds));
+                OcrDebugTextBlocks.Add(new OcrDebugTextBlockViewModel(
+                    displayText,
+                    textBlock.Bounds,
+                    isVisibleOnCapturePreview));
+            }
         }
 
         OnPropertyChanged(nameof(HasOcrPreview));

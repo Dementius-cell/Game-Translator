@@ -83,7 +83,9 @@ public sealed class TranslationPipelineService
                     zone.Name,
                     exception.Stage,
                     exception.Message,
-                    exception));
+                    exception,
+                    exception.CapturedFrame,
+                    exception.SourceOcrResult));
             }
         }
 
@@ -218,73 +220,87 @@ public sealed class TranslationPipelineService
             return emptyResult;
         }
 
-        var texts = sourceResult.TextBlocks.Select(block => block.Text).ToArray();
-        var cacheMeasurement = await RunTimedStageAsync(
-            TranslationPipelineStage.Cache,
-            () => cacheService.GetOrAddAsync(
-                profile.TranslatorSettings,
-                texts,
-                async missingTexts =>
-                {
-                    var credentialsMeasurement = await RunTimedStageAsync(
-                        TranslationPipelineStage.Credentials,
-                        () => credentialService.CreateCredentialsAsync(profile.TranslatorSettings.Provider, cancellationToken));
-                    credentialsElapsed += credentialsMeasurement.Elapsed;
+        try
+        {
+            var texts = sourceResult.TextBlocks.Select(block => block.Text).ToArray();
+            var cacheMeasurement = await RunTimedStageAsync(
+                TranslationPipelineStage.Cache,
+                () => cacheService.GetOrAddAsync(
+                    profile.TranslatorSettings,
+                    texts,
+                    async missingTexts =>
+                    {
+                        var credentialsMeasurement = await RunTimedStageAsync(
+                            TranslationPipelineStage.Credentials,
+                            () => credentialService.CreateCredentialsAsync(profile.TranslatorSettings.Provider, cancellationToken));
+                        credentialsElapsed += credentialsMeasurement.Elapsed;
 
-                    var translationMeasurement = await RunTimedStageAsync(
-                        TranslationPipelineStage.Translation,
-                        () => translatorManager.TranslateAsync(profile.TranslatorSettings, missingTexts, credentialsMeasurement.Value, cancellationToken));
-                    translationElapsed += translationMeasurement.Elapsed;
+                        var translationMeasurement = await RunTimedStageAsync(
+                            TranslationPipelineStage.Translation,
+                            () => translatorManager.TranslateAsync(profile.TranslatorSettings, missingTexts, credentialsMeasurement.Value, cancellationToken));
+                        translationElapsed += translationMeasurement.Elapsed;
 
-                    return translationMeasurement.Value;
-                },
-                DateTimeOffset.UtcNow,
-                cancellationToken));
-        var cacheResult = cacheMeasurement.Value;
-        cacheElapsed = cacheMeasurement.Elapsed;
-        var translateResponse = cacheResult.ToTranslateResponse();
+                        return translationMeasurement.Value;
+                    },
+                    DateTimeOffset.UtcNow,
+                    cancellationToken));
+            var cacheResult = cacheMeasurement.Value;
+            cacheElapsed = cacheMeasurement.Elapsed;
+            var translateResponse = cacheResult.ToTranslateResponse();
 
-        if (translateResponse.TranslatedTexts.Count != sourceResult.TextBlocks.Count)
+            if (translateResponse.TranslatedTexts.Count != sourceResult.TextBlocks.Count)
+            {
+                throw new TranslationPipelineException(
+                    TranslationPipelineStage.Translation,
+                    "Translation pipeline failed during Translation.",
+                    new InvalidOperationException("Translator response item count must match OCR text block count."),
+                    frame,
+                    sourceResult);
+            }
+
+            var translatedResult = CreateTranslatedResult(sourceResult, translateResponse);
+            var snapshot = overlayPositioningService.CreateSnapshot(
+                translatedResult,
+                translateResponse.TranslatedAt,
+                previousSnapshot,
+                profile.OverlaySettings);
+            if (showOverlay)
+            {
+                overlayElapsed = await ShowOverlayAsync(snapshot);
+            }
+
+            totalStopwatch.Stop();
+
+            var result = new TranslationPipelineResult(
+                profile.Id,
+                zone.Id,
+                frame,
+                sourceResult,
+                translateResponse,
+                snapshot,
+                cacheResult,
+                CreateTimings(
+                    captureElapsed,
+                    ocrElapsed,
+                    credentialsElapsed,
+                    translationElapsed,
+                    cacheElapsed,
+                    overlayElapsed,
+                    totalStopwatch.Elapsed),
+                CreateProcessedOptimization(optimizationContext));
+            StoreOptimizationState(optimizationContext.StateKey, frame, result);
+
+            return result;
+        }
+        catch (TranslationPipelineException exception) when (exception.SourceOcrResult is null)
         {
             throw new TranslationPipelineException(
-                TranslationPipelineStage.Translation,
-                "Translation pipeline failed during Translation.",
-                new InvalidOperationException("Translator response item count must match OCR text block count."));
+                exception.Stage,
+                exception.Message,
+                exception.InnerException ?? exception,
+                frame,
+                sourceResult);
         }
-
-        var translatedResult = CreateTranslatedResult(sourceResult, translateResponse);
-        var snapshot = overlayPositioningService.CreateSnapshot(
-            translatedResult,
-            translateResponse.TranslatedAt,
-            previousSnapshot,
-            profile.OverlaySettings);
-        if (showOverlay)
-        {
-            overlayElapsed = await ShowOverlayAsync(snapshot);
-        }
-
-        totalStopwatch.Stop();
-
-        var result = new TranslationPipelineResult(
-            profile.Id,
-            zone.Id,
-            frame,
-            sourceResult,
-            translateResponse,
-            snapshot,
-            cacheResult,
-            CreateTimings(
-                captureElapsed,
-                ocrElapsed,
-                credentialsElapsed,
-                translationElapsed,
-                cacheElapsed,
-                overlayElapsed,
-                totalStopwatch.Elapsed),
-            CreateProcessedOptimization(optimizationContext));
-        StoreOptimizationState(optimizationContext.StateKey, frame, result);
-
-        return result;
     }
 
     private async Task<TimeSpan> ShowOverlayAsync(OverlaySnapshot snapshot)

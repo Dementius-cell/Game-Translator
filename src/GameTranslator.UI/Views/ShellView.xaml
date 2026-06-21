@@ -1323,7 +1323,8 @@
                                                                             <DataTemplate>
                                                                                 <Grid
                                                                                     Width="{Binding Width}"
-                                                                                    Height="{Binding Height}">
+                                                                                    Height="{Binding Height}"
+                                                                                    Visibility="{Binding IsVisibleOnCapturePreview, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                                                     <Border
                                                                                         Background="#3300828A"
                                                                                         BorderBrush="#00828A"

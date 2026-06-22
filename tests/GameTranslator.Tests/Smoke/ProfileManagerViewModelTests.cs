@@ -153,6 +153,58 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
+    public void PickScreenZone_WhenPickerReturnsRegion_CreatesZoneFromScreenCoordinates()
+    {
+        var repository = new InMemoryProfileRepository();
+        var settings = new TestSettingsService();
+        var uiAssembly = LoadUiAssembly();
+        var picker = CreateScreenRegionPicker(
+            uiAssembly,
+            CreateScreenRegionSelectionResult(uiAssembly, 96, 108, 384, 216, 1920, 1080));
+        var viewModel = CreateMainViewModel(repository, settings, screenRegionPickerService: picker);
+
+        ConfigureValidDraftProfile(viewModel, "Screen zone");
+        InvokeMethod(viewModel, "PickScreenZone");
+
+        var zones = Assert.IsAssignableFrom<System.Collections.IEnumerable>(GetPropertyValue(viewModel, "OcrZones"))
+            .Cast<object>()
+            .ToArray();
+        var zone = Assert.Single(zones);
+        var persistedZone = Assert.Single(settings.GetValue<OcrZone[]>("shell.draft.ocrZones") ?? Array.Empty<OcrZone>());
+
+        Assert.Same(zone, GetPropertyValue(viewModel, "SelectedZone"));
+        Assert.Equal(96, GetPropertyValue(zone, "AbsoluteX"));
+        Assert.Equal(108, GetPropertyValue(zone, "AbsoluteY"));
+        Assert.Equal(384, GetPropertyValue(zone, "AbsoluteWidth"));
+        Assert.Equal(216, GetPropertyValue(zone, "AbsoluteHeight"));
+        Assert.Equal(0.05d, GetPropertyValue(zone, "RelativeX"));
+        Assert.Equal(0.1d, GetPropertyValue(zone, "RelativeY"));
+        Assert.Equal(0.2d, GetPropertyValue(zone, "RelativeWidth"));
+        Assert.Equal(0.2d, GetPropertyValue(zone, "RelativeHeight"));
+        Assert.Equal(new AbsoluteRectangle(96, 108, 384, 216), persistedZone.AbsoluteBounds);
+        Assert.Equal("Created zone 'Zone 1' from screen selection.", GetPropertyValue(viewModel, "StatusMessage"));
+    }
+
+    [Fact]
+    public void PickScreenZone_WhenPickerReturnsNull_DoesNotCreateZone()
+    {
+        var repository = new InMemoryProfileRepository();
+        var settings = new TestSettingsService();
+        var uiAssembly = LoadUiAssembly();
+        var picker = CreateScreenRegionPicker(uiAssembly, result: null);
+        var viewModel = CreateMainViewModel(repository, settings, screenRegionPickerService: picker);
+
+        ConfigureValidDraftProfile(viewModel, "Canceled zone");
+        InvokeMethod(viewModel, "PickScreenZone");
+
+        var zones = Assert.IsAssignableFrom<System.Collections.IEnumerable>(GetPropertyValue(viewModel, "OcrZones"));
+
+        Assert.Empty(zones.Cast<object>());
+        Assert.Equal("Screen zone selection canceled.", GetPropertyValue(viewModel, "StatusMessage"));
+        Assert.Empty(settings.GetValue<OcrZone[]>("shell.draft.ocrZones") ?? Array.Empty<OcrZone>());
+    }
+
+    [Fact]
     public void InvalidZoneField_ExposesFieldLevelValidationErrors()
     {
         var repository = new InMemoryProfileRepository();
@@ -1467,7 +1519,8 @@ public sealed class ProfileManagerViewModelTests
         TestCredentialStorage? credentialStorage = null,
         TestTranslationCacheRepository? translationCacheRepository = null,
         TestApplicationUpdateProvider? updateProvider = null,
-        TestGlobalHotkeyRegistrar? hotkeyRegistrar = null)
+        TestGlobalHotkeyRegistrar? hotkeyRegistrar = null,
+        object? screenRegionPickerService = null)
     {
         var profileService = new ProfileService(repository, new ProfileValidator());
         var profileExchangeService = new ProfileExchangeService(
@@ -1501,8 +1554,9 @@ public sealed class ProfileManagerViewModelTests
             throwOnError: true)
             ?? throw new InvalidOperationException("MainViewModel type was not found.");
 
-        return Activator.CreateInstance(
-                viewModelType,
+        var constructorArguments = screenRegionPickerService is null
+            ? new object[]
+            {
                 profileService,
                 profileExchangeService,
                 captureService,
@@ -1518,7 +1572,30 @@ public sealed class ProfileManagerViewModelTests
                 overlayPositioningService,
                 dialog ?? new TestDialogService(),
                 settings,
-                applicationLogger)
+                applicationLogger,
+            }
+            : new object[]
+            {
+                profileService,
+                profileExchangeService,
+                captureService,
+                ocrService,
+                credentialService,
+                translationPipelineService,
+                translationCacheService,
+                applicationUpdateService,
+                globalHotkeyService,
+                new DebugMetricFormatter(),
+                new TestDebugResourceMonitor(),
+                overlay,
+                overlayPositioningService,
+                dialog ?? new TestDialogService(),
+                screenRegionPickerService,
+                settings,
+                applicationLogger,
+            };
+
+        return Activator.CreateInstance(viewModelType, constructorArguments)
             ?? throw new InvalidOperationException("MainViewModel instance was not created.");
     }
 
@@ -1593,6 +1670,36 @@ public sealed class ProfileManagerViewModelTests
             ?? throw new InvalidOperationException($"Property '{propertyName}' was not found.");
 
         property.SetValue(instance, value);
+    }
+
+    private static object CreateScreenRegionSelectionResult(
+        Assembly uiAssembly,
+        int x,
+        int y,
+        int width,
+        int height,
+        int referenceWidth,
+        int referenceHeight)
+    {
+        var resultType = uiAssembly.GetType(
+            "GameTranslator.UI.Services.ScreenRegionSelectionResult",
+            throwOnError: true)
+            ?? throw new InvalidOperationException("ScreenRegionSelectionResult type was not found.");
+
+        return Activator.CreateInstance(resultType, x, y, width, height, referenceWidth, referenceHeight)
+            ?? throw new InvalidOperationException("ScreenRegionSelectionResult instance was not created.");
+    }
+
+    private static object CreateScreenRegionPicker(Assembly uiAssembly, object? result)
+    {
+        var pickerType = uiAssembly.GetType(
+            "GameTranslator.UI.Services.IScreenRegionPickerService",
+            throwOnError: true)
+            ?? throw new InvalidOperationException("IScreenRegionPickerService type was not found.");
+        var proxy = DispatchProxy.Create(pickerType, typeof(TestScreenRegionPickerProxy));
+        ((TestScreenRegionPickerProxy)proxy).Result = result;
+
+        return proxy;
     }
 
     private static Assembly LoadUiAssembly()
@@ -1687,6 +1794,21 @@ public sealed class ProfileManagerViewModelTests
         public bool ContainsSerializedText(string text)
         {
             return JsonSerializer.Serialize(values).Contains(text, StringComparison.Ordinal);
+        }
+    }
+
+    private class TestScreenRegionPickerProxy : DispatchProxy
+    {
+        public object? Result { get; set; }
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        {
+            if (string.Equals(targetMethod?.Name, "PickRegion", StringComparison.Ordinal))
+            {
+                return Result;
+            }
+
+            throw new InvalidOperationException($"Unexpected screen region picker method: {targetMethod?.Name}.");
         }
     }
 

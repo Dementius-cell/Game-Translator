@@ -728,6 +728,12 @@
                                             Content="Remove zone" />
                                         <Button
                                             DockPanel.Dock="Right"
+                                            Margin="8,0,0,0"
+                                            Padding="12,6"
+                                            Command="{Binding PickScreenZoneCommand}"
+                                            Content="Pick screen" />
+                                        <Button
+                                            DockPanel.Dock="Right"
                                             Padding="12,6"
                                             Command="{Binding AddZoneCommand}"
                                             Content="Add zone" />

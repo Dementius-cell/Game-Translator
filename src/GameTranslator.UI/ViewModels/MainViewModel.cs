@@ -19,6 +19,7 @@ using GameTranslator.Application.Profiles;
 using GameTranslator.Application.Updates;
 using GameTranslator.Domain.Profiles;
 using GameTranslator.UI.Commands;
+using GameTranslator.UI.Services;
 
 namespace GameTranslator.UI.ViewModels;
 
@@ -91,6 +92,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private readonly IOverlayService overlayService;
     private readonly OverlayPositioningService overlayPositioningService;
     private readonly IDialogService dialogService;
+    private readonly IScreenRegionPickerService screenRegionPickerService;
     private readonly ISettingsService settings;
     private readonly IApplicationLogger logger;
     private readonly GlobalHotkeyService globalHotkeyService;
@@ -175,6 +177,45 @@ public sealed class MainViewModel : ValidatableObservableObject
         IDialogService dialogService,
         ISettingsService settings,
         IApplicationLogger logger)
+        : this(
+            profileService,
+            profileExchangeService,
+            captureService,
+            ocrService,
+            credentialService,
+            translationPipelineService,
+            translationCacheService,
+            applicationUpdateService,
+            globalHotkeyService,
+            debugMetricFormatter,
+            debugResourceMonitor,
+            overlayService,
+            overlayPositioningService,
+            dialogService,
+            new UnavailableScreenRegionPickerService(),
+            settings,
+            logger)
+    {
+    }
+
+    public MainViewModel(
+        ProfileService profileService,
+        ProfileExchangeService profileExchangeService,
+        CaptureService captureService,
+        OcrService ocrService,
+        TranslatorCredentialService credentialService,
+        TranslationPipelineService translationPipelineService,
+        TranslationCacheService translationCacheService,
+        ApplicationUpdateService applicationUpdateService,
+        GlobalHotkeyService globalHotkeyService,
+        DebugMetricFormatter debugMetricFormatter,
+        IDebugResourceMonitor debugResourceMonitor,
+        IOverlayService overlayService,
+        OverlayPositioningService overlayPositioningService,
+        IDialogService dialogService,
+        IScreenRegionPickerService screenRegionPickerService,
+        ISettingsService settings,
+        IApplicationLogger logger)
     {
         this.profileService = profileService;
         this.profileExchangeService = profileExchangeService;
@@ -190,6 +231,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         this.overlayService = overlayService;
         this.overlayPositioningService = overlayPositioningService;
         this.dialogService = dialogService;
+        this.screenRegionPickerService = screenRegionPickerService;
         this.settings = settings;
         this.logger = logger;
         globalHotkeyService.HotkeyPressed += OnGlobalHotkeyPressed;
@@ -214,6 +256,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         DeleteSelectedProfileCommand = new AsyncRelayCommand(DeleteSelectedProfileAsync, CanDeleteSelectedProfile);
         ResetEditorCommand = new RelayCommand(ResetEditor, () => !IsBusy);
         AddZoneCommand = new RelayCommand(AddZone, () => !IsBusy);
+        PickScreenZoneCommand = new RelayCommand(PickScreenZone, CanPickScreenZone);
         DuplicateSelectedZoneCommand = new RelayCommand(DuplicateSelectedZone, CanDuplicateSelectedZone);
         MoveSelectedZoneUpCommand = new RelayCommand(MoveSelectedZoneUp, CanMoveSelectedZoneUp);
         MoveSelectedZoneDownCommand = new RelayCommand(MoveSelectedZoneDown, CanMoveSelectedZoneDown);
@@ -859,6 +902,8 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public ICommand AddZoneCommand { get; }
 
+    public ICommand PickScreenZoneCommand { get; }
+
     public ICommand DuplicateSelectedZoneCommand { get; }
 
     public ICommand MoveSelectedZoneUpCommand { get; }
@@ -1415,6 +1460,43 @@ public sealed class MainViewModel : ValidatableObservableObject
         if (OcrZones.Count == 0)
         {
             ClearZoneResizeState();
+        }
+    }
+
+    public void PickScreenZone()
+    {
+        if (!CanPickScreenZone())
+        {
+            return;
+        }
+
+        ClearSurfaceInteractionState();
+
+        try
+        {
+            StatusMessage = "Select an OCR zone on the screen.";
+            var selection = screenRegionPickerService.PickRegion();
+            if (selection is null)
+            {
+                StatusMessage = "Screen zone selection canceled.";
+                return;
+            }
+
+            var zone = OcrZoneEditorViewModel.CreateDefault(OcrZones.Count + 1);
+            AttachZone(zone);
+            OcrZones.Add(zone);
+            ApplyScreenBoundsToZone(zone, selection);
+            SelectedZone = zone;
+            PersistDraftShellStateIfNeeded();
+            OnPropertyChanged(nameof(ZoneSummary));
+            OnPropertyChanged(nameof(ProfileSummary));
+            RefreshValidationState();
+            StatusMessage = $"Created zone '{zone.DisplayName}' from screen selection.";
+        }
+        catch (Exception exception)
+        {
+            logger.Error(exception, "Screen zone selection failed.");
+            StatusMessage = "Screen zone selection failed. Check logs for details.";
         }
     }
 
@@ -2759,6 +2841,11 @@ public sealed class MainViewModel : ValidatableObservableObject
         return !IsBusy && SelectedZone is not null;
     }
 
+    private bool CanPickScreenZone()
+    {
+        return !IsBusy && !IsLiveTranslationRunning;
+    }
+
     private bool CanRefreshCapturePreview()
     {
         return !IsBusy && !IsLiveTranslationRunning && SelectedZone is not null;
@@ -3239,6 +3326,32 @@ public sealed class MainViewModel : ValidatableObservableObject
         zone.RelativeHeight = ClampRelativeSizeToBounds(relativeY, relativeHeight);
     }
 
+    private static void ApplyScreenBoundsToZone(
+        OcrZoneEditorViewModel zone,
+        ScreenRegionSelectionResult selection)
+    {
+        var referenceWidth = Math.Max(1, selection.ReferenceWidth);
+        var referenceHeight = Math.Max(1, selection.ReferenceHeight);
+        var left = Math.Clamp(selection.X, 0, referenceWidth - 1);
+        var top = Math.Clamp(selection.Y, 0, referenceHeight - 1);
+        var right = Math.Clamp(left + Math.Max(1, selection.Width), left + 1, referenceWidth);
+        var bottom = Math.Clamp(top + Math.Max(1, selection.Height), top + 1, referenceHeight);
+
+        zone.AbsoluteX = left;
+        zone.AbsoluteY = top;
+        zone.AbsoluteWidth = Math.Max(1, right - left);
+        zone.AbsoluteHeight = Math.Max(1, bottom - top);
+        var relativeX = RoundRelativeCoordinate((double)left / referenceWidth);
+        var relativeY = RoundRelativeCoordinate((double)top / referenceHeight);
+        var relativeWidth = RoundRelativeCoordinate((double)(right - left) / referenceWidth);
+        var relativeHeight = RoundRelativeCoordinate((double)(bottom - top) / referenceHeight);
+
+        zone.RelativeX = relativeX;
+        zone.RelativeY = relativeY;
+        zone.RelativeWidth = ClampRelativeSizeToBounds(relativeX, relativeWidth);
+        zone.RelativeHeight = ClampRelativeSizeToBounds(relativeY, relativeHeight);
+    }
+
     private void UpdateZoneSelectionPreview(double left, double top, double width, double height)
     {
         ZoneSelectionPreviewX = left;
@@ -3394,6 +3507,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         ((AsyncRelayCommand)DeleteSelectedProfileCommand).RaiseCanExecuteChanged();
         ((RelayCommand)ResetEditorCommand).RaiseCanExecuteChanged();
         ((RelayCommand)AddZoneCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)PickScreenZoneCommand).RaiseCanExecuteChanged();
         ((RelayCommand)DuplicateSelectedZoneCommand).RaiseCanExecuteChanged();
         ((RelayCommand)MoveSelectedZoneUpCommand).RaiseCanExecuteChanged();
         ((RelayCommand)MoveSelectedZoneDownCommand).RaiseCanExecuteChanged();
@@ -3413,5 +3527,13 @@ public sealed class MainViewModel : ValidatableObservableObject
         ((AsyncRelayCommand)SaveTranslatorCredentialsCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)ValidateTranslatorCredentialsCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)DeleteTranslatorCredentialsCommand).RaiseCanExecuteChanged();
+    }
+
+    private sealed class UnavailableScreenRegionPickerService : IScreenRegionPickerService
+    {
+        public ScreenRegionSelectionResult? PickRegion()
+        {
+            return null;
+        }
     }
 }

@@ -26,6 +26,7 @@ public sealed class JsonProfileExchangeGatewayTests : IDisposable
         Assert.Equal(profile.SchemaVersion, imported.SchemaVersion);
         Assert.Equal(profile.OverlaySettings.MaskColor, imported.OverlaySettings.MaskColor);
         Assert.Equal(profile.OcrZones[0].AbsoluteBounds, imported.OcrZones[0].AbsoluteBounds);
+        Assert.Equal(profile.OcrZones[0].TextStyle, imported.OcrZones[0].TextStyle);
     }
 
     [Fact]
@@ -62,6 +63,14 @@ public sealed class JsonProfileExchangeGatewayTests : IDisposable
                     Name = "dialogue",
                     AbsoluteBounds = new AbsoluteRectangle(10, 20, 300, 80),
                     RelativeBounds = new RelativeRectangle(0.1, 0.2, 0.4, 0.1),
+                    TextStyle = new OcrZoneTextStyle
+                    {
+                        FontFamily = "Segoe UI",
+                        FontSize = 22,
+                        IsBold = false,
+                        IsItalic = true,
+                        LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter,
+                    },
                 },
             },
             OverlaySettings = new OverlaySettings

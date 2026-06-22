@@ -91,7 +91,8 @@ public sealed class TranslationPipelineService
                     previousSnapshot: null,
                     showOverlay: false,
                     runOptions,
-                    cancellationToken));
+                    cancellationToken,
+                    overlaySnapshotToRestoreAfterCapture: previousSnapshot));
             }
             catch (TranslationPipelineException exception)
             {
@@ -122,7 +123,8 @@ public sealed class TranslationPipelineService
         OverlaySnapshot? previousSnapshot,
         bool showOverlay,
         TranslationPipelineRunOptions runOptions,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        OverlaySnapshot? overlaySnapshotToRestoreAfterCapture = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(zone);
@@ -143,7 +145,11 @@ public sealed class TranslationPipelineService
 
         var frameMeasurement = await RunTimedStageAsync(
             TranslationPipelineStage.Capture,
-            () => captureService.CaptureAsync(CreateCaptureRegion(zone), cancellationToken));
+            () => CaptureFrameAsync(
+                zone,
+                runOptions,
+                overlaySnapshotToRestoreAfterCapture ?? previousSnapshot,
+                cancellationToken));
         var frame = frameMeasurement.Value;
         captureElapsed = frameMeasurement.Elapsed;
 
@@ -209,6 +215,7 @@ public sealed class TranslationPipelineService
                 sourceResult,
                 sourceResult.RecognizedAt,
                 previousSnapshot,
+                zone.TextStyle,
                 profile.OverlaySettings);
             if (showOverlay)
             {
@@ -320,6 +327,7 @@ public sealed class TranslationPipelineService
                 translatedResult,
                 translateResponse.TranslatedAt,
                 previousSnapshot,
+                zone.TextStyle,
                 profile.OverlaySettings);
             if (showOverlay)
             {
@@ -357,6 +365,32 @@ public sealed class TranslationPipelineService
                 exception.InnerException ?? exception,
                 frame,
                 sourceResult);
+        }
+    }
+
+    private async Task<CapturedFrame> CaptureFrameAsync(
+        OcrZone zone,
+        TranslationPipelineRunOptions runOptions,
+        OverlaySnapshot? overlaySnapshotToRestoreAfterCapture,
+        CancellationToken cancellationToken)
+    {
+        var shouldRestoreOverlay = runOptions.RestorePreviousOverlayAfterCapture
+            && overlaySnapshotToRestoreAfterCapture is not null
+            && overlayService.IsVisible;
+
+        if (!shouldRestoreOverlay)
+        {
+            return await captureService.CaptureAsync(CreateCaptureRegion(zone), cancellationToken);
+        }
+
+        overlayService.Hide();
+        try
+        {
+            return await captureService.CaptureAsync(CreateCaptureRegion(zone), cancellationToken);
+        }
+        finally
+        {
+            overlayService.Show(overlaySnapshotToRestoreAfterCapture!);
         }
     }
 
@@ -640,6 +674,7 @@ public sealed class TranslationPipelineService
             profile.Name,
             zone.Id,
             zone.AbsoluteBounds,
+            zone.TextStyle,
             profile.TranslatorSettings,
             profile.OcrSettings,
             profile.OcrPreprocessingSettings,
@@ -769,6 +804,7 @@ public sealed class TranslationPipelineService
         string ProfileName,
         string ZoneId,
         AbsoluteRectangle ZoneBounds,
+        OcrZoneTextStyle TextStyle,
         TranslatorSettings TranslatorSettings,
         OcrSettings OcrSettings,
         OcrPreprocessingSettings PreprocessingSettings,

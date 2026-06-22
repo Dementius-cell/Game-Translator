@@ -68,16 +68,34 @@
                         BorderThickness="1"
                         RenderOptions.ClearTypeHint="Enabled"
                         SnapsToDevicePixels="True">
-                        <Viewbox
-                            Stretch="Uniform"
-                            StretchDirection="Both">
+                        <Grid>
+                            <Viewbox
+                                Stretch="Uniform"
+                                StretchDirection="Both"
+                                Visibility="{Binding UsesFitToSourceBounds, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <TextBlock
+                                    Foreground="#FFFFFF"
+                                    FontFamily="{Binding FontFamily}"
+                                    FontSize="{Binding FontSize}"
+                                    FontStyle="{Binding FontStyle}"
+                                    FontWeight="{Binding FontWeight}"
+                                    Text="{Binding Text}"
+                                    TextWrapping="NoWrap" />
+                            </Viewbox>
                             <TextBlock
+                                Width="{Binding ContentWidth}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
                                 Foreground="#FFFFFF"
-                                FontSize="16"
-                                FontWeight="SemiBold"
+                                FontFamily="{Binding FontFamily}"
+                                FontSize="{Binding FontSize}"
+                                FontStyle="{Binding FontStyle}"
+                                FontWeight="{Binding FontWeight}"
                                 Text="{Binding Text}"
-                                TextWrapping="NoWrap" />
-                        </Viewbox>
+                                TextAlignment="Center"
+                                TextWrapping="Wrap"
+                                Visibility="{Binding UsesExpandedLayout, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        </Grid>
                     </Border>
                 </DataTemplate>
             </ItemsControl.ItemTemplate>

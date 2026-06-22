@@ -9,7 +9,8 @@ public sealed class TranslationPipelineRunOptions
     public TranslationPipelineRunOptions(
         bool requireStableTextBeforeTranslation = false,
         TimeSpan? stableTextInterval = null,
-        bool preservePreviousOverlayWhileWaitingForStableText = false)
+        bool preservePreviousOverlayWhileWaitingForStableText = false,
+        bool restorePreviousOverlayAfterCapture = false)
     {
         var effectiveStableTextInterval = stableTextInterval ?? DefaultStableTextInterval;
         if (effectiveStableTextInterval < TimeSpan.Zero)
@@ -22,6 +23,7 @@ public sealed class TranslationPipelineRunOptions
         RequireStableTextBeforeTranslation = requireStableTextBeforeTranslation;
         StableTextInterval = effectiveStableTextInterval;
         PreservePreviousOverlayWhileWaitingForStableText = preservePreviousOverlayWhileWaitingForStableText;
+        RestorePreviousOverlayAfterCapture = restorePreviousOverlayAfterCapture;
     }
 
     public bool RequireStableTextBeforeTranslation { get; }
@@ -29,4 +31,6 @@ public sealed class TranslationPipelineRunOptions
     public TimeSpan StableTextInterval { get; }
 
     public bool PreservePreviousOverlayWhileWaitingForStableText { get; }
+
+    public bool RestorePreviousOverlayAfterCapture { get; }
 }

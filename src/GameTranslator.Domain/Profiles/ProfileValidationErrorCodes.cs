@@ -8,6 +8,8 @@ public static class ProfileValidationErrorCodes
 
     public const string InvalidOcrZoneBounds = "profile.ocrZone.bounds.invalid";
 
+    public const string InvalidOcrZoneTextStyle = "profile.ocrZone.textStyle.invalid";
+
     public const string OverlappingOcrZones = "profile.ocrZone.overlap";
 
     public const string InvalidOcrSettings = "profile.ocr.settings.invalid";

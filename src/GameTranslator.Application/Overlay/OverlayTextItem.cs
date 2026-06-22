@@ -1,8 +1,16 @@
+using GameTranslator.Domain.Profiles;
+
 namespace GameTranslator.Application.Overlay;
 
 public sealed class OverlayTextItem
 {
-    public OverlayTextItem(string text, int x, int y, int width, int height)
+    public OverlayTextItem(
+        string text,
+        int x,
+        int y,
+        int width,
+        int height,
+        OcrZoneTextStyle? textStyle = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(text);
 
@@ -31,6 +39,7 @@ public sealed class OverlayTextItem
         Y = y;
         Width = width;
         Height = height;
+        TextStyle = textStyle ?? OcrZoneTextStyle.Default;
     }
 
     public string Text { get; }
@@ -42,4 +51,6 @@ public sealed class OverlayTextItem
     public int Width { get; }
 
     public int Height { get; }
+
+    public OcrZoneTextStyle TextStyle { get; }
 }

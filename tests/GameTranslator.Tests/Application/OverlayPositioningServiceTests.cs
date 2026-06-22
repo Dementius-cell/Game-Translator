@@ -184,6 +184,40 @@ public sealed class OverlayPositioningServiceTests
     }
 
     [Fact]
+    public void CreateSnapshot_WithExpandedTextStyle_CentersExpandedTextAroundSourceBounds()
+    {
+        var service = new OverlayPositioningService();
+        var textStyle = new OcrZoneTextStyle
+        {
+            FontFamily = "Arial",
+            FontSize = 20,
+            IsBold = false,
+            IsItalic = true,
+            LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter,
+        };
+        var result = CreateResult(
+            new CaptureRegion(100, 200, 200, 80),
+            inputWidth: 100,
+            inputHeight: 40,
+            new OcrTextBlock("Bonjour", new BoundingBox(10, 5, 20, 10)));
+
+        var snapshot = service.CreateSnapshot(result, ShownAt, previousSnapshot: null, textStyle);
+
+        var item = Assert.Single(snapshot.TextItems);
+        Assert.Equal("Bonjour", item.Text);
+        Assert.Equal(textStyle, item.TextStyle);
+        Assert.True(item.Width > 40);
+        Assert.True(item.Height > 20);
+        Assert.Equal(140d, item.X + item.Width / 2d, precision: 0);
+        Assert.Equal(220d, item.Y + item.Height / 2d, precision: 0);
+        var mask = Assert.Single(snapshot.MaskItems);
+        Assert.Equal(item.X, mask.X);
+        Assert.Equal(item.Y, mask.Y);
+        Assert.Equal(item.Width, mask.Width);
+        Assert.Equal(item.Height, mask.Height);
+    }
+
+    [Fact]
     public void CreateSnapshot_WhenPaddingWouldMoveMaskOffScreen_ClampsMaskOrigin()
     {
         var service = new OverlayPositioningService();

@@ -80,6 +80,31 @@ public sealed class ProfileValidatorTests
         Assert.True(result.IsValid);
     }
 
+    [Fact]
+    public void Validate_WhenOcrZoneTextStyleIsInvalid_ReturnsInvalidTextStyleError()
+    {
+        var profile = CreateValidProfile() with
+        {
+            OcrZones = new[]
+            {
+                CreateZone("dialog", new AbsoluteRectangle(10, 10, 120, 40)) with
+                {
+                    TextStyle = new OcrZoneTextStyle
+                    {
+                        FontFamily = string.Empty,
+                        FontSize = 200,
+                        LayoutMode = (OverlayTextLayoutMode)999,
+                    },
+                },
+            },
+        };
+
+        var result = validator.Validate(profile);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Code == ProfileValidationErrorCodes.InvalidOcrZoneTextStyle);
+    }
+
 
 
     [Fact]

@@ -24,6 +24,7 @@ public partial class OverlayWindow : Window
     private const double PreviewPadding = 2;
     private const double MinReadableItemWidth = 40;
     private const double MinReadableItemHeight = 16;
+    private const double ExpandedTextHorizontalPadding = 8;
     private static readonly nint HtTransparent = new(-1);
 
     public OverlayWindow()
@@ -195,13 +196,28 @@ public partial class OverlayWindow : Window
 
     private sealed class OverlayWindowTextItemViewModel
     {
-        private OverlayWindowTextItemViewModel(string text, double x, double y, double width, double height)
+        private OverlayWindowTextItemViewModel(
+            string text,
+            double x,
+            double y,
+            double width,
+            double height,
+            string fontFamily,
+            double fontSize,
+            FontWeight fontWeight,
+            FontStyle fontStyle,
+            bool usesExpandedLayout)
         {
             Text = text;
             X = x;
             Y = y;
             Width = width;
             Height = height;
+            FontFamily = fontFamily;
+            FontSize = fontSize;
+            FontWeight = fontWeight;
+            FontStyle = fontStyle;
+            UsesExpandedLayout = usesExpandedLayout;
         }
 
         public string Text { get; }
@@ -213,6 +229,20 @@ public partial class OverlayWindow : Window
         public double Width { get; }
 
         public double Height { get; }
+
+        public double ContentWidth => Math.Max(1, Width - ExpandedTextHorizontalPadding);
+
+        public string FontFamily { get; }
+
+        public double FontSize { get; }
+
+        public FontWeight FontWeight { get; }
+
+        public FontStyle FontStyle { get; }
+
+        public bool UsesExpandedLayout { get; }
+
+        public bool UsesFitToSourceBounds => !UsesExpandedLayout;
 
         public static OverlayWindowTextItemViewModel FromDevicePixels(
             OverlayTextItem item,
@@ -230,7 +260,17 @@ public partial class OverlayWindow : Window
                 Math.Max(0, topLeft.X - (width - rawWidth) / 2),
                 Math.Max(0, topLeft.Y - (height - rawHeight) / 2),
                 width,
-                height);
+                height,
+                string.IsNullOrWhiteSpace(item.TextStyle.FontFamily)
+                    ? OcrZoneTextStyle.DefaultFontFamily
+                    : item.TextStyle.FontFamily,
+                Math.Clamp(
+                    item.TextStyle.FontSize,
+                    OcrZoneTextStyle.MinimumFontSize,
+                    OcrZoneTextStyle.MaximumFontSize),
+                item.TextStyle.IsBold ? FontWeights.Bold : FontWeights.Normal,
+                item.TextStyle.IsItalic ? FontStyles.Italic : FontStyles.Normal,
+                item.TextStyle.LayoutMode == OverlayTextLayoutMode.ExpandFromSourceCenter);
         }
     }
 

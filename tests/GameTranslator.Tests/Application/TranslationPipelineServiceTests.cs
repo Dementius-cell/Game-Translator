@@ -363,6 +363,48 @@ public sealed class TranslationPipelineServiceTests
     }
 
     [Fact]
+    public async Task RunAllZonesAsync_WhenRestorePreviousOverlayAfterCapture_RestoresOverlayDuringOcrAndTranslation()
+    {
+        var zone = CreateZone();
+        var profile = CreateProfile(zone);
+        var previousSnapshot = new OverlaySnapshot(
+            new[] { new OverlayTextItem("Previous translation", 1, 2, 30, 12) },
+            FrameTime);
+        var overlay = new FakeOverlayService();
+        overlay.Show(previousSnapshot);
+        var frameSource = new FakeCaptureFrameSource
+        {
+            OnCapture = () => Assert.False(overlay.IsVisible),
+        };
+        var ocrEngine = new FakeOcrEngine
+        {
+            BlocksFactory = _ =>
+            {
+                Assert.True(overlay.IsVisible);
+                Assert.Same(previousSnapshot, overlay.CurrentSnapshot);
+
+                return new[]
+                {
+                    new OcrTextBlock("Hello", new BoundingBox(4, 5, 24, 10)),
+                };
+            },
+        };
+        var service = CreateService(
+            frameSource,
+            ocrEngine,
+            new FakeTranslatorProvider("Google", new[] { "New translation" }),
+            overlay);
+        var runOptions = new TranslationPipelineRunOptions(
+            restorePreviousOverlayAfterCapture: true);
+
+        var result = await service.RunAllZonesAsync(profile, previousSnapshot, runOptions);
+
+        Assert.Equal(new[] { "Show:1", "Hide", "Show:1", "Show:1" }, overlay.Events);
+        Assert.Same(result.OverlaySnapshot, overlay.CurrentSnapshot);
+        Assert.Equal("New translation", Assert.Single(result.OverlaySnapshot.TextItems).Text);
+    }
+
+    [Fact]
     public async Task RunAllZonesAsync_WhenProfileHasMultipleZones_ProcessesEachZoneAndShowsCombinedOverlay()
     {
         var firstZone = CreateZone("zone-a", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
@@ -606,6 +648,8 @@ public sealed class TranslationPipelineServiceTests
 
         public IReadOnlyList<DateTimeOffset> CapturedAtFrames { get; init; } = Array.Empty<DateTimeOffset>();
 
+        public Action? OnCapture { get; init; }
+
         public Task<CapturedFrame> CaptureAsync(CaptureRegion region, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -616,6 +660,7 @@ public sealed class TranslationPipelineServiceTests
 
             var captureIndex = captureCount++;
             CapturedRegions.Add(region);
+            OnCapture?.Invoke();
             var stride = checked(region.Width * 4);
             var byteCount = checked(stride * region.Height);
             var pixels = captureIndex < PixelFrames.Count
@@ -757,15 +802,19 @@ public sealed class TranslationPipelineServiceTests
 
         public OverlaySnapshot? CurrentSnapshot { get; private set; }
 
+        public List<string> Events { get; } = new();
+
         public void Show(OverlaySnapshot snapshot)
         {
             CurrentSnapshot = snapshot;
             IsVisible = true;
+            Events.Add($"Show:{snapshot.TextItems.Count}");
         }
 
         public void Hide()
         {
             IsVisible = false;
+            Events.Add("Hide");
         }
     }
 

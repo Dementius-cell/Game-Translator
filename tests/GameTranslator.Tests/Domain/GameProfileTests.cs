@@ -27,6 +27,7 @@ public sealed class GameProfileTests
 
         Assert.Equal(new AbsoluteRectangle(100, 200, 640, 160), zone.AbsoluteBounds);
         Assert.Equal(new RelativeRectangle(0.1, 0.2, 0.5, 0.15), zone.RelativeBounds);
+        Assert.Equal(OcrZoneTextStyle.Default, zone.TextStyle);
     }
 
     [Fact]

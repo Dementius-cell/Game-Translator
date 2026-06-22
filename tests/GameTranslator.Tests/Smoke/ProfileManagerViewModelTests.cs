@@ -135,6 +135,13 @@ public sealed class ProfileManagerViewModelTests
         SetPropertyValue(viewModel, "OverlayOpacity", 0.55);
         SetPropertyValue(viewModel, "OverlayPadding", 10d);
         InvokeMethod(viewModel, "AddZone");
+        var selectedZone = GetPropertyValue(viewModel, "SelectedZone")
+            ?? throw new InvalidOperationException("Selected zone was not created.");
+        SetPropertyValue(selectedZone, "OverlayFontFamily", "Arial");
+        SetPropertyValue(selectedZone, "OverlayFontSize", 20d);
+        SetPropertyValue(selectedZone, "OverlayIsBold", false);
+        SetPropertyValue(selectedZone, "OverlayIsItalic", true);
+        SetPropertyValue(selectedZone, "OverlayCanExpandBeyondSource", true);
 
         Assert.Equal("Draft shell", settings.GetValue<string>("shell.draft.profile.name"));
         Assert.Equal("Persistent draft", settings.GetValue<string>("shell.draft.profile.description"));
@@ -146,7 +153,12 @@ public sealed class ProfileManagerViewModelTests
         Assert.Equal("#303030", settings.GetValue<string>("shell.draft.overlay.maskColor"));
         Assert.Equal(0.55, settings.GetValue<double>("shell.draft.overlay.opacity"));
         Assert.Equal(10d, settings.GetValue<double>("shell.draft.overlay.padding"));
-        Assert.Single(settings.GetValue<OcrZone[]>("shell.draft.ocrZones") ?? Array.Empty<OcrZone>());
+        var persistedZone = Assert.Single(settings.GetValue<OcrZone[]>("shell.draft.ocrZones") ?? Array.Empty<OcrZone>());
+        Assert.Equal("Arial", persistedZone.TextStyle.FontFamily);
+        Assert.Equal(20d, persistedZone.TextStyle.FontSize);
+        Assert.False(persistedZone.TextStyle.IsBold);
+        Assert.True(persistedZone.TextStyle.IsItalic);
+        Assert.Equal(OverlayTextLayoutMode.ExpandFromSourceCenter, persistedZone.TextStyle.LayoutMode);
         Assert.Equal(
             GetPropertyValue(GetPropertyValue(viewModel, "SelectedZone")!, "Id"),
             settings.GetValue<string>("shell.draft.selectedZoneId"));
@@ -1335,6 +1347,15 @@ public sealed class ProfileManagerViewModelTests
         ConfigureValidDraftProfile(viewModel, "Pipeline draft");
         InvokeMethodWithArguments(viewModel, "StartZoneSelection", 10d, 20d);
         InvokeMethodWithArguments(viewModel, "CompleteZoneSelection", 110d, 70d);
+        var selectedZone = GetPropertyValue(viewModel, "SelectedZone")
+            ?? throw new InvalidOperationException("Selected zone was not created.");
+        SetPropertyValue(selectedZone, "AbsoluteX", 300);
+        SetPropertyValue(selectedZone, "AbsoluteY", 200);
+        SetPropertyValue(selectedZone, "AbsoluteWidth", 300);
+        SetPropertyValue(selectedZone, "AbsoluteHeight", 150);
+        SetPropertyValue(selectedZone, "OverlayFontFamily", "Arial");
+        SetPropertyValue(selectedZone, "OverlayFontSize", 20d);
+        SetPropertyValue(selectedZone, "OverlayCanExpandBeyondSource", true);
 
         await InvokeTaskMethodAsync(viewModel, "RunTranslationPipelineAsync");
 
@@ -1343,10 +1364,13 @@ public sealed class ProfileManagerViewModelTests
         Assert.True(overlay.IsVisible);
         var overlayItem = Assert.Single(overlay.CurrentSnapshot!.TextItems);
         Assert.Equal("Translated subtitle", overlayItem.Text);
-        Assert.Equal(30, overlayItem.X);
-        Assert.Equal(60, overlayItem.Y);
-        Assert.Equal(40, overlayItem.Width);
-        Assert.Equal(12, overlayItem.Height);
+        Assert.Equal(320d, overlayItem.X + overlayItem.Width / 2d, precision: 0);
+        Assert.Equal(206d, overlayItem.Y + overlayItem.Height / 2d, precision: 0);
+        Assert.True(overlayItem.Width > 40);
+        Assert.True(overlayItem.Height > 12);
+        Assert.Equal("Arial", overlayItem.TextStyle.FontFamily);
+        Assert.Equal(20d, overlayItem.TextStyle.FontSize);
+        Assert.Equal(OverlayTextLayoutMode.ExpandFromSourceCenter, overlayItem.TextStyle.LayoutMode);
         Assert.Contains(
             "Full pipeline translated 1 text block(s)",
             GetPropertyValue(viewModel, "PipelineStatus")?.ToString(),

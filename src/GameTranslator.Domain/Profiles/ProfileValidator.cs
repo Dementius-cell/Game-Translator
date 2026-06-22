@@ -46,6 +46,8 @@ public sealed class ProfileValidator
                     ProfileValidationErrorCodes.InvalidOcrZoneBounds,
                     $"OCR zone '{zones[index].Name}' must have positive absolute width and height."));
             }
+
+            ValidateOcrZoneTextStyle(zones[index], errors);
         }
 
         for (var first = 0; first < zones.Count; first++)
@@ -59,6 +61,31 @@ public sealed class ProfileValidator
                         $"OCR zones '{zones[first].Name}' and '{zones[second].Name}' overlap."));
                 }
             }
+        }
+    }
+
+    private static void ValidateOcrZoneTextStyle(OcrZone zone, List<ProfileValidationError> errors)
+    {
+        var textStyle = zone.TextStyle ?? OcrZoneTextStyle.Default;
+        if (string.IsNullOrWhiteSpace(textStyle.FontFamily))
+        {
+            errors.Add(new ProfileValidationError(
+                ProfileValidationErrorCodes.InvalidOcrZoneTextStyle,
+                $"OCR zone '{zone.Name}' text style font family is required."));
+        }
+
+        if (textStyle.FontSize is < OcrZoneTextStyle.MinimumFontSize or > OcrZoneTextStyle.MaximumFontSize)
+        {
+            errors.Add(new ProfileValidationError(
+                ProfileValidationErrorCodes.InvalidOcrZoneTextStyle,
+                $"OCR zone '{zone.Name}' text style font size must be between {OcrZoneTextStyle.MinimumFontSize:0} and {OcrZoneTextStyle.MaximumFontSize:0}."));
+        }
+
+        if (!Enum.IsDefined(textStyle.LayoutMode))
+        {
+            errors.Add(new ProfileValidationError(
+                ProfileValidationErrorCodes.InvalidOcrZoneTextStyle,
+                $"OCR zone '{zone.Name}' text style layout mode is not supported."));
         }
     }
 

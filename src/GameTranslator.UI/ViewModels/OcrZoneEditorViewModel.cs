@@ -23,6 +23,11 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
     private double relativeY;
     private double relativeWidth = 0.25;
     private double relativeHeight = 0.05;
+    private string overlayFontFamily = OcrZoneTextStyle.DefaultFontFamily;
+    private double overlayFontSize = OcrZoneTextStyle.DefaultFontSize;
+    private bool overlayIsBold = true;
+    private bool overlayIsItalic;
+    private bool overlayCanExpandBeyondSource;
 
     public string Id
     {
@@ -154,6 +159,68 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         }
     }
 
+    public string OverlayFontFamily
+    {
+        get => overlayFontFamily;
+        set
+        {
+            if (SetProperty(ref overlayFontFamily, value))
+            {
+                NotifyDerivedPropertiesChanged();
+                Validate();
+            }
+        }
+    }
+
+    public double OverlayFontSize
+    {
+        get => overlayFontSize;
+        set
+        {
+            if (SetProperty(ref overlayFontSize, value))
+            {
+                NotifyDerivedPropertiesChanged();
+                Validate();
+            }
+        }
+    }
+
+    public bool OverlayIsBold
+    {
+        get => overlayIsBold;
+        set
+        {
+            if (SetProperty(ref overlayIsBold, value))
+            {
+                NotifyDerivedPropertiesChanged();
+            }
+        }
+    }
+
+    public bool OverlayIsItalic
+    {
+        get => overlayIsItalic;
+        set
+        {
+            if (SetProperty(ref overlayIsItalic, value))
+            {
+                NotifyDerivedPropertiesChanged();
+            }
+        }
+    }
+
+    public bool OverlayCanExpandBeyondSource
+    {
+        get => overlayCanExpandBeyondSource;
+        set
+        {
+            if (SetProperty(ref overlayCanExpandBeyondSource, value))
+            {
+                NotifyDerivedPropertiesChanged();
+            }
+        }
+    }
+
     public string DisplayName => string.IsNullOrWhiteSpace(Name) ? "Unnamed zone" : Name;
 
     public string AbsoluteBoundsSummary => $"X {AbsoluteX}  Y {AbsoluteY}  W {AbsoluteWidth}  H {AbsoluteHeight}";
@@ -180,6 +247,12 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
 
     public double SurfaceHandleY => Math.Max(0, SurfaceHeight - 10);
 
+    public string OverlayTextStyleSummary =>
+        $"{OverlayFontFamily} {OverlayFontSize:0.#}"
+        + (OverlayIsBold ? " bold" : string.Empty)
+        + (OverlayIsItalic ? " italic" : string.Empty)
+        + (OverlayCanExpandBeyondSource ? " expand" : " fit");
+
     public static OcrZoneEditorViewModel CreateDefault(int index)
     {
         return new OcrZoneEditorViewModel
@@ -202,6 +275,13 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
             RelativeY = zone.RelativeBounds.Y,
             RelativeWidth = zone.RelativeBounds.Width,
             RelativeHeight = zone.RelativeBounds.Height,
+            OverlayFontFamily = string.IsNullOrWhiteSpace(zone.TextStyle?.FontFamily)
+                ? OcrZoneTextStyle.DefaultFontFamily
+                : zone.TextStyle.FontFamily,
+            OverlayFontSize = zone.TextStyle?.FontSize ?? OcrZoneTextStyle.DefaultFontSize,
+            OverlayIsBold = zone.TextStyle?.IsBold ?? true,
+            OverlayIsItalic = zone.TextStyle?.IsItalic ?? false,
+            OverlayCanExpandBeyondSource = zone.TextStyle?.LayoutMode == OverlayTextLayoutMode.ExpandFromSourceCenter,
         };
     }
 
@@ -225,6 +305,18 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
             Name = Name.Trim(),
             AbsoluteBounds = new AbsoluteRectangle(AbsoluteX, AbsoluteY, AbsoluteWidth, AbsoluteHeight),
             RelativeBounds = new RelativeRectangle(RelativeX, RelativeY, RelativeWidth, RelativeHeight),
+            TextStyle = new OcrZoneTextStyle
+            {
+                FontFamily = string.IsNullOrWhiteSpace(OverlayFontFamily)
+                    ? OcrZoneTextStyle.DefaultFontFamily
+                    : OverlayFontFamily.Trim(),
+                FontSize = OverlayFontSize,
+                IsBold = OverlayIsBold,
+                IsItalic = OverlayIsItalic,
+                LayoutMode = OverlayCanExpandBeyondSource
+                    ? OverlayTextLayoutMode.ExpandFromSourceCenter
+                    : OverlayTextLayoutMode.FitToSourceBounds,
+            },
         };
     }
 
@@ -241,6 +333,11 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
             RelativeY = RelativeY,
             RelativeWidth = RelativeWidth,
             RelativeHeight = RelativeHeight,
+            OverlayFontFamily = OverlayFontFamily,
+            OverlayFontSize = OverlayFontSize,
+            OverlayIsBold = OverlayIsBold,
+            OverlayIsItalic = OverlayIsItalic,
+            OverlayCanExpandBeyondSource = OverlayCanExpandBeyondSource,
         };
     }
 
@@ -250,6 +347,16 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
             nameof(Name),
             string.IsNullOrWhiteSpace(Name)
                 ? new[] { "Zone name is required." }
+                : Array.Empty<string>());
+        SetErrors(
+            nameof(OverlayFontFamily),
+            string.IsNullOrWhiteSpace(OverlayFontFamily)
+                ? new[] { "Overlay font family is required." }
+                : Array.Empty<string>());
+        SetErrors(
+            nameof(OverlayFontSize),
+            OverlayFontSize is < OcrZoneTextStyle.MinimumFontSize or > OcrZoneTextStyle.MaximumFontSize
+                ? new[] { $"Overlay font size must be between {OcrZoneTextStyle.MinimumFontSize:0} and {OcrZoneTextStyle.MaximumFontSize:0}." }
                 : Array.Empty<string>());
 
         var absoluteErrors = new List<string>();
@@ -299,5 +406,6 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         OnPropertyChanged(nameof(SurfaceHeight));
         OnPropertyChanged(nameof(SurfaceHandleX));
         OnPropertyChanged(nameof(SurfaceHandleY));
+        OnPropertyChanged(nameof(OverlayTextStyleSummary));
     }
 }

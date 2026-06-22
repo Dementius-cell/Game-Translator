@@ -74,12 +74,13 @@ public sealed class MainViewModel : ValidatableObservableObject
         OcrOrientationMode.Vertical,
     };
 
-    private static readonly TimeSpan LiveTranslationPollingInterval = TimeSpan.FromMilliseconds(300);
+    private static readonly TimeSpan LiveTranslationPollingInterval = TimeSpan.FromMilliseconds(200);
 
     private static readonly TranslationPipelineRunOptions LiveTranslationRunOptions = new(
         requireStableTextBeforeTranslation: true,
-        stableTextInterval: TimeSpan.FromSeconds(1),
-        preservePreviousOverlayWhileWaitingForStableText: true);
+        stableTextInterval: TimeSpan.FromMilliseconds(450),
+        preservePreviousOverlayWhileWaitingForStableText: true,
+        restorePreviousOverlayAfterCapture: true);
 
     private readonly ProfileService profileService;
     private readonly ProfileExchangeService profileExchangeService;
@@ -98,6 +99,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private readonly GlobalHotkeyService globalHotkeyService;
     private readonly DebugMetricFormatter debugMetricFormatter;
     private readonly IDebugResourceMonitor debugResourceMonitor;
+    private readonly IReadOnlyList<string> installedFontFamilies = LoadInstalledFontFamilies();
 
     private string? pendingSelectedProfileId;
     private string? editingProfileId;
@@ -419,6 +421,8 @@ public sealed class MainViewModel : ValidatableObservableObject
     public IReadOnlyList<string> OcrEngines => SupportedOcrEngines;
 
     public IReadOnlyList<OcrOrientationMode> OcrOrientations => SupportedOcrOrientations;
+
+    public IReadOnlyList<string> InstalledFontFamilies => installedFontFamilies;
 
     public string OcrEngine
     {
@@ -1859,13 +1863,13 @@ public sealed class MainViewModel : ValidatableObservableObject
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                var overlayWasVisibleBeforeCapture = false;
                 OverlaySnapshot? overlaySnapshotBeforeCapture = null;
 
                 try
                 {
-                    overlayWasVisibleBeforeCapture = overlayService.IsVisible;
-                    overlaySnapshotBeforeCapture = await HideOverlayPreviewForCaptureAsync(notifyUi: false);
+                    overlaySnapshotBeforeCapture = overlayService.IsVisible
+                        ? overlayService.CurrentSnapshot
+                        : null;
 
                     var result = await translationPipelineService.RunAllZonesAsync(
                         profile,
@@ -1882,7 +1886,6 @@ public sealed class MainViewModel : ValidatableObservableObject
                 }
                 catch (TranslationPipelineException exception)
                 {
-                    RestoreOverlayPreviewAfterFailedCapture(overlayWasVisibleBeforeCapture, overlaySnapshotBeforeCapture);
                     logger.Error(exception, "Live translation pipeline failed.");
                     PipelineStatus = exception.Message;
                     StatusMessage = PipelineStatus;
@@ -1890,7 +1893,6 @@ public sealed class MainViewModel : ValidatableObservableObject
                 }
                 catch (Exception exception)
                 {
-                    RestoreOverlayPreviewAfterFailedCapture(overlayWasVisibleBeforeCapture, overlaySnapshotBeforeCapture);
                     logger.Error(exception, "Unexpected live translation pipeline failure.");
                     PipelineStatus = "Live translation failed. Check logs for details.";
                     StatusMessage = PipelineStatus;
@@ -3527,6 +3529,27 @@ public sealed class MainViewModel : ValidatableObservableObject
         ((AsyncRelayCommand)SaveTranslatorCredentialsCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)ValidateTranslatorCredentialsCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)DeleteTranslatorCredentialsCommand).RaiseCanExecuteChanged();
+    }
+
+    private static IReadOnlyList<string> LoadInstalledFontFamilies()
+    {
+        try
+        {
+            var fonts = Fonts.SystemFontFamilies
+                .Select(fontFamily => fontFamily.Source)
+                .Where(fontFamily => !string.IsNullOrWhiteSpace(fontFamily))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Order(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            return fonts.Length == 0
+                ? new[] { OcrZoneTextStyle.DefaultFontFamily }
+                : fonts;
+        }
+        catch
+        {
+            return new[] { OcrZoneTextStyle.DefaultFontFamily };
+        }
     }
 
     private sealed class UnavailableScreenRegionPickerService : IScreenRegionPickerService

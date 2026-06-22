@@ -9,4 +9,6 @@ public sealed record OcrZone
     public AbsoluteRectangle AbsoluteBounds { get; init; }
 
     public RelativeRectangle RelativeBounds { get; init; }
+
+    public OcrZoneTextStyle TextStyle { get; init; } = OcrZoneTextStyle.Default;
 }

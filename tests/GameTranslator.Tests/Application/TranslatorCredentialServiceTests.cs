@@ -54,6 +54,29 @@ public sealed class TranslatorCredentialServiceTests
         Assert.DoesNotContain("SECRET", exception.Message, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("WebAuto", "https://translate.googleapis.com/")]
+    [InlineData("GoogleWeb", "https://translate.googleapis.com/")]
+    [InlineData("BingWeb", "https://www.bing.com/")]
+    [InlineData("YandexWeb", "https://translate.yandex.net/")]
+    public async Task CreateCredentialsAsync_ForExperimentalWebProvider_DoesNotReadStoredSecrets(
+        string provider,
+        string endpoint)
+    {
+        var storage = new TestCredentialStorage();
+        var service = new TranslatorCredentialService(storage);
+
+        var isValid = await service.ValidateStoredAsync(provider);
+        var credentials = await service.CreateCredentialsAsync(provider);
+
+        Assert.True(isValid);
+        Assert.Equal("experimental-web-provider", credentials.AccessToken);
+        Assert.Equal(provider, credentials.ProjectId);
+        Assert.Equal("global", credentials.Location);
+        Assert.Equal(new Uri(endpoint), credentials.Endpoint);
+        Assert.Equal(0, storage.ReadCount);
+    }
+
     [Fact]
     public async Task SaveAsync_WhenStorageFails_RedactsSecretFromExceptionMessage()
     {
@@ -99,6 +122,8 @@ public sealed class TranslatorCredentialServiceTests
 
         public Exception? SaveException { get; init; }
 
+        public int ReadCount { get; private set; }
+
         public Task SaveAsync(
             TranslatorCredentialRecord credential,
             CancellationToken cancellationToken = default)
@@ -117,6 +142,7 @@ public sealed class TranslatorCredentialServiceTests
             string provider,
             CancellationToken cancellationToken = default)
         {
+            ReadCount++;
             records.TryGetValue(provider, out var credential);
 
             return Task.FromResult(credential);

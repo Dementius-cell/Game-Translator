@@ -557,7 +557,7 @@
                                         Grid.ColumnSpan="2"
                                         Margin="0,12,0,0"
                                         Foreground="#56616F"
-                                        Text="Common providers and language codes are prefilled, but values remain editable for future integrations." />
+                                        Text="Official providers use stored credentials. For beta tests without credentials, use WebAuto first; individual web providers are diagnostic and not release defaults." />
                                 </Grid>
                             </Border>
 
@@ -1220,12 +1220,28 @@
                                                             VerticalAlignment="Center"
                                                             Foreground="#56616F"
                                                             Text="{Binding OcrPreviewStatus}" />
+                                                        <Button
+                                                            Grid.Row="3"
+                                                            Grid.Column="0"
+                                                            Margin="0,10,0,0"
+                                                            Padding="12,6"
+                                                            Command="{Binding StartLiveTranslationCommand}"
+                                                            Content="Start live" />
+                                                        <Button
+                                                            Grid.Row="3"
+                                                            Grid.Column="1"
+                                                            Margin="8,10,0,0"
+                                                            Padding="12,6"
+                                                            Command="{Binding StopLiveTranslationCommand}"
+                                                            Content="Stop live" />
                                                         <TextBlock
                                                             Grid.Row="3"
-                                                            Grid.ColumnSpan="3"
-                                                            Margin="0,8,0,0"
+                                                            Grid.Column="2"
+                                                            Margin="12,10,0,0"
+                                                            VerticalAlignment="Center"
                                                             Foreground="#2A5D67"
-                                                            Text="{Binding PipelineStatus}" />
+                                                            Text="{Binding PipelineStatus}"
+                                                            TextWrapping="Wrap" />
                                                         <Button
                                                             Grid.Row="4"
                                                             Grid.Column="0"

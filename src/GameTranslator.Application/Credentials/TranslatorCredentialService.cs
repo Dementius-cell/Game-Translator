@@ -4,6 +4,14 @@ namespace GameTranslator.Application.Credentials;
 
 public sealed class TranslatorCredentialService
 {
+    private static readonly string[] CredentiallessProviders =
+    {
+        "WebAuto",
+        "GoogleWeb",
+        "BingWeb",
+        "YandexWeb",
+    };
+
     private readonly ICredentialStorage storage;
 
     public TranslatorCredentialService(ICredentialStorage storage)
@@ -62,6 +70,11 @@ public sealed class TranslatorCredentialService
         string provider,
         CancellationToken cancellationToken = default)
     {
+        if (!RequiresStoredCredentials(provider))
+        {
+            return true;
+        }
+
         var record = await ReadAsync(provider, cancellationToken);
 
         return record is not null
@@ -77,6 +90,12 @@ public sealed class TranslatorCredentialService
         CancellationToken cancellationToken = default)
     {
         var normalizedProvider = NormalizeProvider(provider);
+
+        if (!RequiresStoredCredentials(normalizedProvider))
+        {
+            return CreateCredentiallessCredentials(normalizedProvider);
+        }
+
         var record = await ReadAsync(normalizedProvider, cancellationToken);
 
         if (record is null)
@@ -93,6 +112,11 @@ public sealed class TranslatorCredentialService
         CancellationToken cancellationToken = default)
     {
         var normalizedProvider = NormalizeProvider(provider);
+
+        if (!RequiresStoredCredentials(normalizedProvider))
+        {
+            return;
+        }
 
         try
         {
@@ -116,8 +140,17 @@ public sealed class TranslatorCredentialService
         {
             "Azure" => "https://api.cognitive.microsofttranslator.com",
             "Yandex" => "https://translate.api.cloud.yandex.net",
+            "WebAuto" => "https://translate.googleapis.com",
+            "GoogleWeb" => "https://translate.googleapis.com",
+            "BingWeb" => "https://www.bing.com",
+            "YandexWeb" => "https://translate.yandex.net",
             _ => "https://translation.googleapis.com",
         };
+    }
+
+    public static bool RequiresStoredCredentials(string provider)
+    {
+        return !CredentiallessProviders.Contains(NormalizeProvider(provider), StringComparer.OrdinalIgnoreCase);
     }
 
     public static string NormalizeProvider(string provider)
@@ -126,13 +159,17 @@ public sealed class TranslatorCredentialService
 
         var normalized = provider.Trim();
 
-        return normalized.Equals("google", StringComparison.OrdinalIgnoreCase)
-            ? "Google"
-            : normalized.Equals("azure", StringComparison.OrdinalIgnoreCase)
-                ? "Azure"
-                : normalized.Equals("yandex", StringComparison.OrdinalIgnoreCase)
-                    ? "Yandex"
-                    : normalized;
+        return normalized.ToLowerInvariant() switch
+        {
+            "google" => "Google",
+            "azure" => "Azure",
+            "yandex" => "Yandex",
+            "webauto" or "web-auto" or "web auto" => "WebAuto",
+            "googleweb" or "google-web" or "google web" => "GoogleWeb",
+            "bingweb" or "bing-web" or "bing web" => "BingWeb",
+            "yandexweb" or "yandex-web" or "yandex web" => "YandexWeb",
+            _ => normalized,
+        };
     }
 
     private static TranslatorCredentialRecord CreateRecord(
@@ -164,6 +201,15 @@ public sealed class TranslatorCredentialService
             projectId,
             normalizedLocation,
             endpointUri);
+    }
+
+    private static TranslatorCredentials CreateCredentiallessCredentials(string provider)
+    {
+        return new TranslatorCredentials(
+            "experimental-web-provider",
+            provider,
+            "global",
+            new Uri(GetDefaultEndpoint(provider)));
     }
 
     private static string Redact(string value, string secret)

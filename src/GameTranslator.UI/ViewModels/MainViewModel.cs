@@ -55,12 +55,30 @@ public sealed class MainViewModel : ValidatableObservableObject
         OcrSettings.TesseractEngineId,
     };
 
+    private static readonly string[] SupportedTranslatorProviders =
+    {
+        "Google",
+        "Azure",
+        "Yandex",
+        "WebAuto",
+        "GoogleWeb",
+        "BingWeb",
+        "YandexWeb",
+    };
+
     private static readonly OcrOrientationMode[] SupportedOcrOrientations =
     {
         OcrOrientationMode.Auto,
         OcrOrientationMode.Horizontal,
         OcrOrientationMode.Vertical,
     };
+
+    private static readonly TimeSpan LiveTranslationPollingInterval = TimeSpan.FromMilliseconds(300);
+
+    private static readonly TranslationPipelineRunOptions LiveTranslationRunOptions = new(
+        requireStableTextBeforeTranslation: true,
+        stableTextInterval: TimeSpan.FromSeconds(1),
+        preservePreviousOverlayWhileWaitingForStableText: true);
 
     private readonly ProfileService profileService;
     private readonly ProfileExchangeService profileExchangeService;
@@ -124,6 +142,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private int capturePreviewHeight;
     private string statusMessage = "Loading profiles...";
     private bool isBusy;
+    private bool isLiveTranslationRunning;
     private bool isLoaded;
     private bool isDebugOverlayEnabled;
     private bool suppressDraftStatePersistence;
@@ -137,6 +156,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private double zoneSelectionPreviewHeight;
     private int zoneResizeOriginalAbsoluteX;
     private int zoneResizeOriginalAbsoluteY;
+    private CancellationTokenSource? liveTranslationCancellation;
 
     public MainViewModel(
         ProfileService profileService,
@@ -183,7 +203,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         HotkeyBindings = new ObservableCollection<HotkeyBindingViewModel>();
         ValidationErrors = new ObservableCollection<string>();
         OverlayMaskModes = Enum.GetValues<OverlayMaskMode>();
-        TranslatorProviderOptions = new[] { "Google", "Azure", "Yandex" };
+        TranslatorProviderOptions = SupportedTranslatorProviders;
         LanguageOptions = new[] { "ja", "en", "ru", "ko", "zh-CN", "zh-TW" };
         BeginCreateProfileCommand = new RelayCommand(BeginCreateProfile, () => !IsBusy);
         RefreshProfilesCommand = new AsyncRelayCommand(RefreshProfilesAsync, () => !IsBusy);
@@ -202,6 +222,8 @@ public sealed class MainViewModel : ValidatableObservableObject
         MeasureCaptureRefreshCommand = new AsyncRelayCommand(MeasureCaptureRefreshAsync, CanRefreshCapturePreview);
         RecognizeOcrPreviewCommand = new AsyncRelayCommand(RecognizeOcrPreviewAsync, CanRecognizeOcrPreview);
         RunTranslationPipelineCommand = new AsyncRelayCommand(RunTranslationPipelineAsync, CanRunTranslationPipeline);
+        StartLiveTranslationCommand = new AsyncRelayCommand(StartLiveTranslationAsync, CanStartLiveTranslation);
+        StopLiveTranslationCommand = new RelayCommand(StopLiveTranslation, () => IsLiveTranslationRunning);
         CleanupTranslationCacheCommand = new AsyncRelayCommand(CleanupTranslationCacheAsync, () => !IsBusy);
         CheckForUpdatesCommand = new AsyncRelayCommand(CheckForUpdatesAsync, () => !IsBusy);
         ApplyGlobalHotkeysCommand = new RelayCommand(ApplyGlobalHotkeys, CanApplyGlobalHotkeys);
@@ -218,7 +240,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public string ApplicationName => "Game Translator";
 
-    public string CurrentStage => "Sprint 24";
+    public string CurrentStage => "Sprint 26";
 
     public double ZoneSurfaceWidth => OcrZoneEditorViewModel.PreviewSurfaceWidth;
 
@@ -639,6 +661,21 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public bool IsIdle => !IsBusy;
 
+    public bool IsLiveTranslationRunning
+    {
+        get => isLiveTranslationRunning;
+        private set
+        {
+            if (SetProperty(ref isLiveTranslationRunning, value))
+            {
+                OnPropertyChanged(nameof(IsLiveTranslationStopped));
+                NotifyCommandStateChanged();
+            }
+        }
+    }
+
+    public bool IsLiveTranslationStopped => !IsLiveTranslationRunning;
+
     public bool HasSelectedProfile => SelectedProfile is not null;
 
     public bool HasSelectedZone => SelectedZone is not null;
@@ -838,6 +875,10 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public ICommand RunTranslationPipelineCommand { get; }
 
+    public ICommand StartLiveTranslationCommand { get; }
+
+    public ICommand StopLiveTranslationCommand { get; }
+
     public ICommand CleanupTranslationCacheCommand { get; }
 
     public ICommand CheckForUpdatesCommand { get; }
@@ -858,6 +899,19 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public async Task SaveTranslatorCredentialsAsync()
     {
+        if (!CanSelectTranslatorProvider())
+        {
+            TranslatorCredentialStatus = "Select a translator provider to save credentials.";
+            return;
+        }
+
+        if (!TranslatorCredentialService.RequiresStoredCredentials(TranslatorProvider))
+        {
+            TranslatorCredentialStatus = $"{TranslatorCredentialService.NormalizeProvider(TranslatorProvider)} is experimental and does not use stored credentials.";
+            StatusMessage = TranslatorCredentialStatus;
+            return;
+        }
+
         if (!CanSaveTranslatorCredentials())
         {
             TranslatorCredentialStatus = "Translator credential fields are incomplete.";
@@ -914,6 +968,16 @@ public sealed class MainViewModel : ValidatableObservableObject
 
         try
         {
+            if (!TranslatorCredentialService.RequiresStoredCredentials(TranslatorProvider))
+            {
+                var provider = TranslatorCredentialService.NormalizeProvider(TranslatorProvider);
+                TranslatorCredentialEndpoint = TranslatorCredentialService.GetDefaultEndpoint(provider);
+                TranslatorCredentialSecret = string.Empty;
+                HasStoredTranslatorCredentials = true;
+                TranslatorCredentialStatus = $"{provider} is experimental and does not use stored credentials.";
+                return;
+            }
+
             var record = await credentialService.ReadAsync(TranslatorProvider);
             if (record is null)
             {
@@ -952,6 +1016,15 @@ public sealed class MainViewModel : ValidatableObservableObject
         if (!CanSelectTranslatorProvider())
         {
             TranslatorCredentialStatus = "Select a translator provider to delete credentials.";
+            return;
+        }
+
+        if (!TranslatorCredentialService.RequiresStoredCredentials(TranslatorProvider))
+        {
+            TranslatorCredentialSecret = string.Empty;
+            HasStoredTranslatorCredentials = true;
+            TranslatorCredentialStatus = $"{TranslatorCredentialService.NormalizeProvider(TranslatorProvider)} is experimental and does not store credentials.";
+            StatusMessage = TranslatorCredentialStatus;
             return;
         }
 
@@ -1616,42 +1689,7 @@ public sealed class MainViewModel : ValidatableObservableObject
                 profile,
                 overlaySnapshotBeforeCapture);
 
-            var previewEntries = CreateBatchOcrPreviewEntries(result, profile);
-            var previewEntry = SelectBatchOcrPreviewEntry(previewEntries);
-            if (previewEntry is not null)
-            {
-                var recognizedBlockCount = previewEntries.Sum(entry => entry.SourceOcrResult.TextBlocks.Count);
-                UpdateCapturePreview(previewEntry.CapturedFrame);
-                latestOcrPreviewResult = previewEntry.SourceOcrResult;
-                ReplaceBatchOcrPreviewTextBlocks(previewEntries, previewEntry.ZoneId);
-                CapturePreviewStatus = $"Captured {previewEntry.CapturedFrame.Width}x{previewEntry.CapturedFrame.Height} for '{previewEntry.ZoneName}' at {previewEntry.CapturedFrame.CapturedAt:HH:mm:ss}.";
-                OcrPreviewStatus = recognizedBlockCount == 0
-                    ? $"No text recognized across {previewEntries.Count} OCR zone(s)."
-                    : $"Recognized {recognizedBlockCount} text block(s) across {previewEntries.Count} OCR zone(s). Preview image shows '{previewEntry.ZoneName}'.";
-            }
-            else
-            {
-                latestOcrPreviewResult = null;
-                ReplaceOcrPreviewTextBlocks(Array.Empty<OcrTextBlock>());
-                CapturePreviewStatus = "No OCR zone captured successfully.";
-                OcrPreviewStatus = "No OCR results available.";
-            }
-
-            var overlaySnapshot = IsDebugOverlayEnabled
-                ? CreateDebugOverlaySnapshot(result.OverlaySnapshot, result)
-                : result.OverlaySnapshot;
-            if (IsDebugOverlayEnabled)
-            {
-                overlayService.Show(overlaySnapshot);
-            }
-
-            OverlayPreviewStatus = IsDebugOverlayEnabled
-                ? $"Full pipeline debug overlay shown with {overlaySnapshot.DebugItems.Count} OCR box(es)."
-                : $"Full pipeline overlay shown with {result.OverlaySnapshot.TextItems.Count} translated text item(s).";
-            PipelineStatus = CreateBatchPipelineStatus(result);
-            StatusMessage = PipelineStatus;
-            OnPropertyChanged(nameof(IsOverlayPreviewVisible));
-            NotifyCommandStateChanged();
+            ApplyBatchPipelineResult(profile, result, isLiveMode: false);
             logger.Information($"Full pipeline completed for profile '{profile.Name}' across {result.SucceededZoneCount}/{result.TotalZoneCount} OCR zones.");
         }
         catch (TranslationPipelineException exception)
@@ -1681,6 +1719,125 @@ public sealed class MainViewModel : ValidatableObservableObject
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    public async Task StartLiveTranslationAsync()
+    {
+        RefreshValidationState();
+        if (IsLiveTranslationRunning)
+        {
+            PipelineStatus = "Live translation is already running.";
+            StatusMessage = PipelineStatus;
+            return;
+        }
+
+        if (OcrZones.Count == 0)
+        {
+            PipelineStatus = "Add at least one OCR zone before starting live translation.";
+            StatusMessage = PipelineStatus;
+            return;
+        }
+
+        if (HasValidationErrors)
+        {
+            PipelineStatus = ValidationErrors[0];
+            StatusMessage = PipelineStatus;
+            return;
+        }
+
+        var profile = BuildProfileFromEditor();
+        var cancellationSource = new CancellationTokenSource();
+        liveTranslationCancellation = cancellationSource;
+        IsLiveTranslationRunning = true;
+        PipelineStatus = $"Live translation running for {profile.OcrZones.Count} OCR zone(s). Waiting for stable text...";
+        StatusMessage = PipelineStatus;
+        _ = RunLiveTranslationLoopAsync(profile, cancellationSource);
+
+        await Task.Yield();
+    }
+
+    public void StopLiveTranslation()
+    {
+        if (!IsLiveTranslationRunning || liveTranslationCancellation is null)
+        {
+            return;
+        }
+
+        PipelineStatus = "Stopping live translation...";
+        StatusMessage = PipelineStatus;
+        liveTranslationCancellation.Cancel();
+        NotifyCommandStateChanged();
+    }
+
+    private async Task RunLiveTranslationLoopAsync(GameProfile profile, CancellationTokenSource cancellationSource)
+    {
+        var cancellationToken = cancellationSource.Token;
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var overlayWasVisibleBeforeCapture = false;
+                OverlaySnapshot? overlaySnapshotBeforeCapture = null;
+
+                try
+                {
+                    overlayWasVisibleBeforeCapture = overlayService.IsVisible;
+                    overlaySnapshotBeforeCapture = await HideOverlayPreviewForCaptureAsync(notifyUi: false);
+
+                    var result = await translationPipelineService.RunAllZonesAsync(
+                        profile,
+                        overlaySnapshotBeforeCapture,
+                        LiveTranslationRunOptions,
+                        cancellationToken);
+
+                    ApplyBatchPipelineResult(profile, result, isLiveMode: true);
+                    await Task.Delay(LiveTranslationPollingInterval, cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (TranslationPipelineException exception)
+                {
+                    RestoreOverlayPreviewAfterFailedCapture(overlayWasVisibleBeforeCapture, overlaySnapshotBeforeCapture);
+                    logger.Error(exception, "Live translation pipeline failed.");
+                    PipelineStatus = exception.Message;
+                    StatusMessage = PipelineStatus;
+                    await DelayAfterLiveTranslationFailureAsync(cancellationToken);
+                }
+                catch (Exception exception)
+                {
+                    RestoreOverlayPreviewAfterFailedCapture(overlayWasVisibleBeforeCapture, overlaySnapshotBeforeCapture);
+                    logger.Error(exception, "Unexpected live translation pipeline failure.");
+                    PipelineStatus = "Live translation failed. Check logs for details.";
+                    StatusMessage = PipelineStatus;
+                    await DelayAfterLiveTranslationFailureAsync(cancellationToken);
+                }
+            }
+        }
+        finally
+        {
+            if (ReferenceEquals(liveTranslationCancellation, cancellationSource))
+            {
+                liveTranslationCancellation.Dispose();
+                liveTranslationCancellation = null;
+                IsLiveTranslationRunning = false;
+                PipelineStatus = "Live translation stopped.";
+                StatusMessage = PipelineStatus;
+                NotifyCommandStateChanged();
+            }
+        }
+    }
+
+    private static async Task DelayAfterLiveTranslationFailureAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
         }
     }
 
@@ -1842,13 +1999,19 @@ public sealed class MainViewModel : ValidatableObservableObject
         switch (action)
         {
             case GlobalHotkeyAction.StartPausePipeline:
+                if (IsLiveTranslationRunning)
+                {
+                    StopLiveTranslation();
+                    return;
+                }
+
                 if (IsBusy)
                 {
                     StatusMessage = "Pipeline hotkey received while an operation is already running.";
                     return;
                 }
 
-                await RunTranslationPipelineAsync();
+                await StartLiveTranslationAsync();
                 break;
             case GlobalHotkeyAction.RecognizeOcrPreview:
                 if (IsBusy)
@@ -1897,7 +2060,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         StatusMessage = "Settings hotkey focused the main window.";
     }
 
-    private async Task<OverlaySnapshot?> HideOverlayPreviewForCaptureAsync()
+    private async Task<OverlaySnapshot?> HideOverlayPreviewForCaptureAsync(bool notifyUi = true)
     {
         if (!overlayService.IsVisible)
         {
@@ -1906,8 +2069,12 @@ public sealed class MainViewModel : ValidatableObservableObject
 
         var snapshot = overlayService.CurrentSnapshot;
         overlayService.Hide();
-        OnPropertyChanged(nameof(IsOverlayPreviewVisible));
-        NotifyCommandStateChanged();
+        if (notifyUi)
+        {
+            OnPropertyChanged(nameof(IsOverlayPreviewVisible));
+            NotifyCommandStateChanged();
+        }
+
         await Task.Yield();
         return snapshot;
     }
@@ -1981,6 +2148,57 @@ public sealed class MainViewModel : ValidatableObservableObject
                 new OverlayTextItem("Click-through smoke text", 120, 212, 420, 64),
             },
             shownAt);
+    }
+
+    private void ApplyBatchPipelineResult(
+        GameProfile profile,
+        TranslationPipelineBatchResult result,
+        bool isLiveMode)
+    {
+        var previewEntries = CreateBatchOcrPreviewEntries(result, profile);
+        var previewEntry = SelectBatchOcrPreviewEntry(previewEntries);
+        if (previewEntry is not null)
+        {
+            var recognizedBlockCount = previewEntries.Sum(entry => entry.SourceOcrResult.TextBlocks.Count);
+            UpdateCapturePreview(previewEntry.CapturedFrame);
+            latestOcrPreviewResult = previewEntry.SourceOcrResult;
+            ReplaceBatchOcrPreviewTextBlocks(previewEntries, previewEntry.ZoneId);
+            CapturePreviewStatus = $"Captured {previewEntry.CapturedFrame.Width}x{previewEntry.CapturedFrame.Height} for '{previewEntry.ZoneName}' at {previewEntry.CapturedFrame.CapturedAt:HH:mm:ss}.";
+            OcrPreviewStatus = recognizedBlockCount == 0
+                ? $"No text recognized across {previewEntries.Count} OCR zone(s)."
+                : $"Recognized {recognizedBlockCount} text block(s) across {previewEntries.Count} OCR zone(s). Preview image shows '{previewEntry.ZoneName}'.";
+        }
+        else
+        {
+            latestOcrPreviewResult = null;
+            ReplaceOcrPreviewTextBlocks(Array.Empty<OcrTextBlock>());
+            CapturePreviewStatus = "No OCR zone captured successfully.";
+            OcrPreviewStatus = "No OCR results available.";
+        }
+
+        var overlaySnapshot = IsDebugOverlayEnabled
+            ? CreateDebugOverlaySnapshot(result.OverlaySnapshot, result)
+            : result.OverlaySnapshot;
+        if (IsDebugOverlayEnabled)
+        {
+            overlayService.Show(overlaySnapshot);
+        }
+
+        var isWaitingForStableText = isLiveMode
+            && result.RecognizedBlockCount > 0
+            && result.TranslatedBlockCount == 0
+            && result.SkippedTranslationCount > 0;
+        OverlayPreviewStatus = isWaitingForStableText
+            ? "Live translation waiting for stable OCR text; keeping previous overlay."
+            : IsDebugOverlayEnabled
+                ? $"{(isLiveMode ? "Live translation" : "Full pipeline")} debug overlay shown with {overlaySnapshot.DebugItems.Count} OCR box(es)."
+                : $"{(isLiveMode ? "Live translation" : "Full pipeline")} overlay shown with {result.OverlaySnapshot.TextItems.Count} translated text item(s).";
+        PipelineStatus = isLiveMode
+            ? CreateLivePipelineStatus(result)
+            : CreateBatchPipelineStatus(result);
+        StatusMessage = PipelineStatus;
+        OnPropertyChanged(nameof(IsOverlayPreviewVisible));
+        NotifyCommandStateChanged();
     }
 
 
@@ -2106,6 +2324,29 @@ public sealed class MainViewModel : ValidatableObservableObject
         string ZoneName,
         CapturedFrame CapturedFrame,
         OcrResult SourceOcrResult);
+
+    private static string CreateLivePipelineStatus(TranslationPipelineBatchResult result)
+    {
+        if (result.SucceededZoneCount == 0)
+        {
+            var firstFailure = result.ZoneFailures.FirstOrDefault();
+            return firstFailure is null
+                ? "Live translation running: no OCR zones completed."
+                : $"Live translation waiting after '{firstFailure.ZoneName}' failed during {firstFailure.Stage}. {CreatePipelineFailureDetail(firstFailure)}";
+        }
+
+        var status = result.RecognizedBlockCount switch
+        {
+            0 => $"Live translation running across {result.SucceededZoneCount} OCR zone(s): no text recognized.",
+            _ when result.TranslatedBlockCount == 0 && result.SkippedTranslationCount > 0 =>
+                $"Live translation waiting for stable OCR text ({result.RecognizedBlockCount} text block(s) recognized).",
+            _ => $"Live translation updated {result.TranslatedBlockCount} translated text block(s) across {result.SucceededZoneCount} OCR zone(s).",
+        };
+
+        return result.HasFailures
+            ? $"{status} {result.FailedZoneCount} of {result.TotalZoneCount} zone(s) failed."
+            : status;
+    }
 
     private static string CreateBatchPipelineStatus(TranslationPipelineBatchResult result)
     {
@@ -2520,12 +2761,13 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     private bool CanRefreshCapturePreview()
     {
-        return !IsBusy && SelectedZone is not null;
+        return !IsBusy && !IsLiveTranslationRunning && SelectedZone is not null;
     }
 
     private bool CanRecognizeOcrPreview()
     {
         return !IsBusy
+            && !IsLiveTranslationRunning
             && SelectedZone is not null
             && !string.IsNullOrWhiteSpace(SourceLanguage);
     }
@@ -2533,6 +2775,18 @@ public sealed class MainViewModel : ValidatableObservableObject
     private bool CanRunTranslationPipeline()
     {
         return !IsBusy
+            && !IsLiveTranslationRunning
+            && OcrZones.Count > 0
+            && !string.IsNullOrWhiteSpace(TranslatorProvider)
+            && !string.IsNullOrWhiteSpace(SourceLanguage)
+            && !string.IsNullOrWhiteSpace(TargetLanguage)
+            && !string.IsNullOrWhiteSpace(OcrEngine);
+    }
+
+    private bool CanStartLiveTranslation()
+    {
+        return !IsBusy
+            && !IsLiveTranslationRunning
             && OcrZones.Count > 0
             && !string.IsNullOrWhiteSpace(TranslatorProvider)
             && !string.IsNullOrWhiteSpace(SourceLanguage)
@@ -2548,6 +2802,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private bool CanSaveTranslatorCredentials()
     {
         return CanSelectTranslatorProvider()
+            && TranslatorCredentialService.RequiresStoredCredentials(TranslatorProvider)
             && !string.IsNullOrWhiteSpace(TranslatorCredentialSecret)
             && !string.IsNullOrWhiteSpace(TranslatorCredentialProjectId)
             && !string.IsNullOrWhiteSpace(TranslatorCredentialEndpoint);
@@ -2575,14 +2830,24 @@ public sealed class MainViewModel : ValidatableObservableObject
             TranslatorCredentialLocation = "global";
         }
 
-        HasStoredTranslatorCredentials = false;
-        TranslatorCredentialStatus = "Translator credentials not checked.";
+        if (TranslatorCredentialService.RequiresStoredCredentials(TranslatorProvider))
+        {
+            HasStoredTranslatorCredentials = false;
+            TranslatorCredentialStatus = "Translator credentials not checked.";
+        }
+        else
+        {
+            TranslatorCredentialSecret = string.Empty;
+            HasStoredTranslatorCredentials = true;
+            TranslatorCredentialStatus = $"{TranslatorCredentialService.NormalizeProvider(TranslatorProvider)} is experimental and does not use stored credentials.";
+        }
+
         NotifyCommandStateChanged();
     }
 
     private static bool IsKnownDefaultTranslatorEndpoint(string endpoint)
     {
-        return new[] { "Google", "Azure", "Yandex" }
+        return SupportedTranslatorProviders
             .Select(TranslatorCredentialService.GetDefaultEndpoint)
             .Any(defaultEndpoint => string.Equals(
                 endpoint.Trim().TrimEnd('/'),
@@ -3137,6 +3402,8 @@ public sealed class MainViewModel : ValidatableObservableObject
         ((AsyncRelayCommand)MeasureCaptureRefreshCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)RecognizeOcrPreviewCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)RunTranslationPipelineCommand).RaiseCanExecuteChanged();
+        ((AsyncRelayCommand)StartLiveTranslationCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)StopLiveTranslationCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)CleanupTranslationCacheCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)CheckForUpdatesCommand).RaiseCanExecuteChanged();
         ((RelayCommand)ApplyGlobalHotkeysCommand).RaiseCanExecuteChanged();

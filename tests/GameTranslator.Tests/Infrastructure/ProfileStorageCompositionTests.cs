@@ -75,6 +75,22 @@ public sealed class ProfileStorageCompositionTests : IDisposable
             services,
             descriptor => descriptor.ServiceType == typeof(ITranslatorProvider)
                 && descriptor.ImplementationType == typeof(YandexTranslatorProvider));
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(ITranslatorProvider)
+                && descriptor.ImplementationType == typeof(WebAutoTranslatorProvider));
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(ITranslatorProvider)
+                && descriptor.ImplementationType == typeof(GoogleWebTranslatorProvider));
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(ITranslatorProvider)
+                && descriptor.ImplementationType == typeof(BingWebTranslatorProvider));
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(ITranslatorProvider)
+                && descriptor.ImplementationType == typeof(YandexWebTranslatorProvider));
     }
 
     [Fact]

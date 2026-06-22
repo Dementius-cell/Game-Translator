@@ -42,6 +42,10 @@ public sealed class InfrastructureServiceModule : IApplicationServiceModule
         services.AddSingleton<ITranslatorProvider, GoogleTranslatorProvider>();
         services.AddSingleton<ITranslatorProvider, AzureTranslatorProvider>();
         services.AddSingleton<ITranslatorProvider, YandexTranslatorProvider>();
+        services.AddSingleton<ITranslatorProvider, WebAutoTranslatorProvider>();
+        services.AddSingleton<ITranslatorProvider, GoogleWebTranslatorProvider>();
+        services.AddSingleton<ITranslatorProvider, BingWebTranslatorProvider>();
+        services.AddSingleton<ITranslatorProvider, YandexWebTranslatorProvider>();
         services.AddSingleton<IApplicationUpdateProvider, SquirrelApplicationUpdateProvider>();
         services.AddSingleton<ISettingsService>(provider =>
         {

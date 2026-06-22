@@ -20,7 +20,9 @@ public sealed class TranslationPipelineService
     private readonly IOverlayService overlayService;
     private readonly TranslationPipelineOptimizationOptions optimizationOptions;
     private readonly object optimizationStateLock = new();
+    private readonly object textStabilityStateLock = new();
     private readonly Dictionary<PipelineFrameStateKey, PipelineFrameState> optimizationStates = new();
+    private readonly Dictionary<PipelineFrameStateKey, PipelineTextStabilityState> textStabilityStates = new();
 
     public TranslationPipelineService(
         CaptureService captureService,
@@ -46,18 +48,27 @@ public sealed class TranslationPipelineService
         GameProfile profile,
         OcrZone zone,
         OverlaySnapshot? previousSnapshot = null,
+        TranslationPipelineRunOptions? runOptions = null,
         CancellationToken cancellationToken = default)
     {
-        return RunZoneAsync(profile, zone, previousSnapshot, showOverlay: true, cancellationToken);
+        return RunZoneAsync(
+            profile,
+            zone,
+            previousSnapshot,
+            showOverlay: true,
+            runOptions ?? TranslationPipelineRunOptions.Default,
+            cancellationToken);
     }
 
     public async Task<TranslationPipelineBatchResult> RunAllZonesAsync(
         GameProfile profile,
         OverlaySnapshot? previousSnapshot = null,
+        TranslationPipelineRunOptions? runOptions = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(profile);
         cancellationToken.ThrowIfCancellationRequested();
+        runOptions ??= TranslationPipelineRunOptions.Default;
 
         var zones = (profile.OcrZones ?? Array.Empty<OcrZone>()).ToArray();
         if (zones.Length == 0)
@@ -74,7 +85,13 @@ public sealed class TranslationPipelineService
 
             try
             {
-                results.Add(await RunZoneAsync(profile, zone, previousSnapshot: null, showOverlay: false, cancellationToken));
+                results.Add(await RunZoneAsync(
+                    profile,
+                    zone,
+                    previousSnapshot: null,
+                    showOverlay: false,
+                    runOptions,
+                    cancellationToken));
             }
             catch (TranslationPipelineException exception)
             {
@@ -89,7 +106,7 @@ public sealed class TranslationPipelineService
             }
         }
 
-        var combinedSnapshot = CreateCombinedSnapshot(results, previousSnapshot, profile.OverlaySettings);
+        var combinedSnapshot = CreateCombinedSnapshot(results, previousSnapshot, profile.OverlaySettings, runOptions);
         await ShowOverlayAsync(combinedSnapshot);
 
         return new TranslationPipelineBatchResult(
@@ -104,6 +121,7 @@ public sealed class TranslationPipelineService
         OcrZone zone,
         OverlaySnapshot? previousSnapshot,
         bool showOverlay,
+        TranslationPipelineRunOptions runOptions,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(profile);
@@ -129,7 +147,7 @@ public sealed class TranslationPipelineService
         var frame = frameMeasurement.Value;
         captureElapsed = frameMeasurement.Elapsed;
 
-        var optimizationContext = CreateOptimizationContext(profile, zone, frame);
+        var optimizationContext = CreateOptimizationContext(profile, zone, frame, runOptions);
         if (optimizationContext.ShouldReusePreviousResult && optimizationContext.PreviousState is not null)
         {
             var reusedResult = CreateReusedResult(
@@ -186,6 +204,7 @@ public sealed class TranslationPipelineService
 
         if (sourceResult.TextBlocks.Count == 0)
         {
+            ClearTextStabilityState(optimizationContext.StateKey);
             var emptySnapshot = overlayPositioningService.CreateSnapshot(
                 sourceResult,
                 sourceResult.RecognizedAt,
@@ -218,6 +237,44 @@ public sealed class TranslationPipelineService
             StoreOptimizationState(optimizationContext.StateKey, frame, emptyResult);
 
             return emptyResult;
+        }
+
+        if (!IsTextStableForTranslation(optimizationContext.StateKey, sourceResult, runOptions))
+        {
+            var pendingSnapshot = runOptions.PreservePreviousOverlayWhileWaitingForStableText
+                ? previousSnapshot ?? CreateEmptySnapshot(sourceResult.RecognizedAt, profile.OverlaySettings)
+                : CreateEmptySnapshot(sourceResult.RecognizedAt, profile.OverlaySettings);
+            if (showOverlay)
+            {
+                overlayElapsed = await ShowOverlayAsync(pendingSnapshot);
+            }
+
+            totalStopwatch.Stop();
+
+            var pendingResult = new TranslationPipelineResult(
+                profile.Id,
+                zone.Id,
+                frame,
+                sourceResult,
+                translateResponse: null,
+                pendingSnapshot,
+                cacheResult: null,
+                CreateTimings(
+                    captureElapsed,
+                    ocrElapsed,
+                    credentialsElapsed,
+                    translationElapsed,
+                    cacheElapsed,
+                    overlayElapsed,
+                    totalStopwatch.Elapsed),
+                new TranslationPipelineOptimizationInfo(
+                    ocrSkipped: false,
+                    translationSkipped: true,
+                    debounced: true,
+                    frameDifferenceRatio: optimizationContext.FrameDifferenceRatio));
+            StoreOptimizationState(optimizationContext.StateKey, frame, pendingResult);
+
+            return pendingResult;
         }
 
         try
@@ -319,10 +376,11 @@ public sealed class TranslationPipelineService
     private PipelineOptimizationContext CreateOptimizationContext(
         GameProfile profile,
         OcrZone zone,
-        CapturedFrame frame)
+        CapturedFrame frame,
+        TranslationPipelineRunOptions runOptions)
     {
         var stateKey = CreateStateKey(profile, zone);
-        if (!optimizationOptions.IsEnabled)
+        if (!optimizationOptions.IsEnabled || runOptions.RequireStableTextBeforeTranslation)
         {
             return new PipelineOptimizationContext(
                 stateKey,
@@ -385,6 +443,68 @@ public sealed class TranslationPipelineService
         {
             optimizationStates[stateKey] = state;
         }
+    }
+
+    private bool IsTextStableForTranslation(
+        PipelineFrameStateKey stateKey,
+        OcrResult sourceResult,
+        TranslationPipelineRunOptions runOptions)
+    {
+        if (!runOptions.RequireStableTextBeforeTranslation)
+        {
+            return true;
+        }
+
+        var textSignature = CreateTextSignature(sourceResult);
+        if (string.IsNullOrWhiteSpace(textSignature))
+        {
+            ClearTextStabilityState(stateKey);
+            return false;
+        }
+
+        lock (textStabilityStateLock)
+        {
+            if (!textStabilityStates.TryGetValue(stateKey, out var state)
+                || !string.Equals(state.TextSignature, textSignature, StringComparison.Ordinal))
+            {
+                textStabilityStates[stateKey] = new PipelineTextStabilityState(
+                    textSignature,
+                    sourceResult.RecognizedAt,
+                    sourceResult.RecognizedAt);
+
+                return runOptions.StableTextInterval == TimeSpan.Zero;
+            }
+
+            textStabilityStates[stateKey] = state with
+            {
+                LastSeenAt = sourceResult.RecognizedAt,
+            };
+
+            return CalculateElapsed(state.FirstSeenAt, sourceResult.RecognizedAt) >= runOptions.StableTextInterval;
+        }
+    }
+
+    private void ClearTextStabilityState(PipelineFrameStateKey stateKey)
+    {
+        lock (textStabilityStateLock)
+        {
+            textStabilityStates.Remove(stateKey);
+        }
+    }
+
+    private static TimeSpan CalculateElapsed(DateTimeOffset start, DateTimeOffset end)
+    {
+        return end >= start ? end - start : TimeSpan.Zero;
+    }
+
+    private static string CreateTextSignature(OcrResult sourceResult)
+    {
+        return NormalizeRecognizedText(sourceResult.Text);
+    }
+
+    private static string NormalizeRecognizedText(string text)
+    {
+        return string.Join(' ', text.Split(Array.Empty<char>(), StringSplitOptions.RemoveEmptyEntries));
     }
 
     private bool IsWithinDebounceWindow(DateTimeOffset previousCapturedAt, DateTimeOffset currentCapturedAt)
@@ -546,11 +666,27 @@ public sealed class TranslationPipelineService
         return new OcrResult(sourceResult.Request, translatedBlocks, translateResponse.TranslatedAt);
     }
 
+    private static OverlaySnapshot CreateEmptySnapshot(DateTimeOffset shownAt, OverlaySettings overlaySettings)
+    {
+        return new OverlaySnapshot(
+            Array.Empty<OverlayTextItem>(),
+            shownAt,
+            overlaySettings);
+    }
+
     private static OverlaySnapshot CreateCombinedSnapshot(
         IReadOnlyList<TranslationPipelineResult> results,
         OverlaySnapshot? previousSnapshot,
-        OverlaySettings overlaySettings)
+        OverlaySettings overlaySettings,
+        TranslationPipelineRunOptions runOptions)
     {
+        if (previousSnapshot is not null
+            && runOptions.PreservePreviousOverlayWhileWaitingForStableText
+            && IsWaitingForStableText(results))
+        {
+            return previousSnapshot;
+        }
+
         var successfulSnapshots = results.Select(result => result.OverlaySnapshot).ToArray();
         var shownAt = successfulSnapshots.Length == 0
             ? DateTimeOffset.UtcNow
@@ -564,6 +700,14 @@ public sealed class TranslationPipelineService
             successfulSnapshots.SelectMany(snapshot => snapshot.MaskItems),
             successfulSnapshots.SelectMany(snapshot => snapshot.DebugItems),
             successfulSnapshots.SelectMany(snapshot => snapshot.DebugMetricLines));
+    }
+
+    private static bool IsWaitingForStableText(IReadOnlyList<TranslationPipelineResult> results)
+    {
+        return results.Count > 0
+            && results.Any(result => result.RecognizedBlockCount > 0)
+            && results.All(result => result.TranslatedBlockCount == 0)
+            && results.Any(result => result.Optimization.TranslationSkipped);
     }
 
     private static TranslationPipelineTimings CreateTimings(
@@ -634,6 +778,11 @@ public sealed class TranslationPipelineService
         FrameFingerprint Fingerprint,
         TranslationPipelineResult Result,
         DateTimeOffset CapturedAt);
+
+    private sealed record PipelineTextStabilityState(
+        string TextSignature,
+        DateTimeOffset FirstSeenAt,
+        DateTimeOffset LastSeenAt);
 
     private sealed class FrameFingerprint
     {

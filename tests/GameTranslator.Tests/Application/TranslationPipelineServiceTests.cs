@@ -120,6 +120,41 @@ public sealed class TranslationPipelineServiceTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenExperimentalWebProviderIsSelected_DoesNotRequireStoredCredentials()
+    {
+        var zone = CreateZone();
+        var profile = CreateProfile(zone) with
+        {
+            TranslatorSettings = new TranslatorSettings
+            {
+                Provider = "GoogleWeb",
+                SourceLanguage = "en",
+                TargetLanguage = "ru",
+            },
+        };
+        var translator = new FakeTranslatorProvider("GoogleWeb", new[] { "Привет" });
+        var service = CreateService(
+            new FakeCaptureFrameSource(),
+            new FakeOcrEngine
+            {
+                BlocksFactory = _ => new[]
+                {
+                    new OcrTextBlock("Hello", new BoundingBox(4, 5, 24, 10)),
+                },
+            },
+            translator,
+            new FakeOverlayService(),
+            credentialStorage: new FakeCredentialStorage());
+
+        var result = await service.RunAsync(profile, zone);
+
+        Assert.Equal("experimental-web-provider", translator.Request?.Credentials.AccessToken);
+        Assert.Equal("GoogleWeb", translator.Request?.Credentials.ProjectId);
+        Assert.Equal(new Uri("https://translate.googleapis.com"), translator.Request?.Credentials.Endpoint);
+        Assert.Equal("Привет", Assert.Single(result.OverlaySnapshot.TextItems).Text);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenTranslationIsCached_SkipsTranslatorProviderOnRepeatedRun()
     {
         var zone = CreateZone();
@@ -233,6 +268,100 @@ public sealed class TranslationPipelineServiceTests
         Assert.True(second.Optimization.FrameDifferenceRatio > 0.001d);
         Assert.Equal(new[] { "Translated World" }, second.TranslateResponse?.TranslatedTexts);
     }
+
+    [Fact]
+    public async Task RunAsync_WhenStableTextIsRequired_WaitsBeforeTranslation()
+    {
+        var zone = CreateZone();
+        var profile = CreateProfile(zone);
+        var frameSource = new FakeCaptureFrameSource
+        {
+            CapturedAtFrames = new[]
+            {
+                FrameTime,
+                FrameTime.AddMilliseconds(500),
+                FrameTime.AddMilliseconds(1100),
+            },
+        };
+        var ocrEngine = new FakeOcrEngine
+        {
+            RecognizedAtFrames = new[]
+            {
+                OcrTime,
+                OcrTime.AddMilliseconds(500),
+                OcrTime.AddMilliseconds(1100),
+            },
+            BlocksFactory = _ => new[]
+            {
+                new OcrTextBlock("Hello", new BoundingBox(4, 5, 24, 10)),
+            },
+        };
+        var translator = new FakeTranslatorProvider("Google");
+        var service = CreateService(
+            frameSource,
+            ocrEngine,
+            translator,
+            new FakeOverlayService(),
+            optimizationOptions: new TranslationPipelineOptimizationOptions());
+        var runOptions = new TranslationPipelineRunOptions(
+            requireStableTextBeforeTranslation: true,
+            stableTextInterval: TimeSpan.FromSeconds(1));
+
+        var first = await service.RunAsync(profile, zone, runOptions: runOptions);
+        var second = await service.RunAsync(profile, zone, first.OverlaySnapshot, runOptions);
+        var third = await service.RunAsync(profile, zone, second.OverlaySnapshot, runOptions);
+
+        Assert.Equal(3, frameSource.CapturedRegions.Count);
+        Assert.Equal(3, ocrEngine.Requests.Count);
+        Assert.Null(first.TranslateResponse);
+        Assert.Null(second.TranslateResponse);
+        Assert.True(first.Optimization.TranslationSkipped);
+        Assert.True(second.Optimization.TranslationSkipped);
+        Assert.Empty(first.OverlaySnapshot.TextItems);
+        Assert.Empty(second.OverlaySnapshot.TextItems);
+        Assert.Equal(1, translator.CallCount);
+        Assert.Equal(new[] { "Translated Hello" }, third.TranslateResponse?.TranslatedTexts);
+        Assert.Equal("Translated Hello", Assert.Single(third.OverlaySnapshot.TextItems).Text);
+    }
+
+    [Fact]
+    public async Task RunAllZonesAsync_WhenStableTextIsPending_CanPreservePreviousOverlay()
+    {
+        var zone = CreateZone();
+        var profile = CreateProfile(zone);
+        var previousSnapshot = new OverlaySnapshot(
+            new[] { new OverlayTextItem("Previous translation", 1, 2, 30, 12) },
+            FrameTime);
+        var ocrEngine = new FakeOcrEngine
+        {
+            BlocksFactory = _ => new[]
+            {
+                new OcrTextBlock("Hello", new BoundingBox(4, 5, 24, 10)),
+            },
+        };
+        var translator = new FakeTranslatorProvider("Google");
+        var overlay = new FakeOverlayService();
+        var service = CreateService(
+            new FakeCaptureFrameSource(),
+            ocrEngine,
+            translator,
+            overlay,
+            optimizationOptions: new TranslationPipelineOptimizationOptions());
+        var runOptions = new TranslationPipelineRunOptions(
+            requireStableTextBeforeTranslation: true,
+            stableTextInterval: TimeSpan.FromSeconds(1),
+            preservePreviousOverlayWhileWaitingForStableText: true);
+
+        var result = await service.RunAllZonesAsync(profile, previousSnapshot, runOptions);
+
+        Assert.Same(previousSnapshot, result.OverlaySnapshot);
+        Assert.Same(previousSnapshot, overlay.CurrentSnapshot);
+        Assert.Equal(1, result.RecognizedBlockCount);
+        Assert.Equal(0, result.TranslatedBlockCount);
+        Assert.Equal(1, result.SkippedTranslationCount);
+        Assert.Equal(0, translator.CallCount);
+    }
+
     [Fact]
     public async Task RunAllZonesAsync_WhenProfileHasMultipleZones_ProcessesEachZoneAndShowsCombinedOverlay()
     {
@@ -515,6 +644,8 @@ public sealed class TranslationPipelineServiceTests
 
     private sealed class FakeOcrEngine : IOcrEngine
     {
+        private int recognitionCount;
+
         public string EngineId { get; init; } = OcrSettings.WindowsEngineId;
 
         public List<OcrRequest> Requests { get; } = new();
@@ -523,9 +654,12 @@ public sealed class TranslationPipelineServiceTests
 
         public Func<OcrRequest, Exception?>? FailureFactory { get; init; }
 
+        public IReadOnlyList<DateTimeOffset> RecognizedAtFrames { get; init; } = Array.Empty<DateTimeOffset>();
+
         public Task<OcrResult> RecognizeAsync(OcrRequest request, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            var recognitionIndex = recognitionCount++;
             Requests.Add(request);
 
             var failure = FailureFactory?.Invoke(request);
@@ -534,11 +668,15 @@ public sealed class TranslationPipelineServiceTests
                 return Task.FromException<OcrResult>(failure);
             }
 
+            var recognizedAt = recognitionIndex < RecognizedAtFrames.Count
+                ? RecognizedAtFrames[recognitionIndex]
+                : OcrTime;
+
             return Task.FromResult(
                 new OcrResult(
                     request,
                     BlocksFactory?.Invoke(request) ?? Array.Empty<OcrTextBlock>(),
-                    OcrTime));
+                    recognizedAt));
         }
     }
 

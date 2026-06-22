@@ -1341,7 +1341,12 @@ public sealed class ProfileManagerViewModelTests
         Assert.NotNull(translator.Request);
         Assert.Equal("SECRET_TRANSLATOR_TOKEN", translator.Request?.Credentials.AccessToken);
         Assert.True(overlay.IsVisible);
-        Assert.Equal("Translated subtitle", Assert.Single(overlay.CurrentSnapshot!.TextItems).Text);
+        var overlayItem = Assert.Single(overlay.CurrentSnapshot!.TextItems);
+        Assert.Equal("Translated subtitle", overlayItem.Text);
+        Assert.Equal(30, overlayItem.X);
+        Assert.Equal(60, overlayItem.Y);
+        Assert.Equal(40, overlayItem.Width);
+        Assert.Equal(12, overlayItem.Height);
         Assert.Contains(
             "Full pipeline translated 1 text block(s)",
             GetPropertyValue(viewModel, "PipelineStatus")?.ToString(),

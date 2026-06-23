@@ -7,6 +7,8 @@ public interface IOverlayService
 {
     bool IsVisible { get; }
 
+    bool IsExcludedFromCapture { get; }
+
     OverlaySnapshot? CurrentSnapshot { get; }
 
     void Show(OverlaySnapshot snapshot);

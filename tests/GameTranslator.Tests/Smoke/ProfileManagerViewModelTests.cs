@@ -1038,6 +1038,51 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
+    public async Task RecognizeOcrPreviewAsync_WhenOverlayIsExcludedFromCapture_KeepsOverlayVisibleDuringCapture()
+    {
+        var overlay = new TestOverlayService
+        {
+            IsExcludedFromCapture = true,
+        };
+        var frameSource = new TestCaptureFrameSource
+        {
+            OnCapture = () => Assert.True(overlay.IsVisible),
+        };
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            frameSource: frameSource,
+            ocrEngine: new TestOcrEngine
+            {
+                BlocksFactory = _ => new[]
+                {
+                    new OcrTextBlock("Updated text", new BoundingBox(1, 2, 4, 3)),
+                },
+            },
+            overlayService: overlay);
+        ConfigureValidDraftProfile(viewModel, "OCR overlay no flicker");
+        InvokeMethod(viewModel, "AddZone");
+
+        var selectedZone = GetPropertyValue(viewModel, "SelectedZone")
+            ?? throw new InvalidOperationException("Selected zone was not created.");
+        SetPropertyValue(selectedZone, "AbsoluteX", 30);
+        SetPropertyValue(selectedZone, "AbsoluteY", 40);
+        SetPropertyValue(selectedZone, "AbsoluteWidth", 8);
+        SetPropertyValue(selectedZone, "AbsoluteHeight", 6);
+
+        InvokeMethod(viewModel, "ShowOverlayPreview");
+        await InvokeTaskMethodAsync(viewModel, "RecognizeOcrPreviewAsync");
+
+        Assert.True(overlay.IsVisible);
+        Assert.Equal(new[] { "Show:2", "Show:1" }, overlay.Events);
+        Assert.Equal(
+            "Overlay preview updated with 1 OCR text item(s).",
+            GetPropertyValue(viewModel, "OverlayPreviewStatus"));
+        var item = Assert.Single(overlay.CurrentSnapshot?.TextItems ?? Array.Empty<OverlayTextItem>());
+        Assert.Equal("Updated text", item.Text);
+    }
+
+    [Fact]
     public async Task RecognizeOcrPreviewAsync_WhenOverlayVisibleAndOcrBoundsJitter_KeepsPreviousOverlayBounds()
     {
         var overlay = new TestOverlayService();
@@ -2038,6 +2083,8 @@ public sealed class ProfileManagerViewModelTests
     private sealed class TestOverlayService : IOverlayService
     {
         public bool IsVisible { get; private set; }
+
+        public bool IsExcludedFromCapture { get; set; }
 
         public OverlaySnapshot? CurrentSnapshot { get; private set; }
 

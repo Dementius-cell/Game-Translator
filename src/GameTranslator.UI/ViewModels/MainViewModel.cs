@@ -2221,6 +2221,11 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
 
         var snapshot = overlayService.CurrentSnapshot;
+        if (overlayService.IsExcludedFromCapture)
+        {
+            return snapshot;
+        }
+
         overlayService.Hide();
         if (notifyUi)
         {

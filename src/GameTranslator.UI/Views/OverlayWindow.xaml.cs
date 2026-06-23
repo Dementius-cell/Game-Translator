@@ -21,6 +21,7 @@ public partial class OverlayWindow : Window
     private const int SwpFrameChanged = 0x0020;
     private const int SwpNoOwnerZOrder = 0x0200;
     private const int WmNcHitTest = 0x0084;
+    private const uint WdaExcludeFromCapture = 0x00000011;
     private const double PreviewPadding = 2;
     private const double MinReadableItemWidth = 40;
     private const double MinReadableItemHeight = 16;
@@ -32,6 +33,8 @@ public partial class OverlayWindow : Window
         InitializeComponent();
         SourceInitialized += OnSourceInitialized;
     }
+
+    public bool IsExcludedFromCapture { get; private set; }
 
     public void ShowSnapshot(OverlaySnapshot snapshot)
     {
@@ -57,6 +60,7 @@ public partial class OverlayWindow : Window
         var source = HwndSource.FromHwnd(handle);
         source?.AddHook(OnWindowMessage);
         ApplyClickThroughStyles(handle);
+        IsExcludedFromCapture = ApplyCaptureExclusion(handle);
     }
 
     private static nint OnWindowMessage(
@@ -93,6 +97,11 @@ public partial class OverlayWindow : Window
             0,
             0,
             SwpNoMove | SwpNoSize | SwpNoZOrder | SwpNoActivate | SwpFrameChanged | SwpNoOwnerZOrder);
+    }
+
+    private static bool ApplyCaptureExclusion(nint handle)
+    {
+        return SetWindowDisplayAffinity(handle, WdaExcludeFromCapture);
     }
 
     private OverlayWindowSnapshotViewModel CreateViewModel(OverlaySnapshot snapshot)
@@ -337,4 +346,8 @@ public partial class OverlayWindow : Window
         int cx,
         int cy,
         int uFlags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowDisplayAffinity(nint hWnd, uint dwAffinity);
 }

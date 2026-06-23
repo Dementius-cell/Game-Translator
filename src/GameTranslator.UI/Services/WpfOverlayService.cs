@@ -14,6 +14,8 @@ public sealed class WpfOverlayService : IOverlayService
 
     public bool IsVisible => overlayWindow.IsVisible;
 
+    public bool IsExcludedFromCapture => overlayWindow.IsExcludedFromCapture;
+
     public OverlaySnapshot? CurrentSnapshot { get; private set; }
 
     public void Show(OverlaySnapshot snapshot)

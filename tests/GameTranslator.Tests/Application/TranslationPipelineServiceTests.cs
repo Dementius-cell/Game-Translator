@@ -405,6 +405,48 @@ public sealed class TranslationPipelineServiceTests
     }
 
     [Fact]
+    public async Task RunAllZonesAsync_WhenOverlayIsExcludedFromCapture_KeepsOverlayVisibleDuringCapture()
+    {
+        var zone = CreateZone();
+        var profile = CreateProfile(zone);
+        var previousSnapshot = new OverlaySnapshot(
+            new[] { new OverlayTextItem("Previous translation", 1, 2, 30, 12) },
+            FrameTime);
+        var overlay = new FakeOverlayService
+        {
+            IsExcludedFromCapture = true,
+        };
+        overlay.Show(previousSnapshot);
+        var frameSource = new FakeCaptureFrameSource
+        {
+            OnCapture = () =>
+            {
+                Assert.True(overlay.IsVisible);
+                Assert.Same(previousSnapshot, overlay.CurrentSnapshot);
+            },
+        };
+        var service = CreateService(
+            frameSource,
+            new FakeOcrEngine
+            {
+                BlocksFactory = _ => new[]
+                {
+                    new OcrTextBlock("Hello", new BoundingBox(4, 5, 24, 10)),
+                },
+            },
+            new FakeTranslatorProvider("Google", new[] { "New translation" }),
+            overlay);
+        var runOptions = new TranslationPipelineRunOptions(
+            restorePreviousOverlayAfterCapture: true);
+
+        var result = await service.RunAllZonesAsync(profile, previousSnapshot, runOptions);
+
+        Assert.Equal(new[] { "Show:1", "Show:1" }, overlay.Events);
+        Assert.Same(result.OverlaySnapshot, overlay.CurrentSnapshot);
+        Assert.Equal("New translation", Assert.Single(result.OverlaySnapshot.TextItems).Text);
+    }
+
+    [Fact]
     public async Task RunAllZonesAsync_WhenProfileHasMultipleZones_ProcessesEachZoneAndShowsCombinedOverlay()
     {
         var firstZone = CreateZone("zone-a", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
@@ -799,6 +841,8 @@ public sealed class TranslationPipelineServiceTests
     private sealed class FakeOverlayService : IOverlayService
     {
         public bool IsVisible { get; private set; }
+
+        public bool IsExcludedFromCapture { get; set; }
 
         public OverlaySnapshot? CurrentSnapshot { get; private set; }
 

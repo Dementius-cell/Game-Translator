@@ -84,6 +84,8 @@ public sealed class OverlayWindowSourceTests
         Assert.Contains("SetWindowLongPtr", source, StringComparison.Ordinal);
         Assert.Contains("WmNcHitTest", source, StringComparison.Ordinal);
         Assert.Contains("HtTransparent", source, StringComparison.Ordinal);
+        Assert.Contains("SetWindowDisplayAffinity", source, StringComparison.Ordinal);
+        Assert.Contains("WdaExcludeFromCapture", source, StringComparison.Ordinal);
 
         foreach (var forbiddenApi in new[]
                  {

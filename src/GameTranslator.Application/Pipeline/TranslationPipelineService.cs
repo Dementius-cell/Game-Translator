@@ -376,7 +376,8 @@ public sealed class TranslationPipelineService
     {
         var shouldRestoreOverlay = runOptions.RestorePreviousOverlayAfterCapture
             && overlaySnapshotToRestoreAfterCapture is not null
-            && overlayService.IsVisible;
+            && overlayService.IsVisible
+            && !overlayService.IsExcludedFromCapture;
 
         if (!shouldRestoreOverlay)
         {

@@ -49,6 +49,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private const string DraftOcrZonesSettingKey = "shell.draft.ocrZones";
     private const string DraftSelectedZoneIdSettingKey = "shell.draft.selectedZoneId";
     private const string DebugOverlayEnabledSettingKey = "debug.overlay.enabled";
+    private const string LiveTranslationTimingPresetSettingKey = "shell.live.translationTimingPreset";
     private static readonly Regex HexColorPattern = new("^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$", RegexOptions.Compiled);
     private static readonly string[] SupportedOcrEngines =
     {
@@ -74,13 +75,12 @@ public sealed class MainViewModel : ValidatableObservableObject
         OcrOrientationMode.Vertical,
     };
 
-    private static readonly TimeSpan LiveTranslationPollingInterval = TimeSpan.FromMilliseconds(200);
-
-    private static readonly TranslationPipelineRunOptions LiveTranslationRunOptions = new(
-        requireStableTextBeforeTranslation: true,
-        stableTextInterval: TimeSpan.FromMilliseconds(450),
-        preservePreviousOverlayWhileWaitingForStableText: true,
-        restorePreviousOverlayAfterCapture: true);
+    private static readonly LiveTranslationTimingPreset[] SupportedLiveTranslationTimingPresets =
+    {
+        LiveTranslationTimingPreset.Fast,
+        LiveTranslationTimingPreset.Balanced,
+        LiveTranslationTimingPreset.Conservative,
+    };
 
     private readonly ProfileService profileService;
     private readonly ProfileExchangeService profileExchangeService;
@@ -149,6 +149,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private bool isLiveTranslationRunning;
     private bool isLoaded;
     private bool isDebugOverlayEnabled;
+    private LiveTranslationTimingPreset liveTranslationTimingPreset = LiveTranslationTimingPreset.Balanced;
     private bool suppressDraftStatePersistence;
     private bool isZoneSelectionActive;
     private bool isZoneResizeActive;
@@ -239,6 +240,9 @@ public sealed class MainViewModel : ValidatableObservableObject
         globalHotkeyService.HotkeyPressed += OnGlobalHotkeyPressed;
         pendingSelectedProfileId = settings.GetValue<string>(SelectedProfileSettingKey);
         isDebugOverlayEnabled = settings.GetValue<bool?>(DebugOverlayEnabledSettingKey) ?? false;
+        liveTranslationTimingPreset = NormalizeLiveTranslationTimingPreset(
+            settings.GetValue<LiveTranslationTimingPreset?>(LiveTranslationTimingPresetSettingKey)
+            ?? LiveTranslationTimingPreset.Balanced);
 
         Profiles = new ObservableCollection<GameProfile>();
         OcrZones = new ObservableCollection<OcrZoneEditorViewModel>();
@@ -423,6 +427,29 @@ public sealed class MainViewModel : ValidatableObservableObject
     public IReadOnlyList<OcrOrientationMode> OcrOrientations => SupportedOcrOrientations;
 
     public IReadOnlyList<string> InstalledFontFamilies => installedFontFamilies;
+
+    public IReadOnlyList<LiveTranslationTimingPreset> LiveTranslationTimingPresets => SupportedLiveTranslationTimingPresets;
+
+    public LiveTranslationTimingPreset LiveTranslationTimingPreset
+    {
+        get => liveTranslationTimingPreset;
+        set
+        {
+            var normalizedValue = NormalizeLiveTranslationTimingPreset(value);
+            if (SetProperty(ref liveTranslationTimingPreset, normalizedValue))
+            {
+                settings.SetValue(LiveTranslationTimingPresetSettingKey, normalizedValue);
+                OnPropertyChanged(nameof(LiveTranslationTimingSummary));
+            }
+        }
+    }
+
+    public string LiveTranslationTimingSummary => LiveTranslationTimingPreset switch
+    {
+        LiveTranslationTimingPreset.Fast => "Fast: poll every 150 ms, translate after 300 ms stable OCR text.",
+        LiveTranslationTimingPreset.Conservative => "Conservative: poll every 300 ms, translate after 700 ms stable OCR text.",
+        _ => "Balanced: poll every 200 ms, translate after 450 ms stable OCR text.",
+    };
 
     public string OcrEngine
     {
@@ -1833,12 +1860,13 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
 
         var profile = BuildProfileFromEditor();
+        var liveTiming = CreateLiveTranslationTiming(LiveTranslationTimingPreset);
         var cancellationSource = new CancellationTokenSource();
         liveTranslationCancellation = cancellationSource;
         IsLiveTranslationRunning = true;
-        PipelineStatus = $"Live translation running for {profile.OcrZones.Count} OCR zone(s). Waiting for stable text...";
+        PipelineStatus = $"Live translation running for {profile.OcrZones.Count} OCR zone(s). {CreateLiveTimingStatus(liveTiming)}";
         StatusMessage = PipelineStatus;
-        _ = RunLiveTranslationLoopAsync(profile, cancellationSource);
+        _ = RunLiveTranslationLoopAsync(profile, cancellationSource, liveTiming);
 
         await Task.Yield();
     }
@@ -1856,7 +1884,10 @@ public sealed class MainViewModel : ValidatableObservableObject
         NotifyCommandStateChanged();
     }
 
-    private async Task RunLiveTranslationLoopAsync(GameProfile profile, CancellationTokenSource cancellationSource)
+    private async Task RunLiveTranslationLoopAsync(
+        GameProfile profile,
+        CancellationTokenSource cancellationSource,
+        LiveTranslationTiming liveTiming)
     {
         var cancellationToken = cancellationSource.Token;
         try
@@ -1874,11 +1905,11 @@ public sealed class MainViewModel : ValidatableObservableObject
                     var result = await translationPipelineService.RunAllZonesAsync(
                         profile,
                         overlaySnapshotBeforeCapture,
-                        LiveTranslationRunOptions,
+                        liveTiming.RunOptions,
                         cancellationToken);
 
                     ApplyBatchPipelineResult(profile, result, isLiveMode: true);
-                    await Task.Delay(LiveTranslationPollingInterval, cancellationToken);
+                    await Task.Delay(liveTiming.PollingInterval, cancellationToken);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -1923,6 +1954,44 @@ public sealed class MainViewModel : ValidatableObservableObject
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
         }
+    }
+
+    private static LiveTranslationTimingPreset NormalizeLiveTranslationTimingPreset(LiveTranslationTimingPreset preset)
+    {
+        return Array.IndexOf(SupportedLiveTranslationTimingPresets, preset) >= 0
+            ? preset
+            : LiveTranslationTimingPreset.Balanced;
+    }
+
+    private static LiveTranslationTiming CreateLiveTranslationTiming(LiveTranslationTimingPreset preset)
+    {
+        var normalizedPreset = NormalizeLiveTranslationTimingPreset(preset);
+        var (pollingInterval, stableTextInterval) = normalizedPreset switch
+        {
+            LiveTranslationTimingPreset.Fast => (
+                TimeSpan.FromMilliseconds(150),
+                TimeSpan.FromMilliseconds(300)),
+            LiveTranslationTimingPreset.Conservative => (
+                TimeSpan.FromMilliseconds(300),
+                TimeSpan.FromMilliseconds(700)),
+            _ => (
+                TimeSpan.FromMilliseconds(200),
+                TimeSpan.FromMilliseconds(450)),
+        };
+
+        return new LiveTranslationTiming(
+            pollingInterval,
+            stableTextInterval,
+            new TranslationPipelineRunOptions(
+                requireStableTextBeforeTranslation: true,
+                stableTextInterval: stableTextInterval,
+                preservePreviousOverlayWhileWaitingForStableText: true,
+                restorePreviousOverlayAfterCapture: true));
+    }
+
+    private static string CreateLiveTimingStatus(LiveTranslationTiming timing)
+    {
+        return $"Polling {timing.PollingInterval.TotalMilliseconds:0} ms; translating after {timing.StableTextInterval.TotalMilliseconds:0} ms of stable OCR text.";
     }
 
     public async Task CleanupTranslationCacheAsync()
@@ -2408,6 +2477,11 @@ public sealed class MainViewModel : ValidatableObservableObject
         string ZoneName,
         CapturedFrame CapturedFrame,
         OcrResult SourceOcrResult);
+
+    private sealed record LiveTranslationTiming(
+        TimeSpan PollingInterval,
+        TimeSpan StableTextInterval,
+        TranslationPipelineRunOptions RunOptions);
 
     private static string CreateLivePipelineStatus(TranslationPipelineBatchResult result)
     {

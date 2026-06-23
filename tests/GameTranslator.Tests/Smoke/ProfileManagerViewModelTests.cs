@@ -165,6 +165,33 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
+    public void LiveTranslationTimingPreset_WhenChanged_PersistsAppSetting()
+    {
+        var repository = new InMemoryProfileRepository();
+        var settings = new TestSettingsService();
+        var uiAssembly = LoadUiAssembly();
+        var presetType = uiAssembly.GetType(
+            "GameTranslator.UI.ViewModels.LiveTranslationTimingPreset",
+            throwOnError: true)
+            ?? throw new InvalidOperationException("LiveTranslationTimingPreset type was not found.");
+        var conservativePreset = Enum.Parse(presetType, "Conservative");
+        settings.SetValue("shell.live.translationTimingPreset", conservativePreset);
+
+        var viewModel = CreateMainViewModel(repository, settings);
+
+        Assert.Equal(conservativePreset, GetPropertyValue(viewModel, "LiveTranslationTimingPreset"));
+        Assert.Contains("700 ms", Assert.IsType<string>(GetPropertyValue(viewModel, "LiveTranslationTimingSummary")));
+
+        var fastPreset = Enum.Parse(presetType, "Fast");
+        SetPropertyValue(viewModel, "LiveTranslationTimingPreset", fastPreset);
+
+        Assert.Equal(fastPreset, settings.GetValue<object>("shell.live.translationTimingPreset"));
+        var summary = Assert.IsType<string>(GetPropertyValue(viewModel, "LiveTranslationTimingSummary"));
+        Assert.Contains("150 ms", summary);
+        Assert.Contains("300 ms", summary);
+    }
+
+    [Fact]
     public void PickScreenZone_WhenPickerReturnsRegion_CreatesZoneFromScreenCoordinates()
     {
         var repository = new InMemoryProfileRepository();

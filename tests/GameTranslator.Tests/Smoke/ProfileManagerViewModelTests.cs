@@ -192,6 +192,21 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
+    public void LanguageOptions_ExposeCommonWebTranslatorLanguages()
+    {
+        var viewModel = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService());
+
+        var languages = Assert.IsAssignableFrom<IEnumerable<string>>(GetPropertyValue(viewModel, "LanguageOptions"));
+
+        Assert.Contains("ar", languages);
+        Assert.Contains("hi", languages);
+        Assert.Contains("ja", languages);
+        Assert.Contains("ru", languages);
+        Assert.Contains("zh-CN", languages);
+        Assert.Contains("zh-TW", languages);
+    }
+
+    [Fact]
     public void PickScreenZone_WhenPickerReturnsRegion_CreatesZoneFromScreenCoordinates()
     {
         var repository = new InMemoryProfileRepository();

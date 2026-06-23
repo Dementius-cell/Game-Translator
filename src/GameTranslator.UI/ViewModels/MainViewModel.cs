@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Windows;
@@ -68,6 +69,21 @@ public sealed class MainViewModel : ValidatableObservableObject
         "YandexWeb",
     };
 
+    private static readonly string[] SupportedLanguageOptions =
+    {
+        "af", "am", "ar", "az", "be", "bg", "bn", "bs", "ca", "ceb",
+        "co", "cs", "cy", "da", "de", "el", "en", "eo", "es", "et",
+        "eu", "fa", "fi", "fr", "fy", "ga", "gd", "gl", "gu", "ha",
+        "haw", "he", "hi", "hmn", "hr", "ht", "hu", "hy", "id", "ig",
+        "is", "it", "ja", "jv", "ka", "kk", "km", "kn", "ko", "ku",
+        "ky", "la", "lb", "lo", "lt", "lv", "mg", "mi", "mk", "ml",
+        "mn", "mr", "ms", "mt", "my", "ne", "nl", "no", "ny", "or",
+        "pa", "pl", "ps", "pt", "ro", "ru", "sd", "si", "sk", "sl",
+        "sm", "sn", "so", "sq", "sr", "st", "su", "sv", "sw", "ta",
+        "te", "tg", "th", "tr", "uk", "ur", "uz", "vi", "xh", "yi",
+        "yo", "zh-CN", "zh-TW", "zu",
+    };
+
     private static readonly OcrOrientationMode[] SupportedOcrOrientations =
     {
         OcrOrientationMode.Auto,
@@ -94,6 +110,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private readonly OverlayPositioningService overlayPositioningService;
     private readonly IDialogService dialogService;
     private readonly IScreenRegionPickerService screenRegionPickerService;
+    private readonly IOcrLanguagePackService ocrLanguagePackService;
     private readonly ISettingsService settings;
     private readonly IApplicationLogger logger;
     private readonly GlobalHotkeyService globalHotkeyService;
@@ -136,6 +153,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private string capturePreviewStatus = "No capture preview yet.";
     private string captureRefreshMetricsSummary = "Refresh rate not measured.";
     private string ocrPreviewStatus = "No OCR preview yet.";
+    private string ocrLanguagePackStatus = "OCR language pack status not checked.";
     private string overlayPreviewStatus = "Overlay preview hidden.";
     private string pipelineStatus = "Full translation pipeline not run yet.";
     private string translationCacheStatus = "Translation cache not cleaned yet.";
@@ -196,6 +214,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             overlayPositioningService,
             dialogService,
             new UnavailableScreenRegionPickerService(),
+            UnavailableOcrLanguagePackService.Instance,
             settings,
             logger)
     {
@@ -219,6 +238,47 @@ public sealed class MainViewModel : ValidatableObservableObject
         IScreenRegionPickerService screenRegionPickerService,
         ISettingsService settings,
         IApplicationLogger logger)
+        : this(
+            profileService,
+            profileExchangeService,
+            captureService,
+            ocrService,
+            credentialService,
+            translationPipelineService,
+            translationCacheService,
+            applicationUpdateService,
+            globalHotkeyService,
+            debugMetricFormatter,
+            debugResourceMonitor,
+            overlayService,
+            overlayPositioningService,
+            dialogService,
+            screenRegionPickerService,
+            UnavailableOcrLanguagePackService.Instance,
+            settings,
+            logger)
+    {
+    }
+
+    public MainViewModel(
+        ProfileService profileService,
+        ProfileExchangeService profileExchangeService,
+        CaptureService captureService,
+        OcrService ocrService,
+        TranslatorCredentialService credentialService,
+        TranslationPipelineService translationPipelineService,
+        TranslationCacheService translationCacheService,
+        ApplicationUpdateService applicationUpdateService,
+        GlobalHotkeyService globalHotkeyService,
+        DebugMetricFormatter debugMetricFormatter,
+        IDebugResourceMonitor debugResourceMonitor,
+        IOverlayService overlayService,
+        OverlayPositioningService overlayPositioningService,
+        IDialogService dialogService,
+        IScreenRegionPickerService screenRegionPickerService,
+        IOcrLanguagePackService ocrLanguagePackService,
+        ISettingsService settings,
+        IApplicationLogger logger)
     {
         this.profileService = profileService;
         this.profileExchangeService = profileExchangeService;
@@ -235,6 +295,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         this.overlayPositioningService = overlayPositioningService;
         this.dialogService = dialogService;
         this.screenRegionPickerService = screenRegionPickerService;
+        this.ocrLanguagePackService = ocrLanguagePackService;
         this.settings = settings;
         this.logger = logger;
         globalHotkeyService.HotkeyPressed += OnGlobalHotkeyPressed;
@@ -252,7 +313,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         ValidationErrors = new ObservableCollection<string>();
         OverlayMaskModes = Enum.GetValues<OverlayMaskMode>();
         TranslatorProviderOptions = SupportedTranslatorProviders;
-        LanguageOptions = new[] { "ja", "en", "ru", "ko", "zh-CN", "zh-TW" };
+        LanguageOptions = SupportedLanguageOptions;
         BeginCreateProfileCommand = new RelayCommand(BeginCreateProfile, () => !IsBusy);
         RefreshProfilesCommand = new AsyncRelayCommand(RefreshProfilesAsync, () => !IsBusy);
         SaveProfileCommand = new AsyncRelayCommand(SaveAsync, CanSaveProfile);
@@ -270,6 +331,8 @@ public sealed class MainViewModel : ValidatableObservableObject
         RefreshCapturePreviewCommand = new AsyncRelayCommand(RefreshCapturePreviewAsync, CanRefreshCapturePreview);
         MeasureCaptureRefreshCommand = new AsyncRelayCommand(MeasureCaptureRefreshAsync, CanRefreshCapturePreview);
         RecognizeOcrPreviewCommand = new AsyncRelayCommand(RecognizeOcrPreviewAsync, CanRecognizeOcrPreview);
+        CheckOcrLanguagePackCommand = new AsyncRelayCommand(CheckOcrLanguagePackAsync, CanManageOcrLanguagePack);
+        InstallOcrLanguagePackCommand = new AsyncRelayCommand(InstallOcrLanguagePackAsync, CanManageOcrLanguagePack);
         RunTranslationPipelineCommand = new AsyncRelayCommand(RunTranslationPipelineAsync, CanRunTranslationPipeline);
         StartLiveTranslationCommand = new AsyncRelayCommand(StartLiveTranslationAsync, CanStartLiveTranslation);
         StopLiveTranslationCommand = new RelayCommand(StopLiveTranslation, () => IsLiveTranslationRunning);
@@ -401,8 +464,10 @@ public sealed class MainViewModel : ValidatableObservableObject
             {
                 OnPropertyChanged(nameof(TranslatorSettingsSummary));
                 OnPropertyChanged(nameof(ProfileSummary));
+                ResetOcrLanguagePackStatus();
                 PersistDraftShellStateIfNeeded();
                 RefreshValidationState();
+                NotifyCommandStateChanged();
             }
         }
     }
@@ -459,6 +524,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             if (SetProperty(ref ocrEngine, value))
             {
                 OnPropertyChanged(nameof(ProfileSummary));
+                ResetOcrLanguagePackStatus();
                 PersistDraftShellStateIfNeeded();
                 RefreshValidationState();
                 NotifyCommandStateChanged();
@@ -474,8 +540,10 @@ public sealed class MainViewModel : ValidatableObservableObject
             if (SetProperty(ref ocrOrientationMode, value))
             {
                 OnPropertyChanged(nameof(ProfileSummary));
+                ResetOcrLanguagePackStatus();
                 PersistDraftShellStateIfNeeded();
                 RefreshValidationState();
+                NotifyCommandStateChanged();
             }
         }
     }
@@ -858,6 +926,12 @@ public sealed class MainViewModel : ValidatableObservableObject
         private set => SetProperty(ref ocrPreviewStatus, value);
     }
 
+    public string OcrLanguagePackStatus
+    {
+        get => ocrLanguagePackStatus;
+        private set => SetProperty(ref ocrLanguagePackStatus, value);
+    }
+
     public bool HasOcrPreview => OcrDebugTextBlocks.Count > 0;
 
     public string OcrPreviewText => string.Join(Environment.NewLine, OcrDebugTextBlocks.Select(block => block.Text));
@@ -948,6 +1022,10 @@ public sealed class MainViewModel : ValidatableObservableObject
     public ICommand MeasureCaptureRefreshCommand { get; }
 
     public ICommand RecognizeOcrPreviewCommand { get; }
+
+    public ICommand CheckOcrLanguagePackCommand { get; }
+
+    public ICommand InstallOcrLanguagePackCommand { get; }
 
     public ICommand RunTranslationPipelineCommand { get; }
 
@@ -1672,6 +1750,79 @@ public sealed class MainViewModel : ValidatableObservableObject
             logger.Error(exception, "Unexpected capture refresh measurement failure.");
             CaptureRefreshMetricsSummary = "Capture refresh failed. Check logs for details.";
             StatusMessage = CaptureRefreshMetricsSummary;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task CheckOcrLanguagePackAsync()
+    {
+        if (!CanManageOcrLanguagePack())
+        {
+            OcrLanguagePackStatus = "Select an OCR engine and source language first.";
+            StatusMessage = OcrLanguagePackStatus;
+            return;
+        }
+
+        try
+        {
+            IsBusy = true;
+            OcrLanguagePackStatus = $"Checking {OcrEngine} OCR language '{SourceLanguage}'...";
+            StatusMessage = OcrLanguagePackStatus;
+            var status = await ocrLanguagePackService.CheckAsync(
+                OcrEngine.Trim(),
+                SourceLanguage.Trim(),
+                OcrOrientationMode);
+
+            OcrLanguagePackStatus = status.Message;
+            StatusMessage = OcrLanguagePackStatus;
+        }
+        catch (Exception exception)
+        {
+            logger.Error(exception, "OCR language pack check failed.");
+            OcrLanguagePackStatus = "OCR language pack check failed. Check logs for details.";
+            StatusMessage = OcrLanguagePackStatus;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task InstallOcrLanguagePackAsync()
+    {
+        if (!CanManageOcrLanguagePack())
+        {
+            OcrLanguagePackStatus = "Select an OCR engine and source language first.";
+            StatusMessage = OcrLanguagePackStatus;
+            return;
+        }
+
+        try
+        {
+            IsBusy = true;
+            OcrLanguagePackStatus = $"Installing {OcrEngine} OCR language '{SourceLanguage}'...";
+            StatusMessage = OcrLanguagePackStatus;
+            var result = await ocrLanguagePackService.InstallAsync(
+                OcrEngine.Trim(),
+                SourceLanguage.Trim(),
+                OcrOrientationMode);
+
+            if (result.ActionUri is not null)
+            {
+                OpenExternalUri(result.ActionUri);
+            }
+
+            OcrLanguagePackStatus = result.Message;
+            StatusMessage = OcrLanguagePackStatus;
+        }
+        catch (Exception exception)
+        {
+            logger.Error(exception, "OCR language pack installation failed.");
+            OcrLanguagePackStatus = "OCR language pack installation failed. Check logs for details.";
+            StatusMessage = OcrLanguagePackStatus;
         }
         finally
         {
@@ -2940,6 +3091,14 @@ public sealed class MainViewModel : ValidatableObservableObject
             && !string.IsNullOrWhiteSpace(SourceLanguage);
     }
 
+    private bool CanManageOcrLanguagePack()
+    {
+        return !IsBusy
+            && !IsLiveTranslationRunning
+            && !string.IsNullOrWhiteSpace(OcrEngine)
+            && !string.IsNullOrWhiteSpace(SourceLanguage);
+    }
+
     private bool CanRunTranslationPipeline()
     {
         return !IsBusy
@@ -3021,6 +3180,19 @@ public sealed class MainViewModel : ValidatableObservableObject
                 endpoint.Trim().TrimEnd('/'),
                 defaultEndpoint.TrimEnd('/'),
                 StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void ResetOcrLanguagePackStatus()
+    {
+        OcrLanguagePackStatus = "OCR language pack status not checked.";
+    }
+
+    private static void OpenExternalUri(Uri uri)
+    {
+        Process.Start(new ProcessStartInfo(uri.ToString())
+        {
+            UseShellExecute = true,
+        });
     }
 
     private bool CanDuplicateSelectedZone()
@@ -3596,6 +3768,8 @@ public sealed class MainViewModel : ValidatableObservableObject
         ((AsyncRelayCommand)RefreshCapturePreviewCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)MeasureCaptureRefreshCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)RecognizeOcrPreviewCommand).RaiseCanExecuteChanged();
+        ((AsyncRelayCommand)CheckOcrLanguagePackCommand).RaiseCanExecuteChanged();
+        ((AsyncRelayCommand)InstallOcrLanguagePackCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)RunTranslationPipelineCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)StartLiveTranslationCommand).RaiseCanExecuteChanged();
         ((RelayCommand)StopLiveTranslationCommand).RaiseCanExecuteChanged();

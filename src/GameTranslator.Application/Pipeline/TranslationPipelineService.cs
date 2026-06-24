@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using GameTranslator.Application.Cache;
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Credentials;
@@ -539,7 +540,37 @@ public sealed class TranslationPipelineService
 
     private static string NormalizeRecognizedText(string text)
     {
-        return string.Join(' ', text.Split(Array.Empty<char>(), StringSplitOptions.RemoveEmptyEntries));
+        var collapsedText = string.Join(' ', text.Split(Array.Empty<char>(), StringSplitOptions.RemoveEmptyEntries));
+        if (collapsedText.IndexOf(' ', StringComparison.Ordinal) < 0)
+        {
+            return collapsedText;
+        }
+
+        var normalizedText = new StringBuilder(collapsedText.Length);
+        for (var index = 0; index < collapsedText.Length; index++)
+        {
+            var character = collapsedText[index];
+            if (character == ' '
+                && index > 0
+                && index < collapsedText.Length - 1
+                && IsCompactScriptCharacter(collapsedText[index - 1])
+                && IsCompactScriptCharacter(collapsedText[index + 1]))
+            {
+                continue;
+            }
+
+            normalizedText.Append(character);
+        }
+
+        return normalizedText.ToString();
+    }
+
+    private static bool IsCompactScriptCharacter(char character)
+    {
+        return character is >= '\u3040' and <= '\u30ff'
+            or >= '\u3400' and <= '\u4dbf'
+            or >= '\u4e00' and <= '\u9fff'
+            or >= '\uac00' and <= '\ud7af';
     }
 
     private bool IsWithinDebounceWindow(DateTimeOffset previousCapturedAt, DateTimeOffset currentCapturedAt)
@@ -718,7 +749,7 @@ public sealed class TranslationPipelineService
     {
         if (previousSnapshot is not null
             && runOptions.PreservePreviousOverlayWhileWaitingForStableText
-            && IsWaitingForStableText(results))
+            && ShouldPreservePreviousOverlay(results))
         {
             return previousSnapshot;
         }
@@ -744,6 +775,20 @@ public sealed class TranslationPipelineService
             && results.Any(result => result.RecognizedBlockCount > 0)
             && results.All(result => result.TranslatedBlockCount == 0)
             && results.Any(result => result.Optimization.TranslationSkipped);
+    }
+
+    private static bool ShouldPreservePreviousOverlay(IReadOnlyList<TranslationPipelineResult> results)
+    {
+        return results.Count == 0
+            || IsWaitingForStableText(results)
+            || IsTemporarilyEmptyOcrResult(results);
+    }
+
+    private static bool IsTemporarilyEmptyOcrResult(IReadOnlyList<TranslationPipelineResult> results)
+    {
+        return results.Count > 0
+            && results.All(result => result.RecognizedBlockCount == 0)
+            && results.All(result => result.TranslatedBlockCount == 0);
     }
 
     private static TranslationPipelineTimings CreateTimings(

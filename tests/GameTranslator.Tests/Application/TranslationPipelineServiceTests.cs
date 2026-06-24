@@ -363,6 +363,118 @@ public sealed class TranslationPipelineServiceTests
     }
 
     [Fact]
+    public async Task RunAllZonesAsync_WhenLiveOcrFindsNoText_PreservesPreviousOverlay()
+    {
+        var zone = CreateZone();
+        var profile = CreateProfile(zone);
+        var previousSnapshot = new OverlaySnapshot(
+            new[] { new OverlayTextItem("Previous translation", 1, 2, 30, 12) },
+            FrameTime);
+        var translator = new FakeTranslatorProvider("Google");
+        var overlay = new FakeOverlayService();
+        var service = CreateService(
+            new FakeCaptureFrameSource(),
+            new FakeOcrEngine(),
+            translator,
+            overlay,
+            optimizationOptions: new TranslationPipelineOptimizationOptions());
+        var runOptions = new TranslationPipelineRunOptions(
+            requireStableTextBeforeTranslation: true,
+            stableTextInterval: TimeSpan.FromMilliseconds(300),
+            preservePreviousOverlayWhileWaitingForStableText: true);
+
+        var result = await service.RunAllZonesAsync(profile, previousSnapshot, runOptions);
+
+        Assert.Same(previousSnapshot, result.OverlaySnapshot);
+        Assert.Same(previousSnapshot, overlay.CurrentSnapshot);
+        Assert.Equal(1, result.SucceededZoneCount);
+        Assert.Equal(0, result.RecognizedBlockCount);
+        Assert.Equal(0, result.TranslatedBlockCount);
+        Assert.Equal(0, translator.CallCount);
+    }
+
+    [Fact]
+    public async Task RunAllZonesAsync_WhenAllZonesFailInLiveMode_PreservesPreviousOverlay()
+    {
+        var zone = CreateZone();
+        var profile = CreateProfile(zone);
+        var previousSnapshot = new OverlaySnapshot(
+            new[] { new OverlayTextItem("Previous translation", 1, 2, 30, 12) },
+            FrameTime);
+        var overlay = new FakeOverlayService();
+        var service = CreateService(
+            new FakeCaptureFrameSource(),
+            new FakeOcrEngine
+            {
+                BlocksFactory = _ => new[]
+                {
+                    new OcrTextBlock("Hello", new BoundingBox(4, 5, 24, 10)),
+                },
+            },
+            new FakeTranslatorProvider("Google"),
+            overlay,
+            new FakeCredentialStorage(),
+            new TranslationPipelineOptimizationOptions());
+        var runOptions = new TranslationPipelineRunOptions(
+            preservePreviousOverlayWhileWaitingForStableText: true);
+
+        var result = await service.RunAllZonesAsync(profile, previousSnapshot, runOptions);
+
+        Assert.Same(previousSnapshot, result.OverlaySnapshot);
+        Assert.Same(previousSnapshot, overlay.CurrentSnapshot);
+        Assert.Empty(result.ZoneResults);
+        Assert.Single(result.ZoneFailures);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenCjkOcrWhitespaceChanges_TreatsTextAsStable()
+    {
+        var zone = CreateZone();
+        var profile = CreateProfile(zone) with
+        {
+            TranslatorSettings = new TranslatorSettings
+            {
+                Provider = "Google",
+                SourceLanguage = "zh-CN",
+                TargetLanguage = "ru",
+            },
+        };
+        var recognizedTexts = new[] { "你 好", "你好" };
+        var recognizedTextIndex = 0;
+        var ocrEngine = new FakeOcrEngine
+        {
+            RecognizedAtFrames = new[]
+            {
+                OcrTime,
+                OcrTime.AddMilliseconds(500),
+            },
+            BlocksFactory = _ => new[]
+            {
+                new OcrTextBlock(recognizedTexts[recognizedTextIndex++], new BoundingBox(4, 5, 24, 10)),
+            },
+        };
+        var translator = new FakeTranslatorProvider("Google");
+        var service = CreateService(
+            new FakeCaptureFrameSource(),
+            ocrEngine,
+            translator,
+            new FakeOverlayService(),
+            optimizationOptions: new TranslationPipelineOptimizationOptions());
+        var runOptions = new TranslationPipelineRunOptions(
+            requireStableTextBeforeTranslation: true,
+            stableTextInterval: TimeSpan.FromMilliseconds(300));
+
+        var first = await service.RunAsync(profile, zone, runOptions: runOptions);
+        var second = await service.RunAsync(profile, zone, first.OverlaySnapshot, runOptions);
+
+        Assert.Null(first.TranslateResponse);
+        Assert.True(first.Optimization.TranslationSkipped);
+        Assert.Equal(1, translator.CallCount);
+        Assert.Equal(new[] { "你好" }, translator.Request?.Texts);
+        Assert.Equal("Translated 你好", Assert.Single(second.OverlaySnapshot.TextItems).Text);
+    }
+
+    [Fact]
     public async Task RunAllZonesAsync_WhenRestorePreviousOverlayAfterCapture_RestoresOverlayDuringOcrAndTranslation()
     {
         var zone = CreateZone();

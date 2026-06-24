@@ -537,9 +537,9 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public string LiveTranslationTimingSummary => LiveTranslationTimingPreset switch
     {
-        LiveTranslationTimingPreset.Fast => "Fast: poll every 150 ms, translate after 300 ms stable OCR text.",
-        LiveTranslationTimingPreset.Conservative => "Conservative: poll every 300 ms, translate after 700 ms stable OCR text.",
-        _ => "Balanced: poll every 200 ms, translate after 450 ms stable OCR text.",
+        LiveTranslationTimingPreset.Fast => "Fast: poll every 100 ms, translate after 200 ms stable OCR text.",
+        LiveTranslationTimingPreset.Conservative => "Conservative: poll every 160 ms, translate after 320 ms stable OCR text.",
+        _ => "Balanced: poll every 125 ms, translate after 250 ms stable OCR text.",
     };
 
     public string OcrEngine
@@ -2146,14 +2146,14 @@ public sealed class MainViewModel : ValidatableObservableObject
         var (pollingInterval, stableTextInterval) = normalizedPreset switch
         {
             LiveTranslationTimingPreset.Fast => (
-                TimeSpan.FromMilliseconds(150),
-                TimeSpan.FromMilliseconds(300)),
+                TimeSpan.FromMilliseconds(100),
+                TimeSpan.FromMilliseconds(200)),
             LiveTranslationTimingPreset.Conservative => (
-                TimeSpan.FromMilliseconds(300),
-                TimeSpan.FromMilliseconds(700)),
+                TimeSpan.FromMilliseconds(160),
+                TimeSpan.FromMilliseconds(320)),
             _ => (
-                TimeSpan.FromMilliseconds(200),
-                TimeSpan.FromMilliseconds(450)),
+                TimeSpan.FromMilliseconds(125),
+                TimeSpan.FromMilliseconds(250)),
         };
 
         return new LiveTranslationTiming(

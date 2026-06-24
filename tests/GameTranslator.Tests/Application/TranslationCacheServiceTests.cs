@@ -60,6 +60,37 @@ public sealed class TranslationCacheServiceTests
     }
 
     [Fact]
+    public async Task GetOrAddAsync_WhenOcrWhitespaceChanges_ServesHitWithoutTranslator()
+    {
+        var repository = new InMemoryTranslationCacheRepository();
+        var service = CreateService(repository);
+        var factoryCallCount = 0;
+        IReadOnlyList<string>? translatedTexts = null;
+        await service.GetOrAddAsync(
+            CreateSettings(),
+            new[] { "你 好" },
+            texts =>
+            {
+                factoryCallCount++;
+                translatedTexts = texts.ToArray();
+                return Task.FromResult(new TranslateResponse(new[] { "Hello" }, Now));
+            },
+            Now);
+
+        var result = await service.GetOrAddAsync(
+            CreateSettings(),
+            new[] { "你好" },
+            _ => throw new InvalidOperationException("Translator should not be called."),
+            Now.AddMilliseconds(250));
+
+        Assert.Equal(new[] { "Hello" }, result.TranslatedTexts);
+        Assert.Equal(1, result.MemoryHitCount);
+        Assert.Equal(0, result.MissCount);
+        Assert.Equal(1, factoryCallCount);
+        Assert.Equal(new[] { "你好" }, translatedTexts);
+    }
+
+    [Fact]
     public async Task GetOrAddAsync_WhenPersistentCacheHasEntry_ServesHitWithoutTranslator()
     {
         var repository = new InMemoryTranslationCacheRepository();

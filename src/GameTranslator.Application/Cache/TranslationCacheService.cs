@@ -58,7 +58,7 @@ public sealed class TranslationCacheService
                 continue;
             }
 
-            misses.Add(new CacheMiss(index, key, sourceTexts[index].Trim()));
+            misses.Add(new CacheMiss(index, key, key.SourceText));
         }
 
         var storedCount = 0;

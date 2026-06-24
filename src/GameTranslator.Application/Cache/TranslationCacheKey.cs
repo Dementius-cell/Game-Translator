@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using GameTranslator.Application.Ocr;
 
 namespace GameTranslator.Application.Cache;
 
@@ -14,7 +15,7 @@ public sealed class TranslationCacheKey : IEquatable<TranslationCacheKey>
         Provider = Normalize(provider, nameof(provider));
         SourceLanguage = Normalize(sourceLanguage, nameof(sourceLanguage));
         TargetLanguage = Normalize(targetLanguage, nameof(targetLanguage));
-        SourceText = Normalize(sourceText, nameof(sourceText));
+        SourceText = NormalizeSourceText(sourceText, nameof(sourceText));
         SourceTextHash = ComputeHash(SourceText);
     }
 
@@ -58,6 +59,13 @@ public sealed class TranslationCacheKey : IEquatable<TranslationCacheKey>
         ArgumentException.ThrowIfNullOrWhiteSpace(value, parameterName);
 
         return value.Trim();
+    }
+
+    private static string NormalizeSourceText(string value, string parameterName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value, parameterName);
+
+        return OcrTextNormalizer.NormalizeForComparison(value);
     }
 
     private static string ComputeHash(string value)

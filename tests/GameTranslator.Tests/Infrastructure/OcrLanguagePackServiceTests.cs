@@ -24,7 +24,7 @@ public sealed class OcrLanguagePackServiceTests
 
         Assert.False(status.IsReady);
         Assert.True(status.CanInstall);
-        Assert.Contains("chi_sim_vert.traineddata", status.Message, StringComparison.Ordinal);
+        Assert.Equal("Tesseract OCR needs zh-CN Vertical data: chi_sim_vert.traineddata.", status.Message);
     }
 
     [Fact]
@@ -43,6 +43,7 @@ public sealed class OcrLanguagePackServiceTests
         Assert.True(result.Succeeded);
         Assert.True(File.Exists(Path.Combine(workspace.Path, "jpn_vert.traineddata")));
         Assert.Equal(modelBytes, File.ReadAllBytes(Path.Combine(workspace.Path, "jpn_vert.traineddata")));
+        Assert.Equal("Tesseract OCR ready for ja Vertical: jpn_vert.traineddata.", result.Message);
         var request = Assert.Single(handler.Requests);
         Assert.EndsWith("/jpn_vert.traineddata", request.RequestUri?.AbsoluteUri, StringComparison.Ordinal);
     }

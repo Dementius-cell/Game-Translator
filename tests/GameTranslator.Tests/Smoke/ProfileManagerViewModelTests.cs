@@ -180,15 +180,15 @@ public sealed class ProfileManagerViewModelTests
         var viewModel = CreateMainViewModel(repository, settings);
 
         Assert.Equal(conservativePreset, GetPropertyValue(viewModel, "LiveTranslationTimingPreset"));
-        Assert.Contains("700 ms", Assert.IsType<string>(GetPropertyValue(viewModel, "LiveTranslationTimingSummary")));
+        Assert.Contains("320 ms", Assert.IsType<string>(GetPropertyValue(viewModel, "LiveTranslationTimingSummary")));
 
         var fastPreset = Enum.Parse(presetType, "Fast");
         SetPropertyValue(viewModel, "LiveTranslationTimingPreset", fastPreset);
 
         Assert.Equal(fastPreset, settings.GetValue<object>("shell.live.translationTimingPreset"));
         var summary = Assert.IsType<string>(GetPropertyValue(viewModel, "LiveTranslationTimingSummary"));
-        Assert.Contains("150 ms", summary);
-        Assert.Contains("300 ms", summary);
+        Assert.Contains("100 ms", summary);
+        Assert.Contains("200 ms", summary);
     }
 
     [Fact]

@@ -97,7 +97,7 @@ public sealed class OcrLanguagePackService : IOcrLanguagePackService
 
         return new OcrLanguagePackInstallResult(
             true,
-            $"Tesseract OCR language data installed for {languageTag} ({string.Join("+", requiredLanguages)}) in '{tessdataPath}'.");
+            $"Tesseract OCR ready for {DescribeTesseractLanguage(languageTag, orientationMode)}: {FormatTrainedDataFiles(requiredLanguages)}.");
     }
 
     private static OcrLanguagePackStatus CheckWindowsOcrLanguage(
@@ -178,7 +178,7 @@ public sealed class OcrLanguagePackService : IOcrLanguagePackService
                 orientationMode,
                 IsReady: true,
                 CanInstall: false,
-                $"Tesseract OCR language data is installed for {languageTag} ({string.Join("+", requiredLanguages)}).");
+                $"Tesseract OCR ready for {DescribeTesseractLanguage(languageTag, orientationMode)}: {FormatTrainedDataFiles(requiredLanguages)}.");
         }
 
         return new OcrLanguagePackStatus(
@@ -187,8 +187,18 @@ public sealed class OcrLanguagePackService : IOcrLanguagePackService
             orientationMode,
             IsReady: false,
             CanInstall: true,
-            $"Tesseract OCR is missing traineddata file(s): {string.Join(", ", missingLanguages.Select(language => $"{language}.traineddata"))}.",
+            $"Tesseract OCR needs {DescribeTesseractLanguage(languageTag, orientationMode)} data: {FormatTrainedDataFiles(missingLanguages)}.",
             TesseractFastDataBaseUri);
+    }
+
+    private static string DescribeTesseractLanguage(string languageTag, OcrOrientationMode orientationMode)
+    {
+        return $"{languageTag} {orientationMode}";
+    }
+
+    private static string FormatTrainedDataFiles(IEnumerable<string> languages)
+    {
+        return string.Join(", ", languages.Select(language => $"{language}.traineddata"));
     }
 
     private static string[] GetRequiredTesseractLanguages(string languageTag, OcrOrientationMode orientationMode)

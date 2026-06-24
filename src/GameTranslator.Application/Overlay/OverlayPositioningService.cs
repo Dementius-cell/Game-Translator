@@ -15,6 +15,7 @@ public sealed class OverlayPositioningService
     private const int ExpandedTextHorizontalPadding = 8;
     private const int ExpandedTextVerticalPadding = 4;
     private const int ExpandedTextMaxWidth = 960;
+    private const double VerticalSourceAspectRatioThreshold = 1.4;
 
     public OverlaySnapshot CreateSnapshot(
         OcrResult result,
@@ -93,19 +94,50 @@ public sealed class OverlayPositioningService
         var sourceY = checked(result.Region.Y + ScaleCoordinate(block.Bounds.Y, scaleY));
         var sourceWidth = ScaleSize(block.Bounds.Width, scaleX);
         var sourceHeight = ScaleSize(block.Bounds.Height, scaleY);
+        var layoutBounds = CreateLayoutBounds(result, sourceX, sourceY, sourceWidth, sourceHeight, textStyle);
 
         if (textStyle.LayoutMode == OverlayTextLayoutMode.ExpandFromSourceCenter)
         {
-            return CreateExpandedTextItem(block.Text, sourceX, sourceY, sourceWidth, sourceHeight, textStyle);
+            return CreateExpandedTextItem(
+                block.Text,
+                layoutBounds.X,
+                layoutBounds.Y,
+                layoutBounds.Width,
+                layoutBounds.Height,
+                textStyle);
         }
 
         return new OverlayTextItem(
             block.Text,
-            sourceX,
-            sourceY,
-            sourceWidth,
-            sourceHeight,
+            layoutBounds.X,
+            layoutBounds.Y,
+            layoutBounds.Width,
+            layoutBounds.Height,
             textStyle);
+    }
+
+    private static OverlayLayoutBounds CreateLayoutBounds(
+        OcrResult result,
+        int sourceX,
+        int sourceY,
+        int sourceWidth,
+        int sourceHeight,
+        OcrZoneTextStyle textStyle)
+    {
+        if (result.Request.OrientationMode is not OcrOrientationMode.Vertical
+            || sourceHeight < sourceWidth * VerticalSourceAspectRatioThreshold)
+        {
+            return new OverlayLayoutBounds(sourceX, sourceY, sourceWidth, sourceHeight);
+        }
+
+        var centerX = sourceX + sourceWidth / 2d;
+        var centerY = sourceY + sourceHeight / 2d;
+        var width = Math.Min(ExpandedTextMaxWidth, Math.Max(sourceHeight, sourceWidth));
+        var height = Math.Max(sourceWidth, EstimateSingleLineTextHeight(textStyle));
+        var x = Math.Max(0, (int)Math.Round(centerX - width / 2d, MidpointRounding.AwayFromZero));
+        var y = Math.Max(0, (int)Math.Round(centerY - height / 2d, MidpointRounding.AwayFromZero));
+
+        return new OverlayLayoutBounds(x, y, width, height);
     }
 
     private static OverlayTextItem CreateExpandedTextItem(
@@ -149,6 +181,11 @@ public sealed class OverlayPositioningService
             (int)Math.Ceiling(textStyle.FontSize * LineHeightFactor * lineCount + ExpandedTextVerticalPadding * 2));
 
         return new ExpandedTextSize(width, height);
+    }
+
+    private static int EstimateSingleLineTextHeight(OcrZoneTextStyle textStyle)
+    {
+        return (int)Math.Ceiling(textStyle.FontSize * LineHeightFactor + ExpandedTextVerticalPadding * 2);
     }
 
     private static OverlayTextItem[] StabilizeTextItems(
@@ -219,6 +256,8 @@ public sealed class OverlayPositioningService
                 : OverlayTextLayoutMode.FitToSourceBounds,
         };
     }
+
+    private sealed record OverlayLayoutBounds(int X, int Y, int Width, int Height);
 
     private sealed record ExpandedTextSize(int Width, int Height);
 }

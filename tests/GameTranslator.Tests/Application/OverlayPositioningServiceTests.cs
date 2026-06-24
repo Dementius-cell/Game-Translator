@@ -218,6 +218,26 @@ public sealed class OverlayPositioningServiceTests
     }
 
     [Fact]
+    public void CreateSnapshot_WhenVerticalOcrBoundsAreTall_UsesReadableHorizontalTextBounds()
+    {
+        var service = new OverlayPositioningService();
+        var result = CreateResult(
+            new CaptureRegion(100, 200, 200, 400),
+            inputWidth: 100,
+            inputHeight: 200,
+            orientationMode: OcrOrientationMode.Vertical,
+            blocks: new[] { new OcrTextBlock("Translated subtitle", new BoundingBox(40, 10, 10, 160)) });
+
+        var snapshot = service.CreateSnapshot(result, ShownAt);
+
+        var item = Assert.Single(snapshot.TextItems);
+        Assert.Equal("Translated subtitle", item.Text);
+        Assert.True(item.Width > item.Height * 4);
+        Assert.Equal(190d, item.X + item.Width / 2d, precision: 0);
+        Assert.Equal(380d, item.Y + item.Height / 2d, precision: 0);
+    }
+
+    [Fact]
     public void CreateSnapshot_WhenPaddingWouldMoveMaskOffScreen_ClampsMaskOrigin()
     {
         var service = new OverlayPositioningService();
@@ -254,10 +274,20 @@ public sealed class OverlayPositioningServiceTests
         int inputHeight,
         params OcrTextBlock[] blocks)
     {
+        return CreateResult(region, inputWidth, inputHeight, OcrOrientationMode.Auto, blocks);
+    }
+
+    private static OcrResult CreateResult(
+        CaptureRegion region,
+        int inputWidth,
+        int inputHeight,
+        OcrOrientationMode orientationMode,
+        params OcrTextBlock[] blocks)
+    {
         var frame = CreateFrame(region, inputWidth, inputHeight);
 
         return new OcrResult(
-            new OcrRequest(frame, "en", "zone-a"),
+            new OcrRequest(frame, "en", "zone-a", orientationMode: orientationMode),
             blocks,
             FrameTime);
     }

@@ -24,7 +24,26 @@ public sealed class OcrLanguagePackServiceTests
 
         Assert.False(status.IsReady);
         Assert.True(status.CanInstall);
-        Assert.Equal("Tesseract OCR needs zh-CN Vertical data: chi_sim_vert.traineddata.", status.Message);
+        Assert.Equal("Missing: Tesseract OCR zh-CN Vertical needs chi_sim_vert.traineddata.", status.Message);
+    }
+
+    [Fact]
+    public async Task CheckAsync_WhenTesseractTraditionalChineseVerticalDataExists_ReportsReady()
+    {
+        using var workspace = new TemporaryDirectory();
+        await File.WriteAllBytesAsync(Path.Combine(workspace.Path, "chi_tra_vert.traineddata"), Array.Empty<byte>());
+        var service = new OcrLanguagePackService(
+            new HttpClient(new StaticHttpMessageHandler(Array.Empty<byte>())),
+            workspace.Path);
+
+        var status = await service.CheckAsync(
+            OcrSettings.TesseractEngineId,
+            "zh-TW",
+            OcrOrientationMode.Vertical);
+
+        Assert.True(status.IsReady);
+        Assert.False(status.CanInstall);
+        Assert.Equal("Ready: Tesseract OCR zh-TW Vertical uses chi_tra_vert.traineddata.", status.Message);
     }
 
     [Fact]
@@ -43,7 +62,7 @@ public sealed class OcrLanguagePackServiceTests
         Assert.True(result.Succeeded);
         Assert.True(File.Exists(Path.Combine(workspace.Path, "jpn_vert.traineddata")));
         Assert.Equal(modelBytes, File.ReadAllBytes(Path.Combine(workspace.Path, "jpn_vert.traineddata")));
-        Assert.Equal("Tesseract OCR ready for ja Vertical: jpn_vert.traineddata.", result.Message);
+        Assert.Equal("Ready: Tesseract OCR ja Vertical uses jpn_vert.traineddata.", result.Message);
         var request = Assert.Single(handler.Requests);
         Assert.EndsWith("/jpn_vert.traineddata", request.RequestUri?.AbsoluteUri, StringComparison.Ordinal);
     }

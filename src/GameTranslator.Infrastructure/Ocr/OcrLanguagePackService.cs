@@ -97,7 +97,7 @@ public sealed class OcrLanguagePackService : IOcrLanguagePackService
 
         return new OcrLanguagePackInstallResult(
             true,
-            $"Tesseract OCR ready for {DescribeTesseractLanguage(languageTag, orientationMode)}: {FormatTrainedDataFiles(requiredLanguages)}.");
+            $"Ready: Tesseract OCR {DescribeTesseractLanguage(languageTag, orientationMode)} uses {FormatTrainedDataFiles(requiredLanguages)}.");
     }
 
     private static OcrLanguagePackStatus CheckWindowsOcrLanguage(
@@ -178,7 +178,7 @@ public sealed class OcrLanguagePackService : IOcrLanguagePackService
                 orientationMode,
                 IsReady: true,
                 CanInstall: false,
-                $"Tesseract OCR ready for {DescribeTesseractLanguage(languageTag, orientationMode)}: {FormatTrainedDataFiles(requiredLanguages)}.");
+                $"Ready: Tesseract OCR {DescribeTesseractLanguage(languageTag, orientationMode)} uses {FormatTrainedDataFiles(requiredLanguages)}.");
         }
 
         return new OcrLanguagePackStatus(
@@ -187,7 +187,7 @@ public sealed class OcrLanguagePackService : IOcrLanguagePackService
             orientationMode,
             IsReady: false,
             CanInstall: true,
-            $"Tesseract OCR needs {DescribeTesseractLanguage(languageTag, orientationMode)} data: {FormatTrainedDataFiles(missingLanguages)}.",
+            $"Missing: Tesseract OCR {DescribeTesseractLanguage(languageTag, orientationMode)} needs {FormatTrainedDataFiles(missingLanguages)}.",
             TesseractFastDataBaseUri);
     }
 

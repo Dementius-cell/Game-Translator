@@ -2058,6 +2058,9 @@ public sealed class MainViewModel : ValidatableObservableObject
         PipelineStatus = "Stopping live translation...";
         StatusMessage = PipelineStatus;
         liveTranslationCancellation.Cancel();
+        overlayService.Hide();
+        OverlayPreviewStatus = "Live translation overlay hidden.";
+        OnPropertyChanged(nameof(IsOverlayPreviewVisible));
         NotifyCommandStateChanged();
     }
 
@@ -2085,6 +2088,7 @@ public sealed class MainViewModel : ValidatableObservableObject
                         liveTiming.RunOptions,
                         cancellationToken);
 
+                    cancellationToken.ThrowIfCancellationRequested();
                     ApplyBatchPipelineResult(profile, result, isLiveMode: true);
                     await Task.Delay(liveTiming.PollingInterval, cancellationToken);
                 }

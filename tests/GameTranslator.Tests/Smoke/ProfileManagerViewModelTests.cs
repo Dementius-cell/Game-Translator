@@ -1472,6 +1472,49 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
+    public async Task StopLiveTranslation_HidesTranslatedOverlay()
+    {
+        var credentialStorage = new TestCredentialStorage();
+        await credentialStorage.SaveAsync(
+            new TranslatorCredentialRecord(
+                "Google",
+                "SECRET_TRANSLATOR_TOKEN",
+                "project-a",
+                "global",
+                new Uri("https://translation.test")));
+        var overlay = new TestOverlayService();
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            ocrEngine: new TestOcrEngine
+            {
+                BlocksFactory = _ => new[]
+                {
+                    new OcrTextBlock("Original subtitle", new BoundingBox(0, 0, 40, 12)),
+                },
+            },
+            translatorProvider: new TestTranslatorProvider("Google", new[] { "Translated subtitle" }),
+            overlayService: overlay,
+            credentialStorage: credentialStorage);
+
+        ConfigureValidDraftProfile(viewModel, "Live stop draft");
+        InvokeMethodWithArguments(viewModel, "StartZoneSelection", 10d, 20d);
+        InvokeMethodWithArguments(viewModel, "CompleteZoneSelection", 110d, 70d);
+        await InvokeTaskMethodAsync(viewModel, "StartLiveTranslationAsync");
+        overlay.Show(new OverlaySnapshot(
+            new[] { new OverlayTextItem("Translated subtitle", 10, 20, 220, 48) },
+            DateTimeOffset.UtcNow));
+
+        InvokeMethod(viewModel, "StopLiveTranslation");
+        await WaitForConditionAsync(() => !(bool)(GetPropertyValue(viewModel, "IsLiveTranslationRunning") ?? true));
+
+        Assert.False(overlay.IsVisible);
+        Assert.Equal("Hide", overlay.Events.Last());
+        Assert.Equal("Live translation overlay hidden.", GetPropertyValue(viewModel, "OverlayPreviewStatus"));
+        Assert.Equal("Live translation stopped.", GetPropertyValue(viewModel, "PipelineStatus"));
+    }
+
+    [Fact]
     public async Task RunTranslationPipelineAsync_WhenAllZonesFail_ShowsFirstFailureStageAndDetail()
     {
         var credentialStorage = new TestCredentialStorage();

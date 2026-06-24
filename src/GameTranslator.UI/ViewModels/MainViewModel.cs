@@ -24,6 +24,16 @@ using GameTranslator.UI.Services;
 
 namespace GameTranslator.UI.ViewModels;
 
+public sealed record LanguageOption(string Code, string Name)
+{
+    public string DisplayName => $"{Code} {Name}";
+
+    public override string ToString()
+    {
+        return DisplayName;
+    }
+}
+
 public sealed class MainViewModel : ValidatableObservableObject
 {
     private const string SelectedProfileSettingKey = "profiles.selectedId";
@@ -69,19 +79,35 @@ public sealed class MainViewModel : ValidatableObservableObject
         "YandexWeb",
     };
 
-    private static readonly string[] SupportedLanguageOptions =
+    private static readonly LanguageOption[] SupportedLanguageOptions =
     {
-        "af", "am", "ar", "az", "be", "bg", "bn", "bs", "ca", "ceb",
-        "co", "cs", "cy", "da", "de", "el", "en", "eo", "es", "et",
-        "eu", "fa", "fi", "fr", "fy", "ga", "gd", "gl", "gu", "ha",
-        "haw", "he", "hi", "hmn", "hr", "ht", "hu", "hy", "id", "ig",
-        "is", "it", "ja", "jv", "ka", "kk", "km", "kn", "ko", "ku",
-        "ky", "la", "lb", "lo", "lt", "lv", "mg", "mi", "mk", "ml",
-        "mn", "mr", "ms", "mt", "my", "ne", "nl", "no", "ny", "or",
-        "pa", "pl", "ps", "pt", "ro", "ru", "sd", "si", "sk", "sl",
-        "sm", "sn", "so", "sq", "sr", "st", "su", "sv", "sw", "ta",
-        "te", "tg", "th", "tr", "uk", "ur", "uz", "vi", "xh", "yi",
-        "yo", "zh-CN", "zh-TW", "zu",
+        new("af", "Afrikaans"), new("am", "Amharic"), new("ar", "Arabic"), new("az", "Azerbaijani"),
+        new("be", "Belarusian"), new("bg", "Bulgarian"), new("bn", "Bengali"), new("bs", "Bosnian"),
+        new("ca", "Catalan"), new("ceb", "Cebuano"), new("co", "Corsican"), new("cs", "Czech"),
+        new("cy", "Welsh"), new("da", "Danish"), new("de", "German"), new("el", "Greek"),
+        new("en", "English"), new("eo", "Esperanto"), new("es", "Spanish"), new("et", "Estonian"),
+        new("eu", "Basque"), new("fa", "Persian"), new("fi", "Finnish"), new("fr", "French"),
+        new("fy", "Frisian"), new("ga", "Irish"), new("gd", "Scottish Gaelic"), new("gl", "Galician"),
+        new("gu", "Gujarati"), new("ha", "Hausa"), new("haw", "Hawaiian"), new("he", "Hebrew"),
+        new("hi", "Hindi"), new("hmn", "Hmong"), new("hr", "Croatian"), new("ht", "Haitian Creole"),
+        new("hu", "Hungarian"), new("hy", "Armenian"), new("id", "Indonesian"), new("ig", "Igbo"),
+        new("is", "Icelandic"), new("it", "Italian"), new("ja", "Japanese"), new("jv", "Javanese"),
+        new("ka", "Georgian"), new("kk", "Kazakh"), new("km", "Khmer"), new("kn", "Kannada"),
+        new("ko", "Korean"), new("ku", "Kurdish"), new("ky", "Kyrgyz"), new("la", "Latin"),
+        new("lb", "Luxembourgish"), new("lo", "Lao"), new("lt", "Lithuanian"), new("lv", "Latvian"),
+        new("mg", "Malagasy"), new("mi", "Maori"), new("mk", "Macedonian"), new("ml", "Malayalam"),
+        new("mn", "Mongolian"), new("mr", "Marathi"), new("ms", "Malay"), new("mt", "Maltese"),
+        new("my", "Myanmar (Burmese)"), new("ne", "Nepali"), new("nl", "Dutch"), new("no", "Norwegian"),
+        new("ny", "Chichewa"), new("or", "Odia"), new("pa", "Punjabi"), new("pl", "Polish"),
+        new("ps", "Pashto"), new("pt", "Portuguese"), new("ro", "Romanian"), new("ru", "Russian"),
+        new("sd", "Sindhi"), new("si", "Sinhala"), new("sk", "Slovak"), new("sl", "Slovenian"),
+        new("sm", "Samoan"), new("sn", "Shona"), new("so", "Somali"), new("sq", "Albanian"),
+        new("sr", "Serbian"), new("st", "Sesotho"), new("su", "Sundanese"), new("sv", "Swedish"),
+        new("sw", "Swahili"), new("ta", "Tamil"), new("te", "Telugu"), new("tg", "Tajik"),
+        new("th", "Thai"), new("tr", "Turkish"), new("uk", "Ukrainian"), new("ur", "Urdu"),
+        new("uz", "Uzbek"), new("vi", "Vietnamese"), new("xh", "Xhosa"), new("yi", "Yiddish"),
+        new("yo", "Yoruba"), new("zh-CN", "Chinese (Simplified)"), new("zh-TW", "Chinese (Traditional)"),
+        new("zu", "Zulu"),
     };
 
     private static readonly OcrOrientationMode[] SupportedOcrOrientations =
@@ -376,7 +402,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public IReadOnlyList<string> TranslatorProviderOptions { get; }
 
-    public IReadOnlyList<string> LanguageOptions { get; }
+    public IReadOnlyList<LanguageOption> LanguageOptions { get; }
 
     public GameProfile? SelectedProfile
     {

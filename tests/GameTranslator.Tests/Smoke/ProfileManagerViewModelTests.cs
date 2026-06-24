@@ -196,14 +196,17 @@ public sealed class ProfileManagerViewModelTests
     {
         var viewModel = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService());
 
-        var languages = Assert.IsAssignableFrom<IEnumerable<string>>(GetPropertyValue(viewModel, "LanguageOptions"));
+        var languages = Assert.IsAssignableFrom<System.Collections.IEnumerable>(GetPropertyValue(viewModel, "LanguageOptions"))
+            .Cast<object>()
+            .ToArray();
 
-        Assert.Contains("ar", languages);
-        Assert.Contains("hi", languages);
-        Assert.Contains("ja", languages);
-        Assert.Contains("ru", languages);
-        Assert.Contains("zh-CN", languages);
-        Assert.Contains("zh-TW", languages);
+        Assert.Contains(languages, language => IsLanguageOption(language, "ar", "ar Arabic"));
+        Assert.Contains(languages, language => IsLanguageOption(language, "hi", "hi Hindi"));
+        Assert.Contains(languages, language => IsLanguageOption(language, "ja", "ja Japanese"));
+        Assert.Contains(languages, language => IsLanguageOption(language, "ko", "ko Korean"));
+        Assert.Contains(languages, language => IsLanguageOption(language, "ru", "ru Russian"));
+        Assert.Contains(languages, language => IsLanguageOption(language, "zh-CN", "zh-CN Chinese (Simplified)"));
+        Assert.Contains(languages, language => IsLanguageOption(language, "zh-TW", "zh-TW Chinese (Traditional)"));
     }
 
     [Fact]
@@ -1768,6 +1771,12 @@ public sealed class ProfileManagerViewModelTests
     private static object? GetPropertyValue(object instance, string propertyName)
     {
         return instance.GetType().GetProperty(propertyName)?.GetValue(instance);
+    }
+
+    private static bool IsLanguageOption(object instance, string code, string displayName)
+    {
+        return string.Equals(GetPropertyValue(instance, "Code")?.ToString(), code, StringComparison.Ordinal)
+            && string.Equals(GetPropertyValue(instance, "DisplayName")?.ToString(), displayName, StringComparison.Ordinal);
     }
 
     private static IReadOnlyList<string> GetValidationErrorMessages(object viewModel)

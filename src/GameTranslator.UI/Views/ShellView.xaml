@@ -147,9 +147,11 @@
                     BorderBrush="#D7DEE8"
                     BorderThickness="1"
                     CornerRadius="4"
-                    Padding="20">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <StackPanel>
+                    Padding="0">
+                    <ScrollViewer
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Visible">
+                        <StackPanel Margin="20">
                             <StackPanel>
                                 <TextBlock
                                     FontSize="20"
@@ -447,9 +449,13 @@
                                         Grid.Column="1"
                                         Margin="0,12,0,0"
                                         Padding="6,4"
-                                        IsEditable="True"
+                                        DisplayMemberPath="DisplayName"
+                                        IsEditable="False"
+                                        IsTextSearchEnabled="True"
                                         ItemsSource="{Binding LanguageOptions}"
-                                        Text="{Binding SourceLanguage, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+                                        SelectedValue="{Binding SourceLanguage, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}"
+                                        SelectedValuePath="Code"
+                                        TextSearch.TextPath="DisplayName" />
 
                                     <TextBlock
                                         Grid.Row="3"
@@ -463,9 +469,13 @@
                                         Grid.Column="1"
                                         Margin="0,12,0,0"
                                         Padding="6,4"
-                                        IsEditable="True"
+                                        DisplayMemberPath="DisplayName"
+                                        IsEditable="False"
+                                        IsTextSearchEnabled="True"
                                         ItemsSource="{Binding LanguageOptions}"
-                                        Text="{Binding TargetLanguage, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+                                        SelectedValue="{Binding TargetLanguage, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}"
+                                        SelectedValuePath="Code"
+                                        TextSearch.TextPath="DisplayName" />
 
                                     <TextBlock
                                         Grid.Row="4"

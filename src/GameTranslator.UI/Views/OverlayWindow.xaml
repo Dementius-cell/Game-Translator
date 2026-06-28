@@ -74,13 +74,16 @@
                                 StretchDirection="Both"
                                 Visibility="{Binding UsesFitToSourceBounds, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <TextBlock
+                                    Width="{Binding ContentWidth}"
                                     Foreground="#FFFFFF"
                                     FontFamily="{Binding FontFamily}"
                                     FontSize="{Binding FontSize}"
                                     FontStyle="{Binding FontStyle}"
                                     FontWeight="{Binding FontWeight}"
                                     Text="{Binding Text}"
-                                    TextWrapping="NoWrap" />
+                                    TextAlignment="Center"
+                                    TextTrimming="None"
+                                    TextWrapping="Wrap" />
                             </Viewbox>
                             <TextBlock
                                 Width="{Binding ContentWidth}"
@@ -93,6 +96,7 @@
                                 FontWeight="{Binding FontWeight}"
                                 Text="{Binding Text}"
                                 TextAlignment="Center"
+                                TextTrimming="None"
                                 TextWrapping="Wrap"
                                 Visibility="{Binding UsesExpandedLayout, Converter={StaticResource BooleanToVisibilityConverter}}" />
                         </Grid>

@@ -80,7 +80,12 @@ public sealed class OverlayPositioningServiceTests
     public void CreateSnapshot_WhenMatchingTextOnlyJittersWithinTolerance_ReusesPreviousBounds()
     {
         var service = new OverlayPositioningService();
-        var previousSnapshot = CreateSnapshot(new OverlayTextItem("Start", 14, 25, 24, 10));
+        var previousResult = CreateResult(
+            new CaptureRegion(10, 20, 100, 40),
+            inputWidth: 100,
+            inputHeight: 40,
+            new OcrTextBlock("Start", new BoundingBox(4, 5, 24, 10)));
+        var previousSnapshot = service.CreateSnapshot(previousResult, ShownAt.AddSeconds(-1));
         var result = CreateResult(
             new CaptureRegion(10, 20, 100, 40),
             inputWidth: 100,
@@ -95,6 +100,11 @@ public sealed class OverlayPositioningServiceTests
         Assert.Equal(25, item.Y);
         Assert.Equal(24, item.Width);
         Assert.Equal(10, item.Height);
+        var mask = Assert.Single(snapshot.MaskItems);
+        Assert.Equal(14, mask.X);
+        Assert.Equal(25, mask.Y);
+        Assert.Equal(24, mask.Width);
+        Assert.Equal(10, mask.Height);
     }
 
     [Fact]
@@ -199,7 +209,7 @@ public sealed class OverlayPositioningServiceTests
             new CaptureRegion(100, 200, 200, 80),
             inputWidth: 100,
             inputHeight: 40,
-            new OcrTextBlock("Bonjour", new BoundingBox(10, 5, 20, 10)));
+            new OcrTextBlock("Bonjour", new BoundingBox(40, 5, 20, 10)));
 
         var snapshot = service.CreateSnapshot(result, ShownAt, previousSnapshot: null, textStyle);
 
@@ -208,13 +218,45 @@ public sealed class OverlayPositioningServiceTests
         Assert.Equal(textStyle, item.TextStyle);
         Assert.True(item.Width > 40);
         Assert.True(item.Height > 20);
-        Assert.Equal(140d, item.X + item.Width / 2d, precision: 0);
+        Assert.Equal(200d, item.X + item.Width / 2d, precision: 0);
         Assert.Equal(220d, item.Y + item.Height / 2d, precision: 0);
         var mask = Assert.Single(snapshot.MaskItems);
-        Assert.Equal(item.X, mask.X);
-        Assert.Equal(item.Y, mask.Y);
-        Assert.Equal(item.Width, mask.Width);
-        Assert.Equal(item.Height, mask.Height);
+        Assert.Equal(180, mask.X);
+        Assert.Equal(210, mask.Y);
+        Assert.Equal(40, mask.Width);
+        Assert.Equal(20, mask.Height);
+    }
+
+    [Fact]
+    public void CreateSnapshot_WithExpandedLongText_WrapsAroundSourceCenterAndKeepsSourceMask()
+    {
+        var service = new OverlayPositioningService();
+        var textStyle = new OcrZoneTextStyle
+        {
+            FontFamily = "Arial",
+            FontSize = 20,
+            LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter,
+        };
+        var result = CreateResult(
+            new CaptureRegion(0, 0, 400, 300),
+            inputWidth: 400,
+            inputHeight: 300,
+            new OcrTextBlock(
+                "This translated sentence is much longer than the original bubble text.",
+                new BoundingBox(180, 130, 80, 20)));
+
+        var snapshot = service.CreateSnapshot(result, ShownAt, previousSnapshot: null, textStyle);
+
+        var item = Assert.Single(snapshot.TextItems);
+        Assert.True(item.Width <= 200);
+        Assert.True(item.Height > 20);
+        Assert.Equal(220d, item.X + item.Width / 2d, precision: 0);
+        Assert.Equal(140d, item.Y + item.Height / 2d, precision: 0);
+        var mask = Assert.Single(snapshot.MaskItems);
+        Assert.Equal(180, mask.X);
+        Assert.Equal(130, mask.Y);
+        Assert.Equal(80, mask.Width);
+        Assert.Equal(20, mask.Height);
     }
 
     [Fact]

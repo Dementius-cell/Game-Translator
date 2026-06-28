@@ -239,7 +239,7 @@ public partial class OverlayWindow : Window
 
         public double Height { get; }
 
-        public double ContentWidth => Math.Max(1, Width - ExpandedTextHorizontalPadding);
+        public double ContentWidth => Math.Max(1, Width - ExpandedTextHorizontalPadding * 2);
 
         public string FontFamily { get; }
 

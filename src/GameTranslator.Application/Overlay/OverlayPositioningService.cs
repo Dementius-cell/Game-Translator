@@ -14,7 +14,9 @@ public sealed class OverlayPositioningService
     private const double LineHeightFactor = 1.35;
     private const int ExpandedTextHorizontalPadding = 8;
     private const int ExpandedTextVerticalPadding = 4;
+    private const int MinimumExpandedTextWidth = 96;
     private const int ExpandedTextMaxWidth = 960;
+    private const double ExpandedTextSourceWidthMultiplier = 2.5;
     private const double VerticalSourceAspectRatioThreshold = 1.4;
 
     public OverlaySnapshot CreateSnapshot(
@@ -44,8 +46,11 @@ public sealed class OverlayPositioningService
         ArgumentNullException.ThrowIfNull(result);
 
         var effectiveTextStyle = NormalizeTextStyle(textStyle);
-        var textItems = result.TextBlocks
-            .Select(block => CreateTextItem(result, block, effectiveTextStyle))
+        var positionedItems = result.TextBlocks
+            .Select(block => CreatePositionedTextItem(result, block, effectiveTextStyle))
+            .ToArray();
+        var textItems = positionedItems
+            .Select(item => item.TextItem)
             .ToArray();
 
         if (previousSnapshot is not null)
@@ -54,9 +59,14 @@ public sealed class OverlayPositioningService
         }
 
         var settings = overlaySettings ?? previousSnapshot?.OverlaySettings ?? OverlaySettings.Default;
-        var maskItems = textItems
-            .Select(textItem => CreateMaskItem(textItem, settings))
+        var maskItems = positionedItems
+            .Select(item => CreateMaskItem(item.MaskBounds, settings))
             .ToArray();
+
+        if (previousSnapshot is not null)
+        {
+            maskItems = StabilizeMaskItems(maskItems, textItems, previousSnapshot);
+        }
 
         return new OverlaySnapshot(
             textItems,
@@ -65,13 +75,13 @@ public sealed class OverlayPositioningService
             maskItems);
     }
 
-    private static OverlayMaskItem CreateMaskItem(OverlayTextItem textItem, OverlaySettings settings)
+    private static OverlayMaskItem CreateMaskItem(OverlayMaskBounds maskBounds, OverlaySettings settings)
     {
         var padding = Math.Max(0, (int)Math.Round(settings.Padding, MidpointRounding.AwayFromZero));
-        var x = Math.Max(0, textItem.X - padding);
-        var y = Math.Max(0, textItem.Y - padding);
-        var width = checked(textItem.Width + padding * 2);
-        var height = checked(textItem.Height + padding * 2);
+        var x = Math.Max(0, maskBounds.X - padding);
+        var y = Math.Max(0, maskBounds.Y - padding);
+        var width = checked(maskBounds.Width + padding * 2);
+        var height = checked(maskBounds.Height + padding * 2);
 
         return new OverlayMaskItem(
             settings.MaskMode,
@@ -83,7 +93,7 @@ public sealed class OverlayPositioningService
             height);
     }
 
-    private static OverlayTextItem CreateTextItem(
+    private static OverlayPositionedTextItem CreatePositionedTextItem(
         OcrResult result,
         OcrTextBlock block,
         OcrZoneTextStyle textStyle)
@@ -94,26 +104,25 @@ public sealed class OverlayPositioningService
         var sourceY = checked(result.Region.Y + ScaleCoordinate(block.Bounds.Y, scaleY));
         var sourceWidth = ScaleSize(block.Bounds.Width, scaleX);
         var sourceHeight = ScaleSize(block.Bounds.Height, scaleY);
+        var sourceBounds = new OverlayLayoutBounds(sourceX, sourceY, sourceWidth, sourceHeight);
         var layoutBounds = CreateLayoutBounds(result, sourceX, sourceY, sourceWidth, sourceHeight, textStyle);
 
         if (textStyle.LayoutMode == OverlayTextLayoutMode.ExpandFromSourceCenter)
         {
-            return CreateExpandedTextItem(
+            return new OverlayPositionedTextItem(
+                CreateExpandedTextItem(result, block.Text, sourceBounds, textStyle),
+                new OverlayMaskBounds(sourceX, sourceY, sourceWidth, sourceHeight));
+        }
+
+        return new OverlayPositionedTextItem(
+            new OverlayTextItem(
                 block.Text,
                 layoutBounds.X,
                 layoutBounds.Y,
                 layoutBounds.Width,
                 layoutBounds.Height,
-                textStyle);
-        }
-
-        return new OverlayTextItem(
-            block.Text,
-            layoutBounds.X,
-            layoutBounds.Y,
-            layoutBounds.Width,
-            layoutBounds.Height,
-            textStyle);
+                textStyle),
+            new OverlayMaskBounds(sourceX, sourceY, sourceWidth, sourceHeight));
     }
 
     private static OverlayLayoutBounds CreateLayoutBounds(
@@ -141,18 +150,23 @@ public sealed class OverlayPositioningService
     }
 
     private static OverlayTextItem CreateExpandedTextItem(
+        OcrResult result,
         string text,
-        int sourceX,
-        int sourceY,
-        int sourceWidth,
-        int sourceHeight,
+        OverlayLayoutBounds sourceBounds,
         OcrZoneTextStyle textStyle)
     {
-        var measuredSize = EstimateExpandedTextSize(text, sourceWidth, sourceHeight, textStyle);
-        var centerX = sourceX + sourceWidth / 2d;
-        var centerY = sourceY + sourceHeight / 2d;
-        var x = Math.Max(0, (int)Math.Round(centerX - measuredSize.Width / 2d, MidpointRounding.AwayFromZero));
-        var y = Math.Max(0, (int)Math.Round(centerY - measuredSize.Height / 2d, MidpointRounding.AwayFromZero));
+        var centerX = sourceBounds.X + sourceBounds.Width / 2d;
+        var centerY = sourceBounds.Y + sourceBounds.Height / 2d;
+        var measuredSize = EstimateExpandedTextSize(
+            text,
+            sourceBounds.Width,
+            sourceBounds.Height,
+            textStyle,
+            Math.Min(ExpandedTextMaxWidth, Math.Max(sourceBounds.Width, result.Region.Width)));
+        var x = ClampToScreenOrigin(
+            (int)Math.Round(centerX - measuredSize.Width / 2d, MidpointRounding.AwayFromZero));
+        var y = ClampToScreenOrigin(
+            (int)Math.Round(centerY - measuredSize.Height / 2d, MidpointRounding.AwayFromZero));
 
         return new OverlayTextItem(
             text,
@@ -167,20 +181,83 @@ public sealed class OverlayPositioningService
         string text,
         int sourceWidth,
         int sourceHeight,
-        OcrZoneTextStyle textStyle)
+        OcrZoneTextStyle textStyle,
+        int maxWidth)
     {
         var characterCount = Math.Max(1, text.Trim().Length);
         var glyphWidthFactor = textStyle.IsBold ? BoldGlyphWidthFactor : AverageGlyphWidthFactor;
+        var fontSize = Math.Max(OcrZoneTextStyle.MinimumFontSize, textStyle.FontSize);
         var singleLineWidth = (int)Math.Ceiling(
-            characterCount * Math.Max(OcrZoneTextStyle.MinimumFontSize, textStyle.FontSize) * glyphWidthFactor
-            + ExpandedTextHorizontalPadding * 2);
-        var width = Math.Max(sourceWidth, Math.Min(ExpandedTextMaxWidth, singleLineWidth));
-        var lineCount = Math.Max(1, (int)Math.Ceiling(singleLineWidth / (double)Math.Max(1, width)));
+            characterCount * fontSize * glyphWidthFactor + ExpandedTextHorizontalPadding * 2);
+        var readableLimit = Math.Max(
+            MinimumExpandedTextWidth,
+            (int)Math.Ceiling(sourceWidth * ExpandedTextSourceWidthMultiplier));
+        var layoutLimit = Math.Max(1, Math.Min(maxWidth, Math.Min(ExpandedTextMaxWidth, readableLimit)));
+        var width = Math.Max(Math.Min(sourceWidth, layoutLimit), Math.Min(singleLineWidth, layoutLimit));
+        var contentWidth = Math.Max(1, width - ExpandedTextHorizontalPadding * 2);
+        var lineCount = EstimateWrappedLineCount(text, contentWidth, fontSize, glyphWidthFactor);
         var height = Math.Max(
             sourceHeight,
-            (int)Math.Ceiling(textStyle.FontSize * LineHeightFactor * lineCount + ExpandedTextVerticalPadding * 2));
+            (int)Math.Ceiling(fontSize * LineHeightFactor * lineCount + ExpandedTextVerticalPadding * 2));
 
         return new ExpandedTextSize(width, height);
+    }
+
+    private static int EstimateWrappedLineCount(
+        string text,
+        int maxContentWidth,
+        double fontSize,
+        double glyphWidthFactor)
+    {
+        var normalizedText = text.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedText))
+        {
+            return 1;
+        }
+
+        if (!normalizedText.Any(char.IsWhiteSpace))
+        {
+            return Math.Max(1, (int)Math.Ceiling(EstimateTextWidth(normalizedText, fontSize, glyphWidthFactor) / maxContentWidth));
+        }
+
+        var lineCount = 1;
+        var currentLineWidth = 0d;
+        var spaceWidth = EstimateTextWidth(" ", fontSize, glyphWidthFactor);
+        foreach (var word in normalizedText.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var wordWidth = EstimateTextWidth(word, fontSize, glyphWidthFactor);
+            if (wordWidth > maxContentWidth)
+            {
+                if (currentLineWidth > 0)
+                {
+                    lineCount++;
+                    currentLineWidth = 0;
+                }
+
+                lineCount += Math.Max(1, (int)Math.Ceiling(wordWidth / maxContentWidth)) - 1;
+                currentLineWidth = wordWidth % maxContentWidth;
+                continue;
+            }
+
+            var nextWidth = currentLineWidth <= 0
+                ? wordWidth
+                : currentLineWidth + spaceWidth + wordWidth;
+            if (nextWidth <= maxContentWidth)
+            {
+                currentLineWidth = nextWidth;
+                continue;
+            }
+
+            lineCount++;
+            currentLineWidth = wordWidth;
+        }
+
+        return Math.Max(1, lineCount);
+    }
+
+    private static double EstimateTextWidth(string text, double fontSize, double glyphWidthFactor)
+    {
+        return Math.Max(1, text.Length) * fontSize * glyphWidthFactor;
     }
 
     private static int EstimateSingleLineTextHeight(OcrZoneTextStyle textStyle)
@@ -209,11 +286,60 @@ public sealed class OverlayPositioningService
         return stabilizedItems;
     }
 
+    private static OverlayMaskItem[] StabilizeMaskItems(
+        IReadOnlyList<OverlayMaskItem> currentItems,
+        IReadOnlyList<OverlayTextItem> currentTextItems,
+        OverlaySnapshot previousSnapshot)
+    {
+        var stabilizedItems = new OverlayMaskItem[currentItems.Count];
+
+        for (var index = 0; index < currentItems.Count; index++)
+        {
+            var current = currentItems[index];
+            var previous = index < previousSnapshot.MaskItems.Count
+                ? previousSnapshot.MaskItems[index]
+                : null;
+            var currentText = currentTextItems[index];
+            var previousText = index < previousSnapshot.TextItems.Count
+                ? previousSnapshot.TextItems[index]
+                : null;
+
+            stabilizedItems[index] = CanReusePreviousMask(current, previous, currentText, previousText)
+                ? previous!
+                : current;
+        }
+
+        return stabilizedItems;
+    }
+
     private static bool CanReusePreviousBounds(OverlayTextItem current, OverlayTextItem? previous)
     {
         if (previous is null
             || !string.Equals(current.Text, previous.Text, StringComparison.Ordinal)
             || current.TextStyle != previous.TextStyle)
+        {
+            return false;
+        }
+
+        return IsWithinJitterTolerance(current.X, previous.X)
+            && IsWithinJitterTolerance(current.Y, previous.Y)
+            && IsWithinJitterTolerance(current.Width, previous.Width)
+            && IsWithinJitterTolerance(current.Height, previous.Height);
+    }
+
+    private static bool CanReusePreviousMask(
+        OverlayMaskItem current,
+        OverlayMaskItem? previous,
+        OverlayTextItem currentText,
+        OverlayTextItem? previousText)
+    {
+        if (previous is null
+            || previousText is null
+            || !string.Equals(currentText.Text, previousText.Text, StringComparison.Ordinal)
+            || currentText.TextStyle != previousText.TextStyle
+            || current.Mode != previous.Mode
+            || !string.Equals(current.Color, previous.Color, StringComparison.Ordinal)
+            || !current.Opacity.Equals(previous.Opacity))
         {
             return false;
         }
@@ -232,6 +358,11 @@ public sealed class OverlayPositioningService
     private static int ScaleSize(int value, double scale)
     {
         return Math.Max(1, ScaleCoordinate(value, scale));
+    }
+
+    private static int ClampToScreenOrigin(int origin)
+    {
+        return Math.Max(0, origin);
     }
 
     private static bool IsWithinJitterTolerance(int current, int previous)
@@ -258,6 +389,10 @@ public sealed class OverlayPositioningService
     }
 
     private sealed record OverlayLayoutBounds(int X, int Y, int Width, int Height);
+
+    private sealed record OverlayMaskBounds(int X, int Y, int Width, int Height);
+
+    private sealed record OverlayPositionedTextItem(OverlayTextItem TextItem, OverlayMaskBounds MaskBounds);
 
     private sealed record ExpandedTextSize(int Width, int Height);
 }

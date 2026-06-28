@@ -53,11 +53,13 @@ public sealed class OverlayWindowSourceTests
         Assert.Contains("<Viewbox", source, StringComparison.Ordinal);
         Assert.Contains("Stretch=\"Uniform\"", source, StringComparison.Ordinal);
         Assert.Contains("StretchDirection=\"Both\"", source, StringComparison.Ordinal);
-        Assert.Contains("TextWrapping=\"NoWrap\"", source, StringComparison.Ordinal);
+        Assert.Contains("Width=\"{Binding ContentWidth}\"", source, StringComparison.Ordinal);
+        Assert.Contains("TextAlignment=\"Center\"", source, StringComparison.Ordinal);
+        Assert.Contains("TextTrimming=\"None\"", source, StringComparison.Ordinal);
+        Assert.Contains("TextWrapping=\"Wrap\"", source, StringComparison.Ordinal);
         Assert.DoesNotContain("MinWidth=", source, StringComparison.Ordinal);
         Assert.DoesNotContain("MinHeight=", source, StringComparison.Ordinal);
         Assert.DoesNotContain("MaxWidth=", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("TextTrimming", source, StringComparison.Ordinal);
     }
 
     [Fact]

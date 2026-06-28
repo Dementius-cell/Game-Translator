@@ -18,6 +18,7 @@ public sealed class OverlayPositioningService
     private const int MinimumExpandedTextWidth = 96;
     private const int ExpandedTextMaxWidth = 960;
     private const double ExpandedTextSourceWidthMultiplier = 2.5;
+    private const double VerticalExpandedTextSourceHeightMultiplier = 1.25;
     private const double VerticalSourceAspectRatioThreshold = 1.4;
 
     public OverlaySnapshot CreateSnapshot(
@@ -111,7 +112,7 @@ public sealed class OverlayPositioningService
         if (textStyle.LayoutMode == OverlayTextLayoutMode.ExpandFromSourceCenter)
         {
             return new OverlayPositionedTextItem(
-                CreateExpandedTextItem(result, block.Text, sourceBounds, textStyle),
+                CreateExpandedTextItem(result, block.Text, sourceBounds, textStyle, IsVerticalSource(result, sourceWidth, sourceHeight)),
                 new OverlayMaskBounds(sourceX, sourceY, sourceWidth, sourceHeight));
         }
 
@@ -134,8 +135,7 @@ public sealed class OverlayPositioningService
         int sourceHeight,
         OcrZoneTextStyle textStyle)
     {
-        if (result.Request.OrientationMode is not OcrOrientationMode.Vertical
-            || sourceHeight < sourceWidth * VerticalSourceAspectRatioThreshold)
+        if (!IsVerticalSource(result, sourceWidth, sourceHeight))
         {
             return new OverlayLayoutBounds(sourceX, sourceY, sourceWidth, sourceHeight);
         }
@@ -154,7 +154,8 @@ public sealed class OverlayPositioningService
         OcrResult result,
         string text,
         OverlayLayoutBounds sourceBounds,
-        OcrZoneTextStyle textStyle)
+        OcrZoneTextStyle textStyle,
+        bool isVerticalSource)
     {
         var centerX = sourceBounds.X + sourceBounds.Width / 2d;
         var centerY = sourceBounds.Y + sourceBounds.Height / 2d;
@@ -163,7 +164,8 @@ public sealed class OverlayPositioningService
             sourceBounds.Width,
             sourceBounds.Height,
             textStyle,
-            Math.Min(ExpandedTextMaxWidth, Math.Max(sourceBounds.Width, result.Region.Width)));
+            Math.Min(ExpandedTextMaxWidth, Math.Max(sourceBounds.Width, result.Region.Width)),
+            isVerticalSource);
         var x = ClampToScreenOrigin(
             (int)Math.Round(centerX - measuredSize.Width / 2d, MidpointRounding.AwayFromZero));
         var y = ClampToScreenOrigin(
@@ -183,7 +185,8 @@ public sealed class OverlayPositioningService
         int sourceWidth,
         int sourceHeight,
         OcrZoneTextStyle textStyle,
-        int maxWidth)
+        int maxWidth,
+        bool isVerticalSource)
     {
         var normalizedText = text.Trim();
         var characterCount = Math.Max(1, normalizedText.Length);
@@ -191,15 +194,21 @@ public sealed class OverlayPositioningService
         var fontSize = Math.Max(OcrZoneTextStyle.MinimumFontSize, textStyle.FontSize);
         var singleLineWidth = (int)Math.Ceiling(
             characterCount * fontSize * glyphWidthFactor + ExpandedTextHorizontalPadding * 2);
+        var sourceWidthBasis = isVerticalSource
+            ? Math.Max(sourceWidth * ExpandedTextSourceWidthMultiplier, sourceHeight * VerticalExpandedTextSourceHeightMultiplier)
+            : sourceWidth * ExpandedTextSourceWidthMultiplier;
         var readableLimit = Math.Max(
             MinimumExpandedTextWidth,
-            (int)Math.Ceiling(sourceWidth * ExpandedTextSourceWidthMultiplier));
+            (int)Math.Ceiling(sourceWidthBasis));
         var layoutLimit = Math.Max(1, Math.Min(maxWidth, Math.Min(ExpandedTextMaxWidth, readableLimit)));
         var width = Math.Max(Math.Min(sourceWidth, layoutLimit), Math.Min(singleLineWidth, layoutLimit));
         var contentWidth = Math.Max(1, width - ExpandedTextHorizontalPadding * 2);
         var lineCount = EstimateWrappedLineCount(normalizedText, contentWidth, fontSize, glyphWidthFactor);
+        var minimumHeight = isVerticalSource
+            ? EstimateSingleLineTextHeight(textStyle)
+            : sourceHeight;
         var height = Math.Max(
-            sourceHeight,
+            minimumHeight,
             (int)Math.Ceiling(
                 fontSize * LineHeightFactor * lineCount
                 + ExpandedTextVerticalPadding * 2
@@ -363,6 +372,12 @@ public sealed class OverlayPositioningService
     private static int ScaleSize(int value, double scale)
     {
         return Math.Max(1, ScaleCoordinate(value, scale));
+    }
+
+    private static bool IsVerticalSource(OcrResult result, int sourceWidth, int sourceHeight)
+    {
+        return result.Request.OrientationMode is OcrOrientationMode.Vertical
+            && sourceHeight >= sourceWidth * VerticalSourceAspectRatioThreshold;
     }
 
     private static int ClampToScreenOrigin(int origin)

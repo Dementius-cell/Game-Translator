@@ -312,6 +312,43 @@ public sealed class OverlayPositioningServiceTests
     }
 
     [Fact]
+    public void CreateSnapshot_WithExpandedVerticalOcrBounds_UsesReadableWidthWithoutKeepingTallSourceHeight()
+    {
+        var service = new OverlayPositioningService();
+        var textStyle = new OcrZoneTextStyle
+        {
+            FontFamily = "Segoe UI",
+            FontSize = 16,
+            LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter,
+        };
+        var result = CreateResult(
+            new CaptureRegion(100, 0, 300, 500),
+            inputWidth: 100,
+            inputHeight: 200,
+            orientationMode: OcrOrientationMode.Vertical,
+            blocks: new[]
+            {
+                new OcrTextBlock(
+                    "Давно не виделись. Рад снова встретиться.",
+                    new BoundingBox(40, 10, 10, 160)),
+            });
+
+        var snapshot = service.CreateSnapshot(result, ShownAt, previousSnapshot: null, textStyle);
+
+        var item = Assert.Single(snapshot.TextItems);
+        Assert.Equal("Давно не виделись. Рад снова встретиться.", item.Text);
+        Assert.True(item.Width >= 280);
+        Assert.True(item.Height < 120);
+        Assert.Equal(235d, item.X + item.Width / 2d, precision: 0);
+        Assert.InRange(item.Y + item.Height / 2d, 224d, 226d);
+        var mask = Assert.Single(snapshot.MaskItems);
+        Assert.Equal(220, mask.X);
+        Assert.Equal(25, mask.Y);
+        Assert.Equal(30, mask.Width);
+        Assert.Equal(400, mask.Height);
+    }
+
+    [Fact]
     public void CreateSnapshot_WhenPaddingWouldMoveMaskOffScreen_ClampsMaskOrigin()
     {
         var service = new OverlayPositioningService();

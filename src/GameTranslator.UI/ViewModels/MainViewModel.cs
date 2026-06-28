@@ -34,6 +34,18 @@ public sealed record LanguageOption(string Code, string Name)
     }
 }
 
+public sealed record OcrPreprocessingPresetOption(
+    string Id,
+    string DisplayName,
+    string Description,
+    OcrPreprocessingSettings? Settings)
+{
+    public override string ToString()
+    {
+        return DisplayName;
+    }
+}
+
 public sealed record TranslationGroupingModeOption(TranslationGroupingMode Mode, string DisplayName)
 {
     public override string ToString()
@@ -87,35 +99,57 @@ public sealed class MainViewModel : ValidatableObservableObject
         "YandexWeb",
     };
 
-    private static readonly LanguageOption[] SupportedLanguageOptions =
+    private static readonly LanguageOption[] SupportedLanguageOptions = BuildSupportedLanguageOptions();
+
+    private static readonly OcrPreprocessingPresetOption[] SupportedOcrPreprocessingPresetOptions =
     {
-        new("af", "Afrikaans"), new("am", "Amharic"), new("ar", "Arabic"), new("az", "Azerbaijani"),
-        new("be", "Belarusian"), new("bg", "Bulgarian"), new("bn", "Bengali"), new("bs", "Bosnian"),
-        new("ca", "Catalan"), new("ceb", "Cebuano"), new("co", "Corsican"), new("cs", "Czech"),
-        new("cy", "Welsh"), new("da", "Danish"), new("de", "German"), new("el", "Greek"),
-        new("en", "English"), new("eo", "Esperanto"), new("es", "Spanish"), new("et", "Estonian"),
-        new("eu", "Basque"), new("fa", "Persian"), new("fi", "Finnish"), new("fr", "French"),
-        new("fy", "Frisian"), new("ga", "Irish"), new("gd", "Scottish Gaelic"), new("gl", "Galician"),
-        new("gu", "Gujarati"), new("ha", "Hausa"), new("haw", "Hawaiian"), new("he", "Hebrew"),
-        new("hi", "Hindi"), new("hmn", "Hmong"), new("hr", "Croatian"), new("ht", "Haitian Creole"),
-        new("hu", "Hungarian"), new("hy", "Armenian"), new("id", "Indonesian"), new("ig", "Igbo"),
-        new("is", "Icelandic"), new("it", "Italian"), new("ja", "Japanese"), new("jv", "Javanese"),
-        new("ka", "Georgian"), new("kk", "Kazakh"), new("km", "Khmer"), new("kn", "Kannada"),
-        new("ko", "Korean"), new("ku", "Kurdish"), new("ky", "Kyrgyz"), new("la", "Latin"),
-        new("lb", "Luxembourgish"), new("lo", "Lao"), new("lt", "Lithuanian"), new("lv", "Latvian"),
-        new("mg", "Malagasy"), new("mi", "Maori"), new("mk", "Macedonian"), new("ml", "Malayalam"),
-        new("mn", "Mongolian"), new("mr", "Marathi"), new("ms", "Malay"), new("mt", "Maltese"),
-        new("my", "Myanmar (Burmese)"), new("ne", "Nepali"), new("nl", "Dutch"), new("no", "Norwegian"),
-        new("ny", "Chichewa"), new("or", "Odia"), new("pa", "Punjabi"), new("pl", "Polish"),
-        new("ps", "Pashto"), new("pt", "Portuguese"), new("ro", "Romanian"), new("ru", "Russian"),
-        new("sd", "Sindhi"), new("si", "Sinhala"), new("sk", "Slovak"), new("sl", "Slovenian"),
-        new("sm", "Samoan"), new("sn", "Shona"), new("so", "Somali"), new("sq", "Albanian"),
-        new("sr", "Serbian"), new("st", "Sesotho"), new("su", "Sundanese"), new("sv", "Swedish"),
-        new("sw", "Swahili"), new("ta", "Tamil"), new("te", "Telugu"), new("tg", "Tajik"),
-        new("th", "Thai"), new("tr", "Turkish"), new("uk", "Ukrainian"), new("ur", "Urdu"),
-        new("uz", "Uzbek"), new("vi", "Vietnamese"), new("xh", "Xhosa"), new("yi", "Yiddish"),
-        new("yo", "Yoruba"), new("zh-CN", "Chinese (Simplified)"), new("zh-TW", "Chinese (Traditional)"),
-        new("zu", "Zulu"),
+        new("custom", "Custom", "Manual OCR preprocessing values.", null),
+        new("off", "Off", "No OCR preprocessing.", OcrPreprocessingSettings.Default),
+        new(
+            "fast",
+            "Fast",
+            "Light contrast and scaling for readable UI text.",
+            new OcrPreprocessingSettings
+            {
+                IsEnabled = true,
+                Contrast = 1.15,
+                Brightness = 0,
+                Sharpness = 0.25,
+                ThresholdingEnabled = false,
+                Threshold = 128,
+                Scale = 1.25,
+                NoiseReductionEnabled = false,
+            }),
+        new(
+            "balanced",
+            "Balanced",
+            "Moderate cleanup for subtitles, dialogue, and mixed UI.",
+            new OcrPreprocessingSettings
+            {
+                IsEnabled = true,
+                Contrast = 1.35,
+                Brightness = 5,
+                Sharpness = 0.6,
+                ThresholdingEnabled = false,
+                Threshold = 128,
+                Scale = 1.5,
+                NoiseReductionEnabled = true,
+            }),
+        new(
+            "aggressive",
+            "Aggressive",
+            "Strong cleanup for small, low-contrast, or noisy text.",
+            new OcrPreprocessingSettings
+            {
+                IsEnabled = true,
+                Contrast = 1.7,
+                Brightness = 10,
+                Sharpness = 1.2,
+                ThresholdingEnabled = true,
+                Threshold = 150,
+                Scale = 2,
+                NoiseReductionEnabled = true,
+            }),
     };
 
     private static readonly OcrOrientationMode[] SupportedOcrOrientations =
@@ -138,6 +172,52 @@ public sealed class MainViewModel : ValidatableObservableObject
         new(TranslationGroupingMode.WholeZone, "Book / dialog whole-zone"),
         new(TranslationGroupingMode.NearbyBlocks, "Comic / nearby groups"),
     };
+
+    private static LanguageOption[] BuildSupportedLanguageOptions()
+    {
+        var options = new List<LanguageOption>
+        {
+            new("af", "Afrikaans"), new("am", "Amharic"), new("ar", "Arabic"), new("az", "Azerbaijani"),
+            new("be", "Belarusian"), new("bg", "Bulgarian"), new("bn", "Bengali"), new("bs", "Bosnian"),
+            new("ca", "Catalan"), new("ceb", "Cebuano"), new("co", "Corsican"), new("cs", "Czech"),
+            new("cy", "Welsh"), new("da", "Danish"), new("de", "German"), new("el", "Greek"),
+            new("en", "English"), new("eo", "Esperanto"), new("es", "Spanish"), new("et", "Estonian"),
+            new("eu", "Basque"), new("fa", "Persian"), new("fi", "Finnish"), new("fr", "French"),
+            new("fy", "Frisian"), new("ga", "Irish"), new("gd", "Scottish Gaelic"), new("gl", "Galician"),
+            new("gu", "Gujarati"), new("ha", "Hausa"), new("haw", "Hawaiian"), new("he", "Hebrew"),
+            new("hi", "Hindi"), new("hmn", "Hmong"), new("hr", "Croatian"), new("ht", "Haitian Creole"),
+            new("hu", "Hungarian"), new("hy", "Armenian"), new("id", "Indonesian"), new("ig", "Igbo"),
+            new("is", "Icelandic"), new("it", "Italian"), new("ja", "Japanese"), new("jv", "Javanese"),
+            new("ka", "Georgian"), new("kk", "Kazakh"), new("km", "Khmer"), new("kn", "Kannada"),
+            new("ko", "Korean"), new("ku", "Kurdish"), new("ky", "Kyrgyz"), new("la", "Latin"),
+            new("lb", "Luxembourgish"), new("lo", "Lao"), new("lt", "Lithuanian"), new("lv", "Latvian"),
+            new("mg", "Malagasy"), new("mi", "Maori"), new("mk", "Macedonian"), new("ml", "Malayalam"),
+            new("mn", "Mongolian"), new("mr", "Marathi"), new("ms", "Malay"), new("mt", "Maltese"),
+            new("my", "Myanmar (Burmese)"), new("ne", "Nepali"), new("nl", "Dutch"), new("no", "Norwegian"),
+            new("ny", "Chichewa"), new("or", "Odia"), new("pa", "Punjabi"), new("pl", "Polish"),
+            new("ps", "Pashto"), new("pt", "Portuguese"), new("ro", "Romanian"), new("ru", "Russian"),
+            new("sd", "Sindhi"), new("si", "Sinhala"), new("sk", "Slovak"), new("sl", "Slovenian"),
+            new("sm", "Samoan"), new("sn", "Shona"), new("so", "Somali"), new("sq", "Albanian"),
+            new("sr", "Serbian"), new("st", "Sesotho"), new("su", "Sundanese"), new("sv", "Swedish"),
+            new("sw", "Swahili"), new("ta", "Tamil"), new("te", "Telugu"), new("tg", "Tajik"),
+            new("th", "Thai"), new("tr", "Turkish"), new("uk", "Ukrainian"), new("ur", "Urdu"),
+            new("uz", "Uzbek"), new("vi", "Vietnamese"), new("xh", "Xhosa"), new("yi", "Yiddish"),
+            new("yo", "Yoruba"), new("zh-CN", "Chinese (Simplified)"), new("zh-TW", "Chinese (Traditional)"),
+            new("zu", "Zulu"),
+        };
+
+        foreach (var language in TesseractLanguageCatalog.Languages)
+        {
+            if (options.Any(option => string.Equals(option.Code, language.Code, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            options.Add(new LanguageOption(language.Code, $"{language.Name} (Tesseract OCR)"));
+        }
+
+        return options.ToArray();
+    }
 
     private readonly ProfileService profileService;
     private readonly ProfileExchangeService profileExchangeService;
@@ -187,6 +267,9 @@ public sealed class MainViewModel : ValidatableObservableObject
     private int ocrPreprocessingThreshold = OcrPreprocessingSettings.Default.Threshold;
     private double ocrPreprocessingScale = OcrPreprocessingSettings.Default.Scale;
     private bool ocrPreprocessingNoiseReductionEnabled;
+    private OcrPreprocessingPresetOption selectedOcrPreprocessingPreset = SupportedOcrPreprocessingPresetOptions[0];
+    private bool isApplyingOcrPreprocessingPreset;
+    private bool isSyncingOcrPreprocessingPresetSelection;
     private OcrZoneEditorViewModel? selectedZone;
     private OcrResult? latestOcrPreviewResult;
     private CaptureRefreshMetrics? latestCaptureRefreshMetrics;
@@ -532,6 +615,8 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public IReadOnlyList<OcrOrientationMode> OcrOrientations => SupportedOcrOrientations;
 
+    public IReadOnlyList<OcrPreprocessingPresetOption> OcrPreprocessingPresets => SupportedOcrPreprocessingPresetOptions;
+
     public IReadOnlyList<string> InstalledFontFamilies => installedFontFamilies;
 
     public IReadOnlyList<LiveTranslationTimingPreset> LiveTranslationTimingPresets => SupportedLiveTranslationTimingPresets;
@@ -704,6 +789,29 @@ public sealed class MainViewModel : ValidatableObservableObject
     }
 
 
+    public OcrPreprocessingPresetOption SelectedOcrPreprocessingPreset
+    {
+        get => selectedOcrPreprocessingPreset;
+        set
+        {
+            var normalizedValue = value ?? SupportedOcrPreprocessingPresetOptions[0];
+            if (!SetProperty(ref selectedOcrPreprocessingPreset, normalizedValue))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(OcrPreprocessingPresetSummary));
+            if (isSyncingOcrPreprocessingPresetSelection || normalizedValue.Settings is null)
+            {
+                return;
+            }
+
+            ApplyOcrPreprocessingSettings(normalizedValue.Settings);
+        }
+    }
+
+    public string OcrPreprocessingPresetSummary => SelectedOcrPreprocessingPreset.Description;
+
     public bool OcrPreprocessingEnabled
     {
         get => ocrPreprocessingEnabled;
@@ -713,6 +821,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             {
                 PersistDraftShellStateIfNeeded();
                 OnPropertyChanged(nameof(ProfileSummary));
+                SyncOcrPreprocessingPresetSelection();
             }
         }
     }
@@ -726,6 +835,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             {
                 PersistDraftShellStateIfNeeded();
                 RefreshValidationState();
+                SyncOcrPreprocessingPresetSelection();
             }
         }
     }
@@ -739,6 +849,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             {
                 PersistDraftShellStateIfNeeded();
                 RefreshValidationState();
+                SyncOcrPreprocessingPresetSelection();
             }
         }
     }
@@ -752,6 +863,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             {
                 PersistDraftShellStateIfNeeded();
                 RefreshValidationState();
+                SyncOcrPreprocessingPresetSelection();
             }
         }
     }
@@ -765,6 +877,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             {
                 PersistDraftShellStateIfNeeded();
                 OnPropertyChanged(nameof(ProfileSummary));
+                SyncOcrPreprocessingPresetSelection();
             }
         }
     }
@@ -778,6 +891,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             {
                 PersistDraftShellStateIfNeeded();
                 RefreshValidationState();
+                SyncOcrPreprocessingPresetSelection();
             }
         }
     }
@@ -791,6 +905,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             {
                 PersistDraftShellStateIfNeeded();
                 RefreshValidationState();
+                SyncOcrPreprocessingPresetSelection();
             }
         }
     }
@@ -804,9 +919,11 @@ public sealed class MainViewModel : ValidatableObservableObject
             {
                 PersistDraftShellStateIfNeeded();
                 OnPropertyChanged(nameof(ProfileSummary));
+                SyncOcrPreprocessingPresetSelection();
             }
         }
     }
+
     public OcrZoneEditorViewModel? SelectedZone
     {
         get => selectedZone;
@@ -2990,6 +3107,69 @@ public sealed class MainViewModel : ValidatableObservableObject
             NoiseReductionEnabled = OcrPreprocessingNoiseReductionEnabled,
         };
     }
+
+    private void ApplyOcrPreprocessingSettings(OcrPreprocessingSettings settings)
+    {
+        isApplyingOcrPreprocessingPreset = true;
+        try
+        {
+            OcrPreprocessingEnabled = settings.IsEnabled;
+            OcrPreprocessingContrast = settings.Contrast;
+            OcrPreprocessingBrightness = settings.Brightness;
+            OcrPreprocessingSharpness = settings.Sharpness;
+            OcrPreprocessingThresholdingEnabled = settings.ThresholdingEnabled;
+            OcrPreprocessingThreshold = settings.Threshold;
+            OcrPreprocessingScale = settings.Scale;
+            OcrPreprocessingNoiseReductionEnabled = settings.NoiseReductionEnabled;
+        }
+        finally
+        {
+            isApplyingOcrPreprocessingPreset = false;
+        }
+
+        SyncOcrPreprocessingPresetSelection();
+    }
+
+    private void SyncOcrPreprocessingPresetSelection()
+    {
+        if (isApplyingOcrPreprocessingPreset)
+        {
+            return;
+        }
+
+        var matchingPreset = FindMatchingOcrPreprocessingPreset(BuildOcrPreprocessingSettings())
+            ?? SupportedOcrPreprocessingPresetOptions[0];
+
+        isSyncingOcrPreprocessingPresetSelection = true;
+        try
+        {
+            SelectedOcrPreprocessingPreset = matchingPreset;
+        }
+        finally
+        {
+            isSyncingOcrPreprocessingPresetSelection = false;
+        }
+    }
+
+    private static OcrPreprocessingPresetOption? FindMatchingOcrPreprocessingPreset(OcrPreprocessingSettings settings)
+    {
+        return SupportedOcrPreprocessingPresetOptions
+            .Where(preset => preset.Settings is not null)
+            .FirstOrDefault(preset => AreEquivalent(preset.Settings!, settings));
+    }
+
+    private static bool AreEquivalent(OcrPreprocessingSettings left, OcrPreprocessingSettings right)
+    {
+        return left.IsEnabled == right.IsEnabled
+            && Math.Abs(left.Contrast - right.Contrast) < 0.001
+            && left.Brightness == right.Brightness
+            && Math.Abs(left.Sharpness - right.Sharpness) < 0.001
+            && left.ThresholdingEnabled == right.ThresholdingEnabled
+            && left.Threshold == right.Threshold
+            && Math.Abs(left.Scale - right.Scale) < 0.001
+            && left.NoiseReductionEnabled == right.NoiseReductionEnabled;
+    }
+
     private string BuildCloneName(string sourceName)
     {
         var baseName = string.IsNullOrWhiteSpace(sourceName)
@@ -3047,6 +3227,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             ReplaceZones(profile.OcrZones.Select(OcrZoneEditorViewModel.FromModel));
         });
 
+        SyncOcrPreprocessingPresetSelection();
         SyncSelectedZoneState();
         OnPropertyChanged(nameof(ProfileSummary));
         OnPropertyChanged(nameof(TranslatorSettingsSummary));
@@ -3088,6 +3269,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             }
         });
 
+        SyncOcrPreprocessingPresetSelection();
         SyncSelectedZoneState();
         OnPropertyChanged(nameof(ProfileSummary));
         OnPropertyChanged(nameof(TranslatorSettingsSummary));

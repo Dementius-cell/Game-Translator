@@ -256,7 +256,8 @@ public sealed class TesseractOcrEngine : IOcrEngine
 
     private static string MapSingleLanguage(string languageTag, OcrOrientationMode orientationMode)
     {
-        var normalized = languageTag.Trim().Replace('_', '-').ToLower(CultureInfo.InvariantCulture);
+        var directCode = languageTag.Trim().Replace('-', '_').ToLower(CultureInfo.InvariantCulture);
+        var normalized = directCode.Replace('_', '-');
         var useVerticalModel = orientationMode is OcrOrientationMode.Vertical;
 
         return normalized switch
@@ -276,6 +277,7 @@ public sealed class TesseractOcrEngine : IOcrEngine
             "it" or "it-it" or "ita" => "ita",
             "pt" or "pt-br" or "pt-pt" or "por" => "por",
             "auto" => throw new OcrEngineException("Tesseract OCR does not support automatic language detection."),
+            _ when TesseractLanguageCatalog.TryGetTrainedDataCode(directCode, out var trainedDataCode) => trainedDataCode,
             _ when normalized.Length == 3 => normalized,
             _ => throw new OcrEngineException($"Tesseract OCR language '{languageTag}' is not mapped to a traineddata code."),
         };

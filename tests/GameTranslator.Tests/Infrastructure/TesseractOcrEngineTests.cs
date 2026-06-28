@@ -46,6 +46,8 @@ public sealed class TesseractOcrEngineTests
     [InlineData("zh-Hant", OcrOrientationMode.Vertical, "chi_tra_vert")]
     [InlineData("chi_tra_vert", OcrOrientationMode.Horizontal, "chi_tra_vert")]
     [InlineData("ja+en", OcrOrientationMode.Vertical, "jpn_vert+eng")]
+    [InlineData("aze_cyrl", OcrOrientationMode.Horizontal, "aze_cyrl")]
+    [InlineData("srp-latn", OcrOrientationMode.Horizontal, "srp_latn")]
     public void TesseractOcrEngine_MapsJapaneseAndChineseLanguageModelsForOrientation(
         string languageTag,
         OcrOrientationMode orientationMode,

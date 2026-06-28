@@ -203,6 +203,42 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
+    public void OcrPreprocessingPreset_WhenChanged_AppliesAndPersistsDraftSettings()
+    {
+        var settings = new TestSettingsService();
+        var viewModel = CreateMainViewModel(new InMemoryProfileRepository(), settings);
+        var presets = Assert.IsAssignableFrom<System.Collections.IEnumerable>(
+                GetPropertyValue(viewModel, "OcrPreprocessingPresets"))
+            .Cast<object>()
+            .ToArray();
+        var aggressivePreset = presets.Single(
+            preset => string.Equals(GetPropertyValue(preset, "DisplayName")?.ToString(), "Aggressive", StringComparison.Ordinal));
+
+        SetPropertyValue(viewModel, "SelectedOcrPreprocessingPreset", aggressivePreset);
+
+        Assert.True(Assert.IsType<bool>(GetPropertyValue(viewModel, "OcrPreprocessingEnabled")));
+        Assert.Equal(1.7d, Assert.IsType<double>(GetPropertyValue(viewModel, "OcrPreprocessingContrast")));
+        Assert.Equal(10, Assert.IsType<int>(GetPropertyValue(viewModel, "OcrPreprocessingBrightness")));
+        Assert.Equal(1.2d, Assert.IsType<double>(GetPropertyValue(viewModel, "OcrPreprocessingSharpness")));
+        Assert.True(Assert.IsType<bool>(GetPropertyValue(viewModel, "OcrPreprocessingThresholdingEnabled")));
+        Assert.Equal(150, Assert.IsType<int>(GetPropertyValue(viewModel, "OcrPreprocessingThreshold")));
+        Assert.Equal(2d, Assert.IsType<double>(GetPropertyValue(viewModel, "OcrPreprocessingScale")));
+        Assert.True(Assert.IsType<bool>(GetPropertyValue(viewModel, "OcrPreprocessingNoiseReductionEnabled")));
+        Assert.True(settings.GetValue<bool>("shell.draft.ocr.preprocessing.enabled"));
+        Assert.Equal(1.7d, settings.GetValue<double>("shell.draft.ocr.preprocessing.contrast"));
+        Assert.Equal(150, settings.GetValue<int>("shell.draft.ocr.preprocessing.threshold"));
+        Assert.Equal(
+            "Aggressive",
+            GetPropertyValue(GetPropertyValue(viewModel, "SelectedOcrPreprocessingPreset")!, "DisplayName"));
+
+        SetPropertyValue(viewModel, "OcrPreprocessingContrast", 1.8d);
+
+        Assert.Equal(
+            "Custom",
+            GetPropertyValue(GetPropertyValue(viewModel, "SelectedOcrPreprocessingPreset")!, "DisplayName"));
+    }
+
+    [Fact]
     public void LanguageOptions_ExposeCommonWebTranslatorLanguages()
     {
         var viewModel = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService());
@@ -218,6 +254,9 @@ public sealed class ProfileManagerViewModelTests
         Assert.Contains(languages, language => IsLanguageOption(language, "ru", "ru Russian"));
         Assert.Contains(languages, language => IsLanguageOption(language, "zh-CN", "zh-CN Chinese (Simplified)"));
         Assert.Contains(languages, language => IsLanguageOption(language, "zh-TW", "zh-TW Chinese (Traditional)"));
+        Assert.Contains(languages, language => IsLanguageOption(language, "aze_cyrl", "aze_cyrl Azerbaijani (Cyrillic) (Tesseract OCR)"));
+        Assert.Contains(languages, language => IsLanguageOption(language, "jpn_vert", "jpn_vert Japanese vertical (Tesseract OCR)"));
+        Assert.Contains(languages, language => IsLanguageOption(language, "srp_latn", "srp_latn Serbian (Latin) (Tesseract OCR)"));
     }
 
     [Fact]

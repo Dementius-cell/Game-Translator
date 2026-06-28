@@ -805,6 +805,17 @@
                                                         ItemsSource="{Binding OcrOrientations}"
                                                         SelectedItem="{Binding OcrOrientationMode, Mode=TwoWay}" />
                                                 </StackPanel>
+                                                <StackPanel
+                                                    Grid.Row="1"
+                                                    Grid.Column="2"
+                                                    Margin="0,8,0,0">
+                                                    <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="Aggressiveness" />
+                                                    <ComboBox
+                                                        Padding="6,4"
+                                                        ItemsSource="{Binding OcrPreprocessingPresets}"
+                                                        SelectedItem="{Binding SelectedOcrPreprocessingPreset, Mode=TwoWay}"
+                                                        ToolTip="{Binding OcrPreprocessingPresetSummary}" />
+                                                </StackPanel>
                                                 <Button
                                                     Grid.Row="2"
                                                     Grid.Column="0"

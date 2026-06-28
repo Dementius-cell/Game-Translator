@@ -67,6 +67,25 @@ public sealed class OcrLanguagePackServiceTests
         Assert.EndsWith("/jpn_vert.traineddata", request.RequestUri?.AbsoluteUri, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task InstallAsync_WhenTesseractCatalogCodeIsSelected_DownloadsThatTrainedData()
+    {
+        using var workspace = new TemporaryDirectory();
+        var modelBytes = Encoding.UTF8.GetBytes("fake traineddata");
+        var handler = new StaticHttpMessageHandler(modelBytes);
+        var service = new OcrLanguagePackService(new HttpClient(handler), workspace.Path);
+
+        var result = await service.InstallAsync(
+            OcrSettings.TesseractEngineId,
+            "aze_cyrl",
+            OcrOrientationMode.Horizontal);
+
+        Assert.True(result.Succeeded);
+        Assert.True(File.Exists(Path.Combine(workspace.Path, "aze_cyrl.traineddata")));
+        var request = Assert.Single(handler.Requests);
+        Assert.EndsWith("/aze_cyrl.traineddata", request.RequestUri?.AbsoluteUri, StringComparison.Ordinal);
+    }
+
     private sealed class StaticHttpMessageHandler : HttpMessageHandler
     {
         private readonly byte[] responseBody;

@@ -197,7 +197,7 @@ public sealed class TranslationPipelineService
 
         var request = new OcrRequest(
             frame,
-            profile.TranslatorSettings.SourceLanguage,
+            ResolveOcrLanguage(profile, zone),
             zone.Id,
             profile.OcrPreprocessingSettings,
             profile.OcrSettings.Engine,
@@ -642,7 +642,7 @@ public sealed class TranslationPipelineService
     {
         var request = new OcrRequest(
             frame,
-            profile.TranslatorSettings.SourceLanguage,
+            ResolveOcrLanguage(profile, zone),
             zone.Id,
             profile.OcrPreprocessingSettings,
             profile.OcrSettings.Engine,
@@ -673,12 +673,18 @@ public sealed class TranslationPipelineService
             zone.Id,
             zone.AbsoluteBounds,
             zone.TextStyle,
+            ResolveOcrLanguage(profile, zone),
             zone.TranslationGroupingMode,
             zone.TextGrouping ?? OcrZoneTextGroupingSettings.Default,
             profile.TranslatorSettings,
             profile.OcrSettings,
             profile.OcrPreprocessingSettings,
             profile.OverlaySettings);
+    }
+
+    private static string ResolveOcrLanguage(GameProfile profile, OcrZone zone)
+    {
+        return zone.ResolveOcrLanguage(profile.TranslatorSettings.SourceLanguage);
     }
 
     private static CaptureRegion CreateCaptureRegion(OcrZone zone)
@@ -819,6 +825,7 @@ public sealed class TranslationPipelineService
         string ZoneId,
         AbsoluteRectangle ZoneBounds,
         OcrZoneTextStyle TextStyle,
+        string OcrLanguage,
         TranslationGroupingMode TranslationGroupingMode,
         OcrZoneTextGroupingSettings TextGrouping,
         TranslatorSettings TranslatorSettings,

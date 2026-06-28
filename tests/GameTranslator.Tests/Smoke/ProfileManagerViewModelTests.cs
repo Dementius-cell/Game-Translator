@@ -149,6 +149,7 @@ public sealed class ProfileManagerViewModelTests
         SetPropertyValue(selectedZone, "OverlayIsBold", false);
         SetPropertyValue(selectedZone, "OverlayIsItalic", true);
         SetPropertyValue(selectedZone, "OverlayCanExpandBeyondSource", true);
+        SetPropertyValue(selectedZone, "OcrLanguage", "jpn_vert");
         SetPropertyValue(selectedZone, "TranslationGroupingMode", TranslationGroupingMode.NearbyBlocks);
         SetPropertyValue(selectedZone, "TextGroupMergeDistancePercent", 6.5d);
 
@@ -168,6 +169,7 @@ public sealed class ProfileManagerViewModelTests
         Assert.False(persistedZone.TextStyle.IsBold);
         Assert.True(persistedZone.TextStyle.IsItalic);
         Assert.Equal(OverlayTextLayoutMode.ExpandFromSourceCenter, persistedZone.TextStyle.LayoutMode);
+        Assert.Equal("jpn_vert", persistedZone.OcrLanguage);
         Assert.Equal(TranslationGroupingMode.NearbyBlocks, persistedZone.TranslationGroupingMode);
         Assert.Equal(6.5d, persistedZone.TextGrouping.MergeDistancePercent);
         Assert.Equal(
@@ -257,6 +259,38 @@ public sealed class ProfileManagerViewModelTests
         Assert.Contains(languages, language => IsLanguageOption(language, "aze_cyrl", "aze_cyrl Azerbaijani (Cyrillic) (Tesseract OCR)"));
         Assert.Contains(languages, language => IsLanguageOption(language, "jpn_vert", "jpn_vert Japanese vertical (Tesseract OCR)"));
         Assert.Contains(languages, language => IsLanguageOption(language, "srp_latn", "srp_latn Serbian (Latin) (Tesseract OCR)"));
+
+        var ocrLanguages = Assert.IsAssignableFrom<System.Collections.IEnumerable>(GetPropertyValue(viewModel, "OcrLanguageOptions"))
+            .Cast<object>()
+            .ToArray();
+
+        Assert.Contains(ocrLanguages, language => IsLanguageOption(language, string.Empty, "Inherit translator source language"));
+        Assert.Contains(ocrLanguages, language => IsLanguageOption(language, "chi_tra_vert", "chi_tra_vert Chinese (Traditional vertical) (Tesseract OCR)"));
+    }
+
+    [Fact]
+    public async Task CheckOcrLanguagePackAsync_UsesSelectedZoneOcrLanguage()
+    {
+        var languagePackService = new TestOcrLanguagePackService();
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            ocrLanguagePackService: languagePackService);
+        ConfigureValidDraftProfile(viewModel, "OCR language check");
+        SetPropertyValue(viewModel, "OcrEngine", OcrSettings.TesseractEngineId);
+        SetPropertyValue(viewModel, "OcrOrientationMode", OcrOrientationMode.Vertical);
+        InvokeMethod(viewModel, "AddZone");
+        var selectedZone = GetPropertyValue(viewModel, "SelectedZone")
+            ?? throw new InvalidOperationException("Selected zone was not created.");
+        SetPropertyValue(selectedZone, "OcrLanguage", "chi_tra_vert");
+
+        await InvokeTaskMethodAsync(viewModel, "CheckOcrLanguagePackAsync");
+
+        var check = Assert.Single(languagePackService.Checks);
+        Assert.Equal(OcrSettings.TesseractEngineId, check.EngineId);
+        Assert.Equal("chi_tra_vert", check.LanguageTag);
+        Assert.Equal(OcrOrientationMode.Vertical, check.OrientationMode);
+        Assert.Contains("chi_tra_vert", GetPropertyValue(viewModel, "OcrLanguagePackStatus")?.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -400,6 +434,7 @@ public sealed class ProfileManagerViewModelTests
         SetPropertyValue(selectedZone, "RelativeY", 0.2);
         SetPropertyValue(selectedZone, "RelativeWidth", 0.4);
         SetPropertyValue(selectedZone, "RelativeHeight", 0.1);
+        SetPropertyValue(selectedZone, "OcrLanguage", "jpn_vert");
         SetPropertyValue(selectedZone, "TranslationGroupingMode", TranslationGroupingMode.NearbyBlocks);
         SetPropertyValue(selectedZone, "TextGroupMergeDistancePercent", 6.5d);
 
@@ -413,6 +448,7 @@ public sealed class ProfileManagerViewModelTests
         Assert.Single(storedProfile.OcrZones);
         Assert.Equal("Subtitles", storedProfile.OcrZones[0].Name);
         Assert.Equal(new AbsoluteRectangle(10, 20, 300, 80), storedProfile.OcrZones[0].AbsoluteBounds);
+        Assert.Equal("jpn_vert", storedProfile.OcrZones[0].OcrLanguage);
         Assert.Equal(TranslationGroupingMode.NearbyBlocks, storedProfile.OcrZones[0].TranslationGroupingMode);
         Assert.Equal(6.5d, storedProfile.OcrZones[0].TextGrouping.MergeDistancePercent);
     }
@@ -959,13 +995,14 @@ public sealed class ProfileManagerViewModelTests
         SetPropertyValue(selectedZone, "AbsoluteY", 20);
         SetPropertyValue(selectedZone, "AbsoluteWidth", 4);
         SetPropertyValue(selectedZone, "AbsoluteHeight", 3);
+        SetPropertyValue(selectedZone, "OcrLanguage", "jpn_vert");
 
         await InvokeTaskMethodAsync(viewModel, "RecognizeOcrPreviewAsync");
 
         Assert.Equal(new[] { new CaptureRegion(10, 20, 4, 3) }, frameSource.CapturedRegions);
         var request = Assert.Single(ocrEngine.Requests);
         Assert.Equal(new CaptureRegion(10, 20, 4, 3), request.Region);
-        Assert.Equal("ja", request.Language);
+        Assert.Equal("jpn_vert", request.Language);
         Assert.Equal(GetPropertyValue(selectedZone, "Id"), request.ZoneId);
         Assert.Equal(OcrOrientationMode.Auto, request.OrientationMode);
         Assert.True((bool)(GetPropertyValue(viewModel, "HasCapturePreview") ?? false));
@@ -1736,6 +1773,7 @@ public sealed class ProfileManagerViewModelTests
         TestTranslationCacheRepository? translationCacheRepository = null,
         TestApplicationUpdateProvider? updateProvider = null,
         TestGlobalHotkeyRegistrar? hotkeyRegistrar = null,
+        TestOcrLanguagePackService? ocrLanguagePackService = null,
         object? screenRegionPickerService = null)
     {
         var profileService = new ProfileService(repository, new ProfileValidator());
@@ -1770,8 +1808,16 @@ public sealed class ProfileManagerViewModelTests
             throwOnError: true)
             ?? throw new InvalidOperationException("MainViewModel type was not found.");
 
-        var constructorArguments = screenRegionPickerService is null
-            ? new object[]
+        var effectiveScreenRegionPickerService = screenRegionPickerService;
+        if (effectiveScreenRegionPickerService is null && ocrLanguagePackService is not null)
+        {
+            effectiveScreenRegionPickerService = CreateScreenRegionPicker(assembly, result: null);
+        }
+
+        object[] constructorArguments;
+        if (ocrLanguagePackService is not null)
+        {
+            constructorArguments = new object[]
             {
                 profileService,
                 profileExchangeService,
@@ -1787,29 +1833,57 @@ public sealed class ProfileManagerViewModelTests
                 overlay,
                 overlayPositioningService,
                 dialog ?? new TestDialogService(),
-                settings,
-                applicationLogger,
-            }
-            : new object[]
-            {
-                profileService,
-                profileExchangeService,
-                captureService,
-                ocrService,
-                credentialService,
-                translationPipelineService,
-                translationCacheService,
-                applicationUpdateService,
-                globalHotkeyService,
-                new DebugMetricFormatter(),
-                new TestDebugResourceMonitor(),
-                overlay,
-                overlayPositioningService,
-                dialog ?? new TestDialogService(),
-                screenRegionPickerService,
+                effectiveScreenRegionPickerService!,
+                ocrLanguagePackService,
                 settings,
                 applicationLogger,
             };
+        }
+        else if (effectiveScreenRegionPickerService is null)
+        {
+            constructorArguments = new object[]
+            {
+                profileService,
+                profileExchangeService,
+                captureService,
+                ocrService,
+                credentialService,
+                translationPipelineService,
+                translationCacheService,
+                applicationUpdateService,
+                globalHotkeyService,
+                new DebugMetricFormatter(),
+                new TestDebugResourceMonitor(),
+                overlay,
+                overlayPositioningService,
+                dialog ?? new TestDialogService(),
+                settings,
+                applicationLogger,
+            };
+        }
+        else
+        {
+            constructorArguments = new object[]
+            {
+                profileService,
+                profileExchangeService,
+                captureService,
+                ocrService,
+                credentialService,
+                translationPipelineService,
+                translationCacheService,
+                applicationUpdateService,
+                globalHotkeyService,
+                new DebugMetricFormatter(),
+                new TestDebugResourceMonitor(),
+                overlay,
+                overlayPositioningService,
+                dialog ?? new TestDialogService(),
+                effectiveScreenRegionPickerService,
+                settings,
+                applicationLogger,
+            };
+        }
 
         return Activator.CreateInstance(viewModelType, constructorArguments)
             ?? throw new InvalidOperationException("MainViewModel instance was not created.");
@@ -2063,6 +2137,41 @@ public sealed class ProfileManagerViewModelTests
         {
             InformationMessages.Add($"{title}|{message}");
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class TestOcrLanguagePackService : IOcrLanguagePackService
+    {
+        public List<(string EngineId, string LanguageTag, OcrOrientationMode OrientationMode)> Checks { get; } = new();
+
+        public List<(string EngineId, string LanguageTag, OcrOrientationMode OrientationMode)> Installs { get; } = new();
+
+        public Task<OcrLanguagePackStatus> CheckAsync(
+            string engineId,
+            string languageTag,
+            OcrOrientationMode orientationMode,
+            CancellationToken cancellationToken = default)
+        {
+            Checks.Add((engineId, languageTag, orientationMode));
+            return Task.FromResult(new OcrLanguagePackStatus(
+                engineId,
+                languageTag,
+                orientationMode,
+                IsReady: true,
+                CanInstall: false,
+                $"Ready: {engineId} OCR language '{languageTag}' for {orientationMode}."));
+        }
+
+        public Task<OcrLanguagePackInstallResult> InstallAsync(
+            string engineId,
+            string languageTag,
+            OcrOrientationMode orientationMode,
+            CancellationToken cancellationToken = default)
+        {
+            Installs.Add((engineId, languageTag, orientationMode));
+            return Task.FromResult(new OcrLanguagePackInstallResult(
+                true,
+                $"Installed: {engineId} OCR language '{languageTag}' for {orientationMode}."));
         }
     }
 

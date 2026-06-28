@@ -43,6 +43,7 @@ public sealed class JsonProfileRepositoryTests : IDisposable
         Assert.Equal(GameProfile.CurrentSchemaVersion, loaded.SchemaVersion);
         Assert.Equal(profile.OcrZones[0].AbsoluteBounds, loaded.OcrZones[0].AbsoluteBounds);
         Assert.Equal(profile.OcrZones[0].RelativeBounds, loaded.OcrZones[0].RelativeBounds);
+        Assert.Equal(profile.OcrZones[0].OcrLanguage, loaded.OcrZones[0].OcrLanguage);
         Assert.Equal(profile.OcrZones[0].TextStyle, loaded.OcrZones[0].TextStyle);
         Assert.Equal(profile.OcrZones[0].TranslationGroupingMode, loaded.OcrZones[0].TranslationGroupingMode);
         Assert.Equal(profile.OcrZones[0].TextGrouping, loaded.OcrZones[0].TextGrouping);
@@ -121,6 +122,8 @@ public sealed class JsonProfileRepositoryTests : IDisposable
         var profile = await repository.GetByIdAsync("old-profile");
 
         Assert.NotNull(profile);
+        Assert.Equal(string.Empty, profile.OcrZones[0].OcrLanguage);
+        Assert.Equal("en", profile.OcrZones[0].ResolveOcrLanguage(profile.TranslatorSettings.SourceLanguage));
         Assert.Equal(TranslationGroupingMode.BlockByBlock, profile.OcrZones[0].TranslationGroupingMode);
         Assert.Equal(OcrZoneTextGroupingSettings.Default, profile.OcrZones[0].TextGrouping);
     }
@@ -146,6 +149,7 @@ public sealed class JsonProfileRepositoryTests : IDisposable
                     Name = "subtitles",
                     AbsoluteBounds = new AbsoluteRectangle(10, 20, 300, 80),
                     RelativeBounds = new RelativeRectangle(0.1, 0.2, 0.4, 0.1),
+                    OcrLanguage = "jpn_vert",
                     TextStyle = new OcrZoneTextStyle
                     {
                         FontFamily = "Arial",

@@ -26,7 +26,7 @@ namespace GameTranslator.UI.ViewModels;
 
 public sealed record LanguageOption(string Code, string Name)
 {
-    public string DisplayName => $"{Code} {Name}";
+    public string DisplayName => string.IsNullOrWhiteSpace(Code) ? Name : $"{Code} {Name}";
 
     public override string ToString()
     {
@@ -100,6 +100,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     };
 
     private static readonly LanguageOption[] SupportedLanguageOptions = BuildSupportedLanguageOptions();
+    private static readonly LanguageOption[] SupportedOcrLanguageOptions = BuildSupportedOcrLanguageOptions();
 
     private static readonly OcrPreprocessingPresetOption[] SupportedOcrPreprocessingPresetOptions =
     {
@@ -217,6 +218,13 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
 
         return options.ToArray();
+    }
+
+    private static LanguageOption[] BuildSupportedOcrLanguageOptions()
+    {
+        return new[] { new LanguageOption(string.Empty, "Inherit translator source language") }
+            .Concat(SupportedLanguageOptions)
+            .ToArray();
     }
 
     private readonly ProfileService profileService;
@@ -438,6 +446,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         OverlayMaskModes = Enum.GetValues<OverlayMaskMode>();
         TranslatorProviderOptions = SupportedTranslatorProviders;
         LanguageOptions = SupportedLanguageOptions;
+        OcrLanguageOptions = SupportedOcrLanguageOptions;
         BeginCreateProfileCommand = new RelayCommand(BeginCreateProfile, () => !IsBusy);
         RefreshProfilesCommand = new AsyncRelayCommand(RefreshProfilesAsync, () => !IsBusy);
         SaveProfileCommand = new AsyncRelayCommand(SaveAsync, CanSaveProfile);
@@ -501,6 +510,8 @@ public sealed class MainViewModel : ValidatableObservableObject
     public IReadOnlyList<string> TranslatorProviderOptions { get; }
 
     public IReadOnlyList<LanguageOption> LanguageOptions { get; }
+
+    public IReadOnlyList<LanguageOption> OcrLanguageOptions { get; }
 
     public GameProfile? SelectedProfile
     {
@@ -936,6 +947,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
             PersistDraftShellStateIfNeeded();
             SyncSelectedZoneState();
+            ResetOcrLanguagePackStatus();
             ClearCapturePreview();
             OnPropertyChanged(nameof(HasSelectedZone));
             NotifyCommandStateChanged();
@@ -1921,19 +1933,21 @@ public sealed class MainViewModel : ValidatableObservableObject
     {
         if (!CanManageOcrLanguagePack())
         {
-            OcrLanguagePackStatus = "Select an OCR engine and source language first.";
+            OcrLanguagePackStatus = "Select an OCR engine, OCR zone, and OCR language first.";
             StatusMessage = OcrLanguagePackStatus;
             return;
         }
 
+        var ocrLanguage = ResolveSelectedOcrLanguage();
+        var zoneName = SelectedZone?.DisplayName ?? "selected zone";
         try
         {
             IsBusy = true;
-            OcrLanguagePackStatus = $"Checking {OcrEngine} OCR language '{SourceLanguage}'...";
+            OcrLanguagePackStatus = $"Checking {OcrEngine} OCR language '{ocrLanguage}' for '{zoneName}'...";
             StatusMessage = OcrLanguagePackStatus;
             var status = await ocrLanguagePackService.CheckAsync(
                 OcrEngine.Trim(),
-                SourceLanguage.Trim(),
+                ocrLanguage,
                 OcrOrientationMode);
 
             OcrLanguagePackStatus = status.Message;
@@ -1955,19 +1969,21 @@ public sealed class MainViewModel : ValidatableObservableObject
     {
         if (!CanManageOcrLanguagePack())
         {
-            OcrLanguagePackStatus = "Select an OCR engine and source language first.";
+            OcrLanguagePackStatus = "Select an OCR engine, OCR zone, and OCR language first.";
             StatusMessage = OcrLanguagePackStatus;
             return;
         }
 
+        var ocrLanguage = ResolveSelectedOcrLanguage();
+        var zoneName = SelectedZone?.DisplayName ?? "selected zone";
         try
         {
             IsBusy = true;
-            OcrLanguagePackStatus = $"Installing {OcrEngine} OCR language '{SourceLanguage}'...";
+            OcrLanguagePackStatus = $"Installing {OcrEngine} OCR language '{ocrLanguage}' for '{zoneName}'...";
             StatusMessage = OcrLanguagePackStatus;
             var result = await ocrLanguagePackService.InstallAsync(
                 OcrEngine.Trim(),
-                SourceLanguage.Trim(),
+                ocrLanguage,
                 OcrOrientationMode);
 
             if (result.ActionUri is not null)
@@ -1999,14 +2015,15 @@ public sealed class MainViewModel : ValidatableObservableObject
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(SourceLanguage))
+        var zone = SelectedZone;
+        var ocrLanguage = ResolveOcrLanguage(zone);
+        if (string.IsNullOrWhiteSpace(ocrLanguage))
         {
-            OcrPreviewStatus = "Source language is required for OCR.";
+            OcrPreviewStatus = "OCR language is required for preview.";
             StatusMessage = OcrPreviewStatus;
             return;
         }
 
-        var zone = SelectedZone;
         var overlayWasVisibleBeforeCapture = false;
         OverlaySnapshot? overlaySnapshotBeforeCapture = null;
 
@@ -2028,7 +2045,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             CapturePreviewStatus = $"Captured {frame.Width}x{frame.Height} at {frame.CapturedAt:HH:mm:ss}.";
 
             var result = await ocrService.RecognizeAsync(
-                new OcrRequest(frame, SourceLanguage.Trim(), zone.Id, BuildOcrPreprocessingSettings(), OcrEngine, OcrOrientationMode));
+                new OcrRequest(frame, ocrLanguage, zone.Id, BuildOcrPreprocessingSettings(), OcrEngine, OcrOrientationMode));
             latestOcrPreviewResult = result;
             ReplaceOcrPreviewTextBlocks(result.TextBlocks);
             UpdateVisibleOverlayPreview(result, overlayWasVisibleBeforeCapture);
@@ -3317,15 +3334,16 @@ public sealed class MainViewModel : ValidatableObservableObject
         return !IsBusy
             && !IsLiveTranslationRunning
             && SelectedZone is not null
-            && !string.IsNullOrWhiteSpace(SourceLanguage);
+            && !string.IsNullOrWhiteSpace(ResolveSelectedOcrLanguage());
     }
 
     private bool CanManageOcrLanguagePack()
     {
         return !IsBusy
             && !IsLiveTranslationRunning
+            && SelectedZone is not null
             && !string.IsNullOrWhiteSpace(OcrEngine)
-            && !string.IsNullOrWhiteSpace(SourceLanguage);
+            && !string.IsNullOrWhiteSpace(ResolveSelectedOcrLanguage());
     }
 
     private bool CanRunTranslationPipeline()
@@ -3416,6 +3434,18 @@ public sealed class MainViewModel : ValidatableObservableObject
         OcrLanguagePackStatus = "OCR language pack status not checked.";
     }
 
+    private string ResolveSelectedOcrLanguage()
+    {
+        return SelectedZone is null ? string.Empty : ResolveOcrLanguage(SelectedZone);
+    }
+
+    private string ResolveOcrLanguage(OcrZoneEditorViewModel zone)
+    {
+        return string.IsNullOrWhiteSpace(zone.OcrLanguage)
+            ? SourceLanguage.Trim()
+            : zone.OcrLanguage.Trim();
+    }
+
     private static void OpenExternalUri(Uri uri)
     {
         Process.Start(new ProcessStartInfo(uri.ToString())
@@ -3475,6 +3505,12 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     private void OnZonePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (string.Equals(e.PropertyName, nameof(OcrZoneEditorViewModel.OcrLanguage), StringComparison.Ordinal))
+        {
+            ResetOcrLanguagePackStatus();
+            NotifyCommandStateChanged();
+        }
+
         PersistDraftShellStateIfNeeded();
         OnPropertyChanged(nameof(ProfileSummary));
         RefreshValidationState();

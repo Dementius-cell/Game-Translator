@@ -58,9 +58,12 @@ public sealed class TranslationPipelineServiceTests
     }
 
     [Fact]
-    public async Task RunAsync_WhenChineseVerticalProfileUsesTesseract_PassesLanguageAndOrientationToOcr()
+    public async Task RunAsync_WhenZoneHasExplicitOcrLanguage_PassesItToOcrAndKeepsTranslatorSource()
     {
-        var zone = CreateZone();
+        var zone = CreateZone() with
+        {
+            OcrLanguage = "jpn_vert",
+        };
         var profile = CreateProfile(zone) with
         {
             OcrSettings = new OcrSettings
@@ -71,7 +74,7 @@ public sealed class TranslationPipelineServiceTests
             TranslatorSettings = new TranslatorSettings
             {
                 Provider = "Google",
-                SourceLanguage = "zh-CN",
+                SourceLanguage = "ja",
                 TargetLanguage = "en",
             },
         };
@@ -83,18 +86,20 @@ public sealed class TranslationPipelineServiceTests
                 new OcrTextBlock("Column text", new BoundingBox(0, 0, 20, 10)),
             },
         };
+        var translator = new FakeTranslatorProvider("Google");
         var service = CreateService(
             new FakeCaptureFrameSource(),
             ocrEngine,
-            new FakeTranslatorProvider("Google"),
+            translator,
             new FakeOverlayService());
 
         await service.RunAsync(profile, zone);
 
         var request = Assert.Single(ocrEngine.Requests);
         Assert.Equal(OcrSettings.TesseractEngineId, request.EngineId);
-        Assert.Equal("zh-CN", request.Language);
+        Assert.Equal("jpn_vert", request.Language);
         Assert.Equal(OcrOrientationMode.Vertical, request.OrientationMode);
+        Assert.Equal("ja", translator.Request?.SourceLanguage);
     }
 
     [Fact]

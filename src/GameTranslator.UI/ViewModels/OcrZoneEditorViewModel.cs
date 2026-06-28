@@ -23,6 +23,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
     private double relativeY;
     private double relativeWidth = 0.25;
     private double relativeHeight = 0.05;
+    private string ocrLanguage = string.Empty;
     private string overlayFontFamily = OcrZoneTextStyle.DefaultFontFamily;
     private double overlayFontSize = OcrZoneTextStyle.DefaultFontSize;
     private bool overlayIsBold = true;
@@ -161,6 +162,18 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         }
     }
 
+    public string OcrLanguage
+    {
+        get => ocrLanguage;
+        set
+        {
+            if (SetProperty(ref ocrLanguage, value))
+            {
+                NotifyDerivedPropertiesChanged();
+            }
+        }
+    }
+
     public string OverlayFontFamily
     {
         get => overlayFontFamily;
@@ -263,6 +276,10 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         ? Math.Round(RelativeWidth * RelativeHeight * 100, 2)
         : 0;
 
+    public string OcrLanguageSummary => string.IsNullOrWhiteSpace(OcrLanguage)
+        ? "OCR language inherits source"
+        : $"OCR language {OcrLanguage.Trim()}";
+
     public double SurfaceX => Math.Round(AbsoluteX * PreviewSurfaceWidth / ReferenceSurfaceWidth, 2);
 
     public double SurfaceY => Math.Round(AbsoluteY * PreviewSurfaceHeight / ReferenceSurfaceHeight, 2);
@@ -280,6 +297,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         + (OverlayIsBold ? " bold" : string.Empty)
         + (OverlayIsItalic ? " italic" : string.Empty)
         + (OverlayCanExpandBeyondSource ? " expand" : " fit")
+        + $" | {OcrLanguageSummary}"
         + $" | {TranslationGroupingModeSummary}";
 
     public string TranslationGroupingModeSummary => TranslationGroupingMode switch
@@ -311,6 +329,9 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
             RelativeY = zone.RelativeBounds.Y,
             RelativeWidth = zone.RelativeBounds.Width,
             RelativeHeight = zone.RelativeBounds.Height,
+            OcrLanguage = string.IsNullOrWhiteSpace(zone.OcrLanguage)
+                ? string.Empty
+                : zone.OcrLanguage.Trim(),
             OverlayFontFamily = string.IsNullOrWhiteSpace(zone.TextStyle?.FontFamily)
                 ? OcrZoneTextStyle.DefaultFontFamily
                 : zone.TextStyle.FontFamily,
@@ -346,6 +367,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
             Name = Name.Trim(),
             AbsoluteBounds = new AbsoluteRectangle(AbsoluteX, AbsoluteY, AbsoluteWidth, AbsoluteHeight),
             RelativeBounds = new RelativeRectangle(RelativeX, RelativeY, RelativeWidth, RelativeHeight),
+            OcrLanguage = string.IsNullOrWhiteSpace(OcrLanguage) ? string.Empty : OcrLanguage.Trim(),
             TextStyle = new OcrZoneTextStyle
             {
                 FontFamily = string.IsNullOrWhiteSpace(OverlayFontFamily)
@@ -379,6 +401,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
             RelativeY = RelativeY,
             RelativeWidth = RelativeWidth,
             RelativeHeight = RelativeHeight,
+            OcrLanguage = OcrLanguage,
             OverlayFontFamily = OverlayFontFamily,
             OverlayFontSize = OverlayFontSize,
             OverlayIsBold = OverlayIsBold,
@@ -458,6 +481,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         OnPropertyChanged(nameof(RelativeBoundsSummary));
         OnPropertyChanged(nameof(AbsoluteArea));
         OnPropertyChanged(nameof(RelativeAreaPercent));
+        OnPropertyChanged(nameof(OcrLanguageSummary));
         OnPropertyChanged(nameof(SurfaceX));
         OnPropertyChanged(nameof(SurfaceY));
         OnPropertyChanged(nameof(SurfaceWidth));

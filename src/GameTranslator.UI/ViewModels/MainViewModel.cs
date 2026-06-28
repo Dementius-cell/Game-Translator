@@ -34,6 +34,14 @@ public sealed record LanguageOption(string Code, string Name)
     }
 }
 
+public sealed record TranslationGroupingModeOption(TranslationGroupingMode Mode, string DisplayName)
+{
+    public override string ToString()
+    {
+        return DisplayName;
+    }
+}
+
 public sealed class MainViewModel : ValidatableObservableObject
 {
     private const string SelectedProfileSettingKey = "profiles.selectedId";
@@ -122,6 +130,12 @@ public sealed class MainViewModel : ValidatableObservableObject
         LiveTranslationTimingPreset.Fast,
         LiveTranslationTimingPreset.Balanced,
         LiveTranslationTimingPreset.Conservative,
+    };
+
+    private static readonly TranslationGroupingModeOption[] SupportedTranslationGroupingModeOptions =
+    {
+        new(TranslationGroupingMode.BlockByBlock, "Menu / block-by-block"),
+        new(TranslationGroupingMode.WholeZone, "Book / dialog whole-zone"),
     };
 
     private readonly ProfileService profileService;
@@ -520,6 +534,8 @@ public sealed class MainViewModel : ValidatableObservableObject
     public IReadOnlyList<string> InstalledFontFamilies => installedFontFamilies;
 
     public IReadOnlyList<LiveTranslationTimingPreset> LiveTranslationTimingPresets => SupportedLiveTranslationTimingPresets;
+
+    public IReadOnlyList<TranslationGroupingModeOption> TranslationGroupingModeOptions => SupportedTranslationGroupingModeOptions;
 
     public LiveTranslationTimingPreset LiveTranslationTimingPreset
     {

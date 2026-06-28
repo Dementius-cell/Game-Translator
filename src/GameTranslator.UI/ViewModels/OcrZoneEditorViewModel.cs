@@ -28,6 +28,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
     private bool overlayIsBold = true;
     private bool overlayIsItalic;
     private bool overlayCanExpandBeyondSource;
+    private TranslationGroupingMode translationGroupingMode = TranslationGroupingMode.BlockByBlock;
 
     public string Id
     {
@@ -221,6 +222,19 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         }
     }
 
+    public TranslationGroupingMode TranslationGroupingMode
+    {
+        get => translationGroupingMode;
+        set
+        {
+            if (SetProperty(ref translationGroupingMode, value))
+            {
+                NotifyDerivedPropertiesChanged();
+                Validate();
+            }
+        }
+    }
+
     public string DisplayName => string.IsNullOrWhiteSpace(Name) ? "Unnamed zone" : Name;
 
     public string AbsoluteBoundsSummary => $"X {AbsoluteX}  Y {AbsoluteY}  W {AbsoluteWidth}  H {AbsoluteHeight}";
@@ -251,7 +265,14 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         $"{OverlayFontFamily} {OverlayFontSize:0.#}"
         + (OverlayIsBold ? " bold" : string.Empty)
         + (OverlayIsItalic ? " italic" : string.Empty)
-        + (OverlayCanExpandBeyondSource ? " expand" : " fit");
+        + (OverlayCanExpandBeyondSource ? " expand" : " fit")
+        + $" | {TranslationGroupingModeSummary}";
+
+    public string TranslationGroupingModeSummary => TranslationGroupingMode switch
+    {
+        TranslationGroupingMode.WholeZone => "book/dialog whole-zone",
+        _ => "menu block-by-block",
+    };
 
     public static OcrZoneEditorViewModel CreateDefault(int index)
     {
@@ -282,6 +303,9 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
             OverlayIsBold = zone.TextStyle?.IsBold ?? true,
             OverlayIsItalic = zone.TextStyle?.IsItalic ?? false,
             OverlayCanExpandBeyondSource = zone.TextStyle?.LayoutMode == OverlayTextLayoutMode.ExpandFromSourceCenter,
+            TranslationGroupingMode = Enum.IsDefined(zone.TranslationGroupingMode)
+                ? zone.TranslationGroupingMode
+                : TranslationGroupingMode.BlockByBlock,
         };
     }
 
@@ -317,6 +341,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
                     ? OverlayTextLayoutMode.ExpandFromSourceCenter
                     : OverlayTextLayoutMode.FitToSourceBounds,
             },
+            TranslationGroupingMode = TranslationGroupingMode,
         };
     }
 
@@ -338,6 +363,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
             OverlayIsBold = OverlayIsBold,
             OverlayIsItalic = OverlayIsItalic,
             OverlayCanExpandBeyondSource = OverlayCanExpandBeyondSource,
+            TranslationGroupingMode = TranslationGroupingMode,
         };
     }
 
@@ -357,6 +383,11 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
             nameof(OverlayFontSize),
             OverlayFontSize is < OcrZoneTextStyle.MinimumFontSize or > OcrZoneTextStyle.MaximumFontSize
                 ? new[] { $"Overlay font size must be between {OcrZoneTextStyle.MinimumFontSize:0} and {OcrZoneTextStyle.MaximumFontSize:0}." }
+                : Array.Empty<string>());
+        SetErrors(
+            nameof(TranslationGroupingMode),
+            !Enum.IsDefined(TranslationGroupingMode)
+                ? new[] { "Translation grouping mode is not supported." }
                 : Array.Empty<string>());
 
         var absoluteErrors = new List<string>();
@@ -407,5 +438,6 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         OnPropertyChanged(nameof(SurfaceHandleX));
         OnPropertyChanged(nameof(SurfaceHandleY));
         OnPropertyChanged(nameof(OverlayTextStyleSummary));
+        OnPropertyChanged(nameof(TranslationGroupingModeSummary));
     }
 }

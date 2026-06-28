@@ -105,6 +105,26 @@ public sealed class ProfileValidatorTests
         Assert.Contains(result.Errors, error => error.Code == ProfileValidationErrorCodes.InvalidOcrZoneTextStyle);
     }
 
+    [Fact]
+    public void Validate_WhenTranslationGroupingModeIsInvalid_ReturnsInvalidGroupingModeError()
+    {
+        var profile = CreateValidProfile() with
+        {
+            OcrZones = new[]
+            {
+                CreateZone("dialog", new AbsoluteRectangle(10, 10, 120, 40)) with
+                {
+                    TranslationGroupingMode = (TranslationGroupingMode)999,
+                },
+            },
+        };
+
+        var result = validator.Validate(profile);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Code == ProfileValidationErrorCodes.InvalidOcrZoneTranslationGroupingMode);
+    }
+
 
 
     [Fact]

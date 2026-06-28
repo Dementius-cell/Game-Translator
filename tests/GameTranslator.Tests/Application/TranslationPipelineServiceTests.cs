@@ -182,6 +182,52 @@ public sealed class TranslationPipelineServiceTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenZoneUsesWholeZoneGrouping_TranslatesJoinedTextAndShowsSingleOverlayItem()
+    {
+        var zone = CreateZone("zone-a", "Dialog", new AbsoluteRectangle(10, 20, 200, 100)) with
+        {
+            TranslationGroupingMode = TranslationGroupingMode.WholeZone,
+        };
+        var profile = CreateProfile(zone) with
+        {
+            OcrSettings = new OcrSettings
+            {
+                OrientationMode = OcrOrientationMode.Horizontal,
+            },
+        };
+        var ocrEngine = new FakeOcrEngine
+        {
+            BlocksFactory = _ => new[]
+            {
+                new OcrTextBlock("that I ate was very", new BoundingBox(0, 14, 120, 10)),
+                new OcrTextBlock("apple", new BoundingBox(0, 0, 40, 10)),
+                new OcrTextBlock("tasty", new BoundingBox(0, 28, 50, 10)),
+            },
+        };
+        var translator = new FakeTranslatorProvider("Google", new[] { "apple that I ate was very tasty translated" });
+        var overlay = new FakeOverlayService();
+        var service = CreateService(new FakeCaptureFrameSource(), ocrEngine, translator, overlay);
+
+        var first = await service.RunAsync(profile, zone);
+        var second = await service.RunAsync(profile, zone, first.OverlaySnapshot);
+
+        Assert.Equal(new[] { "apple that I ate was very tasty" }, translator.Request?.Texts);
+        Assert.Equal(1, translator.CallCount);
+        Assert.Equal(3, first.RecognizedBlockCount);
+        Assert.Equal(1, first.TranslatedBlockCount);
+        Assert.Equal(1, second.CacheResult?.MemoryHitCount);
+        Assert.Equal(0, second.CacheResult?.MissCount);
+
+        var item = Assert.Single(first.OverlaySnapshot.TextItems);
+        Assert.Equal("apple that I ate was very tasty translated", item.Text);
+        Assert.Equal(10, item.X);
+        Assert.Equal(20, item.Y);
+        Assert.Equal(120, item.Width);
+        Assert.Equal(38, item.Height);
+        Assert.Same(second.OverlaySnapshot, overlay.CurrentSnapshot);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenFrameIsEffectivelyUnchanged_ReusesPreviousPipelineResult()
     {
         var zone = CreateZone();

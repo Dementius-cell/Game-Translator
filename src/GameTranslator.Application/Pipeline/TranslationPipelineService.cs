@@ -246,7 +246,9 @@ public sealed class TranslationPipelineService
             return emptyResult;
         }
 
-        if (!IsTextStableForTranslation(optimizationContext.StateKey, sourceResult, runOptions))
+        var translationSourceResult = TranslationTextGroupingService.CreateTranslationSourceResult(sourceResult, zone);
+
+        if (!IsTextStableForTranslation(optimizationContext.StateKey, translationSourceResult, runOptions))
         {
             var pendingSnapshot = runOptions.PreservePreviousOverlayWhileWaitingForStableText
                 ? previousSnapshot ?? CreateEmptySnapshot(sourceResult.RecognizedAt, profile.OverlaySettings)
@@ -286,7 +288,7 @@ public sealed class TranslationPipelineService
 
         try
         {
-            var texts = sourceResult.TextBlocks.Select(block => block.Text).ToArray();
+            var texts = translationSourceResult.TextBlocks.Select(block => block.Text).ToArray();
             var cacheMeasurement = await RunTimedStageAsync(
                 TranslationPipelineStage.Cache,
                 () => cacheService.GetOrAddAsync(
@@ -312,7 +314,7 @@ public sealed class TranslationPipelineService
             cacheElapsed = cacheMeasurement.Elapsed;
             var translateResponse = cacheResult.ToTranslateResponse();
 
-            if (translateResponse.TranslatedTexts.Count != sourceResult.TextBlocks.Count)
+            if (translateResponse.TranslatedTexts.Count != translationSourceResult.TextBlocks.Count)
             {
                 throw new TranslationPipelineException(
                     TranslationPipelineStage.Translation,
@@ -322,7 +324,7 @@ public sealed class TranslationPipelineService
                     sourceResult);
             }
 
-            var translatedResult = CreateTranslatedResult(sourceResult, translateResponse);
+            var translatedResult = CreateTranslatedResult(translationSourceResult, translateResponse);
             var snapshot = overlayPositioningService.CreateSnapshot(
                 translatedResult,
                 translateResponse.TranslatedAt,
@@ -671,6 +673,7 @@ public sealed class TranslationPipelineService
             zone.Id,
             zone.AbsoluteBounds,
             zone.TextStyle,
+            zone.TranslationGroupingMode,
             profile.TranslatorSettings,
             profile.OcrSettings,
             profile.OcrPreprocessingSettings,
@@ -815,6 +818,7 @@ public sealed class TranslationPipelineService
         string ZoneId,
         AbsoluteRectangle ZoneBounds,
         OcrZoneTextStyle TextStyle,
+        TranslationGroupingMode TranslationGroupingMode,
         TranslatorSettings TranslatorSettings,
         OcrSettings OcrSettings,
         OcrPreprocessingSettings PreprocessingSettings,

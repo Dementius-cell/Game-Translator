@@ -27,6 +27,7 @@ public sealed class JsonProfileExchangeGatewayTests : IDisposable
         Assert.Equal(profile.OverlaySettings.MaskColor, imported.OverlaySettings.MaskColor);
         Assert.Equal(profile.OcrZones[0].AbsoluteBounds, imported.OcrZones[0].AbsoluteBounds);
         Assert.Equal(profile.OcrZones[0].TextStyle, imported.OcrZones[0].TextStyle);
+        Assert.Equal(profile.OcrZones[0].TranslationGroupingMode, imported.OcrZones[0].TranslationGroupingMode);
     }
 
     [Fact]
@@ -71,6 +72,7 @@ public sealed class JsonProfileExchangeGatewayTests : IDisposable
                         IsItalic = true,
                         LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter,
                     },
+                    TranslationGroupingMode = TranslationGroupingMode.WholeZone,
                 },
             },
             OverlaySettings = new OverlaySettings

@@ -44,6 +44,7 @@ public sealed class JsonProfileRepositoryTests : IDisposable
         Assert.Equal(profile.OcrZones[0].AbsoluteBounds, loaded.OcrZones[0].AbsoluteBounds);
         Assert.Equal(profile.OcrZones[0].RelativeBounds, loaded.OcrZones[0].RelativeBounds);
         Assert.Equal(profile.OcrZones[0].TextStyle, loaded.OcrZones[0].TextStyle);
+        Assert.Equal(profile.OcrZones[0].TranslationGroupingMode, loaded.OcrZones[0].TranslationGroupingMode);
         Assert.Equal(profile.OcrSettings.Engine, loaded.OcrSettings.Engine);
         Assert.Equal(profile.OcrSettings.OrientationMode, loaded.OcrSettings.OrientationMode);
         Assert.Equal(profile.OcrPreprocessingSettings.Contrast, loaded.OcrPreprocessingSettings.Contrast);
@@ -87,6 +88,41 @@ public sealed class JsonProfileRepositoryTests : IDisposable
         Assert.Null(profile);
     }
 
+    [Fact]
+    public async Task GetByIdAsync_WhenOldProfileOmitsTranslationGroupingMode_DefaultsToBlockByBlock()
+    {
+        Directory.CreateDirectory(profilesDirectory);
+        var profilePath = Path.Combine(profilesDirectory, "old-profile.json");
+        await File.WriteAllTextAsync(
+            profilePath,
+            """
+            {
+              "id": "old-profile",
+              "schemaVersion": "1.0",
+              "name": "Old profile",
+              "ocrZones": [
+                {
+                  "id": "zone-a",
+                  "name": "subtitles",
+                  "absoluteBounds": { "x": 10, "y": 20, "width": 300, "height": 80 },
+                  "relativeBounds": { "x": 0.1, "y": 0.2, "width": 0.4, "height": 0.1 }
+                }
+              ],
+              "translatorSettings": {
+                "provider": "Google",
+                "sourceLanguage": "en",
+                "targetLanguage": "ru"
+              }
+            }
+            """);
+        var repository = new JsonProfileRepository(profilesDirectory);
+
+        var profile = await repository.GetByIdAsync("old-profile");
+
+        Assert.NotNull(profile);
+        Assert.Equal(TranslationGroupingMode.BlockByBlock, profile.OcrZones[0].TranslationGroupingMode);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(profilesDirectory))
@@ -116,6 +152,7 @@ public sealed class JsonProfileRepositoryTests : IDisposable
                         IsItalic = true,
                         LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter,
                     },
+                    TranslationGroupingMode = TranslationGroupingMode.WholeZone,
                 },
             },
             OcrSettings = new OcrSettings

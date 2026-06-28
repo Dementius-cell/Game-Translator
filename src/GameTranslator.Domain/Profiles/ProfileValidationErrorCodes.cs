@@ -10,6 +10,8 @@ public static class ProfileValidationErrorCodes
 
     public const string InvalidOcrZoneTextStyle = "profile.ocrZone.textStyle.invalid";
 
+    public const string InvalidOcrZoneTranslationGroupingMode = "profile.ocrZone.translationGroupingMode.invalid";
+
     public const string OverlappingOcrZones = "profile.ocrZone.overlap";
 
     public const string InvalidOcrSettings = "profile.ocr.settings.invalid";

@@ -48,6 +48,7 @@ public sealed class ProfileValidator
             }
 
             ValidateOcrZoneTextStyle(zones[index], errors);
+            ValidateOcrZoneTranslationGroupingMode(zones[index], errors);
         }
 
         for (var first = 0; first < zones.Count; first++)
@@ -87,6 +88,18 @@ public sealed class ProfileValidator
                 ProfileValidationErrorCodes.InvalidOcrZoneTextStyle,
                 $"OCR zone '{zone.Name}' text style layout mode is not supported."));
         }
+    }
+
+    private static void ValidateOcrZoneTranslationGroupingMode(OcrZone zone, List<ProfileValidationError> errors)
+    {
+        if (Enum.IsDefined(zone.TranslationGroupingMode))
+        {
+            return;
+        }
+
+        errors.Add(new ProfileValidationError(
+            ProfileValidationErrorCodes.InvalidOcrZoneTranslationGroupingMode,
+            $"OCR zone '{zone.Name}' translation grouping mode is not supported."));
     }
 
     private static void ValidateOcrSettings(

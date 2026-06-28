@@ -142,6 +142,7 @@ public sealed class ProfileManagerViewModelTests
         SetPropertyValue(selectedZone, "OverlayIsBold", false);
         SetPropertyValue(selectedZone, "OverlayIsItalic", true);
         SetPropertyValue(selectedZone, "OverlayCanExpandBeyondSource", true);
+        SetPropertyValue(selectedZone, "TranslationGroupingMode", TranslationGroupingMode.WholeZone);
 
         Assert.Equal("Draft shell", settings.GetValue<string>("shell.draft.profile.name"));
         Assert.Equal("Persistent draft", settings.GetValue<string>("shell.draft.profile.description"));
@@ -159,6 +160,7 @@ public sealed class ProfileManagerViewModelTests
         Assert.False(persistedZone.TextStyle.IsBold);
         Assert.True(persistedZone.TextStyle.IsItalic);
         Assert.Equal(OverlayTextLayoutMode.ExpandFromSourceCenter, persistedZone.TextStyle.LayoutMode);
+        Assert.Equal(TranslationGroupingMode.WholeZone, persistedZone.TranslationGroupingMode);
         Assert.Equal(
             GetPropertyValue(GetPropertyValue(viewModel, "SelectedZone")!, "Id"),
             settings.GetValue<string>("shell.draft.selectedZoneId"));
@@ -350,6 +352,7 @@ public sealed class ProfileManagerViewModelTests
         SetPropertyValue(selectedZone, "RelativeY", 0.2);
         SetPropertyValue(selectedZone, "RelativeWidth", 0.4);
         SetPropertyValue(selectedZone, "RelativeHeight", 0.1);
+        SetPropertyValue(selectedZone, "TranslationGroupingMode", TranslationGroupingMode.WholeZone);
 
         await InvokeTaskMethodAsync(viewModel, "SaveAsync");
 
@@ -361,6 +364,7 @@ public sealed class ProfileManagerViewModelTests
         Assert.Single(storedProfile.OcrZones);
         Assert.Equal("Subtitles", storedProfile.OcrZones[0].Name);
         Assert.Equal(new AbsoluteRectangle(10, 20, 300, 80), storedProfile.OcrZones[0].AbsoluteBounds);
+        Assert.Equal(TranslationGroupingMode.WholeZone, storedProfile.OcrZones[0].TranslationGroupingMode);
     }
 
     [Fact]

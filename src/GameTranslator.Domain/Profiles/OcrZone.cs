@@ -11,4 +11,6 @@ public sealed record OcrZone
     public RelativeRectangle RelativeBounds { get; init; }
 
     public OcrZoneTextStyle TextStyle { get; init; } = OcrZoneTextStyle.Default;
+
+    public TranslationGroupingMode TranslationGroupingMode { get; init; } = TranslationGroupingMode.BlockByBlock;
 }

@@ -2203,15 +2203,19 @@ public sealed class MainViewModel : ValidatableObservableObject
     {
         if (!IsLiveTranslationRunning || liveTranslationCancellation is null)
         {
+            if (overlayService.IsVisible)
+            {
+                HideLiveTranslationOverlay();
+                NotifyCommandStateChanged();
+            }
+
             return;
         }
 
         PipelineStatus = "Stopping live translation...";
         StatusMessage = PipelineStatus;
         liveTranslationCancellation.Cancel();
-        overlayService.Hide();
-        OverlayPreviewStatus = "Live translation overlay hidden.";
-        OnPropertyChanged(nameof(IsOverlayPreviewVisible));
+        HideLiveTranslationOverlay();
         NotifyCommandStateChanged();
     }
 
@@ -2267,6 +2271,11 @@ public sealed class MainViewModel : ValidatableObservableObject
         {
             if (ReferenceEquals(liveTranslationCancellation, cancellationSource))
             {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    HideLiveTranslationOverlay();
+                }
+
                 liveTranslationCancellation.Dispose();
                 liveTranslationCancellation = null;
                 IsLiveTranslationRunning = false;
@@ -2275,6 +2284,13 @@ public sealed class MainViewModel : ValidatableObservableObject
                 NotifyCommandStateChanged();
             }
         }
+    }
+
+    private void HideLiveTranslationOverlay()
+    {
+        overlayService.Hide();
+        OverlayPreviewStatus = "Live translation overlay hidden.";
+        OnPropertyChanged(nameof(IsOverlayPreviewVisible));
     }
 
     private static async Task DelayAfterLiveTranslationFailureAsync(CancellationToken cancellationToken)

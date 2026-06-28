@@ -1606,6 +1606,46 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
+    public async Task StopLiveTranslation_WhenCaptureCancellationRestoresOverlay_HidesOverlayAfterLoopStops()
+    {
+        var captureStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var frameSource = new TestCaptureFrameSource
+        {
+            CaptureFactory = async (_, cancellationToken) =>
+            {
+                captureStarted.TrySetResult(true);
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+                throw new InvalidOperationException("Capture should have been canceled.");
+            },
+        };
+        var overlay = new TestOverlayService();
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            frameSource: frameSource,
+            overlayService: overlay);
+
+        ConfigureValidDraftProfile(viewModel, "Live stop during capture");
+        InvokeMethodWithArguments(viewModel, "StartZoneSelection", 10d, 20d);
+        InvokeMethodWithArguments(viewModel, "CompleteZoneSelection", 110d, 70d);
+        overlay.Show(new OverlaySnapshot(
+            new[] { new OverlayTextItem("Previous translation", 10, 20, 220, 48) },
+            DateTimeOffset.UtcNow));
+
+        await InvokeTaskMethodAsync(viewModel, "StartLiveTranslationAsync");
+        await captureStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        InvokeMethod(viewModel, "StopLiveTranslation");
+        await WaitForConditionAsync(() => !(bool)(GetPropertyValue(viewModel, "IsLiveTranslationRunning") ?? true));
+
+        Assert.False(overlay.IsVisible);
+        Assert.Equal("Hide", overlay.Events.Last());
+        Assert.Contains("Show:1", overlay.Events);
+        Assert.Equal("Live translation overlay hidden.", GetPropertyValue(viewModel, "OverlayPreviewStatus"));
+        Assert.Equal("Live translation stopped.", GetPropertyValue(viewModel, "PipelineStatus"));
+    }
+
+    [Fact]
     public async Task RunTranslationPipelineAsync_WhenAllZonesFail_ShowsFirstFailureStageAndDetail()
     {
         var credentialStorage = new TestCredentialStorage();
@@ -2225,6 +2265,8 @@ public sealed class ProfileManagerViewModelTests
 
         public Action? OnCapture { get; init; }
 
+        public Func<CaptureRegion, CancellationToken, Task<CapturedFrame>>? CaptureFactory { get; init; }
+
         public Task<CapturedFrame> CaptureAsync(CaptureRegion region, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -2236,6 +2278,11 @@ public sealed class ProfileManagerViewModelTests
             }
 
             CapturedRegions.Add(region);
+
+            if (CaptureFactory is not null)
+            {
+                return CaptureFactory(region, cancellationToken);
+            }
 
             var stride = checked(region.Width * 4);
             var pixels = Enumerable.Repeat((byte)127, checked(stride * region.Height)).ToArray();

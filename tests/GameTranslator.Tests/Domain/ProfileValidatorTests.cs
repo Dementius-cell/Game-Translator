@@ -125,7 +125,28 @@ public sealed class ProfileValidatorTests
         Assert.Contains(result.Errors, error => error.Code == ProfileValidationErrorCodes.InvalidOcrZoneTranslationGroupingMode);
     }
 
+    [Fact]
+    public void Validate_WhenTextGroupingGapIsOutOfRange_ReturnsInvalidTextGroupingError()
+    {
+        var profile = CreateValidProfile() with
+        {
+            OcrZones = new[]
+            {
+                CreateZone("dialog", new AbsoluteRectangle(10, 10, 120, 40)) with
+                {
+                    TextGrouping = new OcrZoneTextGroupingSettings
+                    {
+                        MergeDistancePercent = 25,
+                    },
+                },
+            },
+        };
 
+        var result = validator.Validate(profile);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Code == ProfileValidationErrorCodes.InvalidOcrZoneTextGrouping);
+    }
 
     [Fact]
     public void Validate_WhenOcrEngineIsUnsupported_ReturnsInvalidOcrSettingsError()

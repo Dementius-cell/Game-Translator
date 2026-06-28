@@ -29,6 +29,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
     private bool overlayIsItalic;
     private bool overlayCanExpandBeyondSource;
     private TranslationGroupingMode translationGroupingMode = TranslationGroupingMode.BlockByBlock;
+    private double textGroupMergeDistancePercent = OcrZoneTextGroupingSettings.DefaultMergeDistancePercent;
 
     public string Id
     {
@@ -235,6 +236,19 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         }
     }
 
+    public double TextGroupMergeDistancePercent
+    {
+        get => textGroupMergeDistancePercent;
+        set
+        {
+            if (SetProperty(ref textGroupMergeDistancePercent, value))
+            {
+                NotifyDerivedPropertiesChanged();
+                Validate();
+            }
+        }
+    }
+
     public string DisplayName => string.IsNullOrWhiteSpace(Name) ? "Unnamed zone" : Name;
 
     public string AbsoluteBoundsSummary => $"X {AbsoluteX}  Y {AbsoluteY}  W {AbsoluteWidth}  H {AbsoluteHeight}";
@@ -271,6 +285,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
     public string TranslationGroupingModeSummary => TranslationGroupingMode switch
     {
         TranslationGroupingMode.WholeZone => "book/dialog whole-zone",
+        TranslationGroupingMode.NearbyBlocks => $"comic nearby groups ({TextGroupMergeDistancePercent:0.#}% gap)",
         _ => "menu block-by-block",
     };
 
@@ -306,6 +321,8 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
             TranslationGroupingMode = Enum.IsDefined(zone.TranslationGroupingMode)
                 ? zone.TranslationGroupingMode
                 : TranslationGroupingMode.BlockByBlock,
+            TextGroupMergeDistancePercent =
+                (zone.TextGrouping ?? OcrZoneTextGroupingSettings.Default).MergeDistancePercent,
         };
     }
 
@@ -342,6 +359,10 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
                     : OverlayTextLayoutMode.FitToSourceBounds,
             },
             TranslationGroupingMode = TranslationGroupingMode,
+            TextGrouping = new OcrZoneTextGroupingSettings
+            {
+                MergeDistancePercent = TextGroupMergeDistancePercent,
+            },
         };
     }
 
@@ -364,6 +385,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
             OverlayIsItalic = OverlayIsItalic,
             OverlayCanExpandBeyondSource = OverlayCanExpandBeyondSource,
             TranslationGroupingMode = TranslationGroupingMode,
+            TextGroupMergeDistancePercent = TextGroupMergeDistancePercent,
         };
     }
 
@@ -388,6 +410,11 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
             nameof(TranslationGroupingMode),
             !Enum.IsDefined(TranslationGroupingMode)
                 ? new[] { "Translation grouping mode is not supported." }
+                : Array.Empty<string>());
+        SetErrors(
+            nameof(TextGroupMergeDistancePercent),
+            TextGroupMergeDistancePercent is < OcrZoneTextGroupingSettings.MinimumMergeDistancePercent or > OcrZoneTextGroupingSettings.MaximumMergeDistancePercent
+                ? new[] { $"Text grouping gap must be between {OcrZoneTextGroupingSettings.MinimumMergeDistancePercent:0.#}% and {OcrZoneTextGroupingSettings.MaximumMergeDistancePercent:0.#}%." }
                 : Array.Empty<string>());
 
         var absoluteErrors = new List<string>();

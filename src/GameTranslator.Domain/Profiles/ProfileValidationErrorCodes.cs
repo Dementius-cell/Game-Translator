@@ -12,6 +12,8 @@ public static class ProfileValidationErrorCodes
 
     public const string InvalidOcrZoneTranslationGroupingMode = "profile.ocrZone.translationGroupingMode.invalid";
 
+    public const string InvalidOcrZoneTextGrouping = "profile.ocrZone.textGrouping.invalid";
+
     public const string OverlappingOcrZones = "profile.ocrZone.overlap";
 
     public const string InvalidOcrSettings = "profile.ocr.settings.invalid";

@@ -28,6 +28,7 @@ public sealed class JsonProfileExchangeGatewayTests : IDisposable
         Assert.Equal(profile.OcrZones[0].AbsoluteBounds, imported.OcrZones[0].AbsoluteBounds);
         Assert.Equal(profile.OcrZones[0].TextStyle, imported.OcrZones[0].TextStyle);
         Assert.Equal(profile.OcrZones[0].TranslationGroupingMode, imported.OcrZones[0].TranslationGroupingMode);
+        Assert.Equal(profile.OcrZones[0].TextGrouping, imported.OcrZones[0].TextGrouping);
     }
 
     [Fact]
@@ -73,6 +74,10 @@ public sealed class JsonProfileExchangeGatewayTests : IDisposable
                         LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter,
                     },
                     TranslationGroupingMode = TranslationGroupingMode.WholeZone,
+                    TextGrouping = new OcrZoneTextGroupingSettings
+                    {
+                        MergeDistancePercent = 6.5,
+                    },
                 },
             },
             OverlaySettings = new OverlaySettings

@@ -49,6 +49,7 @@ public sealed class ProfileValidator
 
             ValidateOcrZoneTextStyle(zones[index], errors);
             ValidateOcrZoneTranslationGroupingMode(zones[index], errors);
+            ValidateOcrZoneTextGrouping(zones[index], errors);
         }
 
         for (var first = 0; first < zones.Count; first++)
@@ -100,6 +101,20 @@ public sealed class ProfileValidator
         errors.Add(new ProfileValidationError(
             ProfileValidationErrorCodes.InvalidOcrZoneTranslationGroupingMode,
             $"OCR zone '{zone.Name}' translation grouping mode is not supported."));
+    }
+
+    private static void ValidateOcrZoneTextGrouping(OcrZone zone, List<ProfileValidationError> errors)
+    {
+        var settings = zone.TextGrouping ?? OcrZoneTextGroupingSettings.Default;
+        if (settings.MergeDistancePercent is >= OcrZoneTextGroupingSettings.MinimumMergeDistancePercent
+            and <= OcrZoneTextGroupingSettings.MaximumMergeDistancePercent)
+        {
+            return;
+        }
+
+        errors.Add(new ProfileValidationError(
+            ProfileValidationErrorCodes.InvalidOcrZoneTextGrouping,
+            $"OCR zone '{zone.Name}' text grouping merge distance must be between {OcrZoneTextGroupingSettings.MinimumMergeDistancePercent:0.#}% and {OcrZoneTextGroupingSettings.MaximumMergeDistancePercent:0.#}%."));
     }
 
     private static void ValidateOcrSettings(

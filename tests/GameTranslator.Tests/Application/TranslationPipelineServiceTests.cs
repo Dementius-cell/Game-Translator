@@ -228,6 +228,50 @@ public sealed class TranslationPipelineServiceTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenZoneUsesNearbyGrouping_TranslatesNearbyClustersAndShowsSeparateOverlayItems()
+    {
+        var zone = CreateZone("zone-a", "Comic page", new AbsoluteRectangle(10, 20, 400, 400)) with
+        {
+            TranslationGroupingMode = TranslationGroupingMode.NearbyBlocks,
+            TextGrouping = new OcrZoneTextGroupingSettings
+            {
+                MergeDistancePercent = 5,
+            },
+        };
+        var profile = CreateProfile(zone) with
+        {
+            OcrSettings = new OcrSettings
+            {
+                OrientationMode = OcrOrientationMode.Horizontal,
+            },
+        };
+        var ocrEngine = new FakeOcrEngine
+        {
+            BlocksFactory = _ => new[]
+            {
+                new OcrTextBlock("NO SEE.", new BoundingBox(120, 114, 70, 10)),
+                new OcrTextBlock("YO!", new BoundingBox(300, 20, 32, 14)),
+                new OcrTextBlock("LONG TIME", new BoundingBox(100, 100, 90, 10)),
+            },
+        };
+        var translator = new FakeTranslatorProvider("Google", new[] { "Они!", "Давно не виделись." });
+        var overlay = new FakeOverlayService();
+        var service = CreateService(new FakeCaptureFrameSource(), ocrEngine, translator, overlay);
+
+        var result = await service.RunAsync(profile, zone);
+
+        Assert.Equal(new[] { "YO!", "LONG TIME NO SEE." }, translator.Request?.Texts);
+        Assert.Equal(3, result.RecognizedBlockCount);
+        Assert.Equal(2, result.TranslatedBlockCount);
+        Assert.Equal(new[] { "Они!", "Давно не виделись." }, result.OverlaySnapshot.TextItems.Select(item => item.Text));
+        Assert.Equal(new[] { 310, 110 }, result.OverlaySnapshot.TextItems.Select(item => item.X));
+        Assert.Equal(new[] { 40, 120 }, result.OverlaySnapshot.TextItems.Select(item => item.Y));
+        Assert.Equal(new[] { 32, 90 }, result.OverlaySnapshot.TextItems.Select(item => item.Width));
+        Assert.Equal(new[] { 14, 24 }, result.OverlaySnapshot.TextItems.Select(item => item.Height));
+        Assert.Same(result.OverlaySnapshot, overlay.CurrentSnapshot);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenFrameIsEffectivelyUnchanged_ReusesPreviousPipelineResult()
     {
         var zone = CreateZone();

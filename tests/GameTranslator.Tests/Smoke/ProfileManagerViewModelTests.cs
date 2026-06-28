@@ -92,6 +92,11 @@ public sealed class ProfileManagerViewModelTests
                 Name = "Draft zone",
                 AbsoluteBounds = new AbsoluteRectangle(10, 20, 300, 80),
                 RelativeBounds = new RelativeRectangle(0.1, 0.2, 0.3, 0.1),
+                TranslationGroupingMode = TranslationGroupingMode.NearbyBlocks,
+                TextGrouping = new OcrZoneTextGroupingSettings
+                {
+                    MergeDistancePercent = 6.5,
+                },
             },
         });
         settings.SetValue("shell.draft.selectedZoneId", "zone-a");
@@ -114,6 +119,8 @@ public sealed class ProfileManagerViewModelTests
         Assert.Equal("zone-a", GetPropertyValue(selectedZone, "Id"));
         Assert.Equal("X 10  Y 20  W 300  H 80", GetPropertyValue(selectedZone, "AbsoluteBoundsSummary"));
         Assert.Equal(3d, GetPropertyValue(selectedZone, "RelativeAreaPercent"));
+        Assert.Equal(TranslationGroupingMode.NearbyBlocks, GetPropertyValue(selectedZone, "TranslationGroupingMode"));
+        Assert.Equal(6.5d, GetPropertyValue(selectedZone, "TextGroupMergeDistancePercent"));
     }
 
     [Fact]
@@ -142,7 +149,8 @@ public sealed class ProfileManagerViewModelTests
         SetPropertyValue(selectedZone, "OverlayIsBold", false);
         SetPropertyValue(selectedZone, "OverlayIsItalic", true);
         SetPropertyValue(selectedZone, "OverlayCanExpandBeyondSource", true);
-        SetPropertyValue(selectedZone, "TranslationGroupingMode", TranslationGroupingMode.WholeZone);
+        SetPropertyValue(selectedZone, "TranslationGroupingMode", TranslationGroupingMode.NearbyBlocks);
+        SetPropertyValue(selectedZone, "TextGroupMergeDistancePercent", 6.5d);
 
         Assert.Equal("Draft shell", settings.GetValue<string>("shell.draft.profile.name"));
         Assert.Equal("Persistent draft", settings.GetValue<string>("shell.draft.profile.description"));
@@ -160,7 +168,8 @@ public sealed class ProfileManagerViewModelTests
         Assert.False(persistedZone.TextStyle.IsBold);
         Assert.True(persistedZone.TextStyle.IsItalic);
         Assert.Equal(OverlayTextLayoutMode.ExpandFromSourceCenter, persistedZone.TextStyle.LayoutMode);
-        Assert.Equal(TranslationGroupingMode.WholeZone, persistedZone.TranslationGroupingMode);
+        Assert.Equal(TranslationGroupingMode.NearbyBlocks, persistedZone.TranslationGroupingMode);
+        Assert.Equal(6.5d, persistedZone.TextGrouping.MergeDistancePercent);
         Assert.Equal(
             GetPropertyValue(GetPropertyValue(viewModel, "SelectedZone")!, "Id"),
             settings.GetValue<string>("shell.draft.selectedZoneId"));
@@ -352,7 +361,8 @@ public sealed class ProfileManagerViewModelTests
         SetPropertyValue(selectedZone, "RelativeY", 0.2);
         SetPropertyValue(selectedZone, "RelativeWidth", 0.4);
         SetPropertyValue(selectedZone, "RelativeHeight", 0.1);
-        SetPropertyValue(selectedZone, "TranslationGroupingMode", TranslationGroupingMode.WholeZone);
+        SetPropertyValue(selectedZone, "TranslationGroupingMode", TranslationGroupingMode.NearbyBlocks);
+        SetPropertyValue(selectedZone, "TextGroupMergeDistancePercent", 6.5d);
 
         await InvokeTaskMethodAsync(viewModel, "SaveAsync");
 
@@ -364,7 +374,8 @@ public sealed class ProfileManagerViewModelTests
         Assert.Single(storedProfile.OcrZones);
         Assert.Equal("Subtitles", storedProfile.OcrZones[0].Name);
         Assert.Equal(new AbsoluteRectangle(10, 20, 300, 80), storedProfile.OcrZones[0].AbsoluteBounds);
-        Assert.Equal(TranslationGroupingMode.WholeZone, storedProfile.OcrZones[0].TranslationGroupingMode);
+        Assert.Equal(TranslationGroupingMode.NearbyBlocks, storedProfile.OcrZones[0].TranslationGroupingMode);
+        Assert.Equal(6.5d, storedProfile.OcrZones[0].TextGrouping.MergeDistancePercent);
     }
 
     [Fact]

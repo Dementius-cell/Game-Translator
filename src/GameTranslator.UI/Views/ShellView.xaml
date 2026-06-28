@@ -1201,6 +1201,7 @@
                                                             <RowDefinition Height="Auto" />
                                                             <RowDefinition Height="Auto" />
                                                             <RowDefinition Height="Auto" />
+                                                            <RowDefinition Height="Auto" />
                                                         </Grid.RowDefinitions>
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="2*" />
@@ -1270,6 +1271,20 @@
                                                             ItemsSource="{Binding TranslationGroupingModeOptions}"
                                                             SelectedValuePath="Mode"
                                                             SelectedValue="{Binding SelectedZone.TranslationGroupingMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+                                                        <TextBlock
+                                                            Grid.Row="4"
+                                                            Grid.Column="0"
+                                                            Margin="0,10,8,0"
+                                                            VerticalAlignment="Center"
+                                                            Foreground="#56616F"
+                                                            Text="Group gap %" />
+                                                        <TextBox
+                                                            Grid.Row="4"
+                                                            Grid.Column="1"
+                                                            Grid.ColumnSpan="3"
+                                                            Margin="0,8,0,0"
+                                                            Padding="8,6"
+                                                            Text="{Binding SelectedZone.TextGroupMergeDistancePercent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                                     </Grid>
                                                 </Border>
 

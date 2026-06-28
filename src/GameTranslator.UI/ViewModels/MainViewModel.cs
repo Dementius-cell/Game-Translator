@@ -136,6 +136,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     {
         new(TranslationGroupingMode.BlockByBlock, "Menu / block-by-block"),
         new(TranslationGroupingMode.WholeZone, "Book / dialog whole-zone"),
+        new(TranslationGroupingMode.NearbyBlocks, "Comic / nearby groups"),
     };
 
     private readonly ProfileService profileService;

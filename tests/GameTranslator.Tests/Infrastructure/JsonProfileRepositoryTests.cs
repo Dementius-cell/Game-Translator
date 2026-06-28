@@ -45,6 +45,7 @@ public sealed class JsonProfileRepositoryTests : IDisposable
         Assert.Equal(profile.OcrZones[0].RelativeBounds, loaded.OcrZones[0].RelativeBounds);
         Assert.Equal(profile.OcrZones[0].TextStyle, loaded.OcrZones[0].TextStyle);
         Assert.Equal(profile.OcrZones[0].TranslationGroupingMode, loaded.OcrZones[0].TranslationGroupingMode);
+        Assert.Equal(profile.OcrZones[0].TextGrouping, loaded.OcrZones[0].TextGrouping);
         Assert.Equal(profile.OcrSettings.Engine, loaded.OcrSettings.Engine);
         Assert.Equal(profile.OcrSettings.OrientationMode, loaded.OcrSettings.OrientationMode);
         Assert.Equal(profile.OcrPreprocessingSettings.Contrast, loaded.OcrPreprocessingSettings.Contrast);
@@ -121,6 +122,7 @@ public sealed class JsonProfileRepositoryTests : IDisposable
 
         Assert.NotNull(profile);
         Assert.Equal(TranslationGroupingMode.BlockByBlock, profile.OcrZones[0].TranslationGroupingMode);
+        Assert.Equal(OcrZoneTextGroupingSettings.Default, profile.OcrZones[0].TextGrouping);
     }
 
     public void Dispose()
@@ -153,6 +155,10 @@ public sealed class JsonProfileRepositoryTests : IDisposable
                         LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter,
                     },
                     TranslationGroupingMode = TranslationGroupingMode.WholeZone,
+                    TextGrouping = new OcrZoneTextGroupingSettings
+                    {
+                        MergeDistancePercent = 6.5,
+                    },
                 },
             },
             OcrSettings = new OcrSettings

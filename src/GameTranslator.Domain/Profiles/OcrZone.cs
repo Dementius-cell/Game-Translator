@@ -13,4 +13,6 @@ public sealed record OcrZone
     public OcrZoneTextStyle TextStyle { get; init; } = OcrZoneTextStyle.Default;
 
     public TranslationGroupingMode TranslationGroupingMode { get; init; } = TranslationGroupingMode.BlockByBlock;
+
+    public OcrZoneTextGroupingSettings TextGrouping { get; init; } = OcrZoneTextGroupingSettings.Default;
 }

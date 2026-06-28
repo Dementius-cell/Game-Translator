@@ -261,13 +261,15 @@ public partial class OverlayWindow : Window
             var bottomRight = transformFromDevice.Transform(new Point(item.X + item.Width, item.Y + item.Height));
             var rawWidth = Math.Max(1, bottomRight.X - topLeft.X);
             var rawHeight = Math.Max(1, bottomRight.Y - topLeft.Y);
-            var width = Math.Max(MinReadableItemWidth, rawWidth + PreviewPadding * 2);
-            var height = Math.Max(MinReadableItemHeight, rawHeight + PreviewPadding * 2);
+            var screenWidth = Math.Max(1, SystemParameters.PrimaryScreenWidth);
+            var screenHeight = Math.Max(1, SystemParameters.PrimaryScreenHeight);
+            var width = Math.Min(screenWidth, Math.Max(MinReadableItemWidth, rawWidth + PreviewPadding * 2));
+            var height = Math.Min(screenHeight, Math.Max(MinReadableItemHeight, rawHeight + PreviewPadding * 2));
 
             return new OverlayWindowTextItemViewModel(
                 item.Text,
-                Math.Max(0, topLeft.X - (width - rawWidth) / 2),
-                Math.Max(0, topLeft.Y - (height - rawHeight) / 2),
+                ClampOrigin(topLeft.X - (width - rawWidth) / 2, screenWidth, width),
+                ClampOrigin(topLeft.Y - (height - rawHeight) / 2, screenHeight, height),
                 width,
                 height,
                 string.IsNullOrWhiteSpace(item.TextStyle.FontFamily)
@@ -280,6 +282,11 @@ public partial class OverlayWindow : Window
                 item.TextStyle.IsBold ? FontWeights.Bold : FontWeights.Normal,
                 item.TextStyle.IsItalic ? FontStyles.Italic : FontStyles.Normal,
                 item.TextStyle.LayoutMode == OverlayTextLayoutMode.ExpandFromSourceCenter);
+        }
+
+        private static double ClampOrigin(double origin, double extent, double size)
+        {
+            return Math.Min(Math.Max(0, origin), Math.Max(0, extent - size));
         }
     }
 

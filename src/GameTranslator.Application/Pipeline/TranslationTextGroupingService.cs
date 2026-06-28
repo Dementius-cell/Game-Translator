@@ -5,6 +5,9 @@ namespace GameTranslator.Application.Pipeline;
 
 public static class TranslationTextGroupingService
 {
+    private const double SameReadingLineCenterToleranceFactor = 0.8;
+    private const double SameReadingLineOverlapRatio = 0.15;
+
     public static OcrResult CreateTranslationSourceResult(OcrResult sourceResult, OcrZone zone)
     {
         ArgumentNullException.ThrowIfNull(sourceResult);
@@ -25,10 +28,7 @@ public static class TranslationTextGroupingService
             return sourceResult;
         }
 
-        var orderedBlocks = sourceResult.TextBlocks
-            .OrderBy(block => block.Bounds.Y)
-            .ThenBy(block => block.Bounds.X)
-            .ToArray();
+        var orderedBlocks = OrderBlocksByReadingPosition(sourceResult.TextBlocks);
         var joinedText = string.Join(
             ' ',
             orderedBlocks
@@ -114,10 +114,52 @@ public static class TranslationTextGroupingService
 
     private static IReadOnlyList<OcrTextBlock> OrderBlocksByReadingPosition(IReadOnlyList<OcrTextBlock> blocks)
     {
-        return blocks
-            .OrderBy(block => block.Bounds.Y)
-            .ThenBy(block => block.Bounds.X)
+        if (blocks.Count <= 1)
+        {
+            return blocks;
+        }
+
+        var rows = new List<List<OcrTextBlock>>();
+        foreach (var block in blocks.OrderBy(block => GetCenterY(block.Bounds)).ThenBy(block => block.Bounds.X))
+        {
+            var row = rows.FirstOrDefault(existingRow => IsSameReadingLine(existingRow, block));
+            if (row is null)
+            {
+                rows.Add(new List<OcrTextBlock> { block });
+                continue;
+            }
+
+            row.Add(block);
+        }
+
+        return rows
+            .OrderBy(row => row.Min(block => block.Bounds.Y))
+            .ThenBy(row => row.Min(block => block.Bounds.X))
+            .SelectMany(row => row.OrderBy(block => block.Bounds.X).ThenBy(block => block.Bounds.Y))
             .ToArray();
+    }
+
+    private static bool IsSameReadingLine(IReadOnlyList<OcrTextBlock> row, OcrTextBlock block)
+    {
+        var rowTop = row.Min(item => item.Bounds.Y);
+        var rowBottom = row.Max(item => item.Bounds.Bottom);
+        var rowAverageHeight = row.Average(item => item.Bounds.Height);
+        var overlap = Math.Min(rowBottom, block.Bounds.Bottom) - Math.Max(rowTop, block.Bounds.Y);
+        if (overlap > 0)
+        {
+            var minimumHeight = Math.Min(rowAverageHeight, block.Bounds.Height);
+            if (overlap >= minimumHeight * SameReadingLineOverlapRatio)
+            {
+                return true;
+            }
+        }
+
+        var rowCenterY = row.Average(item => GetCenterY(item.Bounds));
+        var tolerance = Math.Max(
+            2d,
+            Math.Max(rowAverageHeight, block.Bounds.Height) * SameReadingLineCenterToleranceFactor);
+
+        return Math.Abs(rowCenterY - GetCenterY(block.Bounds)) <= tolerance;
     }
 
     private static OcrTextBlock? CreateTextBlockFromGroup(IReadOnlyList<OcrTextBlock> blocks)
@@ -139,6 +181,11 @@ public static class TranslationTextGroupingService
         var verticalGap = Math.Max(0, Math.Max(first.Y - second.Bottom, second.Y - first.Bottom));
 
         return Math.Sqrt((horizontalGap * horizontalGap) + (verticalGap * verticalGap));
+    }
+
+    private static double GetCenterY(BoundingBox bounds)
+    {
+        return bounds.Y + bounds.Height / 2d;
     }
 
     private static BoundingBox CreateCombinedBounds(IReadOnlyList<OcrTextBlock> blocks)

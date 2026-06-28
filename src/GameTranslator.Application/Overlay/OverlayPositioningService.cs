@@ -9,11 +9,12 @@ namespace GameTranslator.Application.Overlay;
 public sealed class OverlayPositioningService
 {
     private const int DefaultJitterTolerancePixels = 4;
-    private const double AverageGlyphWidthFactor = 0.58;
-    private const double BoldGlyphWidthFactor = 0.62;
-    private const double LineHeightFactor = 1.35;
+    private const double AverageGlyphWidthFactor = 0.62;
+    private const double BoldGlyphWidthFactor = 0.68;
+    private const double LineHeightFactor = 1.45;
     private const int ExpandedTextHorizontalPadding = 8;
     private const int ExpandedTextVerticalPadding = 4;
+    private const int ExpandedTextVerticalSafetyPadding = 10;
     private const int MinimumExpandedTextWidth = 96;
     private const int ExpandedTextMaxWidth = 960;
     private const double ExpandedTextSourceWidthMultiplier = 2.5;
@@ -184,7 +185,8 @@ public sealed class OverlayPositioningService
         OcrZoneTextStyle textStyle,
         int maxWidth)
     {
-        var characterCount = Math.Max(1, text.Trim().Length);
+        var normalizedText = text.Trim();
+        var characterCount = Math.Max(1, normalizedText.Length);
         var glyphWidthFactor = textStyle.IsBold ? BoldGlyphWidthFactor : AverageGlyphWidthFactor;
         var fontSize = Math.Max(OcrZoneTextStyle.MinimumFontSize, textStyle.FontSize);
         var singleLineWidth = (int)Math.Ceiling(
@@ -195,10 +197,13 @@ public sealed class OverlayPositioningService
         var layoutLimit = Math.Max(1, Math.Min(maxWidth, Math.Min(ExpandedTextMaxWidth, readableLimit)));
         var width = Math.Max(Math.Min(sourceWidth, layoutLimit), Math.Min(singleLineWidth, layoutLimit));
         var contentWidth = Math.Max(1, width - ExpandedTextHorizontalPadding * 2);
-        var lineCount = EstimateWrappedLineCount(text, contentWidth, fontSize, glyphWidthFactor);
+        var lineCount = EstimateWrappedLineCount(normalizedText, contentWidth, fontSize, glyphWidthFactor);
         var height = Math.Max(
             sourceHeight,
-            (int)Math.Ceiling(fontSize * LineHeightFactor * lineCount + ExpandedTextVerticalPadding * 2));
+            (int)Math.Ceiling(
+                fontSize * LineHeightFactor * lineCount
+                + ExpandedTextVerticalPadding * 2
+                + ExpandedTextVerticalSafetyPadding));
 
         return new ExpandedTextSize(width, height);
     }

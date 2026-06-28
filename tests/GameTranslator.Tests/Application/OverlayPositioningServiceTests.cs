@@ -260,6 +260,38 @@ public sealed class OverlayPositioningServiceTests
     }
 
     [Fact]
+    public void CreateSnapshot_WithExpandedDenseText_AllocatesHeightForWrappedLines()
+    {
+        var service = new OverlayPositioningService();
+        var textStyle = new OcrZoneTextStyle
+        {
+            FontFamily = "Arial",
+            FontSize = 18,
+            LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter,
+        };
+        var result = CreateResult(
+            new CaptureRegion(0, 0, 800, 600),
+            inputWidth: 800,
+            inputHeight: 600,
+            new OcrTextBlock(
+                "This translated comic bubble contains enough words to require several wrapped lines without clipping the final line.",
+                new BoundingBox(340, 250, 60, 16)));
+
+        var snapshot = service.CreateSnapshot(result, ShownAt, previousSnapshot: null, textStyle);
+
+        var item = Assert.Single(snapshot.TextItems);
+        Assert.True(item.Width > 60);
+        Assert.True(item.Height > 160);
+        Assert.Equal(370d, item.X + item.Width / 2d, precision: 0);
+        Assert.Equal(258d, item.Y + item.Height / 2d, precision: 0);
+        var mask = Assert.Single(snapshot.MaskItems);
+        Assert.Equal(340, mask.X);
+        Assert.Equal(250, mask.Y);
+        Assert.Equal(60, mask.Width);
+        Assert.Equal(16, mask.Height);
+    }
+
+    [Fact]
     public void CreateSnapshot_WhenVerticalOcrBoundsAreTall_UsesReadableHorizontalTextBounds()
     {
         var service = new OverlayPositioningService();

@@ -272,6 +272,47 @@ public sealed class TranslationPipelineServiceTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenNearbyGroupingHasStaggeredWords_TranslatesRowsInReadingOrder()
+    {
+        var zone = CreateZone("zone-a", "Comic bubble", new AbsoluteRectangle(10, 20, 400, 200)) with
+        {
+            TranslationGroupingMode = TranslationGroupingMode.NearbyBlocks,
+            TextGrouping = new OcrZoneTextGroupingSettings
+            {
+                MergeDistancePercent = 5,
+            },
+        };
+        var profile = CreateProfile(zone) with
+        {
+            OcrSettings = new OcrSettings
+            {
+                OrientationMode = OcrOrientationMode.Horizontal,
+            },
+        };
+        var ocrEngine = new FakeOcrEngine
+        {
+            BlocksFactory = _ => new[]
+            {
+                new OcrTextBlock("ripe", new BoundingBox(80, 2, 40, 12)),
+                new OcrTextBlock("Apple", new BoundingBox(10, 6, 60, 12)),
+                new OcrTextBlock("juicy", new BoundingBox(70, 22, 50, 12)),
+                new OcrTextBlock("tasty", new BoundingBox(10, 26, 50, 12)),
+                new OcrTextBlock("picked", new BoundingBox(80, 42, 60, 12)),
+                new OcrTextBlock("yesterday", new BoundingBox(10, 46, 60, 12)),
+            },
+        };
+        var translator = new FakeTranslatorProvider("Google", new[] { "Translated grouped bubble" });
+        var service = CreateService(new FakeCaptureFrameSource(), ocrEngine, translator, new FakeOverlayService());
+
+        var result = await service.RunAsync(profile, zone);
+
+        Assert.Equal(new[] { "Apple ripe tasty juicy yesterday picked" }, translator.Request?.Texts);
+        Assert.Equal(6, result.RecognizedBlockCount);
+        Assert.Equal(1, result.TranslatedBlockCount);
+        Assert.Equal("Translated grouped bubble", Assert.Single(result.OverlaySnapshot.TextItems).Text);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenFrameIsEffectivelyUnchanged_ReusesPreviousPipelineResult()
     {
         var zone = CreateZone();

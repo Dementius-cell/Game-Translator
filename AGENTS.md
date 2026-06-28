@@ -42,6 +42,7 @@ For restricted changes, read `docs/governance/change-approval-required.md` and o
 - Keep changes minimal and tied to the current sprint.
 - Add or update tests for new behavior according to the quality gates.
 - Report changed files, created files, validation performed, discovered risks, remaining work, and the next step after each task.
+- When posting or editing multi-line GitHub issue/PR comments, do not pass Markdown through inline shell strings or `gh ... --body` in PowerShell. Write the comment body to a UTF-8 file and use `--body-file`, or send JSON from a file through the GitHub API, then verify the published body with `gh issue view --json comments` or `gh api` before reporting success.
 
 ## Agent skills
 

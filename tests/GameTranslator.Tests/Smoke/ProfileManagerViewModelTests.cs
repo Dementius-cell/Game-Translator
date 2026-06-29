@@ -1687,6 +1687,41 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
+    public async Task RunTranslationPipelineAsync_WhenWebProviderParseFails_ShowsProviderFailureCategory()
+    {
+        var translator = new TestTranslatorProvider(
+            "GoogleWeb",
+            failure: new TranslatorProviderException(
+                "GoogleWeb",
+                TranslatorProviderFailureKind.Parse,
+                "GoogleWeb translation response could not be parsed."));
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            ocrEngine: new TestOcrEngine
+            {
+                BlocksFactory = _ => new[]
+                {
+                    new OcrTextBlock("Original subtitle", new BoundingBox(0, 0, 40, 12)),
+                },
+            },
+            translatorProvider: translator);
+
+        ConfigureValidDraftProfile(viewModel, "Web provider diagnostics");
+        SetPropertyValue(viewModel, "TranslatorProvider", "GoogleWeb");
+        InvokeMethodWithArguments(viewModel, "StartZoneSelection", 10d, 20d);
+        InvokeMethodWithArguments(viewModel, "CompleteZoneSelection", 110d, 70d);
+
+        await InvokeTaskMethodAsync(viewModel, "RunTranslationPipelineAsync");
+
+        var pipelineStatus = GetPropertyValue(viewModel, "PipelineStatus")?.ToString() ?? string.Empty;
+        Assert.Contains("failed during Translation", pipelineStatus, StringComparison.Ordinal);
+        Assert.Contains("Provider GoogleWeb parse failure", pipelineStatus, StringComparison.Ordinal);
+        Assert.Contains("could not be parsed", pipelineStatus, StringComparison.Ordinal);
+        Assert.DoesNotContain("Original subtitle", pipelineStatus, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task RunTranslationPipelineAsync_WhenCredentialsAreMissing_ShowsOcrPreviewAcrossAllZones()
     {
         var ocrEngine = new TestOcrEngine
@@ -2332,11 +2367,16 @@ public sealed class ProfileManagerViewModelTests
         private static readonly DateTimeOffset TranslatedAt = new(2026, 6, 19, 12, 0, 3, TimeSpan.Zero);
 
         private readonly IReadOnlyList<string>? translatedTexts;
+        private readonly Exception? failure;
 
-        public TestTranslatorProvider(string providerId, IReadOnlyList<string>? translatedTexts = null)
+        public TestTranslatorProvider(
+            string providerId,
+            IReadOnlyList<string>? translatedTexts = null,
+            Exception? failure = null)
         {
             ProviderId = providerId;
             this.translatedTexts = translatedTexts;
+            this.failure = failure;
         }
 
         public string ProviderId { get; }
@@ -2350,10 +2390,16 @@ public sealed class ProfileManagerViewModelTests
             cancellationToken.ThrowIfCancellationRequested();
             Request = request;
 
+            if (failure is not null)
+            {
+                return Task.FromException<TranslateResponse>(failure);
+            }
+
             return Task.FromResult(
                 new TranslateResponse(
                     translatedTexts ?? request.Texts.Select(text => $"Translated {text}"),
-                    TranslatedAt));
+                    TranslatedAt,
+                    ProviderId));
         }
     }
 

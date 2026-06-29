@@ -10,7 +10,9 @@ public sealed class TranslationCacheResult
         int memoryHitCount,
         int persistentHitCount,
         int missCount,
-        int storedCount)
+        int storedCount,
+        string providerId = "",
+        string diagnosticMessage = "")
     {
         ArgumentNullException.ThrowIfNull(translatedTexts);
 
@@ -45,6 +47,8 @@ public sealed class TranslationCacheResult
         PersistentHitCount = persistentHitCount;
         MissCount = missCount;
         StoredCount = storedCount;
+        ProviderId = providerId?.Trim() ?? string.Empty;
+        DiagnosticMessage = diagnosticMessage?.Trim() ?? string.Empty;
     }
 
     public IReadOnlyList<string> TranslatedTexts { get; }
@@ -61,8 +65,12 @@ public sealed class TranslationCacheResult
 
     public int StoredCount { get; }
 
+    public string ProviderId { get; }
+
+    public string DiagnosticMessage { get; }
+
     public TranslateResponse ToTranslateResponse()
     {
-        return new TranslateResponse(TranslatedTexts, TranslatedAt);
+        return new TranslateResponse(TranslatedTexts, TranslatedAt, ProviderId, DiagnosticMessage);
     }
 }

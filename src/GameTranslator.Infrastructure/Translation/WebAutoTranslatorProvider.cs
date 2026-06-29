@@ -33,19 +33,33 @@ public sealed class WebAutoTranslatorProvider : ITranslatorProvider
 
             try
             {
-                return await provider.TranslateAsync(
+                var response = await provider.TranslateAsync(
                     CreateProviderRequest(request, provider.ProviderId),
                     cancellationToken);
+
+                return new TranslateResponse(
+                    response.TranslatedTexts,
+                    response.TranslatedAt,
+                    provider.ProviderId,
+                    CreateSuccessDiagnostic(provider.ProviderId, failures));
             }
             catch (TranslatorProviderException exception)
             {
-                failures.Add($"{provider.ProviderId}: {exception.Message}");
+                failures.Add($"{provider.ProviderId} [{exception.FailureKind}]: {exception.Message}");
             }
         }
 
         throw new TranslatorProviderException(
             ProviderId,
+            TranslatorProviderFailureKind.AllProvidersFailed,
             $"All experimental web translators failed. {string.Join(" ", failures)}");
+    }
+
+    private static string CreateSuccessDiagnostic(string providerId, IReadOnlyList<string> previousFailures)
+    {
+        return previousFailures.Count == 0
+            ? $"WebAuto used {providerId}."
+            : $"WebAuto used {providerId} after {previousFailures.Count} provider fallback(s).";
     }
 
     private static TranslateRequest CreateProviderRequest(TranslateRequest request, string providerId)

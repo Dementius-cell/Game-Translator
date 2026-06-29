@@ -30,6 +30,58 @@ public sealed class ExperimentalWebTranslatorProviderTests
     }
 
     [Fact]
+    public async Task GoogleWebTranslateAsync_WhenProviderThrottles_ReportsThrottledFailure()
+    {
+        var handler = new SequenceHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+            {
+                Content = CreateJsonContent("""{ "error": "rate limited" }"""),
+            });
+        var provider = new GoogleWebTranslatorProvider(new HttpClient(handler));
+
+        var exception = await Assert.ThrowsAsync<TranslatorProviderException>(
+            () => provider.TranslateAsync(CreateRequest("GoogleWeb", "https://translate.googleapis.com")));
+
+        Assert.Equal("GoogleWeb", exception.ProviderId);
+        Assert.Equal(TranslatorProviderFailureKind.Throttled, exception.FailureKind);
+        Assert.Equal(HttpStatusCode.TooManyRequests, exception.StatusCode);
+    }
+
+    [Fact]
+    public async Task GoogleWebTranslateAsync_WhenResponseCannotBeParsed_ReportsParseFailure()
+    {
+        var handler = new SequenceHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = CreateJsonContent("""{ "unexpected": true }"""),
+            });
+        var provider = new GoogleWebTranslatorProvider(new HttpClient(handler));
+
+        var exception = await Assert.ThrowsAsync<TranslatorProviderException>(
+            () => provider.TranslateAsync(CreateRequest("GoogleWeb", "https://translate.googleapis.com")));
+
+        Assert.Equal("GoogleWeb", exception.ProviderId);
+        Assert.Equal(TranslatorProviderFailureKind.Parse, exception.FailureKind);
+    }
+
+    [Fact]
+    public async Task GoogleWebTranslateAsync_WhenResponseHasNoTranslatedText_ReportsEmptyResponse()
+    {
+        var handler = new SequenceHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = CreateJsonContent("""[[["","Hello",null,null,10]],null,"en"]"""),
+            });
+        var provider = new GoogleWebTranslatorProvider(new HttpClient(handler));
+
+        var exception = await Assert.ThrowsAsync<TranslatorProviderException>(
+            () => provider.TranslateAsync(CreateRequest("GoogleWeb", "https://translate.googleapis.com")));
+
+        Assert.Equal("GoogleWeb", exception.ProviderId);
+        Assert.Equal(TranslatorProviderFailureKind.EmptyResponse, exception.FailureKind);
+    }
+
+    [Fact]
     public async Task BingWebTranslateAsync_WhenSessionAndTranslationSucceed_ReturnsTranslatedText()
     {
         var handler = new SequenceHttpMessageHandler(
@@ -46,6 +98,7 @@ public sealed class ExperimentalWebTranslatorProviderTests
         var response = await provider.TranslateAsync(CreateRequest("BingWeb", "https://www.bing.com"));
 
         Assert.Equal(new[] { "Привет" }, response.TranslatedTexts);
+        Assert.Equal("BingWeb", response.ProviderId);
         Assert.Equal(2, handler.Requests.Count);
         Assert.EndsWith("/translator", handler.Requests[0].Uri?.AbsolutePath, StringComparison.Ordinal);
         Assert.Contains("/ttranslatev3", handler.Requests[1].Uri?.AbsolutePath, StringComparison.Ordinal);
@@ -132,6 +185,7 @@ public sealed class ExperimentalWebTranslatorProviderTests
             () => provider.TranslateAsync(CreateRequest("YandexWeb", "https://translate.yandex.net")));
 
         Assert.Equal("YandexWeb", exception.ProviderId);
+        Assert.Equal(TranslatorProviderFailureKind.Throttled, exception.FailureKind);
         Assert.Contains("session could not be created", exception.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("captcha", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -157,10 +211,45 @@ public sealed class ExperimentalWebTranslatorProviderTests
         var response = await provider.TranslateAsync(CreateRequest("WebAuto", "https://translate.googleapis.com"));
 
         Assert.Equal(new[] { "Привет" }, response.TranslatedTexts);
+        Assert.Equal("BingWeb", response.ProviderId);
+        Assert.Contains("WebAuto used BingWeb", response.DiagnosticMessage, StringComparison.Ordinal);
+        Assert.Contains("1 provider fallback", response.DiagnosticMessage, StringComparison.Ordinal);
         Assert.Equal(3, handler.Requests.Count);
         Assert.Contains("/translate_a/single", handler.Requests[0].Uri?.AbsolutePath, StringComparison.Ordinal);
         Assert.EndsWith("/translator", handler.Requests[1].Uri?.AbsolutePath, StringComparison.Ordinal);
         Assert.Contains("/ttranslatev3", handler.Requests[2].Uri?.AbsolutePath, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WebAutoTranslateAsync_WhenAllProvidersFail_ReportsFallbackFailureCategories()
+    {
+        var handler = new SequenceHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+            {
+                Content = CreateJsonContent("""{ "error": "rate limited" }"""),
+            },
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = CreateHtmlContent("<html>missing session</html>"),
+            },
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = CreateHtmlContent("<html>SmartCaptcha</html>"),
+            },
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = CreateHtmlContent("<html>SmartCaptcha</html>"),
+            });
+        var provider = new WebAutoTranslatorProvider(new HttpClient(handler));
+
+        var exception = await Assert.ThrowsAsync<TranslatorProviderException>(
+            () => provider.TranslateAsync(CreateRequest("WebAuto", "https://translate.googleapis.com")));
+
+        Assert.Equal("WebAuto", exception.ProviderId);
+        Assert.Equal(TranslatorProviderFailureKind.AllProvidersFailed, exception.FailureKind);
+        Assert.Contains("GoogleWeb [Throttled]", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("BingWeb [UnsupportedResponse]", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("YandexWeb [Throttled]", exception.Message, StringComparison.Ordinal);
     }
 
     private static TranslateRequest CreateRequest(string provider, string endpoint)

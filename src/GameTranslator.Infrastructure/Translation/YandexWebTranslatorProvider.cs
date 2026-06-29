@@ -39,7 +39,7 @@ public sealed class YandexWebTranslatorProvider : ITranslatorProvider
             translatedTexts.Add(await TranslateTextWithFreshSessionAsync(request, text, cancellationToken));
         }
 
-        return new TranslateResponse(translatedTexts, DateTimeOffset.UtcNow);
+        return new TranslateResponse(translatedTexts, DateTimeOffset.UtcNow, ProviderId);
     }
 
     private async Task<string> TranslateTextWithFreshSessionAsync(
@@ -99,6 +99,7 @@ public sealed class YandexWebTranslatorProvider : ITranslatorProvider
         {
             throw new TranslatorProviderException(
                 ProviderId,
+                TranslatorProviderFailureKind.Parse,
                 "YandexWeb translation response could not be parsed.",
                 exception);
         }
@@ -107,6 +108,7 @@ public sealed class YandexWebTranslatorProvider : ITranslatorProvider
         {
             throw new TranslatorProviderException(
                 ProviderId,
+                TranslatorProviderFailureKind.ProviderCode,
                 $"YandexWeb translation request failed with provider code {payload.Code}: {payload.Message ?? "The provider did not return a message."}");
         }
 
@@ -115,6 +117,7 @@ public sealed class YandexWebTranslatorProvider : ITranslatorProvider
         {
             throw new TranslatorProviderException(
                 ProviderId,
+                TranslatorProviderFailureKind.EmptyResponse,
                 "YandexWeb translation response did not contain translated text.");
         }
 
@@ -175,6 +178,9 @@ public sealed class YandexWebTranslatorProvider : ITranslatorProvider
 
             throw new TranslatorProviderException(
                 ProviderId,
+                failures.Any(failure => failure.Contains("captcha", StringComparison.OrdinalIgnoreCase))
+                    ? TranslatorProviderFailureKind.Throttled
+                    : TranslatorProviderFailureKind.UnsupportedResponse,
                 $"YandexWeb session could not be created. {string.Join(" ", failures)}");
         }
         finally
@@ -206,6 +212,7 @@ public sealed class YandexWebTranslatorProvider : ITranslatorProvider
         {
             throw new TranslatorProviderException(
                 "YandexWeb",
+                TranslatorProviderFailureKind.UnsupportedResponse,
                 "YandexWeb SID could not be found in the translator page.");
         }
 

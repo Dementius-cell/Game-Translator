@@ -246,7 +246,10 @@ public sealed class TranslationPipelineService
             return emptyResult;
         }
 
-        var translationSourceResult = TranslationTextGroupingService.CreateTranslationSourceResult(sourceResult, zone);
+        var groupingMeasurement = await RunTimedStageAsync(
+            TranslationPipelineStage.Grouping,
+            () => Task.FromResult(TranslationTextGroupingService.CreateTranslationSourceResult(sourceResult, zone)));
+        var translationSourceResult = groupingMeasurement.Value;
 
         if (!IsTextStableForTranslation(optimizationContext.StateKey, translationSourceResult, runOptions))
         {

@@ -17,6 +17,7 @@ using GameTranslator.Application.Ocr;
 using GameTranslator.Application.Overlay;
 using GameTranslator.Application.Pipeline;
 using GameTranslator.Application.Profiles;
+using GameTranslator.Application.Translation;
 using GameTranslator.Application.Updates;
 using GameTranslator.Domain.Profiles;
 using GameTranslator.UI.Commands;
@@ -2854,9 +2855,10 @@ public sealed class MainViewModel : ValidatableObservableObject
             _ => $"Live translation updated {result.TranslatedBlockCount} translated text block(s) across {result.SucceededZoneCount} OCR zone(s).",
         };
 
+        var providerDiagnostic = CreateProviderDiagnosticStatus(result);
         return result.HasFailures
-            ? $"{status} {result.FailedZoneCount} of {result.TotalZoneCount} zone(s) failed."
-            : status;
+            ? $"{status} {result.FailedZoneCount} of {result.TotalZoneCount} zone(s) failed.{providerDiagnostic}"
+            : status + providerDiagnostic;
     }
 
     private static string CreateBatchPipelineStatus(TranslationPipelineBatchResult result)
@@ -2888,6 +2890,9 @@ public sealed class MainViewModel : ValidatableObservableObject
             ? $"{translatedStatus}; {result.FailedZoneCount} of {result.TotalZoneCount} zone(s) failed."
             : $"{translatedStatus}.";
 
+        var providerDiagnostic = CreateProviderDiagnosticStatus(result);
+        status += providerDiagnostic;
+
         return result.SkippedOcrCount == 0
             ? status
             : status.TrimEnd('.') + $"; skipped OCR/translation for {result.SkippedOcrCount} unchanged zone(s).";
@@ -2895,6 +2900,12 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     private static string CreatePipelineFailureDetail(TranslationPipelineZoneFailure failure)
     {
+        var providerException = FindTranslatorProviderException(failure.Exception);
+        if (providerException is not null)
+        {
+            return $"{failure.Message} {CreateTranslatorProviderFailureDetail(providerException)}";
+        }
+
         var innerMessage = failure.Exception.InnerException?.Message;
         if (string.IsNullOrWhiteSpace(innerMessage)
             || string.Equals(innerMessage, failure.Message, StringComparison.Ordinal))
@@ -2903,6 +2914,78 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
 
         return $"{failure.Message} {innerMessage.Trim()}";
+    }
+
+    private static string CreateProviderDiagnosticStatus(TranslationPipelineBatchResult result)
+    {
+        var diagnostics = result.ZoneResults
+            .Select(zoneResult => zoneResult.TranslateResponse?.DiagnosticMessage)
+            .Where(message => !string.IsNullOrWhiteSpace(message))
+            .Select(message => message!.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (diagnostics.Length > 0)
+        {
+            return " " + string.Join(" ", diagnostics);
+        }
+
+        var providers = result.ZoneResults
+            .Select(zoneResult => zoneResult.TranslateResponse?.ProviderId)
+            .Where(provider => !string.IsNullOrWhiteSpace(provider) && IsExperimentalWebProvider(provider!))
+            .Select(provider => provider!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return providers.Length == 1
+            ? $" Provider: {providers[0]}."
+            : string.Empty;
+    }
+
+    private static TranslatorProviderException? FindTranslatorProviderException(Exception exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException!)
+        {
+            if (current is TranslatorProviderException providerException)
+            {
+                return providerException;
+            }
+        }
+
+        return null;
+    }
+
+    private static string CreateTranslatorProviderFailureDetail(TranslatorProviderException exception)
+    {
+        var status = exception.StatusCode is null
+            ? string.Empty
+            : $" HTTP {(int)exception.StatusCode.Value}.";
+
+        return $"Provider {exception.ProviderId} {FormatTranslatorProviderFailureKind(exception.FailureKind)}.{status} {exception.Message}";
+    }
+
+    private static string FormatTranslatorProviderFailureKind(TranslatorProviderFailureKind failureKind)
+    {
+        return failureKind switch
+        {
+            TranslatorProviderFailureKind.Configuration => "configuration failure",
+            TranslatorProviderFailureKind.Http => "HTTP failure",
+            TranslatorProviderFailureKind.Throttled => "throttled",
+            TranslatorProviderFailureKind.EmptyResponse => "empty response",
+            TranslatorProviderFailureKind.Parse => "parse failure",
+            TranslatorProviderFailureKind.UnsupportedResponse => "unsupported response",
+            TranslatorProviderFailureKind.ProviderCode => "provider-code failure",
+            TranslatorProviderFailureKind.AllProvidersFailed => "fallback failure",
+            TranslatorProviderFailureKind.Unexpected => "unexpected failure",
+            _ => "failure",
+        };
+    }
+
+    private static bool IsExperimentalWebProvider(string provider)
+    {
+        return string.Equals(provider, "WebAuto", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(provider, "GoogleWeb", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(provider, "BingWeb", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(provider, "YandexWeb", StringComparison.OrdinalIgnoreCase);
     }
 
     private static TimeSpan SumElapsed(

@@ -48,6 +48,7 @@ public sealed class TranslatorManager
         {
             throw new TranslatorProviderException(
                 provider.ProviderId,
+                TranslatorProviderFailureKind.Unexpected,
                 $"Translator provider '{provider.ProviderId}' failed: {RedactSecret(exception.Message, credentials.AccessToken)}");
         }
     }
@@ -63,6 +64,7 @@ public sealed class TranslatorManager
 
         throw new TranslatorProviderException(
             providerId,
+            TranslatorProviderFailureKind.Configuration,
             $"Translator provider '{providerId.Trim()}' is not registered.");
     }
 

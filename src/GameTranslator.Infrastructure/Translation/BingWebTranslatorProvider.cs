@@ -33,7 +33,7 @@ public sealed class BingWebTranslatorProvider : ITranslatorProvider
             translatedTexts.Add(await TranslateTextWithFreshSessionAsync(request, text, cancellationToken));
         }
 
-        return new TranslateResponse(translatedTexts, DateTimeOffset.UtcNow);
+        return new TranslateResponse(translatedTexts, DateTimeOffset.UtcNow, ProviderId);
     }
 
     private async Task<string> TranslateTextWithFreshSessionAsync(
@@ -93,6 +93,7 @@ public sealed class BingWebTranslatorProvider : ITranslatorProvider
         {
             throw new TranslatorProviderException(
                 ProviderId,
+                TranslatorProviderFailureKind.Parse,
                 "BingWeb translation response could not be parsed.",
                 exception);
         }
@@ -102,6 +103,7 @@ public sealed class BingWebTranslatorProvider : ITranslatorProvider
         {
             throw new TranslatorProviderException(
                 ProviderId,
+                TranslatorProviderFailureKind.EmptyResponse,
                 "BingWeb translation response did not contain translated text.");
         }
 
@@ -173,6 +175,7 @@ public sealed class BingWebTranslatorProvider : ITranslatorProvider
         {
             throw new TranslatorProviderException(
                 "BingWeb",
+                TranslatorProviderFailureKind.UnsupportedResponse,
                 "BingWeb session token could not be found in the translator page.");
         }
 
@@ -184,6 +187,7 @@ public sealed class BingWebTranslatorProvider : ITranslatorProvider
         {
             throw new TranslatorProviderException(
                 "BingWeb",
+                TranslatorProviderFailureKind.UnsupportedResponse,
                 "BingWeb session IG value could not be found in the translator page.");
         }
 

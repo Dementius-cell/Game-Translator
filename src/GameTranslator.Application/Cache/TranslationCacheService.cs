@@ -63,6 +63,8 @@ public sealed class TranslationCacheService
 
         var storedCount = 0;
         var translatedAt = now;
+        var providerId = settings.Provider;
+        var diagnosticMessage = string.Empty;
         if (misses.Count > 0)
         {
             var response = await translateMissingAsync(misses.Select(miss => miss.SourceText).ToArray());
@@ -72,6 +74,10 @@ public sealed class TranslationCacheService
             }
 
             translatedAt = response.TranslatedAt;
+            providerId = string.IsNullOrWhiteSpace(response.ProviderId)
+                ? settings.Provider
+                : response.ProviderId;
+            diagnosticMessage = response.DiagnosticMessage;
             for (var index = 0; index < misses.Count; index++)
             {
                 var miss = misses[index];
@@ -97,7 +103,9 @@ public sealed class TranslationCacheService
             memoryHits,
             persistentHits,
             misses.Count,
-            storedCount);
+            storedCount,
+            providerId,
+            diagnosticMessage);
     }
 
     public async Task<TranslationCacheCleanupResult> CleanupExpiredAsync(

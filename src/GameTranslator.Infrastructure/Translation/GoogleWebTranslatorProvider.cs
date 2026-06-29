@@ -28,7 +28,7 @@ public sealed class GoogleWebTranslatorProvider : ITranslatorProvider
             translatedTexts.Add(await TranslateTextAsync(request, text, cancellationToken));
         }
 
-        return new TranslateResponse(translatedTexts, DateTimeOffset.UtcNow);
+        return new TranslateResponse(translatedTexts, DateTimeOffset.UtcNow, ProviderId);
     }
 
     private async Task<string> TranslateTextAsync(
@@ -53,10 +53,15 @@ public sealed class GoogleWebTranslatorProvider : ITranslatorProvider
         {
             return ParseGoogleWebTranslation(responseBody);
         }
+        catch (TranslatorProviderException)
+        {
+            throw;
+        }
         catch (JsonException exception)
         {
             throw new TranslatorProviderException(
                 ProviderId,
+                TranslatorProviderFailureKind.Parse,
                 "GoogleWeb translation response could not be parsed.",
                 exception);
         }
@@ -99,7 +104,10 @@ public sealed class GoogleWebTranslatorProvider : ITranslatorProvider
         var translation = builder.ToString();
         if (string.IsNullOrWhiteSpace(translation))
         {
-            throw new JsonException("GoogleWeb response did not contain translated text.");
+            throw new TranslatorProviderException(
+                "GoogleWeb",
+                TranslatorProviderFailureKind.EmptyResponse,
+                "GoogleWeb translation response did not contain translated text.");
         }
 
         return translation;

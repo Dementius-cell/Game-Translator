@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "testOnly": true,
+  "generatedAtUtc": "2026-06-30T09:00:00+00:00",
+  "status": "unavailable",
+  "tessdataLocation": null,
+  "requiredTrainedData": [
+    "chi_sim_vert.traineddata",
+    "eng.traineddata",
+    "jpn_vert.traineddata"
+  ],
+  "candidateTessdataLocations": [
+    "tests/GameTranslator.Tests/bin/Release/net9.0-windows10.0.19041.0/tessdata",
+    "tessdata"
+  ],
+  "setupInstructions": [
+    "Place chi_sim_vert.traineddata, eng.traineddata, jpn_vert.traineddata in repository tessdata/ or set TESSDATA_PREFIX to a folder containing them.",
+    "Re-run dotnet test GameTranslator.sln -c Release --no-build to refresh artifacts/calibration/real-ocr-sweep.json.",
+    "Keep traineddata binaries local unless the project owner explicitly approves committing them."
+  ],
+  "sourceFrames": [
+    {
+      "fixtureId": "vertical-cjk-basic-bubble",
+      "path": "real-ocr/vertical-cjk-basic-bubble-source.png",
+      "width": 480,
+      "height": 480,
+      "sourceLanguage": "zh-CN",
+      "sourceOrientation": "Vertical",
+      "expectedText": "你好"
+    },
+    {
+      "fixtureId": "vertical-japanese-save-prompt",
+      "path": "real-ocr/vertical-japanese-save-prompt-source.png",
+      "width": 480,
+      "height": 480,
+      "sourceLanguage": "ja-JP",
+      "sourceOrientation": "Vertical",
+      "expectedText": "セーブしますか"
+    },
+    {
+      "fixtureId": "book-page-horizontal-lines",
+      "path": "real-ocr/book-page-horizontal-lines-source.png",
+      "width": 480,
+      "height": 480,
+      "sourceLanguage": "en",
+      "sourceOrientation": "Horizontal",
+      "expectedText": "THE OLD CITY WAS QUIET"
+    },
+    {
+      "fixtureId": "plain-ui-save-game",
+      "path": "real-ocr/plain-ui-save-game-source.png",
+      "width": 480,
+      "height": 480,
+      "sourceLanguage": "en",
+      "sourceOrientation": "Horizontal",
+      "expectedText": "SAVE GAME"
+    }
+  ],
+  "unavailableReason": "tests/GameTranslator.Tests/bin/Release/net9.0-windows10.0.19041.0/tessdata: directory not found; tessdata: directory not found",
+  "fixtures": []
+}

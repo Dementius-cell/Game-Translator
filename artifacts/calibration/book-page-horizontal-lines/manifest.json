@@ -1,0 +1,104 @@
+{
+  "Id": "book-page-horizontal-lines",
+  "CaseType": "book_page_horizontal",
+  "OriginalText": "THE OLD CITY WAS QUIET",
+  "SourceLanguage": "en",
+  "SourceOrientation": 1,
+  "ApprovedReadingOrder": [
+    "THE OLD CITY",
+    "WAS QUIET"
+  ],
+  "SemanticGroups": [
+    {
+      "GroupId": 0,
+      "ApprovedSourceText": "THE OLD CITY WAS QUIET",
+      "SourceBounds": {
+        "X": 44,
+        "Y": 50,
+        "Width": 136,
+        "Height": 68,
+        "Right": 180,
+        "Bottom": 118,
+        "CenterX": 112,
+        "CenterY": 84
+      },
+      "RawSourceIndexes": [
+        0,
+        1
+      ],
+      "MaskSourceIndexes": [
+        0,
+        1
+      ]
+    }
+  ],
+  "RawSourceBounds": [
+    {
+      "X": 48,
+      "Y": 56,
+      "Width": 128,
+      "Height": 20,
+      "Right": 176,
+      "Bottom": 76,
+      "CenterX": 112,
+      "CenterY": 66
+    },
+    {
+      "X": 58,
+      "Y": 92,
+      "Width": 108,
+      "Height": 20,
+      "Right": 166,
+      "Bottom": 112,
+      "CenterX": 112,
+      "CenterY": 102
+    }
+  ],
+  "ApprovedTranslation": "Старый город был тихим",
+  "BubbleBounds": {
+    "X": 28,
+    "Y": 24,
+    "Width": 184,
+    "Height": 172,
+    "Right": 212,
+    "Bottom": 196,
+    "CenterX": 120,
+    "CenterY": 110
+  },
+  "ApprovedOverlayBounds": {
+    "X": 48,
+    "Y": 64,
+    "Width": 144,
+    "Height": 64,
+    "Right": 192,
+    "Bottom": 128,
+    "CenterX": 120,
+    "CenterY": 96
+  },
+  "RequiredGroupingMergeDistancePercent": 18,
+  "ForbiddenRegions": [
+    {
+      "X": 10,
+      "Y": 12,
+      "Width": 34,
+      "Height": 24,
+      "Right": 44,
+      "Bottom": 36,
+      "CenterX": 27,
+      "CenterY": 24
+    },
+    {
+      "X": 196,
+      "Y": 172,
+      "Width": 32,
+      "Height": 36,
+      "Right": 228,
+      "Bottom": 208,
+      "CenterX": 212,
+      "CenterY": 190
+    }
+  ],
+  "generatedArtifacts": [
+    "contact-sheet.png"
+  ]
+}

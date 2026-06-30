@@ -1,0 +1,104 @@
+{
+  "Id": "vertical-cjk-basic-bubble",
+  "CaseType": "manga_vertical_cjk",
+  "OriginalText": "你好",
+  "SourceLanguage": "zh-CN",
+  "SourceOrientation": 2,
+  "ApprovedReadingOrder": [
+    "你",
+    "好"
+  ],
+  "SemanticGroups": [
+    {
+      "GroupId": 0,
+      "ApprovedSourceText": "你 好",
+      "SourceBounds": {
+        "X": 96,
+        "Y": 40,
+        "Width": 32,
+        "Height": 140,
+        "Right": 128,
+        "Bottom": 180,
+        "CenterX": 112,
+        "CenterY": 110
+      },
+      "RawSourceIndexes": [
+        0,
+        1
+      ],
+      "MaskSourceIndexes": [
+        0,
+        1
+      ]
+    }
+  ],
+  "RawSourceBounds": [
+    {
+      "X": 104,
+      "Y": 48,
+      "Width": 16,
+      "Height": 44,
+      "Right": 120,
+      "Bottom": 92,
+      "CenterX": 112,
+      "CenterY": 70
+    },
+    {
+      "X": 104,
+      "Y": 112,
+      "Width": 16,
+      "Height": 44,
+      "Right": 120,
+      "Bottom": 156,
+      "CenterX": 112,
+      "CenterY": 134
+    }
+  ],
+  "ApprovedTranslation": "Approved translation",
+  "BubbleBounds": {
+    "X": 40,
+    "Y": 20,
+    "Width": 160,
+    "Height": 180,
+    "Right": 200,
+    "Bottom": 200,
+    "CenterX": 120,
+    "CenterY": 110
+  },
+  "ApprovedOverlayBounds": {
+    "X": 58,
+    "Y": 64,
+    "Width": 110,
+    "Height": 92,
+    "Right": 168,
+    "Bottom": 156,
+    "CenterX": 113,
+    "CenterY": 110
+  },
+  "RequiredGroupingMergeDistancePercent": 24,
+  "ForbiddenRegions": [
+    {
+      "X": 0,
+      "Y": 0,
+      "Width": 36,
+      "Height": 36,
+      "Right": 36,
+      "Bottom": 36,
+      "CenterX": 18,
+      "CenterY": 18
+    },
+    {
+      "X": 204,
+      "Y": 70,
+      "Width": 30,
+      "Height": 90,
+      "Right": 234,
+      "Bottom": 160,
+      "CenterX": 219,
+      "CenterY": 115
+    }
+  ],
+  "generatedArtifacts": [
+    "contact-sheet.png"
+  ]
+}

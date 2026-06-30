@@ -1,0 +1,169 @@
+{
+  "Id": "vertical-japanese-save-prompt",
+  "CaseType": "manga_vertical_japanese",
+  "OriginalText": "セーブしますか",
+  "SourceLanguage": "ja-JP",
+  "SourceOrientation": 2,
+  "ApprovedReadingOrder": [
+    "セ",
+    "ー",
+    "ブ",
+    "し",
+    "ま",
+    "す",
+    "か"
+  ],
+  "SemanticGroups": [
+    {
+      "GroupId": 0,
+      "ApprovedSourceText": "セ ー ブ し ま す か",
+      "SourceBounds": {
+        "X": 102,
+        "Y": 26,
+        "Width": 34,
+        "Height": 184,
+        "Right": 136,
+        "Bottom": 210,
+        "CenterX": 119,
+        "CenterY": 118
+      },
+      "RawSourceIndexes": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "MaskSourceIndexes": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ]
+    }
+  ],
+  "RawSourceBounds": [
+    {
+      "X": 108,
+      "Y": 32,
+      "Width": 20,
+      "Height": 22,
+      "Right": 128,
+      "Bottom": 54,
+      "CenterX": 118,
+      "CenterY": 43
+    },
+    {
+      "X": 108,
+      "Y": 57,
+      "Width": 20,
+      "Height": 22,
+      "Right": 128,
+      "Bottom": 79,
+      "CenterX": 118,
+      "CenterY": 68
+    },
+    {
+      "X": 108,
+      "Y": 82,
+      "Width": 20,
+      "Height": 22,
+      "Right": 128,
+      "Bottom": 104,
+      "CenterX": 118,
+      "CenterY": 93
+    },
+    {
+      "X": 108,
+      "Y": 107,
+      "Width": 20,
+      "Height": 22,
+      "Right": 128,
+      "Bottom": 129,
+      "CenterX": 118,
+      "CenterY": 118
+    },
+    {
+      "X": 108,
+      "Y": 132,
+      "Width": 20,
+      "Height": 22,
+      "Right": 128,
+      "Bottom": 154,
+      "CenterX": 118,
+      "CenterY": 143
+    },
+    {
+      "X": 108,
+      "Y": 157,
+      "Width": 20,
+      "Height": 22,
+      "Right": 128,
+      "Bottom": 179,
+      "CenterX": 118,
+      "CenterY": 168
+    },
+    {
+      "X": 108,
+      "Y": 182,
+      "Width": 20,
+      "Height": 22,
+      "Right": 128,
+      "Bottom": 204,
+      "CenterX": 118,
+      "CenterY": 193
+    }
+  ],
+  "ApprovedTranslation": "Сохранить?",
+  "BubbleBounds": {
+    "X": 54,
+    "Y": 14,
+    "Width": 132,
+    "Height": 214,
+    "Right": 186,
+    "Bottom": 228,
+    "CenterX": 120,
+    "CenterY": 121
+  },
+  "ApprovedOverlayBounds": {
+    "X": 72,
+    "Y": 72,
+    "Width": 96,
+    "Height": 80,
+    "Right": 168,
+    "Bottom": 152,
+    "CenterX": 120,
+    "CenterY": 112
+  },
+  "RequiredGroupingMergeDistancePercent": 26,
+  "ForbiddenRegions": [
+    {
+      "X": 0,
+      "Y": 0,
+      "Width": 38,
+      "Height": 40,
+      "Right": 38,
+      "Bottom": 40,
+      "CenterX": 19,
+      "CenterY": 20
+    },
+    {
+      "X": 188,
+      "Y": 66,
+      "Width": 32,
+      "Height": 110,
+      "Right": 220,
+      "Bottom": 176,
+      "CenterX": 204,
+      "CenterY": 121
+    }
+  ],
+  "generatedArtifacts": [
+    "contact-sheet.png"
+  ]
+}

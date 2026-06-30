@@ -1563,6 +1563,151 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
+    public async Task ExportDiagnosticsAsync_AfterVerticalCjkPipelineRun_WritesGroupedDebugPackageWithoutCredentialSecrets()
+    {
+        var credentialStorage = new TestCredentialStorage();
+        await credentialStorage.SaveAsync(
+            new TranslatorCredentialRecord(
+                "Google",
+                "SECRET_TRANSLATOR_TOKEN",
+                "project-a",
+                "global",
+                new Uri("https://translation.test")));
+        var frameSource = new TestCaptureFrameSource
+        {
+            CaptureFactory = (region, _) => Task.FromResult(CreateSolidFrame(region, 245)),
+        };
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            ocrEngine: new TestOcrEngine
+            {
+                EngineId = OcrSettings.TesseractEngineId,
+                BlocksFactory = _ => new[]
+                {
+                    new OcrTextBlock("\u4f60", new BoundingBox(60, 6, 16, 16)),
+                    new OcrTextBlock("\u597d", new BoundingBox(60, 26, 16, 16)),
+                },
+            },
+            frameSource: frameSource,
+            translatorProvider: new TestTranslatorProvider("Google", new[] { "Translated vertical phrase" }),
+            credentialStorage: credentialStorage);
+
+        ConfigureValidDraftProfile(viewModel, "Diagnostics draft");
+        SetPropertyValue(viewModel, "OcrEngine", OcrSettings.TesseractEngineId);
+        SetPropertyValue(viewModel, "OcrOrientationMode", OcrOrientationMode.Vertical);
+        InvokeMethodWithArguments(viewModel, "StartZoneSelection", 10d, 20d);
+        InvokeMethodWithArguments(viewModel, "CompleteZoneSelection", 110d, 70d);
+        var selectedZone = GetPropertyValue(viewModel, "SelectedZone")
+            ?? throw new InvalidOperationException("Selected zone was not created.");
+        SetPropertyValue(selectedZone, "OcrLanguage", "chi_tra_vert");
+        SetPropertyValue(selectedZone, "TranslationGroupingMode", TranslationGroupingMode.NearbyBlocks);
+        SetPropertyValue(selectedZone, "TextGroupMergeDistancePercent", 10d);
+        await InvokeTaskMethodAsync(viewModel, "RunTranslationPipelineAsync");
+
+        await InvokeTaskMethodAsync(viewModel, "ExportDiagnosticsAsync");
+
+        var packageDirectory = GetExportedDiagnosticsPath(viewModel);
+        try
+        {
+            var jsonPath = Path.Combine(packageDirectory, "diagnostics.json");
+            Assert.True(File.Exists(jsonPath));
+            Assert.NotEmpty(Directory.EnumerateFiles(packageDirectory, "*.png"));
+
+            var json = await File.ReadAllTextAsync(jsonPath);
+            Assert.Contains("\"latestPipeline\"", json, StringComparison.Ordinal);
+            Assert.Contains("\"currentOverlay\"", json, StringComparison.Ordinal);
+            Assert.Contains("\"textBlocks\"", json, StringComparison.Ordinal);
+            Assert.Contains("Translated vertical phrase", json, StringComparison.Ordinal);
+            Assert.DoesNotContain("SECRET_TRANSLATOR_TOKEN", json, StringComparison.Ordinal);
+
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            Assert.Equal(1, root.GetProperty("schemaVersion").GetInt32());
+            Assert.True(root.TryGetProperty("build", out _));
+            Assert.True(root.TryGetProperty("latestCapturedFrame", out var latestCapturedFrame));
+            Assert.Equal("preview.png", latestCapturedFrame.GetProperty("savedFileName").GetString());
+            Assert.True(root.TryGetProperty("latestPipeline", out var latestPipeline));
+            Assert.True(latestPipeline.TryGetProperty("zoneResults", out var zoneResults));
+            Assert.Equal(1, zoneResults.GetArrayLength());
+            var zoneResult = zoneResults[0];
+            Assert.True(zoneResult.TryGetProperty("translationSourceOcr", out _));
+            Assert.True(zoneResult.TryGetProperty("maskSourceOcr", out _));
+            var sourceBlocks = zoneResult.GetProperty("sourceOcr").GetProperty("textBlocks");
+            Assert.Equal(2, sourceBlocks.GetArrayLength());
+            var translationSourceBlocks = zoneResult.GetProperty("translationSourceOcr").GetProperty("textBlocks");
+            Assert.Equal(1, translationSourceBlocks.GetArrayLength());
+            Assert.Equal("\u4f60 \u597d", translationSourceBlocks[0].GetProperty("Text").GetString());
+            var maskSourceBlocks = zoneResult.GetProperty("maskSourceOcr").GetProperty("textBlocks");
+            Assert.Equal(2, maskSourceBlocks.GetArrayLength());
+            Assert.True(zoneResult.TryGetProperty("overlayGeometry", out var overlayGeometry));
+            Assert.Equal(1, overlayGeometry.GetProperty("translationSourceBlockCount").GetInt32());
+            Assert.Equal(2, overlayGeometry.GetProperty("maskSourceBlockCount").GetInt32());
+            Assert.Equal(1, overlayGeometry.GetProperty("textItemCount").GetInt32());
+            Assert.Equal(2, overlayGeometry.GetProperty("maskItemCount").GetInt32());
+            var semanticGroups = overlayGeometry.GetProperty("semanticGroups");
+            Assert.Equal(1, semanticGroups.GetArrayLength());
+            var semanticGroup = semanticGroups[0];
+            Assert.Equal(0, semanticGroup.GetProperty("groupId").GetInt32());
+            Assert.Equal(0, semanticGroup.GetProperty("translationSourceIndex").GetInt32());
+            Assert.True(semanticGroup.TryGetProperty("sourceBounds", out _));
+            Assert.True(semanticGroup.TryGetProperty("textBounds", out _));
+            Assert.True(semanticGroup.TryGetProperty("overlayAnchor", out _));
+            Assert.Equal(
+                new[] { 0, 1 },
+                semanticGroup.GetProperty("maskSourceIndexes").EnumerateArray().Select(item => item.GetInt32()).ToArray());
+            Assert.Equal(
+                new[] { 0, 1 },
+                semanticGroup.GetProperty("rawSourceIndexes").EnumerateArray().Select(item => item.GetInt32()).ToArray());
+            var textGeometryItems = overlayGeometry.GetProperty("textItems");
+            Assert.Equal(1, textGeometryItems.GetArrayLength());
+            var textGeometryItem = textGeometryItems[0];
+            Assert.True(textGeometryItem.TryGetProperty("sourceBounds", out _));
+            Assert.True(textGeometryItem.TryGetProperty("textBounds", out _));
+            Assert.True(textGeometryItem.TryGetProperty("textCenterDeltaFromSource", out _));
+            var maskGeometryItems = overlayGeometry.GetProperty("maskItems");
+            Assert.Equal(2, maskGeometryItems.GetArrayLength());
+            var maskGeometryItem = maskGeometryItems[0];
+            Assert.True(maskGeometryItem.TryGetProperty("sourceBounds", out _));
+            Assert.True(maskGeometryItem.TryGetProperty("maskBounds", out _));
+            Assert.True(maskGeometryItem.TryGetProperty("maskCenterDeltaFromSource", out _));
+            Assert.True(overlayGeometry.TryGetProperty("textMaskIntersections", out _));
+            Assert.True(root.TryGetProperty("currentOverlay", out var currentOverlay));
+            Assert.True(currentOverlay.TryGetProperty("textItems", out var textItems));
+            Assert.Equal(1, textItems.GetArrayLength());
+        }
+        finally
+        {
+            if (Directory.Exists(packageDirectory))
+            {
+                Directory.Delete(packageDirectory, recursive: true);
+            }
+        }
+    }
+
+    private static CapturedFrame CreateSolidFrame(CaptureRegion region, byte value)
+    {
+        var stride = checked(region.Width * 4);
+        var pixels = new byte[checked(stride * region.Height)];
+        for (var index = 0; index < pixels.Length; index += 4)
+        {
+            pixels[index] = value;
+            pixels[index + 1] = value;
+            pixels[index + 2] = value;
+            pixels[index + 3] = byte.MaxValue;
+        }
+
+        return new CapturedFrame(
+            region,
+            region.Width,
+            region.Height,
+            stride,
+            "Bgra32",
+            pixels,
+            new DateTimeOffset(2026, 6, 30, 8, 0, 0, TimeSpan.Zero));
+    }
+
+    [Fact]
     public async Task StopLiveTranslation_HidesTranslatedOverlay()
     {
         var credentialStorage = new TestCredentialStorage();
@@ -2017,6 +2162,17 @@ public sealed class ProfileManagerViewModelTests
     private static object? GetPropertyValue(object instance, string propertyName)
     {
         return instance.GetType().GetProperty(propertyName)?.GetValue(instance);
+    }
+
+    private static string GetExportedDiagnosticsPath(object viewModel)
+    {
+        var status = GetPropertyValue(viewModel, "DiagnosticExportStatus")?.ToString() ?? string.Empty;
+        const string prefix = "Diagnostics exported to ";
+
+        Assert.True(status.StartsWith(prefix, StringComparison.Ordinal), status);
+        Assert.True(status.EndsWith(".", StringComparison.Ordinal), status);
+
+        return status[prefix.Length..^1];
     }
 
     private static bool IsLanguageOption(object instance, string code, string displayName)

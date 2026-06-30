@@ -175,3 +175,32 @@ MVVM + Clean Architecture. Слои: Presentation (WPF), Application, Domain, In
 - Логи: Serilog
 - Архитектура: MVVM + Clean Architecture
 - Автообновление: Squirrel.Windows
+------------------------------------------------------------------------
+
+# Sprint 26 Architecture Addendum: Translation Grouping and Overlay Geometry
+
+This addendum is current as of 2026-06-30.
+
+The active runtime pipeline is:
+
+```text
+Capture -> OCR -> Text grouping -> Cache/Translation -> Overlay snapshot -> WPF overlay
+```
+
+Responsibilities:
+
+- OCR engines produce raw `OcrResult` blocks in frame-relative coordinates.
+- `TranslationTextGroupingService` separates translation source geometry from mask source geometry.
+- Translation/cache operate on `TranslationSourceResult.TextBlocks`.
+- Overlay text items are positioned from translated semantic blocks.
+- Overlay mask items are positioned from accepted raw source blocks.
+- UI diagnostics export the raw OCR, grouped translation source, mask source, overlay geometry, timings, and cache/provider status without secrets.
+
+Layering remains unchanged:
+
+- `Domain` does not depend on Application, Infrastructure, or UI.
+- `Application` owns grouping, pipeline orchestration, and overlay positioning services.
+- `Infrastructure` owns concrete OCR/translator/cache/credential implementations.
+- `UI` consumes Application services and must not directly reference Infrastructure.
+
+For the detailed vertical CJK placement contract, see `docs/design/vertical-cjk-overlay-placement.md`.

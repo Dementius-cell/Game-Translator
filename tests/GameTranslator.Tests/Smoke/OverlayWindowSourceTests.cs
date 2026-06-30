@@ -63,6 +63,22 @@ public sealed class OverlayWindowSourceTests
     }
 
     [Fact]
+    public void OverlayWindow_RendersExpandedTextWithReadableContrast()
+    {
+        var xaml = ReadSource("src/GameTranslator.UI/Views/OverlayWindow.xaml");
+        var code = ReadSource("src/GameTranslator.UI/Views/OverlayWindow.xaml.cs");
+
+        Assert.Contains("Background=\"{Binding BackgroundBrush}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("BorderBrush=\"{Binding BorderBrush}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Foreground=\"{Binding TextBrush}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ExpandedTextBrush", code, StringComparison.Ordinal);
+        Assert.Contains("ExpandedBackgroundBrush", code, StringComparison.Ordinal);
+        Assert.Contains("FitTextBrush", code, StringComparison.Ordinal);
+        Assert.Contains("FitBackgroundBrush", code, StringComparison.Ordinal);
+        Assert.Contains("usesExpandedLayout ? ExpandedTextBrush : FitTextBrush", code, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void OverlayWindow_ConvertsDevicePixelsToWpfCoordinates()
     {
         var source = ReadSource("src/GameTranslator.UI/Views/OverlayWindow.xaml.cs");

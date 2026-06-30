@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Media;
@@ -82,6 +83,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private const string DraftSelectedZoneIdSettingKey = "shell.draft.selectedZoneId";
     private const string DebugOverlayEnabledSettingKey = "debug.overlay.enabled";
     private const string LiveTranslationTimingPresetSettingKey = "shell.live.translationTimingPreset";
+    private const string DiagnosticExportRoot = "artifacts/diagnostics";
     private static readonly Regex HexColorPattern = new("^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$", RegexOptions.Compiled);
     private static readonly string[] SupportedOcrEngines =
     {
@@ -281,6 +283,9 @@ public sealed class MainViewModel : ValidatableObservableObject
     private bool isSyncingOcrPreprocessingPresetSelection;
     private OcrZoneEditorViewModel? selectedZone;
     private OcrResult? latestOcrPreviewResult;
+    private CapturedFrame? latestCapturedFrame;
+    private GameProfile? latestPipelineProfile;
+    private TranslationPipelineBatchResult? latestPipelineBatchResult;
     private CaptureRefreshMetrics? latestCaptureRefreshMetrics;
     private ImageSource? capturePreviewImage;
     private string capturePreviewStatus = "No capture preview yet.";
@@ -293,6 +298,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private string updateStatus = "Update check not run yet.";
     private string globalHotkeyStatus = "Global hotkeys not registered yet.";
     private string debugOverlayStatus = "Debug overlay disabled.";
+    private string diagnosticExportStatus = "Diagnostics not exported yet.";
     private int capturePreviewWidth;
     private int capturePreviewHeight;
     private string statusMessage = "Loading profiles...";
@@ -474,6 +480,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         CheckForUpdatesCommand = new AsyncRelayCommand(CheckForUpdatesAsync, () => !IsBusy);
         ApplyGlobalHotkeysCommand = new RelayCommand(ApplyGlobalHotkeys, CanApplyGlobalHotkeys);
         ResetGlobalHotkeysCommand = new RelayCommand(ResetGlobalHotkeys, () => !IsBusy);
+        ExportDiagnosticsCommand = new AsyncRelayCommand(ExportDiagnosticsAsync, () => !IsBusy);
         ShowOverlayPreviewCommand = new RelayCommand(ShowOverlayPreview, () => !IsBusy);
         HideOverlayPreviewCommand = new RelayCommand(HideOverlayPreview, () => !IsBusy && IsOverlayPreviewVisible);
         SaveTranslatorCredentialsCommand = new AsyncRelayCommand(SaveTranslatorCredentialsAsync, CanSaveTranslatorCredentials);
@@ -1160,6 +1167,12 @@ public sealed class MainViewModel : ValidatableObservableObject
         private set => SetProperty(ref debugOverlayStatus, value);
     }
 
+    public string DiagnosticExportStatus
+    {
+        get => diagnosticExportStatus;
+        private set => SetProperty(ref diagnosticExportStatus, value);
+    }
+
     public bool IsOverlayPreviewVisible => overlayService.IsVisible;
 
     public ICommand BeginCreateProfileCommand { get; }
@@ -1213,6 +1226,8 @@ public sealed class MainViewModel : ValidatableObservableObject
     public ICommand ApplyGlobalHotkeysCommand { get; }
 
     public ICommand ResetGlobalHotkeysCommand { get; }
+
+    public ICommand ExportDiagnosticsCommand { get; }
 
     public ICommand ShowOverlayPreviewCommand { get; }
 
@@ -2535,6 +2550,15 @@ public sealed class MainViewModel : ValidatableObservableObject
                 }
 
                 break;
+            case GlobalHotkeyAction.ExportDiagnostics:
+                if (IsBusy)
+                {
+                    StatusMessage = "Diagnostics hotkey received while an operation is already running.";
+                    return;
+                }
+
+                await ExportDiagnosticsAsync();
+                break;
             case GlobalHotkeyAction.ShowSettings:
                 ShowMainWindowFromHotkey();
                 break;
@@ -2634,6 +2658,681 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
     }
 
+    public async Task ExportDiagnosticsAsync()
+    {
+        try
+        {
+            var exportedAt = DateTimeOffset.UtcNow;
+            var packageDirectory = CreateDiagnosticPackageDirectory(exportedAt);
+            var frameFiles = ExportDiagnosticFrames(packageDirectory);
+            var exportStatus = $"Diagnostics exported to {packageDirectory}.";
+            var diagnostics = CreateDiagnosticDocument(exportedAt, packageDirectory, frameFiles);
+            var jsonPath = Path.Combine(packageDirectory, "diagnostics.json");
+            var json = JsonSerializer.Serialize(
+                diagnostics,
+                new JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                });
+
+            await File.WriteAllTextAsync(jsonPath, json);
+
+            DiagnosticExportStatus = exportStatus;
+            StatusMessage = DiagnosticExportStatus;
+            logger.Information($"Diagnostics exported to '{packageDirectory}'.");
+        }
+        catch (Exception exception)
+        {
+            logger.Error(exception, "Diagnostics export failed.");
+            DiagnosticExportStatus = "Diagnostics export failed. Check logs for details.";
+            StatusMessage = DiagnosticExportStatus;
+        }
+    }
+
+    private string CreateDiagnosticPackageDirectory(DateTimeOffset exportedAt)
+    {
+        var packageName = exportedAt.ToLocalTime().ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture);
+        var packageDirectory = Path.Combine(Environment.CurrentDirectory, DiagnosticExportRoot, packageName);
+
+        Directory.CreateDirectory(packageDirectory);
+
+        return packageDirectory;
+    }
+
+    private IReadOnlyDictionary<string, string> ExportDiagnosticFrames(string packageDirectory)
+    {
+        var exportedFiles = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        if (latestCapturedFrame is not null)
+        {
+            SaveDiagnosticFrame(packageDirectory, exportedFiles, "preview", latestCapturedFrame);
+        }
+
+        if (latestPipelineBatchResult is not null)
+        {
+            foreach (var result in latestPipelineBatchResult.ZoneResults)
+            {
+                SaveDiagnosticFrame(packageDirectory, exportedFiles, $"zone-{result.ZoneId}", result.CapturedFrame);
+            }
+
+            foreach (var failure in latestPipelineBatchResult.ZoneFailures)
+            {
+                if (failure.CapturedFrame is not null)
+                {
+                    SaveDiagnosticFrame(packageDirectory, exportedFiles, $"failed-zone-{failure.ZoneId}", failure.CapturedFrame);
+                }
+            }
+        }
+
+        return exportedFiles;
+    }
+
+    private static void SaveDiagnosticFrame(
+        string packageDirectory,
+        IDictionary<string, string> exportedFiles,
+        string key,
+        CapturedFrame frame)
+    {
+        var fileName = $"{SanitizeFileName(key)}.png";
+        var path = Path.Combine(packageDirectory, fileName);
+
+        SaveCapturedFramePng(frame, path);
+        exportedFiles[key] = fileName;
+    }
+
+    private object CreateDiagnosticDocument(
+        DateTimeOffset exportedAt,
+        string packageDirectory,
+        IReadOnlyDictionary<string, string> frameFiles)
+    {
+        var process = Process.GetCurrentProcess();
+        var resources = debugResourceMonitor.Sample();
+
+        return new
+        {
+            schemaVersion = 1,
+            exportedAtUtc = exportedAt,
+            packageName = Path.GetFileName(packageDirectory),
+            build = CreateBuildDiagnostic(),
+            environment = new
+            {
+                processId = Environment.ProcessId,
+                processName = process.ProcessName,
+                osVersion = Environment.OSVersion.VersionString,
+                runtimeVersion = Environment.Version.ToString(),
+                is64BitProcess = Environment.Is64BitProcess,
+            },
+            resources = new
+            {
+                cpuPercent = resources.CpuPercent,
+                workingSetBytes = resources.WorkingSetBytes,
+            },
+            statuses = new
+            {
+                statusMessage = StatusMessage,
+                capturePreviewStatus = CapturePreviewStatus,
+                captureRefreshMetricsSummary = CaptureRefreshMetricsSummary,
+                ocrPreviewStatus = OcrPreviewStatus,
+                ocrLanguagePackStatus = OcrLanguagePackStatus,
+                overlayPreviewStatus = OverlayPreviewStatus,
+                pipelineStatus = PipelineStatus,
+                translationCacheStatus = TranslationCacheStatus,
+                updateStatus = UpdateStatus,
+                globalHotkeyStatus = GlobalHotkeyStatus,
+                debugOverlayStatus = DebugOverlayStatus,
+                diagnosticExportStatus = "Diagnostics exported.",
+                diagnosticExportPackage = Path.GetFileName(packageDirectory),
+                isBusy = IsBusy,
+                isLiveTranslationRunning = IsLiveTranslationRunning,
+                isOverlayVisible = overlayService.IsVisible,
+                isOverlayExcludedFromCapture = overlayService.IsExcludedFromCapture,
+            },
+            profile = CreateProfileDiagnostic(latestPipelineProfile ?? BuildProfileFromEditor()),
+            selectedZoneId = SelectedZone?.Id,
+            latestCapturedFrame = CreateFrameDiagnostic(latestCapturedFrame, frameFiles.GetValueOrDefault("preview")),
+            latestOcrPreview = CreateOcrResultDiagnostic(latestOcrPreviewResult),
+            latestPipeline = latestPipelineBatchResult is null
+                ? null
+                : CreatePipelineDiagnostic(latestPipelineBatchResult, frameFiles),
+            currentOverlay = CreateOverlaySnapshotDiagnostic(overlayService.CurrentSnapshot),
+        };
+    }
+
+    private static object CreateBuildDiagnostic()
+    {
+        var assembly = typeof(MainViewModel).Assembly;
+        var versionInfo = FileVersionInfo.GetVersionInfo(assembly.Location);
+
+        return new
+        {
+            assemblyName = assembly.GetName().Name,
+            assemblyVersion = assembly.GetName().Version?.ToString(),
+            fileVersion = versionInfo.FileVersion,
+            productVersion = versionInfo.ProductVersion,
+            informationalVersion = assembly
+                .GetCustomAttributes(false)
+                .OfType<System.Reflection.AssemblyInformationalVersionAttribute>()
+                .FirstOrDefault()
+                ?.InformationalVersion,
+        };
+    }
+
+    private static object CreateProfileDiagnostic(GameProfile profile)
+    {
+        return new
+        {
+            profileId = profile.Id,
+            profileName = profile.Name,
+            ocrSettings = profile.OcrSettings,
+            ocrPreprocessingSettings = profile.OcrPreprocessingSettings,
+            overlaySettings = profile.OverlaySettings,
+            translatorSettings = new
+            {
+                provider = profile.TranslatorSettings.Provider,
+                sourceLanguage = profile.TranslatorSettings.SourceLanguage,
+                targetLanguage = profile.TranslatorSettings.TargetLanguage,
+            },
+            zones = profile.OcrZones.Select(zone => new
+            {
+                zone.Id,
+                zone.Name,
+                absoluteBounds = zone.AbsoluteBounds,
+                relativeBounds = zone.RelativeBounds,
+                resolvedOcrLanguage = zone.ResolveOcrLanguage(profile.TranslatorSettings.SourceLanguage),
+                zone.OcrLanguage,
+                zone.TranslationGroupingMode,
+                textGrouping = zone.TextGrouping ?? OcrZoneTextGroupingSettings.Default,
+                textStyle = zone.TextStyle ?? OcrZoneTextStyle.Default,
+            }),
+        };
+    }
+
+    private static object? CreatePipelineDiagnostic(
+        TranslationPipelineBatchResult result,
+        IReadOnlyDictionary<string, string> frameFiles)
+    {
+        return new
+        {
+            profileId = result.ProfileId,
+            result.SucceededZoneCount,
+            result.FailedZoneCount,
+            result.TotalZoneCount,
+            result.RecognizedBlockCount,
+            result.TranslatedBlockCount,
+            result.SkippedOcrCount,
+            result.SkippedTranslationCount,
+            result.DebouncedZoneCount,
+            result.AverageFrameDifferenceRatio,
+            overlay = CreateOverlaySnapshotDiagnostic(result.OverlaySnapshot),
+            zoneResults = result.ZoneResults.Select(zoneResult => new
+            {
+                zoneResult.ProfileId,
+                zoneResult.ZoneId,
+                frame = CreateFrameDiagnostic(zoneResult.CapturedFrame, frameFiles.GetValueOrDefault($"zone-{zoneResult.ZoneId}")),
+                sourceOcr = CreateOcrResultDiagnostic(zoneResult.SourceOcrResult),
+                translationSourceOcr = CreateOcrResultDiagnostic(zoneResult.TranslationSourceOcrResult),
+                maskSourceOcr = CreateOcrResultDiagnostic(zoneResult.MaskSourceOcrResult),
+                translatedTexts = zoneResult.TranslateResponse?.TranslatedTexts ?? Array.Empty<string>(),
+                providerId = zoneResult.TranslateResponse?.ProviderId,
+                providerDiagnostic = zoneResult.TranslateResponse?.DiagnosticMessage,
+                overlay = CreateOverlaySnapshotDiagnostic(zoneResult.OverlaySnapshot),
+                overlayGeometry = CreateOverlayGeometryDiagnostic(
+                    zoneResult.SourceOcrResult,
+                    zoneResult.TranslationSourceOcrResult,
+                    zoneResult.MaskSourceOcrResult,
+                    zoneResult.OverlaySnapshot),
+                timings = CreateTimingsDiagnostic(zoneResult.Timings),
+                optimization = zoneResult.Optimization,
+                cache = zoneResult.CacheResult is null
+                    ? null
+                    : new
+                    {
+                        zoneResult.CacheResult.HitCount,
+                        zoneResult.CacheResult.MissCount,
+                        zoneResult.CacheResult.MemoryHitCount,
+                        zoneResult.CacheResult.PersistentHitCount,
+                        zoneResult.CacheResult.ProviderId,
+                        zoneResult.CacheResult.DiagnosticMessage,
+                    },
+            }),
+            zoneFailures = result.ZoneFailures.Select(failure => new
+            {
+                failure.ZoneId,
+                failure.ZoneName,
+                stage = failure.Stage.ToString(),
+                failure.Message,
+                exceptionType = failure.Exception.GetType().FullName,
+                frame = CreateFrameDiagnostic(failure.CapturedFrame, frameFiles.GetValueOrDefault($"failed-zone-{failure.ZoneId}")),
+                sourceOcr = CreateOcrResultDiagnostic(failure.SourceOcrResult),
+            }),
+        };
+    }
+
+    private static object? CreateOverlayGeometryDiagnostic(
+        OcrResult? sourceResult,
+        OcrResult? translationSourceResult,
+        OcrResult? maskSourceResult,
+        OverlaySnapshot? snapshot)
+    {
+        if (snapshot is null)
+        {
+            return null;
+        }
+
+        return new
+        {
+            translationSourceBlockCount = translationSourceResult?.TextBlocks.Count ?? 0,
+            maskSourceBlockCount = maskSourceResult?.TextBlocks.Count ?? 0,
+            textItemCount = snapshot.TextItems.Count,
+            maskItemCount = snapshot.MaskItems.Count,
+            semanticGroups = CreateOverlaySemanticGroupDiagnostic(
+                sourceResult,
+                translationSourceResult,
+                maskSourceResult,
+                snapshot.TextItems),
+            textItems = CreateOverlayTextGeometryDiagnostic(translationSourceResult, snapshot.TextItems),
+            maskItems = CreateOverlayMaskGeometryDiagnostic(maskSourceResult, snapshot.MaskItems),
+            textMaskIntersections = CreateOverlayIntersectionDiagnostic(snapshot.TextItems, snapshot.MaskItems),
+        };
+    }
+
+    private static object[] CreateOverlaySemanticGroupDiagnostic(
+        OcrResult? sourceResult,
+        OcrResult? translationSourceResult,
+        OcrResult? maskSourceResult,
+        IReadOnlyList<OverlayTextItem> textItems)
+    {
+        if (translationSourceResult is null)
+        {
+            return Array.Empty<object>();
+        }
+
+        var groups = new List<object>(translationSourceResult.TextBlocks.Count);
+        for (var index = 0; index < translationSourceResult.TextBlocks.Count; index++)
+        {
+            var groupBlock = translationSourceResult.TextBlocks[index];
+            var sourceBounds = CreateSourceBoundsDiagnostic(translationSourceResult, groupBlock);
+            var textItem = index < textItems.Count
+                ? textItems[index]
+                : null;
+            var textBounds = textItem is null
+                ? null
+                : new OverlayGeometryBounds(textItem.X, textItem.Y, textItem.Width, textItem.Height);
+            var maskIndexes = FindIntersectingBlockIndexes(maskSourceResult, groupBlock.Bounds);
+            var rawIndexes = FindMatchingSourceBlockIndexes(sourceResult, maskSourceResult, maskIndexes);
+
+            groups.Add(new
+            {
+                groupId = index,
+                translationSourceIndex = index,
+                translationSourceText = groupBlock.Text,
+                frameBounds = groupBlock.Bounds,
+                sourceBounds,
+                maskSourceIndexes = maskIndexes,
+                rawSourceIndexes = rawIndexes,
+                textItemIndex = textItem is null ? null : (int?)index,
+                translatedText = textItem?.Text,
+                textBounds,
+                overlayAnchor = textBounds is null
+                    ? null
+                    : new
+                    {
+                        X = textBounds.X + textBounds.Width / 2d,
+                        Y = textBounds.Y + textBounds.Height / 2d,
+                    },
+                textCenterDeltaFromSource = textBounds is null
+                    ? null
+                    : CreateCenterDelta(sourceBounds, textBounds),
+            });
+        }
+
+        return groups.ToArray();
+    }
+
+    private static object[] CreateOverlayTextGeometryDiagnostic(
+        OcrResult? sourceResult,
+        IReadOnlyList<OverlayTextItem> textItems)
+    {
+        var count = Math.Max(sourceResult?.TextBlocks.Count ?? 0, textItems.Count);
+        var items = new List<object>(count);
+
+        for (var index = 0; index < count; index++)
+        {
+            var block = sourceResult is not null && index < sourceResult.TextBlocks.Count
+                ? sourceResult.TextBlocks[index]
+                : null;
+            var textItem = index < textItems.Count
+                ? textItems[index]
+                : null;
+            var sourceBounds = sourceResult is null || block is null
+                ? null
+                : CreateSourceBoundsDiagnostic(sourceResult, block);
+            var textBounds = textItem is null
+                ? null
+                : new OverlayGeometryBounds(textItem.X, textItem.Y, textItem.Width, textItem.Height);
+
+            items.Add(new
+            {
+                index,
+                sourceText = block?.Text,
+                translatedText = textItem?.Text,
+                sourceBounds,
+                textBounds,
+                textCenterDeltaFromSource = sourceBounds is null || textBounds is null
+                    ? null
+                    : CreateCenterDelta(sourceBounds, textBounds),
+            });
+        }
+
+        return items.ToArray();
+    }
+
+    private static object[] CreateOverlayMaskGeometryDiagnostic(
+        OcrResult? sourceResult,
+        IReadOnlyList<OverlayMaskItem> maskItems)
+    {
+        var count = Math.Max(sourceResult?.TextBlocks.Count ?? 0, maskItems.Count);
+        var items = new List<object>(count);
+
+        for (var index = 0; index < count; index++)
+        {
+            var block = sourceResult is not null && index < sourceResult.TextBlocks.Count
+                ? sourceResult.TextBlocks[index]
+                : null;
+            var maskItem = index < maskItems.Count
+                ? maskItems[index]
+                : null;
+            var sourceBounds = sourceResult is null || block is null
+                ? null
+                : CreateSourceBoundsDiagnostic(sourceResult, block);
+            var maskBounds = maskItem is null
+                ? null
+                : new OverlayGeometryBounds(maskItem.X, maskItem.Y, maskItem.Width, maskItem.Height);
+
+            items.Add(new
+            {
+                index,
+                sourceText = block?.Text,
+                sourceBounds,
+                maskBounds,
+                maskCenterDeltaFromSource = sourceBounds is null || maskBounds is null
+                    ? null
+                    : CreateCenterDelta(sourceBounds, maskBounds),
+            });
+        }
+
+        return items.ToArray();
+    }
+
+    private static object[] CreateOverlayIntersectionDiagnostic(
+        IReadOnlyList<OverlayTextItem> textItems,
+        IReadOnlyList<OverlayMaskItem> maskItems)
+    {
+        var intersections = new List<object>();
+
+        for (var textIndex = 0; textIndex < textItems.Count; textIndex++)
+        {
+            var textItem = textItems[textIndex];
+            for (var maskIndex = 0; maskIndex < maskItems.Count; maskIndex++)
+            {
+                var maskItem = maskItems[maskIndex];
+                if (!RectanglesIntersect(
+                    textItem.X,
+                    textItem.Y,
+                    textItem.Width,
+                    textItem.Height,
+                    maskItem.X,
+                    maskItem.Y,
+                    maskItem.Width,
+                    maskItem.Height))
+                {
+                    continue;
+                }
+
+                intersections.Add(new
+                {
+                    textIndex,
+                    maskIndex,
+                    translatedText = textItem.Text,
+                });
+            }
+        }
+
+        return intersections.ToArray();
+    }
+
+    private static int[] FindIntersectingBlockIndexes(OcrResult? sourceResult, BoundingBox bounds)
+    {
+        if (sourceResult is null)
+        {
+            return Array.Empty<int>();
+        }
+
+        var indexes = new List<int>();
+        for (var index = 0; index < sourceResult.TextBlocks.Count; index++)
+        {
+            var blockBounds = sourceResult.TextBlocks[index].Bounds;
+            if (RectanglesIntersect(
+                bounds.X,
+                bounds.Y,
+                bounds.Width,
+                bounds.Height,
+                blockBounds.X,
+                blockBounds.Y,
+                blockBounds.Width,
+                blockBounds.Height))
+            {
+                indexes.Add(index);
+            }
+        }
+
+        return indexes.ToArray();
+    }
+
+    private static int[] FindMatchingSourceBlockIndexes(
+        OcrResult? sourceResult,
+        OcrResult? maskSourceResult,
+        IReadOnlyList<int> maskSourceIndexes)
+    {
+        if (sourceResult is null || maskSourceResult is null || maskSourceIndexes.Count == 0)
+        {
+            return Array.Empty<int>();
+        }
+
+        var indexes = new List<int>();
+        foreach (var maskIndex in maskSourceIndexes)
+        {
+            if (maskIndex < 0 || maskIndex >= maskSourceResult.TextBlocks.Count)
+            {
+                continue;
+            }
+
+            var maskBlock = maskSourceResult.TextBlocks[maskIndex];
+            for (var sourceIndex = 0; sourceIndex < sourceResult.TextBlocks.Count; sourceIndex++)
+            {
+                var sourceBlock = sourceResult.TextBlocks[sourceIndex];
+                if (maskBlock.Bounds == sourceBlock.Bounds
+                    && string.Equals(maskBlock.Text, sourceBlock.Text, StringComparison.Ordinal)
+                    && !indexes.Contains(sourceIndex))
+                {
+                    indexes.Add(sourceIndex);
+                    break;
+                }
+            }
+        }
+
+        return indexes.ToArray();
+    }
+
+    private static OverlayGeometryBounds CreateSourceBoundsDiagnostic(OcrResult sourceResult, OcrTextBlock block)
+    {
+        var scaleX = sourceResult.Region.Width / (double)sourceResult.InputWidth;
+        var scaleY = sourceResult.Region.Height / (double)sourceResult.InputHeight;
+
+        return new OverlayGeometryBounds(
+            sourceResult.Region.X + (int)Math.Round(block.Bounds.X * scaleX, MidpointRounding.AwayFromZero),
+            sourceResult.Region.Y + (int)Math.Round(block.Bounds.Y * scaleY, MidpointRounding.AwayFromZero),
+            Math.Max(1, (int)Math.Round(block.Bounds.Width * scaleX, MidpointRounding.AwayFromZero)),
+            Math.Max(1, (int)Math.Round(block.Bounds.Height * scaleY, MidpointRounding.AwayFromZero)));
+    }
+
+    private static object CreateCenterDelta(OverlayGeometryBounds sourceBounds, OverlayGeometryBounds targetBounds)
+    {
+        return new
+        {
+            X = targetBounds.X + targetBounds.Width / 2d - (sourceBounds.X + sourceBounds.Width / 2d),
+            Y = targetBounds.Y + targetBounds.Height / 2d - (sourceBounds.Y + sourceBounds.Height / 2d),
+        };
+    }
+
+    private static bool RectanglesIntersect(
+        int firstX,
+        int firstY,
+        int firstWidth,
+        int firstHeight,
+        int secondX,
+        int secondY,
+        int secondWidth,
+        int secondHeight)
+    {
+        return firstX < secondX + secondWidth
+            && firstX + firstWidth > secondX
+            && firstY < secondY + secondHeight
+            && firstY + firstHeight > secondY;
+    }
+
+    private static object? CreateOcrResultDiagnostic(OcrResult? result)
+    {
+        if (result is null)
+        {
+            return null;
+        }
+
+        return new
+        {
+            recognizedAtUtc = result.RecognizedAt,
+            request = new
+            {
+                result.Request.ZoneId,
+                result.Request.Language,
+                result.Request.EngineId,
+                orientationMode = result.Request.OrientationMode.ToString(),
+                preprocessingSettings = result.Request.PreprocessingSettings,
+                frame = CreateFrameDiagnostic(result.Request.Frame, savedFileName: null),
+            },
+            text = result.Text,
+            textBlocks = result.TextBlocks.Select(block => new
+            {
+                block.Text,
+                bounds = block.Bounds,
+                aspectRatio = block.Bounds.Width == 0 ? 0 : block.Bounds.Height / (double)block.Bounds.Width,
+            }),
+        };
+    }
+
+    private static object? CreateOverlaySnapshotDiagnostic(OverlaySnapshot? snapshot)
+    {
+        if (snapshot is null)
+        {
+            return null;
+        }
+
+        return new
+        {
+            shownAtUtc = snapshot.ShownAt,
+            overlaySettings = snapshot.OverlaySettings,
+            textItems = snapshot.TextItems.Select(item => new
+            {
+                item.Text,
+                item.X,
+                item.Y,
+                item.Width,
+                item.Height,
+                item.TextStyle,
+            }),
+            maskItems = snapshot.MaskItems.Select(item => new
+            {
+                item.Mode,
+                item.Color,
+                item.Opacity,
+                item.X,
+                item.Y,
+                item.Width,
+                item.Height,
+            }),
+            debugItems = snapshot.DebugItems.Select(item => new
+            {
+                item.SourceText,
+                item.TranslatedText,
+                item.X,
+                item.Y,
+                item.Width,
+                item.Height,
+            }),
+            debugMetricLines = snapshot.DebugMetricLines,
+        };
+    }
+
+    private static object? CreateFrameDiagnostic(CapturedFrame? frame, string? savedFileName)
+    {
+        if (frame is null)
+        {
+            return null;
+        }
+
+        return new
+        {
+            savedFileName,
+            capturedAtUtc = frame.CapturedAt,
+            frame.Width,
+            frame.Height,
+            frame.Stride,
+            frame.PixelFormat,
+            region = frame.Region,
+            pixelBytes = frame.PixelData.Length,
+        };
+    }
+
+    private static object CreateTimingsDiagnostic(TranslationPipelineTimings timings)
+    {
+        return new
+        {
+            captureMs = timings.CaptureElapsed.TotalMilliseconds,
+            ocrMs = timings.OcrElapsed.TotalMilliseconds,
+            credentialsMs = timings.CredentialsElapsed.TotalMilliseconds,
+            translationMs = timings.TranslationElapsed.TotalMilliseconds,
+            cacheMs = timings.CacheElapsed.TotalMilliseconds,
+            overlayMs = timings.OverlayElapsed.TotalMilliseconds,
+            totalMs = timings.TotalElapsed.TotalMilliseconds,
+        };
+    }
+
+    private static void SaveCapturedFramePng(CapturedFrame frame, string path)
+    {
+        var image = BitmapSource.Create(
+            frame.Width,
+            frame.Height,
+            96,
+            96,
+            PixelFormats.Bgra32,
+            null,
+            frame.PixelData.ToArray(),
+            frame.Stride);
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(image));
+
+        using var stream = File.Create(path);
+        encoder.Save(stream);
+    }
+
+    private static string SanitizeFileName(string value)
+    {
+        var invalidCharacters = Path.GetInvalidFileNameChars();
+        var sanitized = new string(value.Select(character => invalidCharacters.Contains(character) ? '_' : character).ToArray());
+
+        return string.IsNullOrWhiteSpace(sanitized) ? "capture" : sanitized;
+    }
+
     private OverlaySnapshot CreateOverlayPreviewSnapshot(DateTimeOffset shownAt, out string snapshotSource)
     {
         if (latestOcrPreviewResult is { TextBlocks.Count: > 0 } result)
@@ -2662,6 +3361,8 @@ public sealed class MainViewModel : ValidatableObservableObject
         TranslationPipelineBatchResult result,
         bool isLiveMode)
     {
+        latestPipelineProfile = profile;
+        latestPipelineBatchResult = result;
         var previewEntries = CreateBatchOcrPreviewEntries(result, profile);
         var previewEntry = SelectBatchOcrPreviewEntry(previewEntries);
         if (previewEntry is not null)
@@ -2825,6 +3526,8 @@ public sealed class MainViewModel : ValidatableObservableObject
         return profile.OcrZones.FirstOrDefault(zone => string.Equals(zone.Id, zoneId, StringComparison.Ordinal))?.Name
             ?? zoneId;
     }
+
+    private sealed record OverlayGeometryBounds(int X, int Y, int Width, int Height);
 
     private sealed record BatchOcrPreviewEntry(
         string ZoneId,
@@ -4063,6 +4766,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     private void UpdateCapturePreview(CapturedFrame frame)
     {
+        latestCapturedFrame = frame;
         CapturePreviewImage = CreateCapturePreviewImage(frame);
         CapturePreviewWidth = frame.Width;
         CapturePreviewHeight = frame.Height;
@@ -4141,6 +4845,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         ((AsyncRelayCommand)CheckForUpdatesCommand).RaiseCanExecuteChanged();
         ((RelayCommand)ApplyGlobalHotkeysCommand).RaiseCanExecuteChanged();
         ((RelayCommand)ResetGlobalHotkeysCommand).RaiseCanExecuteChanged();
+        ((AsyncRelayCommand)ExportDiagnosticsCommand).RaiseCanExecuteChanged();
         ((RelayCommand)ShowOverlayPreviewCommand).RaiseCanExecuteChanged();
         ((RelayCommand)HideOverlayPreviewCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)SaveTranslatorCredentialsCommand).RaiseCanExecuteChanged();

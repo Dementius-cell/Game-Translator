@@ -187,3 +187,24 @@ Frame Difference Detection, OCR/Translation debouncing. Достичь целе�
 # Обязательное правило для ИИ-агента
 
 После каждого спринта агент обязан предоставить: список изменённых файлов, новых файлов, реализованные функции, нереализованные функции, выявленные риски, предложение по следующему спринту, обновлённый статус проекта (% готовности).
+------------------------------------------------------------------------
+
+# Sprint 26 Active Scope Addendum
+
+This addendum is current as of 2026-06-30.
+
+Sprint 26 (#28) is active and must be finished before Sprint 27 / #29 / #30 work starts. Current open hardening work includes:
+
+- #32: harden CJK and vertical OCR overlay placement.
+- #34: web-provider diagnostics; code-side work is ready and still needs manual smoke.
+
+Sprint 26 vertical CJK exit criteria:
+
+- Tesseract vertical mode is used for Chinese/Japanese vertical text.
+- OCR noise from UI chrome and obvious non-text art is filtered before translation/masking where possible.
+- Semantic grouping combines vertical CJK blocks into translation units.
+- Masking uses accepted raw source blocks inside semantic groups.
+- Translation overlay placement is anchored to original bubble/frame/label geometry when possible.
+- Diagnostics exports include enough raw/group/mask/overlay geometry to debug placement.
+- `dotnet build GameTranslator.sln -c Release` and `dotnet test GameTranslator.sln -c Release --no-build` pass.
+- Manual smoke exports confirm there are no obvious black bars on faces/clothing/UI and no long translations drifting out of the original bubble/frame.

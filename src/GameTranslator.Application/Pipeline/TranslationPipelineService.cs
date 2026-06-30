@@ -248,8 +248,9 @@ public sealed class TranslationPipelineService
 
         var groupingMeasurement = await RunTimedStageAsync(
             TranslationPipelineStage.Grouping,
-            () => Task.FromResult(TranslationTextGroupingService.CreateTranslationSourceResult(sourceResult, zone)));
-        var translationSourceResult = groupingMeasurement.Value;
+            () => Task.FromResult(TranslationTextGroupingService.CreateTextGroupingResult(sourceResult, zone)));
+        var textGroupingResult = groupingMeasurement.Value;
+        var translationSourceResult = textGroupingResult.TranslationSourceResult;
 
         if (!IsTextStableForTranslation(optimizationContext.StateKey, translationSourceResult, runOptions))
         {
@@ -283,7 +284,9 @@ public sealed class TranslationPipelineService
                     ocrSkipped: false,
                     translationSkipped: true,
                     debounced: true,
-                    frameDifferenceRatio: optimizationContext.FrameDifferenceRatio));
+                    frameDifferenceRatio: optimizationContext.FrameDifferenceRatio),
+                translationSourceResult,
+                textGroupingResult.MaskSourceResult);
             StoreOptimizationState(optimizationContext.StateKey, frame, pendingResult);
 
             return pendingResult;
@@ -328,8 +331,9 @@ public sealed class TranslationPipelineService
             }
 
             var translatedResult = CreateTranslatedResult(translationSourceResult, translateResponse);
-            var snapshot = overlayPositioningService.CreateSnapshot(
+            var snapshot = CreateTranslatedOverlaySnapshot(
                 translatedResult,
+                textGroupingResult.MaskSourceResult,
                 translateResponse.TranslatedAt,
                 previousSnapshot,
                 zone.TextStyle,
@@ -357,7 +361,9 @@ public sealed class TranslationPipelineService
                     cacheElapsed,
                     overlayElapsed,
                     totalStopwatch.Elapsed),
-                CreateProcessedOptimization(optimizationContext));
+                CreateProcessedOptimization(optimizationContext),
+                translationSourceResult,
+                textGroupingResult.MaskSourceResult);
             StoreOptimizationState(optimizationContext.StateKey, frame, result);
 
             return result;
@@ -585,6 +591,8 @@ public sealed class TranslationPipelineService
         PipelineOptimizationContext optimizationContext)
     {
         var sourceResult = CreateReusedOcrResult(profile, zone, frame, previousResult.SourceOcrResult);
+        var translationSourceResult = CreateReusedOcrResult(profile, zone, frame, previousResult.TranslationSourceOcrResult);
+        var maskSourceResult = CreateReusedOcrResult(profile, zone, frame, previousResult.MaskSourceOcrResult);
         return new TranslationPipelineResult(
             profile.Id,
             zone.Id,
@@ -605,7 +613,9 @@ public sealed class TranslationPipelineService
                 ocrSkipped: true,
                 translationSkipped: previousResult.TranslateResponse is not null,
                 debounced: optimizationContext.Debounced,
-                frameDifferenceRatio: optimizationContext.FrameDifferenceRatio));
+                frameDifferenceRatio: optimizationContext.FrameDifferenceRatio),
+            translationSourceResult,
+            maskSourceResult);
     }
 
     private static TranslationPipelineResult ReplaceResultTimings(
@@ -634,7 +644,9 @@ public sealed class TranslationPipelineService
                 cacheElapsed,
                 overlayElapsed,
                 totalElapsed),
-            result.Optimization);
+            result.Optimization,
+            result.TranslationSourceOcrResult,
+            result.MaskSourceOcrResult);
     }
 
     private static OcrResult CreateReusedOcrResult(
@@ -708,6 +720,50 @@ public sealed class TranslationPipelineService
             .ToArray();
 
         return new OcrResult(sourceResult.Request, translatedBlocks, translateResponse.TranslatedAt);
+    }
+
+    private OverlaySnapshot CreateTranslatedOverlaySnapshot(
+        OcrResult translatedResult,
+        OcrResult maskSourceResult,
+        DateTimeOffset shownAt,
+        OverlaySnapshot? previousSnapshot,
+        OcrZoneTextStyle textStyle,
+        OverlaySettings overlaySettings)
+    {
+        var translatedSnapshot = overlayPositioningService.CreateSnapshot(
+            translatedResult,
+            shownAt,
+            previousSnapshot,
+            textStyle,
+            overlaySettings);
+        if (ReferenceEquals(translatedResult, maskSourceResult)
+            || HasSameTextBlockGeometry(translatedResult, maskSourceResult))
+        {
+            return translatedSnapshot;
+        }
+
+        var maskSnapshot = overlayPositioningService.CreateSnapshot(
+            maskSourceResult,
+            shownAt,
+            previousSnapshot: null,
+            textStyle,
+            overlaySettings);
+
+        return new OverlaySnapshot(
+            translatedSnapshot.TextItems,
+            translatedSnapshot.ShownAt,
+            translatedSnapshot.OverlaySettings,
+            maskSnapshot.MaskItems,
+            translatedSnapshot.DebugItems,
+            translatedSnapshot.DebugMetricLines);
+    }
+
+    private static bool HasSameTextBlockGeometry(OcrResult first, OcrResult second)
+    {
+        return first.TextBlocks.Count == second.TextBlocks.Count
+            && first.TextBlocks
+                .Zip(second.TextBlocks, (left, right) => left.Bounds == right.Bounds)
+                .All(matches => matches);
     }
 
     private static OverlaySnapshot CreateEmptySnapshot(DateTimeOffset shownAt, OverlaySettings overlaySettings)

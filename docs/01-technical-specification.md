@@ -199,3 +199,18 @@ API-ключи хранятся только в защищенном храни�
 - Регулировка частоты обновления (FPS).
 - Отображение только критических ошибок (сеть, недоступность переводчика).
 - Журнал ошибок с возможностью очистки.
+------------------------------------------------------------------------
+
+# Sprint 26 Addendum: OCR Blocks, Semantic Groups, Masks, Overlay
+
+This addendum is current as of 2026-06-30 and applies to Sprint 26 (#28 / #32).
+
+The implementation now contains a full Capture -> OCR -> Grouping -> Translation -> Overlay pipeline. For vertical CJK text, semantic grouping is allowed and required for useful translation. Any older statement in this document that says OCR blocks must never be combined is superseded for vertical CJK by this addendum and by `docs/design/vertical-cjk-overlay-placement.md`.
+
+Current contract:
+
+- Raw OCR blocks remain the source geometry for source text and masks.
+- Translation may use semantic groups built from multiple raw OCR blocks.
+- Masking must use accepted raw source blocks, not necessarily the translated semantic group rectangle.
+- Overlay text placement should anchor to the semantic group or bubble/frame/label region, not to a random individual glyph.
+- Diagnostics must expose raw OCR blocks, translation source groups, mask source blocks, overlay text geometry, mask geometry, and text/mask intersections.

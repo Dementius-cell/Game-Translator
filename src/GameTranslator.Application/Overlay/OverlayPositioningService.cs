@@ -4,7 +4,7 @@ using GameTranslator.Domain.Profiles;
 namespace GameTranslator.Application.Overlay;
 
 /// <summary>
-/// Maps OCR frame-relative text blocks into screen-space overlay text items.
+/// Maps OCR frame-relative text blocks into screen-space overlay text and mask items.
 /// </summary>
 public sealed class OverlayPositioningService
 {
@@ -17,8 +17,16 @@ public sealed class OverlayPositioningService
     private const int ExpandedTextVerticalSafetyPadding = 10;
     private const int MinimumExpandedTextWidth = 96;
     private const int ExpandedTextMaxWidth = 960;
+    private const int VerticalFitTextMaxWidth = 360;
+    private const int VerticalExpandedTextMaxWidth = 420;
+    private const int VerticalMaskMinWidth = 28;
+    private const int VerticalMaskMaxWidth = 96;
+    private const int VerticalMaskMaxHeight = 360;
     private const double ExpandedTextSourceWidthMultiplier = 2.5;
-    private const double VerticalExpandedTextSourceHeightMultiplier = 1.25;
+    private const double VerticalFitTextSourceHeightMultiplier = 0.65;
+    private const double VerticalExpandedTextSourceHeightMultiplier = 0.75;
+    private const double VerticalTextRegionWidthMultiplier = 0.72;
+    private const double VerticalMaskSourceWidthMultiplier = 0.55;
     private const double VerticalSourceAspectRatioThreshold = 1.4;
 
     public OverlaySnapshot CreateSnapshot(
@@ -107,24 +115,44 @@ public sealed class OverlayPositioningService
         var sourceWidth = ScaleSize(block.Bounds.Width, scaleX);
         var sourceHeight = ScaleSize(block.Bounds.Height, scaleY);
         var sourceBounds = new OverlayLayoutBounds(sourceX, sourceY, sourceWidth, sourceHeight);
+        var useVerticalTextLayout = UsesVerticalTextLayout(result);
+        var isVerticalMaskSource = IsVerticalSource(result, sourceWidth, sourceHeight);
+        var maskBounds = CreateMaskBounds(sourceBounds, isVerticalMaskSource);
+
+        if (useVerticalTextLayout)
+        {
+            var expandedTextStyle = textStyle with
+            {
+                LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter,
+            };
+            var expandedTextItem = CreateExpandedTextItem(result, block.Text, sourceBounds, expandedTextStyle, isVerticalSource: true);
+
+            return new OverlayPositionedTextItem(
+                expandedTextItem,
+                maskBounds);
+        }
+
         var layoutBounds = CreateLayoutBounds(result, sourceX, sourceY, sourceWidth, sourceHeight, textStyle);
 
         if (textStyle.LayoutMode == OverlayTextLayoutMode.ExpandFromSourceCenter)
         {
+            var expandedTextItem = CreateExpandedTextItem(result, block.Text, sourceBounds, textStyle, isVerticalSource: false);
             return new OverlayPositionedTextItem(
-                CreateExpandedTextItem(result, block.Text, sourceBounds, textStyle, IsVerticalSource(result, sourceWidth, sourceHeight)),
-                new OverlayMaskBounds(sourceX, sourceY, sourceWidth, sourceHeight));
+                expandedTextItem,
+                maskBounds);
         }
 
+        var textItem = new OverlayTextItem(
+            block.Text,
+            layoutBounds.X,
+            layoutBounds.Y,
+            layoutBounds.Width,
+            layoutBounds.Height,
+            textStyle);
+
         return new OverlayPositionedTextItem(
-            new OverlayTextItem(
-                block.Text,
-                layoutBounds.X,
-                layoutBounds.Y,
-                layoutBounds.Width,
-                layoutBounds.Height,
-                textStyle),
-            new OverlayMaskBounds(sourceX, sourceY, sourceWidth, sourceHeight));
+            textItem,
+            maskBounds);
     }
 
     private static OverlayLayoutBounds CreateLayoutBounds(
@@ -142,7 +170,10 @@ public sealed class OverlayPositioningService
 
         var centerX = sourceX + sourceWidth / 2d;
         var centerY = sourceY + sourceHeight / 2d;
-        var width = Math.Min(ExpandedTextMaxWidth, Math.Max(sourceHeight, sourceWidth));
+        var widthLimit = GetVerticalTextWidthLimit(result, VerticalFitTextMaxWidth);
+        var width = Math.Min(
+            widthLimit,
+            Math.Max(MinimumExpandedTextWidth, (int)Math.Ceiling(sourceHeight * VerticalFitTextSourceHeightMultiplier)));
         var height = Math.Max(sourceWidth, EstimateSingleLineTextHeight(textStyle));
         var x = Math.Max(0, (int)Math.Round(centerX - width / 2d, MidpointRounding.AwayFromZero));
         var y = Math.Max(0, (int)Math.Round(centerY - height / 2d, MidpointRounding.AwayFromZero));
@@ -164,7 +195,9 @@ public sealed class OverlayPositioningService
             sourceBounds.Width,
             sourceBounds.Height,
             textStyle,
-            Math.Min(ExpandedTextMaxWidth, Math.Max(sourceBounds.Width, result.Region.Width)),
+            isVerticalSource
+                ? GetVerticalTextWidthLimit(result, VerticalExpandedTextMaxWidth)
+                : Math.Min(ExpandedTextMaxWidth, Math.Max(sourceBounds.Width, result.Region.Width)),
             isVerticalSource);
         var x = ClampToScreenOrigin(
             (int)Math.Round(centerX - measuredSize.Width / 2d, MidpointRounding.AwayFromZero));
@@ -279,6 +312,38 @@ public sealed class OverlayPositioningService
         return (int)Math.Ceiling(textStyle.FontSize * LineHeightFactor + ExpandedTextVerticalPadding * 2);
     }
 
+    private static OverlayMaskBounds CreateMaskBounds(OverlayLayoutBounds sourceBounds, bool isVerticalSource)
+    {
+        if (!isVerticalSource)
+        {
+            return new OverlayMaskBounds(sourceBounds.X, sourceBounds.Y, sourceBounds.Width, sourceBounds.Height);
+        }
+
+        var width = Math.Min(
+            sourceBounds.Width,
+            Math.Max(
+                VerticalMaskMinWidth,
+                Math.Min(
+                    VerticalMaskMaxWidth,
+                    (int)Math.Ceiling(sourceBounds.Width * VerticalMaskSourceWidthMultiplier))));
+        var height = Math.Min(sourceBounds.Height, VerticalMaskMaxHeight);
+        var centerX = sourceBounds.X + sourceBounds.Width / 2d;
+        var centerY = sourceBounds.Y + sourceBounds.Height / 2d;
+        var x = Math.Max(0, (int)Math.Round(centerX - width / 2d, MidpointRounding.AwayFromZero));
+        var y = Math.Max(0, (int)Math.Round(centerY - height / 2d, MidpointRounding.AwayFromZero));
+
+        return new OverlayMaskBounds(x, y, width, height);
+    }
+
+    private static int GetVerticalTextWidthLimit(OcrResult result, int absoluteMaxWidth)
+    {
+        var regionLimit = (int)Math.Floor(result.Region.Width * VerticalTextRegionWidthMultiplier);
+
+        return Math.Max(
+            MinimumExpandedTextWidth,
+            Math.Min(absoluteMaxWidth, Math.Max(MinimumExpandedTextWidth, regionLimit)));
+    }
+
     private static OverlayTextItem[] StabilizeTextItems(
         IReadOnlyList<OverlayTextItem> currentItems,
         IReadOnlyList<OverlayTextItem> previousItems)
@@ -378,6 +443,11 @@ public sealed class OverlayPositioningService
     {
         return result.Request.OrientationMode is OcrOrientationMode.Vertical
             && sourceHeight >= sourceWidth * VerticalSourceAspectRatioThreshold;
+    }
+
+    private static bool UsesVerticalTextLayout(OcrResult result)
+    {
+        return result.Request.OrientationMode is OcrOrientationMode.Vertical;
     }
 
     private static int ClampToScreenOrigin(int origin)

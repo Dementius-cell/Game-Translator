@@ -63,8 +63,8 @@
                     <Border
                         Width="{Binding Width}"
                         Height="{Binding Height}"
-                        Background="Transparent"
-                        BorderBrush="#F1F5F9"
+                        Background="{Binding BackgroundBrush}"
+                        BorderBrush="{Binding BorderBrush}"
                         BorderThickness="1"
                         RenderOptions.ClearTypeHint="Enabled"
                         SnapsToDevicePixels="True">
@@ -75,7 +75,7 @@
                                 Visibility="{Binding UsesFitToSourceBounds, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <TextBlock
                                     Width="{Binding ContentWidth}"
-                                    Foreground="#FFFFFF"
+                                    Foreground="{Binding TextBrush}"
                                     FontFamily="{Binding FontFamily}"
                                     FontSize="{Binding FontSize}"
                                     FontStyle="{Binding FontStyle}"
@@ -89,7 +89,7 @@
                                 Width="{Binding ContentWidth}"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
-                                Foreground="#FFFFFF"
+                                Foreground="{Binding TextBrush}"
                                 FontFamily="{Binding FontFamily}"
                                 FontSize="{Binding FontSize}"
                                 FontStyle="{Binding FontStyle}"

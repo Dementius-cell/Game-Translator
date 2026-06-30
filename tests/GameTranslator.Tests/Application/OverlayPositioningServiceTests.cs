@@ -306,9 +306,63 @@ public sealed class OverlayPositioningServiceTests
 
         var item = Assert.Single(snapshot.TextItems);
         Assert.Equal("Translated subtitle", item.Text);
-        Assert.True(item.Width > item.Height * 4);
+        Assert.Equal(OverlayTextLayoutMode.ExpandFromSourceCenter, item.TextStyle.LayoutMode);
+        Assert.True(item.Width >= 96);
+        Assert.True(item.Height > 32);
         Assert.Equal(190d, item.X + item.Width / 2d, precision: 0);
         Assert.Equal(380d, item.Y + item.Height / 2d, precision: 0);
+    }
+
+    [Fact]
+    public void CreateSnapshot_WhenVerticalSourceHasSideRoom_KeepsExpandedTextAnchoredToSourceCenter()
+    {
+        var service = new OverlayPositioningService();
+        var result = CreateResult(
+            new CaptureRegion(0, 0, 800, 600),
+            inputWidth: 800,
+            inputHeight: 600,
+            orientationMode: OcrOrientationMode.Vertical,
+            blocks: new[] { new OcrTextBlock("Translated vertical text", new BoundingBox(600, 100, 40, 360)) });
+
+        var snapshot = service.CreateSnapshot(result, ShownAt);
+
+        var item = Assert.Single(snapshot.TextItems);
+        var mask = Assert.Single(snapshot.MaskItems);
+        Assert.Equal(OverlayTextLayoutMode.ExpandFromSourceCenter, item.TextStyle.LayoutMode);
+        Assert.True(item.Width > item.Height * 4);
+        Assert.Equal(620d, item.X + item.Width / 2d, precision: 0);
+        Assert.Equal(280d, item.Y + item.Height / 2d, precision: 0);
+        Assert.True(item.X < mask.X);
+        Assert.True(item.X + item.Width > mask.X + mask.Width);
+    }
+
+    [Fact]
+    public void CreateSnapshot_WhenVerticalSparseBoundsAreSmall_ForcesReadableExpandedText()
+    {
+        var service = new OverlayPositioningService();
+        var result = CreateResult(
+            new CaptureRegion(0, 0, 1600, 900),
+            inputWidth: 1600,
+            inputHeight: 900,
+            orientationMode: OcrOrientationMode.Vertical,
+            blocks: new[] { new OcrTextBlock("Мир растет", new BoundingBox(1017, 201, 24, 7)) });
+
+        var snapshot = service.CreateSnapshot(result, ShownAt);
+
+        var item = Assert.Single(snapshot.TextItems);
+        var mask = Assert.Single(snapshot.MaskItems);
+        Assert.Equal("Мир растет", item.Text);
+        Assert.Equal(OverlayTextLayoutMode.ExpandFromSourceCenter, item.TextStyle.LayoutMode);
+        Assert.True(item.Width >= 96);
+        Assert.True(item.Height > mask.Height);
+        Assert.Equal(1029d, item.X + item.Width / 2d, precision: 0);
+        Assert.Equal(204.5d, item.Y + item.Height / 2d, precision: 1);
+        Assert.True(item.X < mask.X);
+        Assert.True(item.X + item.Width > mask.X + mask.Width);
+        Assert.Equal(1017, mask.X);
+        Assert.Equal(201, mask.Y);
+        Assert.Equal(24, mask.Width);
+        Assert.Equal(7, mask.Height);
     }
 
     [Fact]
@@ -337,15 +391,51 @@ public sealed class OverlayPositioningServiceTests
 
         var item = Assert.Single(snapshot.TextItems);
         Assert.Equal("Давно не виделись. Рад снова встретиться.", item.Text);
-        Assert.True(item.Width >= 280);
+        Assert.InRange(item.Width, 180, 216);
         Assert.True(item.Height < 120);
         Assert.Equal(235d, item.X + item.Width / 2d, precision: 0);
         Assert.InRange(item.Y + item.Height / 2d, 224d, 226d);
         var mask = Assert.Single(snapshot.MaskItems);
-        Assert.Equal(220, mask.X);
-        Assert.Equal(25, mask.Y);
-        Assert.Equal(30, mask.Width);
-        Assert.Equal(400, mask.Height);
+        Assert.Equal(221, mask.X);
+        Assert.Equal(45, mask.Y);
+        Assert.Equal(28, mask.Width);
+        Assert.Equal(360, mask.Height);
+    }
+
+    [Fact]
+    public void CreateSnapshot_WithVeryTallExpandedVerticalOcrBounds_CapsTranslatedOverlaySize()
+    {
+        var service = new OverlayPositioningService();
+        var textStyle = new OcrZoneTextStyle
+        {
+            FontFamily = "Segoe UI",
+            FontSize = 18,
+            LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter,
+        };
+        var result = CreateResult(
+            new CaptureRegion(0, 0, 800, 1000),
+            inputWidth: 800,
+            inputHeight: 1000,
+            orientationMode: OcrOrientationMode.Vertical,
+            blocks: new[]
+            {
+                new OcrTextBlock(
+                    "The translated Chinese vertical text should remain readable without covering the entire capture zone.",
+                    new BoundingBox(275, 50, 250, 900)),
+            });
+
+        var snapshot = service.CreateSnapshot(result, ShownAt, previousSnapshot: null, textStyle);
+
+        var item = Assert.Single(snapshot.TextItems);
+        Assert.InRange(item.Width, 300, 420);
+        Assert.True(item.Height < 180);
+        Assert.Equal(400d, item.X + item.Width / 2d, precision: 0);
+        Assert.Equal(500d, item.Y + item.Height / 2d, precision: 0);
+        var mask = Assert.Single(snapshot.MaskItems);
+        Assert.Equal(352, mask.X);
+        Assert.Equal(320, mask.Y);
+        Assert.Equal(96, mask.Width);
+        Assert.Equal(360, mask.Height);
     }
 
     [Fact]

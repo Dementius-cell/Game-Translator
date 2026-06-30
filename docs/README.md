@@ -27,9 +27,17 @@ This folder contains the source-of-truth documents for Game-Translator. Read the
 
 - [Sprint 8 overlay click-through smoke](smoke/sprint-08-overlay-click-through.md)
 - [Sprint 9 overlay positioning smoke](smoke/sprint-09-overlay-positioning.md)
+- [Sprint 26 experimental web translators smoke](smoke/sprint-26-experimental-web-translators.md)
+
+## Design Notes
+
+- [Vertical CJK overlay placement](design/vertical-cjk-overlay-placement.md)
+- [Golden reference calibration sandbox](design/golden-reference-calibration.md)
 
 ## Current Project State
 
-- Current roadmap stage: Stage 4, Overlay MVP.
-- Current sprint: Sprint 9, position overlay content from OCR bounding boxes.
-- Required implementation result: overlay text items aligned from OCR bounds with region offsets and scaling, and no translation pipeline yet.
+- Current roadmap stage: Sprint 26 hardening for beta readiness.
+- Current sprint: Sprint 26 (#28), with #32 active for vertical CJK overlay placement.
+- Required implementation result: stabilize the existing Capture -> OCR -> Grouping -> Translation -> Overlay pipeline for beta use.
+- Do not start Sprint 27 / #29 / #30 work until Sprint 26 is explicitly closed or confirmed by the project owner.
+- Current placement priority: vertical Chinese/Japanese manga text should translate as semantic groups, mask only accepted source text, and place translated overlays inside the original bubble/frame/label whenever possible.

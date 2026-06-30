@@ -43,7 +43,10 @@ public sealed class TesseractOcrEngine : IOcrEngine
 
             using var image = PixImage.LoadFromMemory(bitmapBytes);
             var pageSegMode = SelectPageSegMode(tessdataPath, image, request.Language, request.OrientationMode);
-            var language = MapLanguage(request.Language, GetRecognitionOrientationMode(pageSegMode));
+            var recognitionOrientationMode = request.OrientationMode is OcrOrientationMode.Auto
+                ? GetRecognitionOrientationMode(pageSegMode)
+                : request.OrientationMode;
+            var language = MapLanguage(request.Language, recognitionOrientationMode);
             using var engine = new Engine(tessdataPath, language, EngineMode.Default);
             engine.DefaultPageSegMode = pageSegMode;
             using var page = engine.Process(image, pageSegMode);
@@ -109,7 +112,7 @@ public sealed class TesseractOcrEngine : IOcrEngine
     {
         return orientationMode switch
         {
-            OcrOrientationMode.Vertical => PageSegMode.SingleBlockVertText,
+            OcrOrientationMode.Vertical => PageSegMode.SparseText,
             OcrOrientationMode.Auto or OcrOrientationMode.Horizontal => PageSegMode.SingleBlock,
             _ => PageSegMode.SingleBlock,
         };

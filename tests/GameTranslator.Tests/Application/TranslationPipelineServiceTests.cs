@@ -19,7 +19,13 @@ public sealed class TranslationPipelineServiceTests
     public async Task RunAsync_WhenTextIsRecognized_TranslatesAndShowsOverlay()
     {
         var zone = CreateZone();
-        var profile = CreateProfile(zone);
+        var profile = CreateProfile(zone) with
+        {
+            OcrSettings = new OcrSettings
+            {
+                OrientationMode = OcrOrientationMode.Horizontal,
+            },
+        };
         var frameSource = new FakeCaptureFrameSource();
         var ocrEngine = new FakeOcrEngine
         {
@@ -274,6 +280,56 @@ public sealed class TranslationPipelineServiceTests
         Assert.Equal(new[] { 32, 90 }, result.OverlaySnapshot.TextItems.Select(item => item.Width));
         Assert.Equal(new[] { 14, 24 }, result.OverlaySnapshot.TextItems.Select(item => item.Height));
         Assert.Same(result.OverlaySnapshot, overlay.CurrentSnapshot);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenVerticalZoneUsesNearbyGrouping_GroupsTextWithoutWideCombinedMaskBounds()
+    {
+        var zone = CreateZone("zone-a", "Vertical comic page", new AbsoluteRectangle(10, 20, 400, 400)) with
+        {
+            TranslationGroupingMode = TranslationGroupingMode.NearbyBlocks,
+            TextGrouping = new OcrZoneTextGroupingSettings
+            {
+                MergeDistancePercent = 5,
+            },
+        };
+        var profile = CreateProfile(zone) with
+        {
+            OcrSettings = new OcrSettings
+            {
+                OrientationMode = OcrOrientationMode.Vertical,
+            },
+        };
+        var ocrEngine = new FakeOcrEngine
+        {
+            BlocksFactory = _ => new[]
+            {
+                new OcrTextBlock("first vertical column", new BoundingBox(100, 20, 20, 220)),
+                new OcrTextBlock("second vertical column", new BoundingBox(125, 20, 20, 220)),
+            },
+        };
+        var translator = new FakeTranslatorProvider("Google");
+        var service = CreateService(new FakeCaptureFrameSource(), ocrEngine, translator, new FakeOverlayService());
+
+        var result = await service.RunAsync(profile, zone);
+
+        Assert.Equal(new[] { "second vertical column first vertical column" }, translator.Request?.Texts);
+        Assert.Equal(2, result.RecognizedBlockCount);
+        Assert.Equal(1, result.TranslatedBlockCount);
+        var translationSourceBlock = Assert.Single(result.TranslationSourceOcrResult.TextBlocks);
+        Assert.Equal(new BoundingBox(100, 20, 45, 220), translationSourceBlock.Bounds);
+        var item = Assert.Single(result.OverlaySnapshot.TextItems);
+        Assert.Equal("Translated second vertical column first vertical column", item.Text);
+        Assert.Equal(OverlayTextLayoutMode.ExpandFromSourceCenter, item.TextStyle.LayoutMode);
+        Assert.True(item.Width >= 96);
+        Assert.Equal(132.5d, item.X + item.Width / 2d, precision: 1);
+        Assert.Equal(150d, item.Y + item.Height / 2d, precision: 0);
+        Assert.Equal(2, result.OverlaySnapshot.MaskItems.Count);
+        Assert.All(result.OverlaySnapshot.MaskItems, mask =>
+        {
+            Assert.True(mask.Width < 45);
+            Assert.True(mask.Height < 250);
+        });
     }
 
     [Fact]
@@ -699,7 +755,13 @@ public sealed class TranslationPipelineServiceTests
     {
         var firstZone = CreateZone("zone-a", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
         var secondZone = CreateZone("zone-b", "Choice", new AbsoluteRectangle(200, 120, 80, 30));
-        var profile = CreateProfile(firstZone, secondZone);
+        var profile = CreateProfile(firstZone, secondZone) with
+        {
+            OcrSettings = new OcrSettings
+            {
+                OrientationMode = OcrOrientationMode.Horizontal,
+            },
+        };
         var frameSource = new FakeCaptureFrameSource();
         var ocrEngine = new FakeOcrEngine
         {

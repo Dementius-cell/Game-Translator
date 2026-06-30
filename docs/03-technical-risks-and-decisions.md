@@ -146,3 +146,24 @@ SQLite (не требует сервера, надежна, быстра). Postg
 - Приемлемая нагрузка на CPU (средняя ≤25%).
 - Работа большинства современных игр в оконном и borderless fullscreen режимах.
 - Обмен профилями через JSON без передачи API-ключей.
+------------------------------------------------------------------------
+
+# Sprint 26 Risk Addendum: Vertical CJK OCR and Overlay Placement
+
+This addendum is current as of 2026-06-30 and applies to #32.
+
+Risk: Tesseract vertical OCR can return many small blocks or false positives from UI chrome, halftone texture, faces, clothing, and frame art.
+
+Decision:
+
+- Keep Tesseract as the only OCR engine for vertical CJK.
+- Keep OCR, grouping, translation, masking, and overlay placement as separate responsibilities.
+- Allow semantic grouping for translation when OCR returns per-glyph or per-column fragments.
+- Use raw accepted OCR blocks for masks so rejected OCR noise does not create black bars.
+- Prefer conservative grouping: avoid false overlays on art even if some marginal text is missed.
+
+Known tradeoff:
+
+- This does not replace OCR with image understanding.
+- Manual smoke diagnostics remain required for manga pages.
+- If a future change requires image segmentation, a new architecture decision and approval are required before implementation.

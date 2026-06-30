@@ -496,3 +496,15 @@ QG8	DI не выбрасывает исключения при резолвин�
     Нет ошибок компиляции
 
 Только после выполнения всех пунктов – переходить к следующему спринту.
+------------------------------------------------------------------------
+
+# Current Status Override
+
+This file is a historical Sprint 0 startup manifest. For current work, agents must use:
+
+- root `AGENTS.md`;
+- `docs/README.md`;
+- `docs/design/vertical-cjk-overlay-placement.md`;
+- local nested `AGENTS.md` files where present.
+
+As of 2026-06-30, active work is Sprint 26 (#28) with #32 focused on vertical CJK OCR grouping, masking, and overlay placement. Do not follow this file's Sprint 0 implementation commands for current development.

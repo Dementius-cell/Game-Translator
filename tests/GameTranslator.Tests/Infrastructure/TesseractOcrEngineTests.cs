@@ -59,6 +59,15 @@ public sealed class TesseractOcrEngineTests
     }
 
     [Fact]
+    public void TesseractOcrEngine_UsesSparsePageSegmentationForExplicitVerticalOcr()
+    {
+        var actual = InvokeMapOrientationMode(OcrOrientationMode.Vertical);
+
+        Assert.Equal("SparseText", actual);
+        Assert.Equal("chi_tra_vert", InvokeMapLanguage("zh-TW", OcrOrientationMode.Vertical));
+    }
+
+    [Fact]
     public void TesseractOcrEngine_UsesTesseractWrapperAndMapsLayoutBoundingBoxesSafely()
     {
         var source = File.ReadAllText(
@@ -72,6 +81,7 @@ public sealed class TesseractOcrEngineTests
         Assert.Contains("new Engine", source, StringComparison.Ordinal);
         Assert.Contains("PixImage.LoadFromMemory", source, StringComparison.Ordinal);
         Assert.Contains("PageSegMode.SingleBlock", source, StringComparison.Ordinal);
+        Assert.Contains("PageSegMode.SparseText", source, StringComparison.Ordinal);
         Assert.Contains("PageSegMode.OsdOnly", source, StringComparison.Ordinal);
         Assert.Contains("PageSegMode.SingleBlockVertText", source, StringComparison.Ordinal);
         Assert.Contains("DetectOrientation", source, StringComparison.Ordinal);
@@ -116,5 +126,19 @@ public sealed class TesseractOcrEngineTests
 
         return (string)(method.Invoke(null, new object[] { languageTag, orientationMode })
             ?? throw new InvalidOperationException("MapLanguage returned null."));
+    }
+
+    private static string InvokeMapOrientationMode(OcrOrientationMode orientationMode)
+    {
+        var method = typeof(TesseractOcrEngine).GetMethod(
+            "MapOrientationMode",
+            BindingFlags.Static | BindingFlags.NonPublic,
+            binder: null,
+            types: new[] { typeof(OcrOrientationMode) },
+            modifiers: null)
+            ?? throw new InvalidOperationException("MapOrientationMode overload was not found.");
+
+        return method.Invoke(null, new object[] { orientationMode })?.ToString()
+            ?? throw new InvalidOperationException("MapOrientationMode returned null.");
     }
 }

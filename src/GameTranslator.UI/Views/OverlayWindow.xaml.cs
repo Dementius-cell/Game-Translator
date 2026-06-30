@@ -26,6 +26,12 @@ public partial class OverlayWindow : Window
     private const double MinReadableItemWidth = 40;
     private const double MinReadableItemHeight = 16;
     private const double ExpandedTextHorizontalPadding = 8;
+    private static readonly Brush FitTextBrush = CreateFrozenBrush("#FFFFFF");
+    private static readonly Brush FitBackgroundBrush = CreateFrozenBrush("#00000000");
+    private static readonly Brush FitBorderBrush = CreateFrozenBrush("#F1F5F9");
+    private static readonly Brush ExpandedTextBrush = CreateFrozenBrush("#111827");
+    private static readonly Brush ExpandedBackgroundBrush = CreateFrozenBrush("#EAF8FAFC");
+    private static readonly Brush ExpandedBorderBrush = CreateFrozenBrush("#99111827");
     private static readonly nint HtTransparent = new(-1);
 
     public OverlayWindow()
@@ -102,6 +108,15 @@ public partial class OverlayWindow : Window
     private static bool ApplyCaptureExclusion(nint handle)
     {
         return SetWindowDisplayAffinity(handle, WdaExcludeFromCapture);
+    }
+
+    private static Brush CreateFrozenBrush(string colorValue)
+    {
+        var color = (Color)ColorConverter.ConvertFromString(colorValue);
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+
+        return brush;
     }
 
     private OverlayWindowSnapshotViewModel CreateViewModel(OverlaySnapshot snapshot)
@@ -215,7 +230,10 @@ public partial class OverlayWindow : Window
             double fontSize,
             FontWeight fontWeight,
             FontStyle fontStyle,
-            bool usesExpandedLayout)
+            bool usesExpandedLayout,
+            Brush textBrush,
+            Brush backgroundBrush,
+            Brush borderBrush)
         {
             Text = text;
             X = x;
@@ -227,6 +245,9 @@ public partial class OverlayWindow : Window
             FontWeight = fontWeight;
             FontStyle = fontStyle;
             UsesExpandedLayout = usesExpandedLayout;
+            TextBrush = textBrush;
+            BackgroundBrush = backgroundBrush;
+            BorderBrush = borderBrush;
         }
 
         public string Text { get; }
@@ -253,6 +274,12 @@ public partial class OverlayWindow : Window
 
         public bool UsesFitToSourceBounds => !UsesExpandedLayout;
 
+        public Brush TextBrush { get; }
+
+        public Brush BackgroundBrush { get; }
+
+        public Brush BorderBrush { get; }
+
         public static OverlayWindowTextItemViewModel FromDevicePixels(
             OverlayTextItem item,
             Matrix transformFromDevice)
@@ -265,6 +292,7 @@ public partial class OverlayWindow : Window
             var screenHeight = Math.Max(1, SystemParameters.PrimaryScreenHeight);
             var width = Math.Min(screenWidth, Math.Max(MinReadableItemWidth, rawWidth + PreviewPadding * 2));
             var height = Math.Min(screenHeight, Math.Max(MinReadableItemHeight, rawHeight + PreviewPadding * 2));
+            var usesExpandedLayout = item.TextStyle.LayoutMode == OverlayTextLayoutMode.ExpandFromSourceCenter;
 
             return new OverlayWindowTextItemViewModel(
                 item.Text,
@@ -281,7 +309,10 @@ public partial class OverlayWindow : Window
                     OcrZoneTextStyle.MaximumFontSize),
                 item.TextStyle.IsBold ? FontWeights.Bold : FontWeights.Normal,
                 item.TextStyle.IsItalic ? FontStyles.Italic : FontStyles.Normal,
-                item.TextStyle.LayoutMode == OverlayTextLayoutMode.ExpandFromSourceCenter);
+                usesExpandedLayout,
+                usesExpandedLayout ? ExpandedTextBrush : FitTextBrush,
+                usesExpandedLayout ? ExpandedBackgroundBrush : FitBackgroundBrush,
+                usesExpandedLayout ? ExpandedBorderBrush : FitBorderBrush);
         }
 
         private static double ClampOrigin(double origin, double extent, double size)

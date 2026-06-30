@@ -28,6 +28,8 @@ public sealed class GlobalHotkeySourceTests
         Assert.Contains("ApplyGlobalHotkeysCommand", source, StringComparison.Ordinal);
         Assert.Contains("ResetGlobalHotkeysCommand", source, StringComparison.Ordinal);
         Assert.Contains("GlobalHotkeyStatus", source, StringComparison.Ordinal);
+        Assert.Contains("ExportDiagnosticsCommand", source, StringComparison.Ordinal);
+        Assert.Contains("DiagnosticExportStatus", source, StringComparison.Ordinal);
     }
 
     private static string ReadSource(string relativePath)

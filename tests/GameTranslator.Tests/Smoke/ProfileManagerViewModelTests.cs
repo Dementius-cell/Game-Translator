@@ -1193,7 +1193,11 @@ public sealed class ProfileManagerViewModelTests
                 hotkey => hotkey.Action == GlobalHotkeyAction.CollectDebugInfo);
             Assert.Equal("Ctrl+Shift+F9", registration.Gesture.DisplayText);
             hotkeyRegistrar.RaisePressed(registration.Id);
-            await WaitForConditionAsync(() => File.Exists(filePath));
+            await WaitForConditionAsync(() => string.Equals(
+                GetPropertyValue(viewModel, "StatusMessage") as string,
+                $"Debug info exported to '{filePath}'.",
+                StringComparison.Ordinal));
+            Assert.True(File.Exists(filePath));
 
             var report = await File.ReadAllTextAsync(filePath);
             Assert.Contains("Text=Hotkey debug text", report, StringComparison.Ordinal);

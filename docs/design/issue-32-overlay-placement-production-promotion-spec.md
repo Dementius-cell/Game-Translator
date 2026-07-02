@@ -207,3 +207,33 @@ Notes:
 - The real smoke uses a static frame capture source to exercise the application pipeline deterministically while still using real OCR and translation.
 - It does not replace an interactive packaged-app smoke through Windows Graphics Capture and the window picker.
 - `WebAuto`/`GoogleWeb` behavior is external-service dependent; these artifacts are manual evidence and should not become CI gates.
+
+## Follow-Up Test Correction - 2026-07-02
+
+User review identified two smoke-method issues after the initial promotion verification:
+
+- Debug export was previously exercised through an interactive save-location dialog. Follow-up smoke must use a deterministic `IDialogService`/harness path and write debug reports directly to a project output folder.
+- Placement stability was previously evaluated from a live/static smoke frame even though the project already has a fixed reference with accepted overlay values. Follow-up placement verification must use `artifacts/calibration/vertical-long-translation-fit-frame/` and compare against the accepted `fit-rules.json` / `placement-evidence-map.json` values.
+
+Follow-up evidence:
+
+- Fixed-reference summary: `outputs/game-translator-fixed-reference-user-smoke-summary-20260702-205958.md`
+- Accepted overlay value digest: `outputs/game-translator-fixed-reference-overlay-values-20260702-205958.json`
+- Silent user-like smoke summary: `outputs/game-translator-live-manual-smoke-summary-20260702-205834.md`
+- Silent debug reports: `outputs/game-translator-live-game-debug-20260702-205832.txt`, `outputs/game-translator-live-comic-debug-20260702-205833.txt`
+
+Follow-up validation:
+
+- `work/AppDiagnosticsSmoke/bin/Release/net9.0-windows10.0.19041.0/AppDiagnosticsSmoke.exe --frame=artifacts/manual-smoke/full-app-overlay-smoke/full-app-overlay-smoke.png --output=outputs` passed with `0` failures and `6` existing synthetic horizontal width-ratio review warnings.
+- `dotnet test GameTranslator.sln -c Release --no-build --filter FullyQualifiedName~VerticalLongTranslationFitEvidence_WhenGenerated_WritesSimultaneousFinalOverlayPanel` passed.
+- `dotnet build GameTranslator.sln -c Release --no-restore` passed with `0` warnings and `0` errors.
+- `dotnet test GameTranslator.sln -c Release --no-build` passed with `329/329` tests after a test-only debug-export flake fix.
+
+Test-only flake fix:
+
+- `tests/GameTranslator.Tests/Smoke/ProfileManagerViewModelTests.cs` now waits for final debug export `StatusMessage` before reading/deleting the hotkey-exported debug file. Waiting only for `File.Exists(...)` could race with the async export and leave the temp debug file locked during cleanup.
+
+Boundary:
+
+- This follow-up does not add new production overlay rules.
+- Fixed calibration JSON/PNG remains test-only and is not loaded by production runtime.

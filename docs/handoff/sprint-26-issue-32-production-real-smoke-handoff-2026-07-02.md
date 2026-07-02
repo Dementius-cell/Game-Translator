@@ -37,6 +37,16 @@ Validation already performed:
 - Real Start Live smoke with a static manual frame, real `TesseractOcrEngine`, and real `WebAuto` translation passed with `0` warnings and `0` failures.
 - `git diff --check` was clean except known LF-to-CRLF warnings in touched test/document files.
 
+Follow-up correction after user review on 2026-07-02:
+
+- Do not validate debug export by opening the UI save-location dialog. The user-like smoke should save debug reports silently to a project output path through the test dialog service/harness.
+- Do not validate issue #32 placement against an arbitrary live OCR frame when stable accepted overlay values exist. Use fixed calibration fixture `artifacts/calibration/vertical-long-translation-fit-frame/` and its accepted `fit-rules.json` / `placement-evidence-map.json` values for repeatable placement checks.
+- Fixed reference/user-like smoke summary was written to `outputs/game-translator-fixed-reference-user-smoke-summary-20260702-205958.md`.
+- Accepted overlay value digest was written to `outputs/game-translator-fixed-reference-overlay-values-20260702-205958.json`.
+- `work/AppDiagnosticsSmoke/` was run with `--frame=artifacts/manual-smoke/full-app-overlay-smoke/full-app-overlay-smoke.png --output=outputs`; it saved debug reports directly to `outputs`, reported `0` failures, `6` review warnings, `15` capture calls, `15` OCR calls, and `4` translation calls.
+- A test-only flake fix was applied to `tests/GameTranslator.Tests/Smoke/ProfileManagerViewModelTests.cs`: `GlobalHotkeyPressed_ForCollectDebugInfo_ExportsDebugReport` now waits for final `StatusMessage` (`Debug info exported to ...`) before reading/deleting the debug file instead of only waiting for `File.Exists(...)`.
+- After the flake fix, `dotnet build GameTranslator.sln -c Release --no-restore` passed with `0` warnings and `0` errors; focused hotkey debug export and fixed reference calibration tests passed; final `dotnet test GameTranslator.sln -c Release --no-build` passed with `329/329`.
+
 Real Start Live smoke evidence:
 
 - Summary: `artifacts/manual-real-smoke-diagnostics/game-translator-real-live-smoke-summary-20260702-145600.md`
@@ -71,8 +81,9 @@ Important docs:
 Commit/PR preparation notes:
 
 - Include production source and focused tests for issue #32.
+- Include the test-only hotkey debug export flake fix if committing the follow-up verification work.
 - Include `docs/design/issue-32-overlay-placement-production-promotion-spec.md`, `docs/design/golden-reference-calibration.md`, and this handoff.
-- Decide explicitly whether generated evidence under `artifacts/manual-real-smoke-diagnostics/`, `artifacts/manual-smoke-diagnostics/`, and calibration artifact directories should be committed or kept as local review artifacts.
+- Decide explicitly whether generated evidence under `artifacts/manual-real-smoke-diagnostics/`, `artifacts/manual-smoke-diagnostics/`, `outputs/`, and calibration artifact directories should be committed or kept as local review artifacts.
 - `work/AppDiagnosticsSmoke/` and `work/RealAppDiagnosticsSmoke/` are ignored harnesses and should stay out of normal commits unless the project owner asks to promote a harness.
 
 Remaining risks / next step:

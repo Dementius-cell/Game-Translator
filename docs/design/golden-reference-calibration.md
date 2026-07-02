@@ -160,3 +160,33 @@ Limits and risks:
 - This smoke uses a static frame capture source, so it does not replace an interactive Windows Graphics Capture/window-picker packaged-app smoke.
 - `WebAuto` depends on network and external web translation behavior, so this evidence is manual-smoke only and must not become a deterministic CI requirement.
 - OCR text quality remains language/model dependent; this gate verifies pipeline execution, grouping/overlay counts, bounds checks, and diagnostics rather than semantic translation perfection.
+
+## Fixed Reference User-Like Smoke Correction - 2026-07-02
+
+Status: recorded follow-up after user review. This section preserves the corrected test method so later agents do not repeat the unstable smoke setup.
+
+Corrections:
+
+- Debug report export in user-like smoke must be saved silently to a project-controlled output path through the test dialog service/harness. Do not drive the OS save-location dialog for this check.
+- Stable overlay-placement evaluation must use the fixed calibration fixture `artifacts/calibration/vertical-long-translation-fit-frame/`, because it carries the manually accepted final overlay bounds:
+  - group `0` `short-vertical-translation`: final overlay `18,62,64x32`, base `14pt`, `0 px` width growth;
+  - group `1` `medium-vertical-translation`: final overlay `152,40,72x78`, base `14pt`, `0 px` width growth;
+  - group `2` `long-vertical-translation`: final overlay `68,108,63x116`, base `14pt`, `0 px` width growth, final area `7308 <= 7400.8`.
+- Live/static smoke frames are still useful for user-like Start Live flow, grouping counts, debug overlay metrics, and silent debug export, but they are not the stable authority for accepted issue #32 placement bounds.
+
+Follow-up artifacts:
+
+- Fixed-reference summary: `outputs/game-translator-fixed-reference-user-smoke-summary-20260702-205958.md`
+- Accepted overlay value digest: `outputs/game-translator-fixed-reference-overlay-values-20260702-205958.json`
+- Silent Start Live smoke summary: `outputs/game-translator-live-manual-smoke-summary-20260702-205834.md`
+- Silent debug reports: `outputs/game-translator-live-game-debug-20260702-205832.txt`, `outputs/game-translator-live-comic-debug-20260702-205833.txt`
+
+Follow-up validation:
+
+- `VerticalLongTranslationFitEvidence_WhenGenerated_WritesSimultaneousFinalOverlayPanel` passed against the fixed reference.
+- Silent Start Live smoke through `work/AppDiagnosticsSmoke/` saved debug reports directly under `outputs`, with `0` failures and `6` existing synthetic horizontal width-ratio review warnings.
+- Full `dotnet test GameTranslator.sln -c Release --no-build` passed with `329/329` after fixing a test-only hotkey debug export race.
+
+Test-only flake fix:
+
+- `GlobalHotkeyPressed_ForCollectDebugInfo_ExportsDebugReport` now waits for final debug export status before reading/deleting the file. Waiting only for `File.Exists(...)` could observe the file before the async export flow had fully completed.

@@ -270,7 +270,7 @@ public sealed class TranslationPipelineServiceTests
         Assert.Equal(2, result.TranslatedBlockCount);
         Assert.Equal(new[] { "Они!", "Давно не виделись." }, result.OverlaySnapshot.TextItems.Select(item => item.Text));
         Assert.Equal(new[] { 310, 110 }, result.OverlaySnapshot.TextItems.Select(item => item.X));
-        Assert.Equal(new[] { 40, 120 }, result.OverlaySnapshot.TextItems.Select(item => item.Y));
+        Assert.Equal(new[] { 40, 112 }, result.OverlaySnapshot.TextItems.Select(item => item.Y));
         Assert.Equal(new[] { 32, 90 }, result.OverlaySnapshot.TextItems.Select(item => item.Width));
         Assert.Equal(new[] { 14, 24 }, result.OverlaySnapshot.TextItems.Select(item => item.Height));
         Assert.Same(result.OverlaySnapshot, overlay.CurrentSnapshot);

@@ -30,6 +30,15 @@ public sealed class GlobalHotkeySourceTests
         Assert.Contains("GlobalHotkeyStatus", source, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ShellView_RendersManualDebugInfoExportControls()
+    {
+        var source = ReadSource("src/GameTranslator.UI/Views/ShellView.xaml");
+
+        Assert.Contains("CollectDebugInfoCommand", source, StringComparison.Ordinal);
+        Assert.Contains("Collect debug info", source, StringComparison.Ordinal);
+    }
+
     private static string ReadSource(string relativePath)
     {
         return File.ReadAllText(Path.Combine(RepositoryRoot.Find(), relativePath));

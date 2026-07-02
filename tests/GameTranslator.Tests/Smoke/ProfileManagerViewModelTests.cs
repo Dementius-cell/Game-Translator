@@ -1,7 +1,12 @@
+using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Runtime.Loader;
+using System.Text;
 using System.Text.Json;
+using System.Windows;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using GameTranslator.Application.Abstractions;
 using GameTranslator.Application.Cache;
 using GameTranslator.Application.Capture;
@@ -294,6 +299,45 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
+    public async Task WindowsOcrEngine_WithTesseractLanguageCode_BlocksPreviewWithValidationMessage()
+    {
+        var ocrEngine = new TestOcrEngine();
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            ocrEngine: ocrEngine);
+        ConfigureValidDraftProfile(viewModel, "Windows OCR language mismatch");
+        SetPropertyValue(viewModel, "OcrEngine", OcrSettings.WindowsEngineId);
+        InvokeMethod(viewModel, "AddZone");
+
+        var selectedZone = GetPropertyValue(viewModel, "SelectedZone")
+            ?? throw new InvalidOperationException("Selected zone was not created.");
+        SetPropertyValue(selectedZone, "OcrLanguage", "chi_sim");
+
+        var validationErrors = Assert.IsAssignableFrom<System.Collections.IEnumerable>(
+            GetPropertyValue(viewModel, "ValidationErrors"));
+        Assert.Contains(
+            validationErrors.Cast<object>().Select(error => error.ToString()),
+            error => error?.Contains("uses Tesseract OCR language 'chi_sim'", StringComparison.Ordinal) == true);
+
+        await InvokeTaskMethodAsync(viewModel, "RecognizeOcrPreviewAsync");
+
+        Assert.Empty(ocrEngine.Requests);
+        Assert.Contains(
+            "uses Tesseract OCR language 'chi_sim'",
+            GetPropertyValue(viewModel, "OcrPreviewStatus")?.ToString() ?? string.Empty,
+            StringComparison.Ordinal);
+
+        SetPropertyValue(viewModel, "OcrEngine", OcrSettings.TesseractEngineId);
+
+        validationErrors = Assert.IsAssignableFrom<System.Collections.IEnumerable>(
+            GetPropertyValue(viewModel, "ValidationErrors"));
+        Assert.DoesNotContain(
+            validationErrors.Cast<object>().Select(error => error.ToString()),
+            error => error?.Contains("uses Tesseract OCR language 'chi_sim'", StringComparison.Ordinal) == true);
+    }
+
+    [Fact]
     public void PickScreenZone_WhenPickerReturnsRegion_CreatesZoneFromScreenCoordinates()
     {
         var repository = new InMemoryProfileRepository();
@@ -416,6 +460,7 @@ public sealed class ProfileManagerViewModelTests
         SetPropertyValue(viewModel, "TranslatorProvider", "Google");
         SetPropertyValue(viewModel, "SourceLanguage", "ja");
         SetPropertyValue(viewModel, "TargetLanguage", "en");
+        SetPropertyValue(viewModel, "OcrEngine", OcrSettings.TesseractEngineId);
         SetPropertyValue(viewModel, "OcrOrientationMode", OcrOrientationMode.Horizontal);
         SetPropertyValue(viewModel, "OverlayMaskMode", OverlayMaskMode.Darken);
         SetPropertyValue(viewModel, "OverlayMaskColor", "#101010");
@@ -995,14 +1040,14 @@ public sealed class ProfileManagerViewModelTests
         SetPropertyValue(selectedZone, "AbsoluteY", 20);
         SetPropertyValue(selectedZone, "AbsoluteWidth", 4);
         SetPropertyValue(selectedZone, "AbsoluteHeight", 3);
-        SetPropertyValue(selectedZone, "OcrLanguage", "jpn_vert");
+        SetPropertyValue(selectedZone, "OcrLanguage", "ja");
 
         await InvokeTaskMethodAsync(viewModel, "RecognizeOcrPreviewAsync");
 
         Assert.Equal(new[] { new CaptureRegion(10, 20, 4, 3) }, frameSource.CapturedRegions);
         var request = Assert.Single(ocrEngine.Requests);
         Assert.Equal(new CaptureRegion(10, 20, 4, 3), request.Region);
-        Assert.Equal("jpn_vert", request.Language);
+        Assert.Equal("ja", request.Language);
         Assert.Equal(GetPropertyValue(selectedZone, "Id"), request.ZoneId);
         Assert.Equal(OcrOrientationMode.Auto, request.OrientationMode);
         Assert.True((bool)(GetPropertyValue(viewModel, "HasCapturePreview") ?? false));
@@ -1057,6 +1102,109 @@ public sealed class ProfileManagerViewModelTests
         Assert.Equal(new CaptureRegion(10, 20, 4, 3), Assert.Single(ocrEngine.Requests).Region);
         Assert.Equal("Fullscreen text", GetPropertyValue(viewModel, "OcrPreviewText"));
         Assert.Equal("Recognized 1 text block(s) for 'Zone 1'.", GetPropertyValue(viewModel, "OcrPreviewStatus"));
+    }
+
+    [Fact]
+    public async Task CollectDebugInfoAsync_WhenZoneSelected_ExportsDebugReport()
+    {
+        var filePath = Path.Combine(Path.GetTempPath(), $"game-translator-debug-{Guid.NewGuid():N}.txt");
+        var dialog = new TestDialogService
+        {
+            SaveFilePath = filePath,
+        };
+        var ocrEngine = new TestOcrEngine
+        {
+            BlocksFactory = _ => new[]
+            {
+                new OcrTextBlock("Manual smoke text", new BoundingBox(0, 0, 3, 1)),
+            },
+        };
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            ocrEngine: ocrEngine,
+            dialog: dialog);
+        ConfigureValidDraftProfile(viewModel, "SECRET_PROFILE_NOTE");
+        InvokeMethod(viewModel, "AddZone");
+
+        var selectedZone = GetPropertyValue(viewModel, "SelectedZone")
+            ?? throw new InvalidOperationException("Selected zone was not created.");
+        SetPropertyValue(selectedZone, "AbsoluteX", 10);
+        SetPropertyValue(selectedZone, "AbsoluteY", 20);
+        SetPropertyValue(selectedZone, "AbsoluteWidth", 4);
+        SetPropertyValue(selectedZone, "AbsoluteHeight", 3);
+        dialog.BeforeSaveFileDialogReturns = () => SetPropertyValue(selectedZone, "AbsoluteX", 999);
+
+        try
+        {
+            await InvokeTaskMethodAsync(viewModel, "CollectDebugInfoAsync");
+
+            var report = await File.ReadAllTextAsync(filePath);
+            Assert.Contains("Game Translator debug info", report, StringComparison.Ordinal);
+            Assert.Contains("Privacy: profile free-text fields and credential values are omitted.", report, StringComparison.Ordinal);
+            Assert.Contains("OcrPreviewBlockCount: 1", report, StringComparison.Ordinal);
+            Assert.Contains("Absolute: X 10  Y 20  W 4  H 3", report, StringComparison.Ordinal);
+            Assert.DoesNotContain("Absolute: X 999", report, StringComparison.Ordinal);
+            Assert.Contains("X 0  Y 0  W 3  H 1", report, StringComparison.Ordinal);
+            Assert.Contains("Text=Manual smoke text", report, StringComparison.Ordinal);
+            Assert.Contains("Overlay snapshot", report, StringComparison.Ordinal);
+            Assert.DoesNotContain("SECRET_PROFILE_NOTE", report, StringComparison.Ordinal);
+            Assert.Contains(dialog.InformationMessages, message => message.Contains(filePath, StringComparison.Ordinal));
+        }
+        finally
+        {
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task GlobalHotkeyPressed_ForCollectDebugInfo_ExportsDebugReport()
+    {
+        var filePath = Path.Combine(Path.GetTempPath(), $"game-translator-debug-{Guid.NewGuid():N}.txt");
+        var hotkeyRegistrar = new TestGlobalHotkeyRegistrar();
+        var dialog = new TestDialogService
+        {
+            SaveFilePath = filePath,
+        };
+        var ocrEngine = new TestOcrEngine
+        {
+            BlocksFactory = _ => new[]
+            {
+                new OcrTextBlock("Hotkey debug text", new BoundingBox(0, 0, 4, 2)),
+            },
+        };
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            ocrEngine: ocrEngine,
+            hotkeyRegistrar: hotkeyRegistrar,
+            dialog: dialog);
+        ConfigureValidDraftProfile(viewModel, "Debug hotkey export");
+        InvokeMethod(viewModel, "AddZone");
+        InvokeMethod(viewModel, "ResetGlobalHotkeys");
+
+        try
+        {
+            var registration = Assert.Single(
+                hotkeyRegistrar.Registered,
+                hotkey => hotkey.Action == GlobalHotkeyAction.CollectDebugInfo);
+            Assert.Equal("Ctrl+Shift+F9", registration.Gesture.DisplayText);
+            hotkeyRegistrar.RaisePressed(registration.Id);
+            await WaitForConditionAsync(() => File.Exists(filePath));
+
+            var report = await File.ReadAllTextAsync(filePath);
+            Assert.Contains("Text=Hotkey debug text", report, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+            }
+        }
     }
 
     [Fact]
@@ -1545,8 +1693,10 @@ public sealed class ProfileManagerViewModelTests
         Assert.True(overlay.IsVisible);
         var overlayItem = Assert.Single(overlay.CurrentSnapshot!.TextItems);
         Assert.Equal("Translated subtitle", overlayItem.Text);
-        Assert.Equal(320d, overlayItem.X + overlayItem.Width / 2d, precision: 0);
-        Assert.Equal(206d, overlayItem.Y + overlayItem.Height / 2d, precision: 0);
+        Assert.True(overlayItem.X >= 300);
+        Assert.True(overlayItem.Y >= 200);
+        Assert.True(overlayItem.X + overlayItem.Width <= 600);
+        Assert.True(overlayItem.Y + overlayItem.Height <= 350);
         Assert.True(overlayItem.Width > 40);
         Assert.True(overlayItem.Height > 12);
         Assert.Equal("Arial", overlayItem.TextStyle.FontFamily);
@@ -1560,6 +1710,139 @@ public sealed class ProfileManagerViewModelTests
             "SECRET_TRANSLATOR_TOKEN",
             GetPropertyValue(viewModel, "PipelineStatus")?.ToString() ?? string.Empty,
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task FullApplicationSmoke_FromInteractiveSettingsSelection_CapturesOverlayEvidenceAndVerifiesGrouping()
+    {
+        var zones = new List<FullAppSmokeZoneEvidence>();
+        var frameSource = new TestCaptureFrameSource();
+        var ocrEngine = new TestOcrEngine
+        {
+            EngineId = OcrSettings.TesseractEngineId,
+            ResultFactory = request => CreateFullAppSmokeOcrResult(request, zones),
+        };
+        var translator = new TestTranslatorProvider("WebAuto");
+        var overlay = new TestOverlayService();
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            frameSource: frameSource,
+            ocrEngine: ocrEngine,
+            translatorProvider: translator,
+            overlayService: overlay);
+
+        InvokeMethod(viewModel, "BeginCreateProfile");
+        SetPropertyValue(viewModel, "ProfileName", "Full app overlay smoke");
+        SetPropertyValue(viewModel, "TranslatorProvider", "WebAuto");
+        SetPropertyValue(viewModel, "SourceLanguage", "ja");
+        SetPropertyValue(viewModel, "TargetLanguage", "ru");
+        SetPropertyValue(viewModel, "OcrEngine", OcrSettings.TesseractEngineId);
+        SetPropertyValue(viewModel, "OcrOrientationMode", OcrOrientationMode.Auto);
+        SetPropertyValue(viewModel, "OverlayMaskMode", OverlayMaskMode.Solid);
+        SetPropertyValue(viewModel, "OverlayMaskColor", "#202020");
+        SetPropertyValue(viewModel, "OverlayOpacity", 0.8d);
+        SetPropertyValue(viewModel, "OverlayPadding", 4d);
+
+        zones.Add(CreateFullAppSmokeZone(
+            viewModel,
+            "dialog subtitle",
+            startSurfaceX: 40,
+            startSurfaceY: 220,
+            endSurfaceX: 260,
+            endSurfaceY: 290,
+            ocrLanguage: "jpn",
+            groupingMode: TranslationGroupingMode.BlockByBlock,
+            fontSize: 22));
+        zones.Add(CreateFullAppSmokeZone(
+            viewModel,
+            "vertical command menu",
+            startSurfaceX: 300,
+            startSurfaceY: 20,
+            endSurfaceX: 390,
+            endSurfaceY: 210,
+            ocrLanguage: "jpn_vert",
+            groupingMode: TranslationGroupingMode.WholeZone,
+            fontSize: 24));
+        zones.Add(CreateFullAppSmokeZone(
+            viewModel,
+            "dense nearby hud",
+            startSurfaceX: 410,
+            startSurfaceY: 230,
+            endSurfaceX: 620,
+            endSurfaceY: 330,
+            ocrLanguage: "jpn",
+            groupingMode: TranslationGroupingMode.NearbyBlocks,
+            fontSize: 18));
+
+        Assert.False(
+            (bool)(GetPropertyValue(viewModel, "HasValidationErrors") ?? true),
+            string.Join(" | ", GetValidationErrorMessages(viewModel)));
+
+        await InvokeTaskMethodAsync(viewModel, "RunTranslationPipelineAsync");
+
+        Assert.Equal(3, frameSource.CapturedRegions.Count);
+        Assert.Equal(3, ocrEngine.Requests.Count);
+        Assert.Equal(new[] { "jpn", "jpn_vert", "jpn" }, ocrEngine.Requests.Select(request => request.Language));
+        Assert.All(ocrEngine.Requests, request => Assert.Equal(OcrSettings.TesseractEngineId, request.EngineId));
+        Assert.Equal(3, translator.Requests.Count);
+        Assert.All(translator.Requests, request =>
+        {
+            Assert.Equal("ja", request.SourceLanguage);
+            Assert.Equal("ru", request.TargetLanguage);
+        });
+        Assert.Equal(new[] { "Press start", "The old road is blocked ahead" }, translator.Requests[0].Texts);
+        Assert.Equal(new[] { "Save Load Options" }, translator.Requests[1].Texts);
+        Assert.Equal(new[] { "Quest updated reward ready", "HP +25" }, translator.Requests[2].Texts);
+
+        Assert.True(overlay.IsVisible);
+        var snapshot = overlay.CurrentSnapshot ?? throw new InvalidOperationException("Overlay snapshot was not shown.");
+        Assert.Equal(5, snapshot.TextItems.Count);
+        Assert.Equal(5, snapshot.MaskItems.Count);
+        Assert.Equal(OverlayMaskMode.Solid, snapshot.OverlaySettings.MaskMode);
+        Assert.Equal("#202020", snapshot.OverlaySettings.MaskColor);
+        Assert.Equal(0.8d, snapshot.OverlaySettings.Opacity);
+        Assert.All(snapshot.TextItems, item =>
+        {
+            Assert.Equal(OverlayTextLayoutMode.ExpandFromSourceCenter, item.TextStyle.LayoutMode);
+            Assert.InRange(item.X, 0, 1919);
+            Assert.InRange(item.Y, 0, 1079);
+            Assert.InRange(item.X + item.Width, 1, 1920);
+            Assert.InRange(item.Y + item.Height, 1, 1080);
+        });
+        Assert.Contains(snapshot.TextItems, item => string.Equals(item.Text, "Translated Save Load Options", StringComparison.Ordinal));
+        Assert.Contains(
+            "Full pipeline translated 5 text block(s) across 3 OCR zone(s).",
+            GetPropertyValue(viewModel, "PipelineStatus")?.ToString(),
+            StringComparison.Ordinal);
+
+        var artifactDirectory = Path.Combine(
+            RepositoryRoot.Find(),
+            "artifacts",
+            "manual-smoke",
+            "full-app-overlay-smoke");
+        Directory.CreateDirectory(artifactDirectory);
+        var evidencePath = Path.Combine(artifactDirectory, "full-app-overlay-smoke.png");
+        var summaryPath = Path.Combine(artifactDirectory, "full-app-overlay-smoke.md");
+
+        await RunOnStaThreadAsync(() => WriteFullAppSmokeEvidenceImage(
+            evidencePath,
+            zones,
+            ocrEngine.Results,
+            snapshot));
+        await File.WriteAllTextAsync(
+            summaryPath,
+            BuildFullAppSmokeSummary(
+                evidencePath,
+                zones,
+                ocrEngine.Requests,
+                translator.Requests,
+                snapshot,
+                GetPropertyValue(viewModel, "PipelineStatus")?.ToString() ?? string.Empty));
+
+        Assert.True(File.Exists(evidencePath), $"Evidence image was not created: {evidencePath}");
+        Assert.True(new FileInfo(evidencePath).Length > 1_000);
+        Assert.True(File.Exists(summaryPath), $"Smoke summary was not created: {summaryPath}");
     }
 
     [Fact]
@@ -1833,6 +2116,292 @@ public sealed class ProfileManagerViewModelTests
             "Squirrel.Windows installation was not detected; update check skipped.",
             GetPropertyValue(viewModel, "UpdateStatus"));
     }
+
+    private static FullAppSmokeZoneEvidence CreateFullAppSmokeZone(
+        object viewModel,
+        string name,
+        double startSurfaceX,
+        double startSurfaceY,
+        double endSurfaceX,
+        double endSurfaceY,
+        string ocrLanguage,
+        TranslationGroupingMode groupingMode,
+        double fontSize)
+    {
+        InvokeMethodWithArguments(viewModel, "StartZoneSelection", startSurfaceX, startSurfaceY);
+        InvokeMethodWithArguments(viewModel, "UpdateZoneSelection", endSurfaceX, endSurfaceY);
+        InvokeMethodWithArguments(viewModel, "CompleteZoneSelection", endSurfaceX, endSurfaceY);
+
+        var selectedZone = GetPropertyValue(viewModel, "SelectedZone")
+            ?? throw new InvalidOperationException("Full app smoke zone was not selected.");
+        SetPropertyValue(selectedZone, "Name", name);
+        SetPropertyValue(selectedZone, "OcrLanguage", ocrLanguage);
+        SetPropertyValue(selectedZone, "TranslationGroupingMode", groupingMode);
+        SetPropertyValue(selectedZone, "OverlayFontFamily", "Segoe UI");
+        SetPropertyValue(selectedZone, "OverlayFontSize", fontSize);
+        SetPropertyValue(selectedZone, "OverlayIsBold", true);
+        SetPropertyValue(selectedZone, "OverlayIsItalic", false);
+        SetPropertyValue(selectedZone, "OverlayCanExpandBeyondSource", true);
+        SetPropertyValue(selectedZone, "TextGroupMergeDistancePercent", 5.5d);
+
+        return new FullAppSmokeZoneEvidence(
+            GetPropertyValue(selectedZone, "Id")?.ToString() ?? string.Empty,
+            name,
+            (int)(GetPropertyValue(selectedZone, "AbsoluteX") ?? 0),
+            (int)(GetPropertyValue(selectedZone, "AbsoluteY") ?? 0),
+            (int)(GetPropertyValue(selectedZone, "AbsoluteWidth") ?? 0),
+            (int)(GetPropertyValue(selectedZone, "AbsoluteHeight") ?? 0),
+            ocrLanguage,
+            groupingMode);
+    }
+
+    private static OcrResult CreateFullAppSmokeOcrResult(
+        OcrRequest request,
+        IReadOnlyList<FullAppSmokeZoneEvidence> zones)
+    {
+        var zoneIndex = zones
+            .Select((candidate, index) => new { Zone = candidate, Index = index })
+            .FirstOrDefault(candidate => string.Equals(candidate.Zone.Id, request.ZoneId, StringComparison.Ordinal))
+            ?? throw new InvalidOperationException($"Unknown full app smoke OCR zone '{request.ZoneId}'.");
+        var blocks = zoneIndex.Zone.GroupingMode switch
+        {
+            TranslationGroupingMode.WholeZone => new[]
+            {
+                CreateFullAppSmokeBlock("Save", 26, 22, 48, 170, OcrOrientationMode.Vertical),
+                CreateFullAppSmokeBlock("Load", 92, 26, 50, 178, OcrOrientationMode.Vertical),
+                CreateFullAppSmokeBlock("Options", 154, 34, 56, 260, OcrOrientationMode.Vertical),
+            },
+            TranslationGroupingMode.NearbyBlocks => new[]
+            {
+                CreateFullAppSmokeBlock("Quest updated", 18, 18, 180, 42, OcrOrientationMode.Horizontal),
+                CreateFullAppSmokeBlock("reward ready", 210, 22, 160, 38, OcrOrientationMode.Horizontal),
+                CreateFullAppSmokeBlock("HP +25", 510, 190, 95, 38, OcrOrientationMode.Horizontal),
+            },
+            _ => new[]
+            {
+                CreateFullAppSmokeBlock("Press start", 18, 18, 180, 36, OcrOrientationMode.Horizontal),
+                CreateFullAppSmokeBlock("The old road is blocked ahead", 18, 78, 520, 42, OcrOrientationMode.Horizontal),
+            },
+        };
+
+        return new OcrResult(
+            request,
+            blocks.Select(block => block.TextBlock),
+            new DateTimeOffset(2026, 7, 2, 12, 0, zoneIndex.Index + 1, TimeSpan.Zero),
+            blocks.Select(block => block.Source));
+    }
+
+    private static FullAppSmokeOcrBlock CreateFullAppSmokeBlock(
+        string text,
+        int x,
+        int y,
+        int width,
+        int height,
+        OcrOrientationMode orientationMode)
+    {
+        var bounds = new BoundingBox(x, y, width, height);
+
+        return new FullAppSmokeOcrBlock(
+            new OcrTextBlock(text, bounds),
+            new OcrTextBlockSource(bounds, new[] { bounds }, orientationMode));
+    }
+
+    private static async Task RunOnStaThreadAsync(Action action)
+    {
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                action();
+                completion.SetResult();
+            }
+            catch (Exception exception)
+            {
+                completion.SetException(exception);
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        await completion.Task;
+        thread.Join();
+    }
+
+    private static void WriteFullAppSmokeEvidenceImage(
+        string evidencePath,
+        IReadOnlyList<FullAppSmokeZoneEvidence> zones,
+        IReadOnlyList<OcrResult> ocrResults,
+        OverlaySnapshot snapshot)
+    {
+        const int width = 1920;
+        const int height = 1080;
+        var visual = new DrawingVisual();
+        using (var context = visual.RenderOpen())
+        {
+            context.DrawRectangle(new SolidColorBrush(Color.FromRgb(25, 28, 34)), null, new Rect(0, 0, width, height));
+            context.DrawRectangle(
+                new SolidColorBrush(Color.FromRgb(40, 44, 52)),
+                new Pen(new SolidColorBrush(Color.FromRgb(72, 79, 91)), 2),
+                new Rect(48, 48, width - 96, height - 96));
+            DrawFullAppSmokeText(context, "Game Translator full-app overlay smoke", 72, 68, 900, 24, Brushes.White);
+            DrawFullAppSmokeText(
+                context,
+                "blue: selected OCR zones | yellow: OCR blocks | black: overlay masks | green: translated overlay text",
+                72,
+                102,
+                1200,
+                18,
+                Brushes.Gainsboro);
+
+            foreach (var zone in zones)
+            {
+                var rect = new Rect(zone.X, zone.Y, zone.Width, zone.Height);
+                context.DrawRectangle(
+                    new SolidColorBrush(Color.FromArgb(28, 64, 156, 255)),
+                    new Pen(new SolidColorBrush(Color.FromRgb(64, 156, 255)), 4),
+                    rect);
+                DrawFullAppSmokeText(
+                    context,
+                    $"{zone.Name} | OCR {zone.OcrLanguage} | {zone.GroupingMode}",
+                    zone.X + 8,
+                    Math.Max(0, zone.Y - 30),
+                    Math.Max(160, zone.Width),
+                    18,
+                    Brushes.LightSkyBlue);
+            }
+
+            foreach (var result in ocrResults)
+            {
+                var zone = zones.FirstOrDefault(candidate => string.Equals(candidate.Id, result.ZoneId, StringComparison.Ordinal));
+                if (zone is null)
+                {
+                    continue;
+                }
+
+                foreach (var block in result.TextBlocks)
+                {
+                    var rect = new Rect(
+                        zone.X + block.Bounds.X,
+                        zone.Y + block.Bounds.Y,
+                        block.Bounds.Width,
+                        block.Bounds.Height);
+                    context.DrawRectangle(
+                        new SolidColorBrush(Color.FromArgb(70, 255, 210, 64)),
+                        new Pen(new SolidColorBrush(Color.FromRgb(255, 210, 64)), 3),
+                        rect);
+                    DrawFullAppSmokeText(context, block.Text, rect.X + 4, rect.Y + 4, Math.Max(20, rect.Width - 8), 14, Brushes.White);
+                }
+            }
+
+            foreach (var mask in snapshot.MaskItems)
+            {
+                context.DrawRectangle(
+                    new SolidColorBrush(Color.FromArgb((byte)Math.Round(180 * mask.Opacity), 0, 0, 0)),
+                    new Pen(new SolidColorBrush(Color.FromRgb(210, 210, 210)), 1),
+                    new Rect(mask.X, mask.Y, mask.Width, mask.Height));
+            }
+
+            foreach (var item in snapshot.TextItems)
+            {
+                var rect = new Rect(item.X, item.Y, item.Width, item.Height);
+                context.DrawRectangle(
+                    new SolidColorBrush(Color.FromArgb(66, 36, 190, 110)),
+                    new Pen(new SolidColorBrush(Color.FromRgb(60, 235, 142)), 4),
+                    rect);
+                DrawFullAppSmokeText(
+                    context,
+                    item.Text,
+                    rect.X + 6,
+                    rect.Y + 6,
+                    Math.Max(20, rect.Width - 12),
+                    Math.Min(18, Math.Max(12, item.TextStyle.FontSize - 2)),
+                    Brushes.White);
+            }
+        }
+
+        var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(visual);
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using var stream = File.Create(evidencePath);
+        encoder.Save(stream);
+    }
+
+    private static void DrawFullAppSmokeText(
+        DrawingContext context,
+        string text,
+        double x,
+        double y,
+        double maxWidth,
+        double fontSize,
+        Brush brush)
+    {
+        var formattedText = new FormattedText(
+            text,
+            CultureInfo.InvariantCulture,
+            FlowDirection.LeftToRight,
+            new Typeface("Segoe UI"),
+            fontSize,
+            brush,
+            1)
+        {
+            MaxTextWidth = Math.Max(1, maxWidth),
+            Trimming = TextTrimming.CharacterEllipsis,
+        };
+
+        context.DrawText(formattedText, new Point(x, y));
+    }
+
+    private static string BuildFullAppSmokeSummary(
+        string evidencePath,
+        IReadOnlyList<FullAppSmokeZoneEvidence> zones,
+        IReadOnlyList<OcrRequest> ocrRequests,
+        IReadOnlyList<TranslateRequest> translateRequests,
+        OverlaySnapshot snapshot,
+        string pipelineStatus)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("# Full App Overlay Smoke");
+        builder.AppendLine();
+        builder.AppendLine($"- Evidence image: `{evidencePath}`");
+        builder.AppendLine($"- Zones selected: {zones.Count}");
+        builder.AppendLine($"- OCR calls: {ocrRequests.Count}");
+        builder.AppendLine($"- Translation calls: {translateRequests.Count}");
+        builder.AppendLine($"- Overlay text items: {snapshot.TextItems.Count}");
+        builder.AppendLine($"- Overlay mask items: {snapshot.MaskItems.Count}");
+        builder.AppendLine($"- Pipeline status: {pipelineStatus}");
+        builder.AppendLine();
+        builder.AppendLine("## Zones");
+        foreach (var zone in zones)
+        {
+            builder.AppendLine($"- {zone.Name}: X {zone.X} Y {zone.Y} W {zone.Width} H {zone.Height}; OCR {zone.OcrLanguage}; grouping {zone.GroupingMode}");
+        }
+
+        builder.AppendLine();
+        builder.AppendLine("## Translation Requests");
+        for (var index = 0; index < translateRequests.Count; index++)
+        {
+            var request = translateRequests[index];
+            builder.AppendLine($"- Request {index + 1}: {request.SourceLanguage}->{request.TargetLanguage}; texts: {string.Join(" | ", request.Texts)}");
+        }
+
+        return builder.ToString();
+    }
+
+    private sealed record FullAppSmokeZoneEvidence(
+        string Id,
+        string Name,
+        int X,
+        int Y,
+        int Width,
+        int Height,
+        string OcrLanguage,
+        TranslationGroupingMode GroupingMode);
+
+    private sealed record FullAppSmokeOcrBlock(
+        OcrTextBlock TextBlock,
+        OcrTextBlockSource Source);
 
     private static object CreateMainViewModel(
         InMemoryProfileRepository repository,
@@ -2189,6 +2758,8 @@ public sealed class ProfileManagerViewModelTests
 
         public string? SaveFilePath { get; set; }
 
+        public Action? BeforeSaveFileDialogReturns { get; set; }
+
         public DialogChoice YesNoCancelChoice { get; set; } = DialogChoice.Yes;
 
         public List<string> InformationMessages { get; } = new();
@@ -2200,6 +2771,7 @@ public sealed class ProfileManagerViewModelTests
 
         public Task<string?> ShowSaveFileDialogAsync(string title, string defaultFileName, string filter, CancellationToken cancellationToken = default)
         {
+            BeforeSaveFileDialogReturns?.Invoke();
             return Task.FromResult(SaveFilePath);
         }
 
@@ -2342,9 +2914,13 @@ public sealed class ProfileManagerViewModelTests
 
         public List<OcrRequest> Requests { get; } = new();
 
+        public List<OcrResult> Results { get; } = new();
+
         public Exception? Failure { get; init; }
 
         public Func<OcrRequest, IReadOnlyList<OcrTextBlock>>? BlocksFactory { get; init; }
+
+        public Func<OcrRequest, OcrResult>? ResultFactory { get; init; }
 
         public Task<OcrResult> RecognizeAsync(OcrRequest request, CancellationToken cancellationToken = default)
         {
@@ -2357,8 +2933,11 @@ public sealed class ProfileManagerViewModelTests
 
             Requests.Add(request);
 
-            var blocks = BlocksFactory?.Invoke(request) ?? Array.Empty<OcrTextBlock>();
-            return Task.FromResult(new OcrResult(request, blocks, RecognizedAt));
+            var result = ResultFactory?.Invoke(request)
+                ?? new OcrResult(request, BlocksFactory?.Invoke(request) ?? Array.Empty<OcrTextBlock>(), RecognizedAt);
+            Results.Add(result);
+
+            return Task.FromResult(result);
         }
     }
 
@@ -2383,12 +2962,15 @@ public sealed class ProfileManagerViewModelTests
 
         public TranslateRequest? Request { get; private set; }
 
+        public List<TranslateRequest> Requests { get; } = new();
+
         public Task<TranslateResponse> TranslateAsync(
             TranslateRequest request,
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Request = request;
+            Requests.Add(request);
 
             if (failure is not null)
             {

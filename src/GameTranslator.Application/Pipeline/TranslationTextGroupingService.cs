@@ -7,6 +7,8 @@ public static class TranslationTextGroupingService
 {
     private const double SameReadingLineCenterToleranceFactor = 0.8;
     private const double SameReadingLineOverlapRatio = 0.15;
+    private const double AdaptiveMergeMinorSideMultiplier = 1.75;
+    private const double MinimumAdaptiveMergeThresholdPixels = 18;
 
     public static OcrResult CreateTranslationSourceResult(OcrResult sourceResult, OcrZone zone)
     {
@@ -29,6 +31,7 @@ public static class TranslationTextGroupingService
         }
 
         var orderedBlocks = OrderBlocksByReadingPosition(sourceResult.TextBlocks);
+        var source = CreateSourceFromGroup(sourceResult, orderedBlocks);
         var joinedText = string.Join(
             ' ',
             orderedBlocks
@@ -42,8 +45,9 @@ public static class TranslationTextGroupingService
 
         return new OcrResult(
             sourceResult.Request,
-            new[] { new OcrTextBlock(joinedText, CreateCombinedBounds(orderedBlocks)) },
-            sourceResult.RecognizedAt);
+            new[] { new OcrTextBlock(joinedText, source.SemanticBounds) },
+            sourceResult.RecognizedAt,
+            new[] { source });
     }
 
     private static OcrResult CreateNearbyBlocksResult(
@@ -59,21 +63,27 @@ public static class TranslationTextGroupingService
             textGrouping.MergeDistancePercent,
             OcrZoneTextGroupingSettings.MinimumMergeDistancePercent,
             OcrZoneTextGroupingSettings.MaximumMergeDistancePercent);
-        var thresholdPixels = Math.Max(sourceResult.InputWidth, sourceResult.InputHeight) * mergeDistancePercent / 100d;
-        var groups = ClusterNearbyBlocks(sourceResult.TextBlocks, thresholdPixels)
-            .Select(OrderBlocksByReadingPosition)
-            .OrderBy(group => CreateCombinedBounds(group).Y)
-            .ThenBy(group => CreateCombinedBounds(group).X)
-            .ToArray();
+        var requestedThresholdPixels = Math.Max(sourceResult.InputWidth, sourceResult.InputHeight) * mergeDistancePercent / 100d;
+        var thresholdPixels = Math.Min(
+            requestedThresholdPixels,
+            CalculateAdaptiveMergeThreshold(sourceResult.TextBlocks));
+        var groups = OrderGroupsByReadingPosition(
+            ClusterNearbyBlocks(sourceResult.TextBlocks, thresholdPixels)
+                .Select(OrderBlocksByReadingPosition)
+                .ToArray());
         var groupedBlocks = groups
-            .Select(CreateTextBlockFromGroup)
-            .Where(block => block is not null)
-            .Cast<OcrTextBlock>()
+            .Select(group => CreateTextBlockFromGroup(sourceResult, group))
+            .Where(group => group is not null)
+            .Cast<TranslationTextGroup>()
             .ToArray();
 
         return groupedBlocks.Length == 0
             ? sourceResult
-            : new OcrResult(sourceResult.Request, groupedBlocks, sourceResult.RecognizedAt);
+            : new OcrResult(
+                sourceResult.Request,
+                groupedBlocks.Select(group => group.TextBlock),
+                sourceResult.RecognizedAt,
+                groupedBlocks.Select(group => group.Source));
     }
 
     private static IReadOnlyList<IReadOnlyList<OcrTextBlock>> ClusterNearbyBlocks(
@@ -139,6 +149,61 @@ public static class TranslationTextGroupingService
             .ToArray();
     }
 
+    private static IReadOnlyList<IReadOnlyList<OcrTextBlock>> OrderGroupsByReadingPosition(
+        IReadOnlyList<IReadOnlyList<OcrTextBlock>> groups)
+    {
+        if (groups.Count <= 1)
+        {
+            return groups;
+        }
+
+        var rows = new List<List<IReadOnlyList<OcrTextBlock>>>();
+        foreach (var group in groups.OrderBy(group => CreateCombinedBounds(group).Y).ThenBy(group => CreateCombinedBounds(group).X))
+        {
+            var row = rows.FirstOrDefault(existingRow => IsSameGroupReadingLine(existingRow, group));
+            if (row is null)
+            {
+                rows.Add(new List<IReadOnlyList<OcrTextBlock>> { group });
+                continue;
+            }
+
+            row.Add(group);
+        }
+
+        return rows
+            .OrderBy(row => row.Min(group => CreateCombinedBounds(group).Y))
+            .ThenBy(row => row.Min(group => CreateCombinedBounds(group).X))
+            .SelectMany(row => row.OrderBy(group => CreateCombinedBounds(group).X).ThenBy(group => CreateCombinedBounds(group).Y))
+            .ToArray();
+    }
+
+    private static bool IsSameGroupReadingLine(
+        IReadOnlyList<IReadOnlyList<OcrTextBlock>> row,
+        IReadOnlyList<OcrTextBlock> group)
+    {
+        var rowBounds = row.Select(CreateCombinedBounds).ToArray();
+        var groupBounds = CreateCombinedBounds(group);
+        var rowTop = rowBounds.Min(bounds => bounds.Y);
+        var rowBottom = rowBounds.Max(bounds => bounds.Bottom);
+        var rowAverageHeight = rowBounds.Average(bounds => bounds.Height);
+        var overlap = Math.Min(rowBottom, groupBounds.Bottom) - Math.Max(rowTop, groupBounds.Y);
+        if (overlap > 0)
+        {
+            var minimumHeight = Math.Min(rowAverageHeight, groupBounds.Height);
+            if (overlap >= minimumHeight * SameReadingLineOverlapRatio)
+            {
+                return true;
+            }
+        }
+
+        var rowCenterY = rowBounds.Average(GetCenterY);
+        var tolerance = Math.Max(
+            2d,
+            Math.Max(rowAverageHeight, groupBounds.Height) * SameReadingLineCenterToleranceFactor);
+
+        return Math.Abs(rowCenterY - GetCenterY(groupBounds)) <= tolerance;
+    }
+
     private static bool IsSameReadingLine(IReadOnlyList<OcrTextBlock> row, OcrTextBlock block)
     {
         var rowTop = row.Min(item => item.Bounds.Y);
@@ -162,7 +227,9 @@ public static class TranslationTextGroupingService
         return Math.Abs(rowCenterY - GetCenterY(block.Bounds)) <= tolerance;
     }
 
-    private static OcrTextBlock? CreateTextBlockFromGroup(IReadOnlyList<OcrTextBlock> blocks)
+    private static TranslationTextGroup? CreateTextBlockFromGroup(
+        OcrResult sourceResult,
+        IReadOnlyList<OcrTextBlock> blocks)
     {
         var joinedText = string.Join(
             ' ',
@@ -170,9 +237,66 @@ public static class TranslationTextGroupingService
                 .Select(block => OcrTextNormalizer.NormalizeForComparison(block.Text))
                 .Where(text => !string.IsNullOrWhiteSpace(text)));
 
-        return string.IsNullOrWhiteSpace(joinedText)
-            ? null
-            : new OcrTextBlock(joinedText, CreateCombinedBounds(blocks));
+        if (string.IsNullOrWhiteSpace(joinedText))
+        {
+            return null;
+        }
+
+        var source = CreateSourceFromGroup(sourceResult, blocks);
+        return new TranslationTextGroup(
+            new OcrTextBlock(joinedText, source.SemanticBounds),
+            source);
+    }
+
+    private static OcrTextBlockSource CreateSourceFromGroup(
+        OcrResult sourceResult,
+        IReadOnlyList<OcrTextBlock> blocks)
+    {
+        var sources = blocks
+            .Select(block => GetSourceForBlock(sourceResult, block))
+            .ToArray();
+        var memberBounds = sources
+            .SelectMany(source => source.MemberBounds)
+            .ToArray();
+        var semanticBounds = CreateCombinedBounds(memberBounds);
+
+        return new OcrTextBlockSource(
+            semanticBounds,
+            memberBounds,
+            ResolveGroupOrientation(sourceResult, sources));
+    }
+
+    private static OcrTextBlockSource GetSourceForBlock(OcrResult sourceResult, OcrTextBlock block)
+    {
+        for (var index = 0; index < sourceResult.TextBlocks.Count; index++)
+        {
+            if (ReferenceEquals(sourceResult.TextBlocks[index], block))
+            {
+                return sourceResult.TextBlockSources[index];
+            }
+        }
+
+        return new OcrTextBlockSource(
+            block.Bounds,
+            new[] { block.Bounds },
+            sourceResult.Request.OrientationMode);
+    }
+
+    private static OcrOrientationMode ResolveGroupOrientation(
+        OcrResult sourceResult,
+        IReadOnlyList<OcrTextBlockSource> sources)
+    {
+        if (sources.Any(source => source.OrientationMode is OcrOrientationMode.Vertical))
+        {
+            return OcrOrientationMode.Vertical;
+        }
+
+        if (sources.Count > 0 && sources.All(source => source.OrientationMode is OcrOrientationMode.Horizontal))
+        {
+            return OcrOrientationMode.Horizontal;
+        }
+
+        return OcrOrientationMode.Auto;
     }
 
     private static double CalculateDistance(BoundingBox first, BoundingBox second)
@@ -181,6 +305,27 @@ public static class TranslationTextGroupingService
         var verticalGap = Math.Max(0, Math.Max(first.Y - second.Bottom, second.Y - first.Bottom));
 
         return Math.Sqrt((horizontalGap * horizontalGap) + (verticalGap * verticalGap));
+    }
+
+    private static double CalculateAdaptiveMergeThreshold(IReadOnlyList<OcrTextBlock> blocks)
+    {
+        var minorSides = blocks
+            .Select(block => Math.Min(block.Bounds.Width, block.Bounds.Height))
+            .Where(side => side > 0)
+            .Order()
+            .ToArray();
+        if (minorSides.Length == 0)
+        {
+            return MinimumAdaptiveMergeThresholdPixels;
+        }
+
+        var median = minorSides.Length % 2 == 1
+            ? minorSides[minorSides.Length / 2]
+            : (minorSides[minorSides.Length / 2 - 1] + minorSides[minorSides.Length / 2]) / 2d;
+
+        return Math.Max(
+            MinimumAdaptiveMergeThresholdPixels,
+            median * AdaptiveMergeMinorSideMultiplier);
     }
 
     private static double GetCenterY(BoundingBox bounds)
@@ -197,4 +342,16 @@ public static class TranslationTextGroupingService
 
         return new BoundingBox(left, top, right - left, bottom - top);
     }
+
+    private static BoundingBox CreateCombinedBounds(IReadOnlyList<BoundingBox> bounds)
+    {
+        var left = bounds.Min(bound => bound.X);
+        var top = bounds.Min(bound => bound.Y);
+        var right = bounds.Max(bound => bound.Right);
+        var bottom = bounds.Max(bound => bound.Bottom);
+
+        return new BoundingBox(left, top, right - left, bottom - top);
+    }
+
+    private sealed record TranslationTextGroup(OcrTextBlock TextBlock, OcrTextBlockSource Source);
 }

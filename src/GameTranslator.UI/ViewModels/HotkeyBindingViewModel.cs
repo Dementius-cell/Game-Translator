@@ -88,6 +88,7 @@ public sealed class HotkeyBindingViewModel : ValidatableObservableObject
         {
             GlobalHotkeyAction.StartPausePipeline => "Start / pause",
             GlobalHotkeyAction.RecognizeOcrPreview => "Recognize OCR",
+            GlobalHotkeyAction.CollectDebugInfo => "Collect debug info",
             GlobalHotkeyAction.ToggleOverlay => "Show / hide overlay",
             GlobalHotkeyAction.ShowSettings => "Settings",
             GlobalHotkeyAction.ExitApplication => "Exit",

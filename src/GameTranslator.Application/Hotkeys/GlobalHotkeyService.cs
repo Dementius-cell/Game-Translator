@@ -13,6 +13,7 @@ public sealed class GlobalHotkeyService
     {
         new(GlobalHotkeyAction.StartPausePipeline, new GlobalHotkeyGesture(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Alt, "T")),
         new(GlobalHotkeyAction.RecognizeOcrPreview, new GlobalHotkeyGesture(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Shift, "F8")),
+        new(GlobalHotkeyAction.CollectDebugInfo, new GlobalHotkeyGesture(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Shift, "F9")),
         new(GlobalHotkeyAction.ToggleOverlay, new GlobalHotkeyGesture(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Alt, "O")),
         new(GlobalHotkeyAction.ShowSettings, new GlobalHotkeyGesture(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Alt, "S")),
         new(GlobalHotkeyAction.ExitApplication, new GlobalHotkeyGesture(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Alt, "Q")),

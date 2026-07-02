@@ -10,7 +10,8 @@ public sealed class OcrResult
     public OcrResult(
         OcrRequest request,
         IEnumerable<OcrTextBlock> textBlocks,
-        DateTimeOffset recognizedAt)
+        DateTimeOffset recognizedAt,
+        IEnumerable<OcrTextBlockSource>? textBlockSources = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(textBlocks);
@@ -26,6 +27,30 @@ public sealed class OcrResult
             }
         }
 
+        var sourceList = textBlockSources?.ToArray()
+            ?? blockList
+                .Select(block => new OcrTextBlockSource(
+                    block.Bounds,
+                    new[] { block.Bounds }))
+                .ToArray();
+        if (sourceList.Length != blockList.Length)
+        {
+            throw new ArgumentException(
+                "OCR text block source count must match OCR text block count.",
+                nameof(textBlockSources));
+        }
+
+        foreach (var source in sourceList)
+        {
+            if (!source.SemanticBounds.IsWithin(request.Frame.Width, request.Frame.Height)
+                || source.MemberBounds.Any(bounds => !bounds.IsWithin(request.Frame.Width, request.Frame.Height)))
+            {
+                throw new ArgumentException(
+                    "OCR text block source bounds must stay within the captured frame.",
+                    nameof(textBlockSources));
+            }
+        }
+
         Request = request;
         ZoneId = request.ZoneId;
         Region = request.Region;
@@ -33,6 +58,7 @@ public sealed class OcrResult
         InputWidth = request.Frame.Width;
         InputHeight = request.Frame.Height;
         TextBlocks = blockList;
+        TextBlockSources = sourceList;
         RecognizedAt = recognizedAt;
     }
 
@@ -49,6 +75,8 @@ public sealed class OcrResult
     public int InputHeight { get; }
 
     public IReadOnlyList<OcrTextBlock> TextBlocks { get; }
+
+    public IReadOnlyList<OcrTextBlockSource> TextBlockSources { get; }
 
     public DateTimeOffset RecognizedAt { get; }
 

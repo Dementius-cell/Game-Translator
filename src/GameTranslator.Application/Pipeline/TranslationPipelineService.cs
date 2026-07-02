@@ -707,7 +707,11 @@ public sealed class TranslationPipelineService
                 (sourceBlock, translatedText) => new OcrTextBlock(translatedText, sourceBlock.Bounds))
             .ToArray();
 
-        return new OcrResult(sourceResult.Request, translatedBlocks, translateResponse.TranslatedAt);
+        return new OcrResult(
+            sourceResult.Request,
+            translatedBlocks,
+            translateResponse.TranslatedAt,
+            sourceResult.TextBlockSources);
     }
 
     private static OverlaySnapshot CreateEmptySnapshot(DateTimeOffset shownAt, OverlaySettings overlaySettings)

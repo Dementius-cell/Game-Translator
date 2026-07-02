@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Media;
@@ -59,6 +60,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 {
     private const string SelectedProfileSettingKey = "profiles.selectedId";
     private const string ProfileFileDialogFilter = "Game Translator profile (*.json)|*.json|JSON files (*.json)|*.json|All files (*.*)|*.*";
+    private const string DebugInfoFileDialogFilter = "Text files (*.txt)|*.txt|All files (*.*)|*.*";
     private const string DraftProfileNameSettingKey = "shell.draft.profile.name";
     private const string DraftProfileDescriptionSettingKey = "shell.draft.profile.description";
     private const string DraftTranslatorProviderSettingKey = "shell.draft.translator.provider";
@@ -465,6 +467,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         RefreshCapturePreviewCommand = new AsyncRelayCommand(RefreshCapturePreviewAsync, CanRefreshCapturePreview);
         MeasureCaptureRefreshCommand = new AsyncRelayCommand(MeasureCaptureRefreshAsync, CanRefreshCapturePreview);
         RecognizeOcrPreviewCommand = new AsyncRelayCommand(RecognizeOcrPreviewAsync, CanRecognizeOcrPreview);
+        CollectDebugInfoCommand = new AsyncRelayCommand(CollectDebugInfoAsync, CanCollectDebugInfo);
         CheckOcrLanguagePackCommand = new AsyncRelayCommand(CheckOcrLanguagePackAsync, CanManageOcrLanguagePack);
         InstallOcrLanguagePackCommand = new AsyncRelayCommand(InstallOcrLanguagePackAsync, CanManageOcrLanguagePack);
         RunTranslationPipelineCommand = new AsyncRelayCommand(RunTranslationPipelineAsync, CanRunTranslationPipeline);
@@ -1195,6 +1198,8 @@ public sealed class MainViewModel : ValidatableObservableObject
     public ICommand MeasureCaptureRefreshCommand { get; }
 
     public ICommand RecognizeOcrPreviewCommand { get; }
+
+    public ICommand CollectDebugInfoCommand { get; }
 
     public ICommand CheckOcrLanguagePackCommand { get; }
 
@@ -2025,6 +2030,14 @@ public sealed class MainViewModel : ValidatableObservableObject
             return;
         }
 
+        var ocrCompatibilityError = CreateOcrEngineLanguageCompatibilityError(zone);
+        if (!string.IsNullOrWhiteSpace(ocrCompatibilityError))
+        {
+            OcrPreviewStatus = ocrCompatibilityError;
+            StatusMessage = OcrPreviewStatus;
+            return;
+        }
+
         var overlayWasVisibleBeforeCapture = false;
         OverlaySnapshot? overlaySnapshotBeforeCapture = null;
 
@@ -2089,6 +2102,56 @@ public sealed class MainViewModel : ValidatableObservableObject
             StatusMessage = OcrPreviewStatus;
             latestOcrPreviewResult = null;
             ReplaceOcrPreviewTextBlocks(Array.Empty<OcrTextBlock>());
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task CollectDebugInfoAsync()
+    {
+        if (IsBusy)
+        {
+            StatusMessage = "Debug info hotkey received while an operation is already running.";
+            return;
+        }
+
+        if (!HasOcrPreview && !IsLiveTranslationRunning && CanRecognizeOcrPreview())
+        {
+            await RecognizeOcrPreviewAsync();
+        }
+
+        try
+        {
+            var debugInfo = BuildDebugInfoReport();
+            var filePath = await dialogService.ShowSaveFileDialogAsync(
+                "Export debug info",
+                BuildDefaultDebugInfoFileName(),
+                DebugInfoFileDialogFilter);
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                StatusMessage = "Debug info export canceled.";
+                return;
+            }
+
+            IsBusy = true;
+            await File.WriteAllTextAsync(filePath, debugInfo, Encoding.UTF8);
+
+            StatusMessage = $"Debug info exported to '{filePath}'.";
+            logger.Information($"Debug info exported to '{filePath}'.");
+            await dialogService.ShowInformationAsync(
+                "Debug info exported",
+                $"Debug info was exported to:\n{filePath}");
+        }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = "Debug info export canceled.";
+        }
+        catch (Exception exception)
+        {
+            logger.Error(exception, "Debug info export failed.");
+            StatusMessage = $"Debug info export failed: {exception.Message}";
         }
         finally
         {
@@ -2523,6 +2586,15 @@ public sealed class MainViewModel : ValidatableObservableObject
                 }
 
                 await RecognizeOcrPreviewAsync();
+                break;
+            case GlobalHotkeyAction.CollectDebugInfo:
+                if (IsBusy)
+                {
+                    StatusMessage = "Debug info hotkey received while an operation is already running.";
+                    return;
+                }
+
+                await CollectDebugInfoAsync();
                 break;
             case GlobalHotkeyAction.ToggleOverlay:
                 if (IsOverlayPreviewVisible)
@@ -3433,7 +3505,13 @@ public sealed class MainViewModel : ValidatableObservableObject
         return !IsBusy
             && !IsLiveTranslationRunning
             && SelectedZone is not null
+            && !HasOcrEngineLanguageCompatibilityError(SelectedZone)
             && !string.IsNullOrWhiteSpace(ResolveSelectedOcrLanguage());
+    }
+
+    private bool CanCollectDebugInfo()
+    {
+        return !IsBusy;
     }
 
     private bool CanManageOcrLanguagePack()
@@ -3543,6 +3621,44 @@ public sealed class MainViewModel : ValidatableObservableObject
         return string.IsNullOrWhiteSpace(zone.OcrLanguage)
             ? SourceLanguage.Trim()
             : zone.OcrLanguage.Trim();
+    }
+
+    private IEnumerable<string> CreateOcrEngineLanguageCompatibilityErrors()
+    {
+        if (!string.Equals(OcrEngine.Trim(), OcrSettings.WindowsEngineId, StringComparison.OrdinalIgnoreCase))
+        {
+            yield break;
+        }
+
+        foreach (var zone in OcrZones)
+        {
+            var error = CreateOcrEngineLanguageCompatibilityError(zone);
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                yield return error;
+            }
+        }
+    }
+
+    private string CreateOcrEngineLanguageCompatibilityError(OcrZoneEditorViewModel zone)
+    {
+        var language = ResolveOcrLanguage(zone);
+        if (!IsTesseractOnlyLanguage(language))
+        {
+            return string.Empty;
+        }
+
+        return $"OCR zone '{zone.DisplayName}' uses Tesseract OCR language '{language}'. Select Tesseract OCR engine or use a Windows OCR language tag such as en, ja, or zh-Hans.";
+    }
+
+    private bool HasOcrEngineLanguageCompatibilityError(OcrZoneEditorViewModel zone)
+    {
+        return !string.IsNullOrWhiteSpace(CreateOcrEngineLanguageCompatibilityError(zone));
+    }
+
+    private static bool IsTesseractOnlyLanguage(string language)
+    {
+        return TesseractLanguageCatalog.TryGetTrainedDataCode(language, out _);
     }
 
     private static void OpenExternalUri(Uri uri)
@@ -3681,11 +3797,17 @@ public sealed class MainViewModel : ValidatableObservableObject
             string.IsNullOrWhiteSpace(TargetLanguage)
                 ? new[] { "Target language is required." }
                 : Array.Empty<string>());
-        SetErrors(
-            nameof(OcrEngine),
-            !OcrSettings.IsSupportedEngine(OcrEngine)
-                ? new[] { "OCR engine must be Windows or Tesseract." }
-                : Array.Empty<string>());
+        var ocrEngineErrors = new List<string>();
+        if (!OcrSettings.IsSupportedEngine(OcrEngine))
+        {
+            ocrEngineErrors.Add("OCR engine must be Windows or Tesseract.");
+        }
+        else
+        {
+            ocrEngineErrors.AddRange(CreateOcrEngineLanguageCompatibilityErrors());
+        }
+
+        SetErrors(nameof(OcrEngine), ocrEngineErrors);
         SetErrors(
             nameof(OcrOrientationMode),
             !OcrSettings.IsSupportedOrientationMode(OcrOrientationMode)
@@ -3877,6 +3999,11 @@ public sealed class MainViewModel : ValidatableObservableObject
         return $"{sanitizedName}.json";
     }
 
+    private static string BuildDefaultDebugInfoFileName()
+    {
+        return $"game-translator-debug-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.txt";
+    }
+
     private void MoveSelectedZoneBy(int offset)
     {
         if (SelectedZone is null)
@@ -4061,6 +4188,137 @@ public sealed class MainViewModel : ValidatableObservableObject
         OnPropertyChanged(nameof(OcrPreviewText));
     }
 
+    private string BuildDebugInfoReport()
+    {
+        var builder = new StringBuilder();
+        var generatedAt = DateTimeOffset.Now;
+
+        builder.AppendLine("Game Translator debug info");
+        builder.AppendLine($"GeneratedLocal: {generatedAt:O}");
+        builder.AppendLine($"CurrentStage: {CurrentStage}");
+        builder.AppendLine("Privacy: profile free-text fields and credential values are omitted.");
+        builder.AppendLine();
+
+        builder.AppendLine("State");
+        builder.AppendLine($"  IsBusy: {IsBusy}");
+        builder.AppendLine($"  IsLiveTranslationRunning: {IsLiveTranslationRunning}");
+        builder.AppendLine($"  HasCapturePreview: {HasCapturePreview}");
+        builder.AppendLine($"  CapturePreviewSize: {CapturePreviewWidth}x{CapturePreviewHeight}");
+        builder.AppendLine($"  HasOcrPreview: {HasOcrPreview}");
+        builder.AppendLine($"  OcrPreviewBlockCount: {OcrDebugTextBlocks.Count}");
+        builder.AppendLine($"  IsOverlayPreviewVisible: {IsOverlayPreviewVisible}");
+        builder.AppendLine($"  IsDebugOverlayEnabled: {IsDebugOverlayEnabled}");
+        builder.AppendLine();
+
+        builder.AppendLine("Statuses");
+        AppendDebugLine(builder, "CapturePreviewStatus", CapturePreviewStatus);
+        AppendDebugLine(builder, "CaptureRefreshMetricsSummary", CaptureRefreshMetricsSummary);
+        AppendDebugLine(builder, "OcrPreviewStatus", OcrPreviewStatus);
+        AppendDebugLine(builder, "PipelineStatus", PipelineStatus);
+        AppendDebugLine(builder, "OverlayPreviewStatus", OverlayPreviewStatus);
+        AppendDebugLine(builder, "DebugOverlayStatus", DebugOverlayStatus);
+        AppendDebugLine(builder, "GlobalHotkeyStatus", GlobalHotkeyStatus);
+        AppendDebugLine(builder, "StatusMessage", StatusMessage);
+        builder.AppendLine();
+
+        builder.AppendLine("Selected zone");
+        if (SelectedZone is null)
+        {
+            builder.AppendLine("  none");
+        }
+        else
+        {
+            var selectedZoneIndex = OcrZones.IndexOf(SelectedZone) + 1;
+            builder.AppendLine($"  Index: {selectedZoneIndex}");
+            builder.AppendLine($"  Id: {SelectedZone.Id}");
+            builder.AppendLine($"  Absolute: {SelectedZone.AbsoluteBoundsSummary}");
+            builder.AppendLine($"  Relative: {SelectedZone.RelativeBoundsSummary}");
+            builder.AppendLine($"  OCR engine: {OcrEngine}");
+            builder.AppendLine($"  OCR language: {ResolveSelectedOcrLanguage()}");
+            builder.AppendLine($"  OCR orientation: {OcrOrientationMode}");
+            builder.AppendLine($"  Overlay style: {SelectedZone.OverlayTextStyleSummary}");
+            builder.AppendLine($"  Grouping: {SelectedZone.TranslationGroupingModeSummary}");
+        }
+
+        builder.AppendLine();
+        builder.AppendLine("OCR debug blocks");
+        if (OcrDebugTextBlocks.Count == 0)
+        {
+            builder.AppendLine("  none");
+        }
+        else
+        {
+            for (var index = 0; index < OcrDebugTextBlocks.Count; index++)
+            {
+                var block = OcrDebugTextBlocks[index];
+                builder.AppendLine(
+                    $"  [{index + 1}] {block.CoordinatesSummary} VisibleOnCapturePreview={block.IsVisibleOnCapturePreview} Text={SanitizeDebugText(block.Text)}");
+            }
+        }
+
+        AppendOverlaySnapshotDebugInfo(builder);
+
+        return builder.ToString();
+    }
+
+    private void AppendOverlaySnapshotDebugInfo(StringBuilder builder)
+    {
+        builder.AppendLine();
+        builder.AppendLine("Overlay snapshot");
+
+        var snapshot = overlayService.CurrentSnapshot;
+        if (snapshot is null)
+        {
+            builder.AppendLine("  none");
+            return;
+        }
+
+        builder.AppendLine($"  ShownAt: {snapshot.ShownAt:O}");
+        builder.AppendLine($"  TextItems: {snapshot.TextItems.Count}");
+        for (var index = 0; index < snapshot.TextItems.Count; index++)
+        {
+            var item = snapshot.TextItems[index];
+            builder.AppendLine(
+                $"  Text[{index + 1}] X {item.X} Y {item.Y} W {item.Width} H {item.Height} Font={item.TextStyle.FontFamily} {item.TextStyle.FontSize:0.##} Bold={item.TextStyle.IsBold} Italic={item.TextStyle.IsItalic} Layout={item.TextStyle.LayoutMode} Text={SanitizeDebugText(item.Text)}");
+        }
+
+        builder.AppendLine($"  MaskItems: {snapshot.MaskItems.Count}");
+        for (var index = 0; index < snapshot.MaskItems.Count; index++)
+        {
+            var item = snapshot.MaskItems[index];
+            builder.AppendLine(
+                $"  Mask[{index + 1}] X {item.X} Y {item.Y} W {item.Width} H {item.Height} Mode={item.Mode} Color={item.Color} Opacity={item.Opacity:0.##}");
+        }
+
+        builder.AppendLine($"  DebugItems: {snapshot.DebugItems.Count}");
+        for (var index = 0; index < snapshot.DebugItems.Count; index++)
+        {
+            var item = snapshot.DebugItems[index];
+            builder.AppendLine(
+                $"  Debug[{index + 1}] X {item.X} Y {item.Y} W {item.Width} H {item.Height} Source={SanitizeDebugText(item.SourceText)} Translated={SanitizeDebugText(item.TranslatedText)}");
+        }
+
+        builder.AppendLine($"  DebugMetricLines: {snapshot.DebugMetricLines.Count}");
+        foreach (var line in snapshot.DebugMetricLines)
+        {
+            builder.AppendLine($"  Metric: {SanitizeDebugText(line)}");
+        }
+    }
+
+    private static void AppendDebugLine(StringBuilder builder, string label, string value)
+    {
+        builder.AppendLine($"  {label}: {SanitizeDebugText(value)}");
+    }
+
+    private static string SanitizeDebugText(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? "(empty)"
+            : value.Trim()
+                .Replace("\r", "\\r", StringComparison.Ordinal)
+                .Replace("\n", "\\n", StringComparison.Ordinal);
+    }
+
     private void UpdateCapturePreview(CapturedFrame frame)
     {
         CapturePreviewImage = CreateCapturePreviewImage(frame);
@@ -4132,6 +4390,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         ((AsyncRelayCommand)RefreshCapturePreviewCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)MeasureCaptureRefreshCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)RecognizeOcrPreviewCommand).RaiseCanExecuteChanged();
+        ((AsyncRelayCommand)CollectDebugInfoCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)CheckOcrLanguagePackCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)InstallOcrLanguagePackCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)RunTranslationPipelineCommand).RaiseCanExecuteChanged();

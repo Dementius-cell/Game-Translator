@@ -194,7 +194,7 @@ public sealed class OverlayPositioningServiceTests
     }
 
     [Fact]
-    public void CreateSnapshot_WithExpandedTextStyle_CentersExpandedTextAroundSourceBounds()
+    public void CreateSnapshot_WithExpandedTextStyle_DampensRightOverflowAndKeepsSourceMask()
     {
         var service = new OverlayPositioningService();
         var textStyle = new OcrZoneTextStyle
@@ -218,13 +218,53 @@ public sealed class OverlayPositioningServiceTests
         Assert.Equal(textStyle, item.TextStyle);
         Assert.True(item.Width > 40);
         Assert.True(item.Height > 20);
-        Assert.Equal(200d, item.X + item.Width / 2d, precision: 0);
-        Assert.Equal(220d, item.Y + item.Height / 2d, precision: 0);
+        Assert.InRange(item.X + item.Width / 2d, 185d, 186d);
+        Assert.InRange(item.Y + item.Height / 2d, 220d, 240d);
         var mask = Assert.Single(snapshot.MaskItems);
         Assert.Equal(180, mask.X);
         Assert.Equal(210, mask.Y);
         Assert.Equal(40, mask.Width);
         Assert.Equal(20, mask.Height);
+    }
+
+    [Fact]
+    public void CreateSnapshot_WithExpandedHorizontalNeighbors_KeepsTranslationInsideZoneAndAwayFromOtherSemanticGroups()
+    {
+        var service = new OverlayPositioningService();
+        var textStyle = new OcrZoneTextStyle
+        {
+            FontFamily = "Segoe UI",
+            FontSize = 20,
+            IsBold = true,
+            LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter,
+        };
+        var blocks = new[]
+        {
+            new OcrTextBlock("Save game", new BoundingBox(38, 40, 180, 42)),
+            new OcrTextBlock("Load game", new BoundingBox(38, 94, 180, 42)),
+            new OcrTextBlock("HP 120/150 MP 45/80 Gold 9,999", new BoundingBox(234, 40, 190, 96)),
+        };
+        var result = CreateResultWithSources(
+            new CaptureRegion(1396, 110, 480, 220),
+            inputWidth: 480,
+            inputHeight: 220,
+            OcrOrientationMode.Horizontal,
+            blocks,
+            blocks
+                .Select(block => new OcrTextBlockSource(block.Bounds, new[] { block.Bounds }, OcrOrientationMode.Horizontal))
+                .ToArray());
+
+        var snapshot = service.CreateSnapshot(result, ShownAt, previousSnapshot: null, textStyle);
+
+        var hp = snapshot.TextItems[2];
+        Assert.True(hp.X >= 1396);
+        Assert.True(hp.X + hp.Width <= 1876);
+        Assert.False(Intersects(hp, new BoundingBox(1434, 150, 180, 42)));
+        Assert.False(Intersects(hp, new BoundingBox(1434, 204, 180, 42)));
+        Assert.Equal(1630, snapshot.MaskItems[2].X);
+        Assert.Equal(150, snapshot.MaskItems[2].Y);
+        Assert.Equal(190, snapshot.MaskItems[2].Width);
+        Assert.Equal(96, snapshot.MaskItems[2].Height);
     }
 
     [Fact]
@@ -250,8 +290,8 @@ public sealed class OverlayPositioningServiceTests
         var item = Assert.Single(snapshot.TextItems);
         Assert.True(item.Width <= 200);
         Assert.True(item.Height > 20);
-        Assert.Equal(220d, item.X + item.Width / 2d, precision: 0);
-        Assert.Equal(140d, item.Y + item.Height / 2d, precision: 0);
+        Assert.InRange(item.X + item.Width / 2d, 210d, 220d);
+        Assert.InRange(item.Y + item.Height / 2d, 140d, 160d);
         var mask = Assert.Single(snapshot.MaskItems);
         Assert.Equal(180, mask.X);
         Assert.Equal(130, mask.Y);
@@ -282,8 +322,9 @@ public sealed class OverlayPositioningServiceTests
         var item = Assert.Single(snapshot.TextItems);
         Assert.True(item.Width > 60);
         Assert.True(item.Height > 160);
-        Assert.Equal(370d, item.X + item.Width / 2d, precision: 0);
-        Assert.Equal(258d, item.Y + item.Height / 2d, precision: 0);
+        Assert.InRange(item.X + item.Width / 2d, 350d, 370d);
+        Assert.True(item.Y >= 0);
+        Assert.True(item.Y + item.Height <= 600);
         var mask = Assert.Single(snapshot.MaskItems);
         Assert.Equal(340, mask.X);
         Assert.Equal(250, mask.Y);
@@ -306,13 +347,15 @@ public sealed class OverlayPositioningServiceTests
 
         var item = Assert.Single(snapshot.TextItems);
         Assert.Equal("Translated subtitle", item.Text);
+        Assert.Equal(100, item.X);
+        Assert.Equal(200, item.Width);
         Assert.True(item.Width > item.Height * 4);
-        Assert.Equal(190d, item.X + item.Width / 2d, precision: 0);
+        Assert.Equal(200d, item.X + item.Width / 2d, precision: 0);
         Assert.Equal(380d, item.Y + item.Height / 2d, precision: 0);
     }
 
     [Fact]
-    public void CreateSnapshot_WithExpandedVerticalOcrBounds_UsesReadableWidthWithoutKeepingTallSourceHeight()
+    public void CreateSnapshot_WithExpandedVerticalOcrBounds_BoundsAreaAndKeepsSourceMask()
     {
         var service = new OverlayPositioningService();
         var textStyle = new OcrZoneTextStyle
@@ -337,15 +380,163 @@ public sealed class OverlayPositioningServiceTests
 
         var item = Assert.Single(snapshot.TextItems);
         Assert.Equal("Давно не виделись. Рад снова встретиться.", item.Text);
-        Assert.True(item.Width >= 280);
-        Assert.True(item.Height < 120);
+        Assert.Equal(30, item.Width);
+        Assert.True(item.Height <= 400);
+        Assert.True(item.Width * item.Height <= 30 * 400 * 1.10);
         Assert.Equal(235d, item.X + item.Width / 2d, precision: 0);
-        Assert.InRange(item.Y + item.Height / 2d, 224d, 226d);
+        Assert.InRange(item.Y, 25, 425);
         var mask = Assert.Single(snapshot.MaskItems);
         Assert.Equal(220, mask.X);
         Assert.Equal(25, mask.Y);
         Assert.Equal(30, mask.Width);
         Assert.Equal(400, mask.Height);
+    }
+
+    [Fact]
+    public void CreateSnapshot_WithHorizontalMultilineRightOverflow_AppliesLineOffsetAndDampening()
+    {
+        var service = new OverlayPositioningService();
+        var textStyle = new OcrZoneTextStyle
+        {
+            FontSize = 16,
+            LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter,
+        };
+        var block = new OcrTextBlock("Translated option", new BoundingBox(100, 100, 80, 180));
+        var result = CreateResultWithSources(
+            new CaptureRegion(0, 0, 300, 300),
+            inputWidth: 300,
+            inputHeight: 300,
+            OcrOrientationMode.Horizontal,
+            new[] { block },
+            new[]
+            {
+                new OcrTextBlockSource(
+                    block.Bounds,
+                    new[]
+                    {
+                        new BoundingBox(100, 100, 80, 12),
+                        new BoundingBox(100, 124, 80, 12),
+                    },
+                    OcrOrientationMode.Horizontal),
+            });
+
+        var snapshot = service.CreateSnapshot(result, ShownAt, previousSnapshot: null, textStyle);
+
+        var item = Assert.Single(snapshot.TextItems);
+        Assert.Equal(92, item.Y);
+        Assert.True(item.X < 100);
+        Assert.True(item.X + item.Width > 180);
+        var mask = Assert.Single(snapshot.MaskItems);
+        Assert.Equal(100, mask.X);
+        Assert.Equal(100, mask.Y);
+        Assert.Equal(80, mask.Width);
+        Assert.Equal(180, mask.Height);
+    }
+
+    [Fact]
+    public void CreateSnapshot_WithCompactVerticalExpandedText_SkipsXDampeningAndKeepsBaseFont()
+    {
+        var service = new OverlayPositioningService();
+        var textStyle = new OcrZoneTextStyle
+        {
+            FontSize = 14,
+            LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter,
+        };
+        var block = new OcrTextBlock("Calm fit", new BoundingBox(70, 108, 58, 116));
+        var result = CreateResultWithSources(
+            new CaptureRegion(0, 0, 260, 260),
+            inputWidth: 260,
+            inputHeight: 260,
+            OcrOrientationMode.Auto,
+            new[] { block },
+            new[]
+            {
+                new OcrTextBlockSource(
+                    block.Bounds,
+                    new[] { block.Bounds },
+                    OcrOrientationMode.Vertical),
+            });
+
+        var snapshot = service.CreateSnapshot(result, ShownAt, previousSnapshot: null, textStyle);
+
+        var item = Assert.Single(snapshot.TextItems);
+        Assert.Equal(14, item.TextStyle.FontSize);
+        Assert.Equal(58, item.Width);
+        Assert.Equal(70, item.X);
+        Assert.Equal(99d, item.X + item.Width / 2d, precision: 0);
+        Assert.Equal(128, item.X + item.Width);
+        Assert.True(item.Width * item.Height <= 58 * 116 * 1.10);
+        var mask = Assert.Single(snapshot.MaskItems);
+        Assert.Equal(70, mask.X);
+        Assert.Equal(108, mask.Y);
+        Assert.Equal(58, mask.Width);
+        Assert.Equal(116, mask.Height);
+    }
+
+    [Fact]
+    public void CreateSnapshot_WithWideVerticalFitToSource_DampensRightOverflow()
+    {
+        var service = new OverlayPositioningService();
+        var block = new OcrTextBlock("Wide vertical", new BoundingBox(100, 50, 120, 180));
+        var result = CreateResultWithSources(
+            new CaptureRegion(0, 0, 320, 260),
+            inputWidth: 320,
+            inputHeight: 260,
+            OcrOrientationMode.Auto,
+            new[] { block },
+            new[]
+            {
+                new OcrTextBlockSource(
+                    block.Bounds,
+                    new[] { block.Bounds },
+                    OcrOrientationMode.Vertical),
+            });
+
+        var snapshot = service.CreateSnapshot(result, ShownAt);
+
+        var item = Assert.Single(snapshot.TextItems);
+        Assert.Equal(55, item.X);
+        Assert.Equal(80, item.Y);
+        Assert.Equal(180, item.Width);
+        Assert.Equal(120, item.Height);
+    }
+
+    [Fact]
+    public void CreateSnapshot_WithMixedOrientationGroups_AppliesRulesIndependently()
+    {
+        var service = new OverlayPositioningService();
+        var blocks = new[]
+        {
+            new OcrTextBlock("Vertical", new BoundingBox(34, 60, 60, 72)),
+            new OcrTextBlock("Single", new BoundingBox(126, 38, 104, 38)),
+            new OcrTextBlock("Book page", new BoundingBox(42, 168, 144, 58)),
+        };
+        var result = CreateResultWithSources(
+            new CaptureRegion(0, 0, 320, 260),
+            inputWidth: 320,
+            inputHeight: 260,
+            OcrOrientationMode.Auto,
+            blocks,
+            new[]
+            {
+                new OcrTextBlockSource(blocks[0].Bounds, new[] { blocks[0].Bounds }, OcrOrientationMode.Vertical),
+                new OcrTextBlockSource(blocks[1].Bounds, new[] { blocks[1].Bounds }, OcrOrientationMode.Horizontal),
+                new OcrTextBlockSource(
+                    blocks[2].Bounds,
+                    new[]
+                    {
+                        new BoundingBox(42, 168, 144, 20),
+                        new BoundingBox(42, 202, 144, 20),
+                    },
+                    OcrOrientationMode.Horizontal),
+            });
+
+        var snapshot = service.CreateSnapshot(result, ShownAt);
+
+        Assert.Equal(new[] { "Vertical", "Single", "Book page" }, snapshot.TextItems.Select(item => item.Text));
+        Assert.Equal(66, snapshot.TextItems[0].Y);
+        Assert.Equal(38, snapshot.TextItems[1].Y);
+        Assert.Equal(160, snapshot.TextItems[2].Y);
     }
 
     [Fact]
@@ -379,6 +570,14 @@ public sealed class OverlayPositioningServiceTests
         return new OverlaySnapshot(textItems, ShownAt.AddSeconds(-1));
     }
 
+    private static bool Intersects(OverlayTextItem item, BoundingBox bounds)
+    {
+        var width = Math.Min(item.X + item.Width, bounds.Right) - Math.Max(item.X, bounds.X);
+        var height = Math.Min(item.Y + item.Height, bounds.Bottom) - Math.Max(item.Y, bounds.Y);
+
+        return width > 2 && height > 2;
+    }
+
     private static OcrResult CreateResult(
         CaptureRegion region,
         int inputWidth,
@@ -401,6 +600,23 @@ public sealed class OverlayPositioningServiceTests
             new OcrRequest(frame, "en", "zone-a", orientationMode: orientationMode),
             blocks,
             FrameTime);
+    }
+
+    private static OcrResult CreateResultWithSources(
+        CaptureRegion region,
+        int inputWidth,
+        int inputHeight,
+        OcrOrientationMode orientationMode,
+        IReadOnlyList<OcrTextBlock> blocks,
+        IReadOnlyList<OcrTextBlockSource> sources)
+    {
+        var frame = CreateFrame(region, inputWidth, inputHeight);
+
+        return new OcrResult(
+            new OcrRequest(frame, "en", "zone-a", orientationMode: orientationMode),
+            blocks,
+            FrameTime,
+            sources);
     }
 
     private static CapturedFrame CreateFrame(CaptureRegion region, int width, int height)

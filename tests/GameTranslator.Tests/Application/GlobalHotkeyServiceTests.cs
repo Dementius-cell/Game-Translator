@@ -15,6 +15,8 @@ public sealed class GlobalHotkeyServiceTests
         Assert.Contains(bindings, binding => binding.Action == GlobalHotkeyAction.StartPausePipeline);
         var recognizeOcrBinding = Assert.Single(bindings, binding => binding.Action == GlobalHotkeyAction.RecognizeOcrPreview);
         Assert.Equal("Ctrl+Shift+F8", recognizeOcrBinding.Gesture.DisplayText);
+        var collectDebugInfoBinding = Assert.Single(bindings, binding => binding.Action == GlobalHotkeyAction.CollectDebugInfo);
+        Assert.Equal("Ctrl+Shift+F9", collectDebugInfoBinding.Gesture.DisplayText);
         Assert.Contains(bindings, binding => binding.Action == GlobalHotkeyAction.ToggleOverlay);
         Assert.Contains(bindings, binding => binding.Action == GlobalHotkeyAction.ShowSettings);
         Assert.Contains(bindings, binding => binding.Action == GlobalHotkeyAction.ExitApplication);
@@ -47,7 +49,9 @@ public sealed class GlobalHotkeyServiceTests
 
         var recognizeOcrBinding = Assert.Single(bindings, binding => binding.Action == GlobalHotkeyAction.RecognizeOcrPreview);
         Assert.Equal("Ctrl+Shift+F8", recognizeOcrBinding.Gesture.DisplayText);
-        Assert.Equal(5, bindings.Count);
+        var collectDebugInfoBinding = Assert.Single(bindings, binding => binding.Action == GlobalHotkeyAction.CollectDebugInfo);
+        Assert.Equal("Ctrl+Shift+F9", collectDebugInfoBinding.Gesture.DisplayText);
+        Assert.Equal(6, bindings.Count);
     }
 
     [Fact]

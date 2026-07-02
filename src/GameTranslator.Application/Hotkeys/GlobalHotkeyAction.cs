@@ -4,6 +4,7 @@ public enum GlobalHotkeyAction
 {
     StartPausePipeline,
     RecognizeOcrPreview,
+    CollectDebugInfo,
     ToggleOverlay,
     ShowSettings,
     ExitApplication,

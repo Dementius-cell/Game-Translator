@@ -28,8 +28,6 @@ This folder contains the source-of-truth documents for Game-Translator. Read the
 - [Sprint 8 overlay click-through smoke](smoke/sprint-08-overlay-click-through.md)
 - [Sprint 9 overlay positioning smoke](smoke/sprint-09-overlay-positioning.md)
 
-## Current Project State
+## Project Status Source
 
-- Current roadmap stage: Stage 4, Overlay MVP.
-- Current sprint: Sprint 9, position overlay content from OCR bounding boxes.
-- Required implementation result: overlay text items aligned from OCR bounds with region offsets and scaling, and no translation pipeline yet.
+This README is an index, not the live sprint/status source. Use GitHub Issues and the latest handoff under `docs/handoff/` for active work, then cross-check against the roadmap and sprint plan. If a document hard-codes an older stage/sprint, treat it as historical context until reconciled.

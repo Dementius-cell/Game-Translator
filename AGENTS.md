@@ -27,11 +27,9 @@ This repository uses nested `AGENTS.md` files for area-specific rules. Before ch
 
 Child instruction files extend these root rules within their directory scope. Calibration tests may use approved fixture data and generated evidence, but a passing calibration test is evidence only and must not be treated as production behavior without explicit approval.
 
-## Current Stage
+## Project Status Source
 
-- Roadmap stage: Stage 0, project preparation.
-- Sprint: Sprint 0, project initialization.
-- Target result: an empty WPF application that compiles and runs without OCR, translation, screen capture, or overlay functionality.
+Do not treat this file as the current sprint/status source. The project has progressed beyond initial scaffolding; use GitHub Issues, current handoff docs, and the roadmap/sprint documents to determine active work before editing. If these disagree, report the conflict before proceeding.
 
 ## Non-Negotiable Constraints
 

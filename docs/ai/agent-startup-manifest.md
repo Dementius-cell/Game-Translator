@@ -1,9 +1,11 @@
+> Historical note: this file is the original Sprint 0 startup manifest. It is kept for project-history context only and must not be used as the current project status or active sprint instruction. For current work, start with `AGENTS.md`, GitHub Issues, and the latest handoff under `docs/handoff/`.
+
 СТАРТОВЫЙ МАНИФЕСТ ДЛЯ AI-АГЕНТА
 Проект: Game Translator
 
 Версия документа: 1.0
-Действует с: текущего момента
-Статус: ОБЯЗАТЕЛЕН К ИСПОЛНЕНИЮ
+Действует с: исторический снимок Sprint 0; не использовать как текущую инструкцию
+Статус: ИСТОРИЧЕСКИЙ ДОКУМЕНТ
 1. ТЕКУЩЕЕ СОСТОЯНИЕ ПРОЕКТА
 Параметр	Значение
 Текущий этап Roadmap	Этап 0 – Подготовка проекта
@@ -249,8 +251,8 @@ markdown
 ## Проект: Game Translator
 
 Версия документа: 1.0  
-Действует с: текущего момента  
-Статус: **ОБЯЗАТЕЛЕН К ИСПОЛНЕНИЮ**
+Действует с: исторический снимок Sprint 0; не использовать как текущую инструкцию
+Статус: **ИСТОРИЧЕСКИЙ ДОКУМЕНТ**
 
 ---
 

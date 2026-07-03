@@ -23,3 +23,10 @@ Calibration tests are an offline experimental sandbox for golden-reference OCR, 
 ## Promotion Rule
 
 A calibration result can only become application behavior after human visual verification. If the promotion changes OCR interfaces, overlay rules, profile schema, translator behavior, diagnostics schema, or architecture, follow `docs/governance/change-approval-required.md` before changing production code.
+
+## Fixture Promotion Workflow
+
+- Use `docs/testing/calibration-and-smoke-workflow.md` as the source of truth for generated evidence classification.
+- Keep exploratory scorecards, contact sheets, manual smoke screenshots, and debug reports local by default.
+- Promote only the minimal deterministic fixture contract that a calibration test consumes: fixed source frame or manifest, expected values, and any required stable review image.
+- For mixed full-screen scenarios, prefer one OCR capture zone that covers the whole fixture image, then vary OCR language, orientation, and grouping settings inside the test or fixture metadata.

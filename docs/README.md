@@ -27,6 +27,7 @@ This folder contains the source-of-truth documents for Game-Translator. Read the
 
 ## Smoke Checks
 
+- [Calibration and Smoke Workflow](testing/calibration-and-smoke-workflow.md)
 - [Sprint 8 overlay click-through smoke](smoke/sprint-08-overlay-click-through.md)
 - [Sprint 9 overlay positioning smoke](smoke/sprint-09-overlay-positioning.md)
 

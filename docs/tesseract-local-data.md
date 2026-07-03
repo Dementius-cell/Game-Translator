@@ -2,9 +2,9 @@
 
 Status: active local dependency note.
 
-Tesseract `.traineddata` files are runtime/test dependencies, not source artifacts. Keep them outside normal commits. The repository ignores `tessdata/`, so a developer can place language data under the project root without polluting the worktree.
+Tesseract `.traineddata` files are runtime/test dependencies, not source artifacts. Keep them outside normal commits. The repository ignores `tessdata/**`, so a developer can place language data under the project root without polluting the worktree.
 
-Tesseract documentation describes using a directory supplied by `TESSDATA_PREFIX`, and selecting multiple OCR languages with the `-l LANG[+LANG]` syntax. The project also checks the repository-local `tessdata/` folder when available.
+Tesseract documentation describes using a directory supplied by `TESSDATA_PREFIX`, and selecting multiple OCR languages with the `-l LANG[+LANG]` syntax. The project also checks the repository-local tessdata folder when available.
 
 ## Project Baseline
 

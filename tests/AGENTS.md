@@ -28,3 +28,4 @@ When changing vertical CJK behavior, cover at least one relevant case:
 - `tests/GameTranslator.Tests/Calibration/**` may use approved fixture data to bypass individual runtime stages for offline golden-reference calibration.
 - A passing calibration test is evidence for a future production change, not a production rule change by itself.
 - Follow the nested `AGENTS.md` in that directory before adding or changing calibration tests.
+- Follow `docs/testing/calibration-and-smoke-workflow.md` when deciding whether a generated screenshot, scorecard, smoke output, or full-screen frame should become a tracked fixture or remain local evidence.

@@ -1,6 +1,14 @@
 /work/
 /outputs/
 /tessdata/
+/artifacts/manual-smoke/
+/artifacts/manual-smoke-diagnostics/
+/artifacts/manual-real-smoke-diagnostics/
+
+# Generated calibration review packages are local until intentionally promoted.
+# Tracked fixtures under this path remain tracked; use git add -f for an
+# explicitly approved new fixture or evidence package.
+/artifacts/calibration/*/
 bin/
 obj/
 logs/

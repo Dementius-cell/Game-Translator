@@ -18,6 +18,7 @@ This folder contains the source-of-truth documents for Game-Translator. Read the
 - [Architecture Decision Records](adr/README.md)
 - [Change Approval Required](governance/change-approval-required.md)
 - [Evidence Artifact Policy](evidence-artifacts.md)
+- [Tesseract Local Language Data](tesseract-local-data.md)
 
 ## AI-Agent Materials
 

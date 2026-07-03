@@ -20,6 +20,7 @@ This project uses generated screenshots, JSON scorecards, debug reports, and smo
 - Before using a historical local path as current evidence, rerun the test or harness that generated it, or confirm that the file is intentionally tracked.
 - Keep `work/**` and `outputs/**` out of normal commits unless the project owner explicitly asks to promote a harness or output.
 - If a generated artifact should become part of the project record, commit it intentionally with the doc/test that consumes it; do not rely on an incidental dirty worktree.
+- `.gitignore` keeps new `artifacts/calibration/*/` review packages and manual smoke folders local by default. Existing tracked fixture files under those paths remain tracked. Use `git add -f` only for an explicitly approved new fixture or evidence package.
 
 ## Audit Notes
 

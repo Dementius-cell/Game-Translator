@@ -33,7 +33,7 @@ Screenshots and contact sheets are supporting evidence. They should not be the o
 | Artifact or scenario | Decision |
 | --- | --- |
 | `artifacts/calibration/full-screen-mixed-content-frame/**` | Tracked deterministic fixture; keep. It represents the full-image OCR capture scenario with mixed language, orientation, and text sizes. |
-| `artifacts/calibration/vertical-long-translation-fit-frame/**` | Candidate for promotion. Promote only with the focused deterministic test that asserts its accepted placement/fit values. |
+| `artifacts/calibration/vertical-long-translation-fit-frame/**` | Tracked deterministic fixture; keep. It asserts accepted vertical long-translation fit values through a focused calibration test. |
 | `artifacts/calibration/mixed-worst-case-frame/**` | Candidate review package. Keep local until readable overlay rules and accepted values are chosen. |
 | `artifacts/calibration/mixed-orientation-frame/**` | Candidate review package. Keep local until it has a focused fixture contract distinct from the full-screen mixed fixture. |
 | Thai and multi-column Japanese generated calibration packages | Candidate review packages. Keep local until one or more scenarios are selected as stable regressions. |

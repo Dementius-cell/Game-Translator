@@ -4,9 +4,14 @@
 
 Confirm that overlay text can be positioned from OCR text block bounding boxes.
 
+## Prerequisites
+
+- Build the repository in `Release`.
+- Use the built UI executable at `src/GameTranslator.UI/bin/Release/net9.0-windows10.0.19041.0/GameTranslator.UI.exe`. This is a build output and is not tracked source.
+
 ## Steps
 
-1. Start `GameTranslator.UI.exe` in an interactive Windows desktop session.
+1. Start the built UI executable in an interactive Windows desktop session.
 2. Create or select a profile with at least one OCR zone around visible text.
 3. Set the source language to the visible text language.
 4. Click `Refresh preview`.

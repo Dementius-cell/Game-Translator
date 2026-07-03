@@ -23,6 +23,12 @@ Current sprint context:
 - The project owner approved production #32 promotion on 2026-07-01 for runtime overlay placement code changes under `docs/design/issue-32-overlay-placement-production-promotion-spec.md`.
 - Further changes that affect overlay rules, diagnostics contracts, OCR interfaces, profile schema, architecture, or another governed area still require explicit project-owner approval.
 
+Artifact availability note:
+
+- Paths under `outputs/` and `work/` are ignored local run products and are not expected in a clean checkout.
+- Manual smoke paths under `artifacts/manual-smoke-diagnostics/` and `artifacts/manual-real-smoke-diagnostics/` are historical local review snapshots unless a later commit explicitly tracks them.
+- Calibration artifact paths may be either tracked deterministic fixtures or generated review packages. Check `docs/evidence-artifacts.md` before treating an inline path as required project state.
+
 What changed in production scope:
 
 - Runtime grouping now preserves source OCR member bounds for translated semantic groups.

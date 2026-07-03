@@ -12,10 +12,12 @@ How the engineering skills should consume this repo's domain documentation when 
 - `docs/06-sprint-development-plan.md`
 - `docs/07-definition-of-done-quality-gates.md`
 - `docs/05-ai-development-rules.md`
+- `docs/evidence-artifacts.md` when the task cites generated screenshots, scorecards, debug reports, local harnesses, or built binaries
 - `docs/adr/README.md` when the task touches architecture or previously accepted decisions
 - `docs/governance/change-approval-required.md` when the task may require explicit project-owner approval
 
 If a future `CONTEXT.md` is added, read it before implementation work and use its vocabulary for issue titles, test names, refactor proposals, and design notes.
+This is an optional future-file rule, not a current required file in the repository.
 
 ## File structure
 

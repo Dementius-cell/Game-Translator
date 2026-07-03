@@ -48,6 +48,7 @@ Do not treat this file as the current sprint/status source. The project has prog
 - Follow the roadmap and sprint order unless the project owner explicitly approves a change.
 - Keep changes minimal and tied to the current sprint.
 - Add or update tests for new behavior according to the quality gates.
+- When adding documentation references to generated screenshots, scorecards, debug reports, harnesses, or built binaries, label whether the path is tracked, generated/reproducible, local-only, ignored output, or a build output. Follow `docs/evidence-artifacts.md`.
 - Report changed files, created files, validation performed, discovered risks, remaining work, and the next step after each task.
 - When posting or editing multi-line GitHub issue/PR comments, do not pass Markdown through inline shell strings or `gh ... --body` in PowerShell. Write the comment body to a UTF-8 file and use `--body-file`, or send JSON from a file through the GitHub API, then verify the published body with `gh issue view --json comments` or `gh api` before reporting success.
 

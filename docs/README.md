@@ -17,6 +17,7 @@ This folder contains the source-of-truth documents for Game-Translator. Read the
 
 - [Architecture Decision Records](adr/README.md)
 - [Change Approval Required](governance/change-approval-required.md)
+- [Evidence Artifact Policy](evidence-artifacts.md)
 
 ## AI-Agent Materials
 
@@ -31,3 +32,7 @@ This folder contains the source-of-truth documents for Game-Translator. Read the
 ## Project Status Source
 
 This README is an index, not the live sprint/status source. Use GitHub Issues and the latest handoff under `docs/handoff/` for active work, then cross-check against the roadmap and sprint plan. If a document hard-codes an older stage/sprint, treat it as historical context until reconciled.
+
+## Evidence Artifacts
+
+Documentation may cite screenshots, scorecards, debug reports, local harnesses, and built binaries. Before treating an inline path as a required file in a clean checkout, check [Evidence Artifact Policy](evidence-artifacts.md) for the artifact category and availability rules.

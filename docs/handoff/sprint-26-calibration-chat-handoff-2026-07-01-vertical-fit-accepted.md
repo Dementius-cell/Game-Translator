@@ -69,7 +69,7 @@ Latest relevant test-only fixture:
 Latest verification before handoff:
 
 - `dotnet build GameTranslator.sln -c Release` passed.
-- `dotnet test GameTranslator.sln -c Release --no-build` passed with `TESSDATA_PREFIX=C:\Users\admin\Documents\Codex\2026-06-30\game-translator-next-stage\work\tessdata_mixed`: `318/318`.
+- `dotnet test GameTranslator.sln -c Release --no-build` passed with local `TESSDATA_PREFIX` pointing at a reviewer-owned tessdata folder, for example `work/tessdata_mixed`: `318/318`.
 - `git diff --check` clean except the known LF-to-CRLF warning for `tests/GameTranslator.Tests/Calibration/GoldenReferenceCalibrationTests.cs`.
 - `git diff --name-only -- src` returned empty.
 

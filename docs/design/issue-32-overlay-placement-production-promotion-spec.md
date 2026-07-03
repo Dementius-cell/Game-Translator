@@ -25,6 +25,8 @@ Evidence:
 - `artifacts/calibration/vertical-long-translation-fit-frame/placement-evidence-map.json`
 - `artifacts/calibration/vertical-long-translation-fit-frame/fit-rules.json`
 
+Availability: these paths identify the calibration review inputs used for approval. Some are tracked deterministic artifacts, and some may be generated/local review artifacts. Production code must not load any of them.
+
 Manual approvals:
 
 - Candidate evidence third candidate column was accepted after compact vertical groups stopped receiving X dampening and the book-page horizontal overlay was lifted to the semantic group top.
@@ -186,6 +188,8 @@ Runtime verification:
 
 Manual/static evidence:
 
+Availability: these manual/static evidence paths are historical local review snapshots, not deterministic CI inputs and not guaranteed in a clean checkout.
+
 - Synthetic Start Live harness summary: `artifacts/manual-smoke-diagnostics/game-translator-live-manual-smoke-summary-20260702-143335.md`
 - Synthetic game-zone evidence: `artifacts/manual-smoke-diagnostics/game-translator-live-game-evidence-20260702-143334.png`
 - Synthetic one-large-comic-zone evidence: `artifacts/manual-smoke-diagnostics/game-translator-live-comic-evidence-20260702-143335.png`
@@ -216,6 +220,8 @@ User review identified two smoke-method issues after the initial promotion verif
 - Placement stability was previously evaluated from a live/static smoke frame even though the project already has a fixed reference with accepted overlay values. Follow-up placement verification must use `artifacts/calibration/vertical-long-translation-fit-frame/` and compare against the accepted `fit-rules.json` / `placement-evidence-map.json` values.
 
 Follow-up evidence:
+
+Availability: these `outputs/` files are ignored local run products from the follow-up smoke. Regenerate or verify them locally before using them as current evidence.
 
 - Fixed-reference summary: `outputs/game-translator-fixed-reference-user-smoke-summary-20260702-205958.md`
 - Accepted overlay value digest: `outputs/game-translator-fixed-reference-overlay-values-20260702-205958.json`

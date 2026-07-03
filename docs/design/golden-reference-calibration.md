@@ -97,6 +97,8 @@ Generated evidence:
 - `artifacts/calibration/full-screen-mixed-content-frame/candidate-scorecard.json`
 - `artifacts/calibration/full-screen-mixed-content-frame/manifest.json`
 
+Availability: these full-screen mixed-content fixture artifacts are tracked deterministic calibration inputs.
+
 Boundary:
 
 - The fixture is meant to keep full-screen capture, mixed language/orientation grouping, and readability checks inside the tracked test project instead of ignored one-off harnesses.
@@ -125,6 +127,8 @@ Reviewed evidence:
 - `artifacts/calibration/vertical-long-translation-fit-frame/placement-evidence.png`
 - `artifacts/calibration/vertical-long-translation-fit-frame/placement-evidence-map.json`
 - `artifacts/calibration/vertical-long-translation-fit-frame/fit-rules.json`
+
+Availability: this list records the local review package used for the Sprint 26 visual decision. Some paths are tracked calibration artifacts, while later generated review packages may be local-only until intentionally committed. Treat absent files in a clean checkout as reproducible evidence targets, not production runtime inputs.
 
 Manual visual approvals:
 
@@ -166,6 +170,8 @@ Scope:
 - The harness lives under ignored `work/RealAppDiagnosticsSmoke/` and is not part of deterministic CI.
 
 Evidence:
+
+Availability: these manual smoke paths are local/generated review snapshots and are not required to exist in a clean checkout.
 
 - Summary: `artifacts/manual-real-smoke-diagnostics/game-translator-real-live-smoke-summary-20260702-145600.md`
 - English UI/dialogue evidence: `artifacts/manual-real-smoke-diagnostics/game-translator-real-eng-ui-evidence-20260702-145555.png`
@@ -209,6 +215,8 @@ Corrections:
 - Live/static smoke frames are still useful for user-like Start Live flow, grouping counts, debug overlay metrics, and silent debug export, but they are not the stable authority for accepted issue #32 placement bounds.
 
 Follow-up artifacts:
+
+Availability: these follow-up paths under `outputs/` are ignored local run products. Use them as a historical record of the 2026-07-02 run, not as clean-checkout fixtures.
 
 - Fixed-reference summary: `outputs/game-translator-fixed-reference-user-smoke-summary-20260702-205958.md`
 - Accepted overlay value digest: `outputs/game-translator-fixed-reference-overlay-values-20260702-205958.json`

@@ -104,6 +104,24 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     private static readonly LanguageOption[] SupportedLanguageOptions = BuildSupportedLanguageOptions();
     private static readonly LanguageOption[] SupportedOcrLanguageOptions = BuildSupportedOcrLanguageOptions();
+    private static readonly string WindowsOcrLanguagePackHelpMessage = string.Join(
+        Environment.NewLine,
+        new[]
+        {
+            "Run Windows PowerShell as Administrator and install OCR-only Windows capabilities:",
+            string.Empty,
+            "$langs = @('ja-JP', 'ko-KR', 'th-TH', 'zh-CN', 'zh-HK', 'zh-TW')",
+            "foreach ($lang in $langs) {",
+            "    Get-WindowsCapability -Online |",
+            "        Where-Object { $_.Name -Like \"Language.OCR~~~$lang~*\" -and $_.State -ne \"Installed\" } |",
+            "        Add-WindowsCapability -Online",
+            "}",
+            string.Empty,
+            "This installs only Language.OCR capabilities.",
+            "It does not add Language.Basic packs and should not add keyboard input languages.",
+            "If Windows reports that a capability is not found, skip that language on this Windows build.",
+            "After installing, sign out or restart before checking again.",
+        });
 
     private static readonly OcrPreprocessingPresetOption[] SupportedOcrPreprocessingPresetOptions =
     {
@@ -228,6 +246,109 @@ public sealed class MainViewModel : ValidatableObservableObject
         return new[] { new LanguageOption(string.Empty, "Inherit translator source language") }
             .Concat(SupportedLanguageOptions)
             .ToArray();
+    }
+
+    private static OcrLanguagePackChecklistItemViewModel[] CreateDefaultOcrLanguagePackChecklistItems()
+    {
+        return new[]
+        {
+            new OcrLanguagePackChecklistItemViewModel(
+                OcrSettings.WindowsEngineId,
+                "en-US",
+                OcrOrientationMode.Horizontal,
+                "Windows OCR English",
+                "Base horizontal Windows OCR"),
+            new OcrLanguagePackChecklistItemViewModel(
+                OcrSettings.WindowsEngineId,
+                "ja-JP",
+                OcrOrientationMode.Horizontal,
+                "Windows OCR Japanese",
+                "Horizontal Windows OCR"),
+            new OcrLanguagePackChecklistItemViewModel(
+                OcrSettings.WindowsEngineId,
+                "ko-KR",
+                OcrOrientationMode.Horizontal,
+                "Windows OCR Korean",
+                "Horizontal Windows OCR"),
+            new OcrLanguagePackChecklistItemViewModel(
+                OcrSettings.WindowsEngineId,
+                "th-TH",
+                OcrOrientationMode.Horizontal,
+                "Windows OCR Thai",
+                "May be unavailable on some Windows builds"),
+            new OcrLanguagePackChecklistItemViewModel(
+                OcrSettings.WindowsEngineId,
+                "zh-CN",
+                OcrOrientationMode.Horizontal,
+                "Windows OCR Chinese simplified",
+                "Horizontal Windows OCR"),
+            new OcrLanguagePackChecklistItemViewModel(
+                OcrSettings.WindowsEngineId,
+                "zh-HK",
+                OcrOrientationMode.Horizontal,
+                "Windows OCR Chinese Hong Kong",
+                "Traditional Windows OCR"),
+            new OcrLanguagePackChecklistItemViewModel(
+                OcrSettings.WindowsEngineId,
+                "zh-TW",
+                OcrOrientationMode.Horizontal,
+                "Windows OCR Chinese traditional",
+                "Traditional Windows OCR"),
+            new OcrLanguagePackChecklistItemViewModel(
+                OcrSettings.TesseractEngineId,
+                "eng",
+                OcrOrientationMode.Horizontal,
+                "Tesseract English",
+                "eng.traineddata"),
+            new OcrLanguagePackChecklistItemViewModel(
+                OcrSettings.TesseractEngineId,
+                "jpn",
+                OcrOrientationMode.Horizontal,
+                "Tesseract Japanese",
+                "jpn.traineddata"),
+            new OcrLanguagePackChecklistItemViewModel(
+                OcrSettings.TesseractEngineId,
+                "jpn",
+                OcrOrientationMode.Vertical,
+                "Tesseract Japanese vertical",
+                "jpn_vert.traineddata"),
+            new OcrLanguagePackChecklistItemViewModel(
+                OcrSettings.TesseractEngineId,
+                "tha",
+                OcrOrientationMode.Horizontal,
+                "Tesseract Thai",
+                "tha.traineddata"),
+            new OcrLanguagePackChecklistItemViewModel(
+                OcrSettings.TesseractEngineId,
+                "kor",
+                OcrOrientationMode.Horizontal,
+                "Tesseract Korean",
+                "kor.traineddata"),
+            new OcrLanguagePackChecklistItemViewModel(
+                OcrSettings.TesseractEngineId,
+                "chi_sim",
+                OcrOrientationMode.Horizontal,
+                "Tesseract Chinese simplified",
+                "chi_sim.traineddata"),
+            new OcrLanguagePackChecklistItemViewModel(
+                OcrSettings.TesseractEngineId,
+                "chi_sim",
+                OcrOrientationMode.Vertical,
+                "Tesseract Chinese simplified vertical",
+                "chi_sim_vert.traineddata"),
+            new OcrLanguagePackChecklistItemViewModel(
+                OcrSettings.TesseractEngineId,
+                "chi_tra",
+                OcrOrientationMode.Horizontal,
+                "Tesseract Chinese traditional",
+                "chi_tra.traineddata"),
+            new OcrLanguagePackChecklistItemViewModel(
+                OcrSettings.TesseractEngineId,
+                "chi_tra",
+                OcrOrientationMode.Vertical,
+                "Tesseract Chinese traditional vertical",
+                "chi_tra_vert.traineddata"),
+        };
     }
 
     private readonly ProfileService profileService;
@@ -444,6 +565,8 @@ public sealed class MainViewModel : ValidatableObservableObject
         OcrZones = new ObservableCollection<OcrZoneEditorViewModel>();
         OcrPreviewTextBlocks = new ObservableCollection<OcrTextBlock>();
         OcrDebugTextBlocks = new ObservableCollection<OcrDebugTextBlockViewModel>();
+        OcrLanguagePackChecklistItems = new ObservableCollection<OcrLanguagePackChecklistItemViewModel>(
+            CreateDefaultOcrLanguagePackChecklistItems());
         HotkeyBindings = new ObservableCollection<HotkeyBindingViewModel>();
         ValidationErrors = new ObservableCollection<string>();
         OverlayMaskModes = Enum.GetValues<OverlayMaskMode>();
@@ -470,6 +593,15 @@ public sealed class MainViewModel : ValidatableObservableObject
         CollectDebugInfoCommand = new AsyncRelayCommand(CollectDebugInfoAsync, CanCollectDebugInfo);
         CheckOcrLanguagePackCommand = new AsyncRelayCommand(CheckOcrLanguagePackAsync, CanManageOcrLanguagePack);
         InstallOcrLanguagePackCommand = new AsyncRelayCommand(InstallOcrLanguagePackAsync, CanManageOcrLanguagePack);
+        CheckOcrLanguagePackChecklistCommand = new AsyncRelayCommand(
+            CheckOcrLanguagePackChecklistAsync,
+            CanManageOcrLanguagePackChecklist);
+        InstallTesseractLanguagePackChecklistCommand = new AsyncRelayCommand(
+            InstallTesseractLanguagePackChecklistAsync,
+            CanManageOcrLanguagePackChecklist);
+        ShowWindowsOcrLanguagePackHelpCommand = new AsyncRelayCommand(
+            ShowWindowsOcrLanguagePackHelpAsync,
+            CanManageOcrLanguagePackChecklist);
         RunTranslationPipelineCommand = new AsyncRelayCommand(RunTranslationPipelineAsync, CanRunTranslationPipeline);
         StartLiveTranslationCommand = new AsyncRelayCommand(StartLiveTranslationAsync, CanStartLiveTranslation);
         StopLiveTranslationCommand = new RelayCommand(StopLiveTranslation, () => IsLiveTranslationRunning);
@@ -504,6 +636,8 @@ public sealed class MainViewModel : ValidatableObservableObject
     public ObservableCollection<OcrTextBlock> OcrPreviewTextBlocks { get; }
 
     public ObservableCollection<OcrDebugTextBlockViewModel> OcrDebugTextBlocks { get; }
+
+    public ObservableCollection<OcrLanguagePackChecklistItemViewModel> OcrLanguagePackChecklistItems { get; }
 
     public ObservableCollection<HotkeyBindingViewModel> HotkeyBindings { get; }
 
@@ -1204,6 +1338,12 @@ public sealed class MainViewModel : ValidatableObservableObject
     public ICommand CheckOcrLanguagePackCommand { get; }
 
     public ICommand InstallOcrLanguagePackCommand { get; }
+
+    public ICommand CheckOcrLanguagePackChecklistCommand { get; }
+
+    public ICommand InstallTesseractLanguagePackChecklistCommand { get; }
+
+    public ICommand ShowWindowsOcrLanguagePackHelpCommand { get; }
 
     public ICommand RunTranslationPipelineCommand { get; }
 
@@ -2010,6 +2150,107 @@ public sealed class MainViewModel : ValidatableObservableObject
         {
             IsBusy = false;
         }
+    }
+
+    public async Task CheckOcrLanguagePackChecklistAsync()
+    {
+        if (!CanManageOcrLanguagePackChecklist())
+        {
+            OcrLanguagePackStatus = "Stop live translation before checking OCR language packs.";
+            StatusMessage = OcrLanguagePackStatus;
+            return;
+        }
+
+        try
+        {
+            IsBusy = true;
+            OcrLanguagePackStatus = "Checking common OCR language packs...";
+            StatusMessage = OcrLanguagePackStatus;
+
+            foreach (var item in OcrLanguagePackChecklistItems)
+            {
+                item.MarkChecking();
+                try
+                {
+                    var status = await ocrLanguagePackService.CheckAsync(
+                        item.EngineId,
+                        item.LanguageTag,
+                        item.OrientationMode);
+                    item.ApplyStatus(status);
+                }
+                catch (Exception exception)
+                {
+                    logger.Error(exception, $"OCR language pack checklist check failed for {item.EngineId} {item.LanguageTag}.");
+                    item.MarkFailed("Check failed. Check logs for details.");
+                }
+            }
+
+            UpdateOcrLanguagePackChecklistSummary("OCR language pack check complete.");
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task InstallTesseractLanguagePackChecklistAsync()
+    {
+        if (!CanManageOcrLanguagePackChecklist())
+        {
+            OcrLanguagePackStatus = "Stop live translation before installing Tesseract OCR language packs.";
+            StatusMessage = OcrLanguagePackStatus;
+            return;
+        }
+
+        try
+        {
+            IsBusy = true;
+            OcrLanguagePackStatus = "Installing missing common Tesseract traineddata files...";
+            StatusMessage = OcrLanguagePackStatus;
+
+            foreach (var item in OcrLanguagePackChecklistItems.Where(item => item.IsTesseract))
+            {
+                if (item.IsReady)
+                {
+                    continue;
+                }
+
+                item.MarkInstalling();
+                try
+                {
+                    var result = await ocrLanguagePackService.InstallAsync(
+                        item.EngineId,
+                        item.LanguageTag,
+                        item.OrientationMode);
+                    item.ApplyInstallResult(result);
+                }
+                catch (Exception exception)
+                {
+                    logger.Error(exception, $"Tesseract OCR language pack install failed for {item.LanguageTag}.");
+                    item.MarkFailed("Install failed. Check logs for details.");
+                }
+            }
+
+            UpdateOcrLanguagePackChecklistSummary("Tesseract OCR language pack install complete.");
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task ShowWindowsOcrLanguagePackHelpAsync()
+    {
+        if (!CanManageOcrLanguagePackChecklist())
+        {
+            OcrLanguagePackStatus = "Stop live translation before opening Windows OCR language pack help.";
+            StatusMessage = OcrLanguagePackStatus;
+            return;
+        }
+
+        OcrLanguagePackStatus = "Windows OCR packs require an elevated PowerShell command outside the app.";
+        StatusMessage = OcrLanguagePackStatus;
+        await dialogService.ShowInformationAsync("Windows OCR language packs", WindowsOcrLanguagePackHelpMessage);
     }
 
     public async Task RecognizeOcrPreviewAsync()
@@ -3523,6 +3764,11 @@ public sealed class MainViewModel : ValidatableObservableObject
             && !string.IsNullOrWhiteSpace(ResolveSelectedOcrLanguage());
     }
 
+    private bool CanManageOcrLanguagePackChecklist()
+    {
+        return !IsBusy && !IsLiveTranslationRunning;
+    }
+
     private bool CanRunTranslationPipeline()
     {
         return !IsBusy
@@ -3609,6 +3855,22 @@ public sealed class MainViewModel : ValidatableObservableObject
     private void ResetOcrLanguagePackStatus()
     {
         OcrLanguagePackStatus = "OCR language pack status not checked.";
+    }
+
+    private void UpdateOcrLanguagePackChecklistSummary(string prefix)
+    {
+        var readyCount = OcrLanguagePackChecklistItems.Count(item => item.IsReady);
+        var missingCount = OcrLanguagePackChecklistItems.Count(item => !item.IsReady && item.CanInstall);
+        var notCheckedCount = OcrLanguagePackChecklistItems.Count(IsOcrLanguagePackChecklistItemNotChecked);
+        var blockedCount = OcrLanguagePackChecklistItems.Count(item =>
+            !item.IsReady && !item.CanInstall && !IsOcrLanguagePackChecklistItemNotChecked(item));
+        OcrLanguagePackStatus = $"{prefix} Ready {readyCount}, missing {missingCount}, blocked {blockedCount}, not checked {notCheckedCount}.";
+        StatusMessage = OcrLanguagePackStatus;
+    }
+
+    private static bool IsOcrLanguagePackChecklistItemNotChecked(OcrLanguagePackChecklistItemViewModel item)
+    {
+        return string.Equals(item.State, "Not checked", StringComparison.Ordinal);
     }
 
     private string ResolveSelectedOcrLanguage()
@@ -4393,6 +4655,9 @@ public sealed class MainViewModel : ValidatableObservableObject
         ((AsyncRelayCommand)CollectDebugInfoCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)CheckOcrLanguagePackCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)InstallOcrLanguagePackCommand).RaiseCanExecuteChanged();
+        ((AsyncRelayCommand)CheckOcrLanguagePackChecklistCommand).RaiseCanExecuteChanged();
+        ((AsyncRelayCommand)InstallTesseractLanguagePackChecklistCommand).RaiseCanExecuteChanged();
+        ((AsyncRelayCommand)ShowWindowsOcrLanguagePackHelpCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)RunTranslationPipelineCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)StartLiveTranslationCommand).RaiseCanExecuteChanged();
         ((RelayCommand)StopLiveTranslationCommand).RaiseCanExecuteChanged();

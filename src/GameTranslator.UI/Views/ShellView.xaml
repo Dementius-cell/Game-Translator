@@ -772,6 +772,7 @@
                                                     <RowDefinition Height="Auto" />
                                                     <RowDefinition Height="Auto" />
                                                     <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
                                                 </Grid.RowDefinitions>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*" />
@@ -837,7 +838,7 @@
                                                     VerticalAlignment="Center"
                                                     Foreground="#56616F"
                                                     Text="{Binding OcrLanguagePackStatus}"
-                                                    TextWrapping="NoWrap" />
+                                                    TextWrapping="Wrap" />
                                                 <CheckBox
                                                     Grid.Row="3"
                                                     Grid.Column="0"
@@ -882,6 +883,87 @@
                                                         <TextBox Padding="6,4" Text="{Binding OcrPreprocessingScale, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                                     </StackPanel>
                                                 </UniformGrid>
+                                                <StackPanel
+                                                    Grid.Row="5"
+                                                    Grid.ColumnSpan="3"
+                                                    Margin="0,12,0,0">
+                                                    <DockPanel LastChildFill="False">
+                                                        <TextBlock
+                                                            VerticalAlignment="Center"
+                                                            Foreground="#253238"
+                                                            FontWeight="SemiBold"
+                                                            Text="OCR language packs" />
+                                                        <StackPanel
+                                                            DockPanel.Dock="Right"
+                                                            Orientation="Horizontal">
+                                                            <Button
+                                                                Margin="8,0,0,0"
+                                                                Padding="8,4"
+                                                                Command="{Binding CheckOcrLanguagePackChecklistCommand}"
+                                                                Content="Check common" />
+                                                            <Button
+                                                                Margin="8,0,0,0"
+                                                                Padding="8,4"
+                                                                Command="{Binding InstallTesseractLanguagePackChecklistCommand}"
+                                                                Content="Install Tesseract" />
+                                                            <Button
+                                                                Margin="8,0,0,0"
+                                                                Padding="8,4"
+                                                                Command="{Binding ShowWindowsOcrLanguagePackHelpCommand}"
+                                                                Content="Windows OCR command" />
+                                                        </StackPanel>
+                                                    </DockPanel>
+                                                    <Grid Margin="0,8,0,4">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="100" />
+                                                            <ColumnDefinition Width="220" />
+                                                            <ColumnDefinition Width="90" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Foreground="#56616F" FontWeight="SemiBold" Text="Engine" />
+                                                        <TextBlock Grid.Column="1" Foreground="#56616F" FontWeight="SemiBold" Text="Language" />
+                                                        <TextBlock Grid.Column="2" Foreground="#56616F" FontWeight="SemiBold" Text="State" />
+                                                        <TextBlock Grid.Column="3" Foreground="#56616F" FontWeight="SemiBold" Text="Details" />
+                                                    </Grid>
+                                                    <ItemsControl ItemsSource="{Binding OcrLanguagePackChecklistItems}">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Grid Margin="0,2,0,0">
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="100" />
+                                                                        <ColumnDefinition Width="220" />
+                                                                        <ColumnDefinition Width="90" />
+                                                                        <ColumnDefinition Width="*" />
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <TextBlock
+                                                                        VerticalAlignment="Top"
+                                                                        Foreground="#253238"
+                                                                        Text="{Binding EngineId}" />
+                                                                    <StackPanel Grid.Column="1" Margin="0,0,8,0">
+                                                                        <TextBlock
+                                                                            Foreground="#253238"
+                                                                            Text="{Binding DisplayName}"
+                                                                            TextWrapping="Wrap" />
+                                                                        <TextBlock
+                                                                            Foreground="#56616F"
+                                                                            Text="{Binding Purpose}"
+                                                                            TextWrapping="Wrap" />
+                                                                    </StackPanel>
+                                                                    <TextBlock
+                                                                        Grid.Column="2"
+                                                                        VerticalAlignment="Top"
+                                                                        Foreground="#253238"
+                                                                        Text="{Binding State}" />
+                                                                    <TextBlock
+                                                                        Grid.Column="3"
+                                                                        Foreground="#56616F"
+                                                                        Text="{Binding Status}"
+                                                                        TextWrapping="Wrap" />
+                                                                </Grid>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </StackPanel>
                                             </Grid>
                                         </Border>
 

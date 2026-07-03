@@ -299,6 +299,89 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
+    public async Task CheckOcrLanguagePackChecklistAsync_ChecksCommonWindowsAndTesseractPacks()
+    {
+        var languagePackService = new TestOcrLanguagePackService();
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            ocrLanguagePackService: languagePackService);
+
+        await InvokeTaskMethodAsync(viewModel, "CheckOcrLanguagePackChecklistAsync");
+
+        Assert.Equal(16, languagePackService.Checks.Count);
+        Assert.Contains(languagePackService.Checks, check =>
+            check.EngineId == OcrSettings.WindowsEngineId && check.LanguageTag == "ja-JP");
+        Assert.Contains(languagePackService.Checks, check =>
+            check.EngineId == OcrSettings.WindowsEngineId && check.LanguageTag == "th-TH");
+        Assert.Contains(languagePackService.Checks, check =>
+            check.EngineId == OcrSettings.TesseractEngineId && check.LanguageTag == "tha");
+        Assert.Contains(languagePackService.Checks, check =>
+            check.EngineId == OcrSettings.TesseractEngineId
+            && check.LanguageTag == "chi_sim"
+            && check.OrientationMode == OcrOrientationMode.Vertical);
+
+        var items = Assert.IsAssignableFrom<System.Collections.IEnumerable>(
+                GetPropertyValue(viewModel, "OcrLanguagePackChecklistItems"))
+            .Cast<object>()
+            .ToArray();
+        Assert.Contains(items, item => string.Equals(
+            GetPropertyValue(item, "DisplayName")?.ToString(),
+            "Tesseract Japanese vertical",
+            StringComparison.Ordinal));
+        Assert.Contains(
+            "Ready 16, missing 0, blocked 0, not checked 0",
+            GetPropertyValue(viewModel, "OcrLanguagePackStatus")?.ToString(),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task InstallTesseractLanguagePackChecklistAsync_InstallsOnlyTesseractPacks()
+    {
+        var languagePackService = new TestOcrLanguagePackService();
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            ocrLanguagePackService: languagePackService);
+
+        await InvokeTaskMethodAsync(viewModel, "InstallTesseractLanguagePackChecklistAsync");
+
+        Assert.Equal(9, languagePackService.Installs.Count);
+        Assert.DoesNotContain(languagePackService.Installs, install => install.EngineId == OcrSettings.WindowsEngineId);
+        Assert.Contains(languagePackService.Installs, install =>
+            install.LanguageTag == "eng" && install.OrientationMode == OcrOrientationMode.Horizontal);
+        Assert.Contains(languagePackService.Installs, install =>
+            install.LanguageTag == "jpn" && install.OrientationMode == OcrOrientationMode.Vertical);
+        Assert.Contains(languagePackService.Installs, install =>
+            install.LanguageTag == "tha" && install.OrientationMode == OcrOrientationMode.Horizontal);
+        Assert.Contains(languagePackService.Installs, install =>
+            install.LanguageTag == "chi_tra" && install.OrientationMode == OcrOrientationMode.Vertical);
+        Assert.Contains(
+            "Ready 9, missing 0, blocked 0, not checked 7",
+            GetPropertyValue(viewModel, "OcrLanguagePackStatus")?.ToString(),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ShowWindowsOcrLanguagePackHelpAsync_ShowsOcrOnlyPowerShellCommand()
+    {
+        var dialog = new TestDialogService();
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            dialog);
+
+        await InvokeTaskMethodAsync(viewModel, "ShowWindowsOcrLanguagePackHelpAsync");
+
+        var message = Assert.Single(dialog.InformationMessages);
+        Assert.Contains("Windows OCR language packs", message, StringComparison.Ordinal);
+        Assert.Contains("Language.OCR~~~$lang", message, StringComparison.Ordinal);
+        Assert.Contains("Add-WindowsCapability -Online", message, StringComparison.Ordinal);
+        Assert.Contains("does not add Language.Basic", message, StringComparison.Ordinal);
+        Assert.DoesNotContain("Set-WinUserLanguageList", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task WindowsOcrEngine_WithTesseractLanguageCode_BlocksPreviewWithValidationMessage()
     {
         var ocrEngine = new TestOcrEngine();

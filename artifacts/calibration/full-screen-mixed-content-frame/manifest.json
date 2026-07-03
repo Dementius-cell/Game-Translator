@@ -1,0 +1,354 @@
+{
+  "schemaVersion": 1,
+  "testOnly": true,
+  "Id": "full-screen-mixed-content-frame",
+  "CaseType": "full_screen_mixed_content_single_zone",
+  "FullScreenOcrZone": {
+    "X": 0,
+    "Y": 0,
+    "Width": 1920,
+    "Height": 1080
+  },
+  "expectedSourceBlocks": [
+    {
+      "Id": "ja-save-0",
+      "Text": "セ",
+      "TextElements": [
+        "セ"
+      ],
+      "Language": "ja-JP",
+      "Orientation": 2,
+      "Bounds": {
+        "X": 146,
+        "Y": 130,
+        "Width": 28,
+        "Height": 32
+      },
+      "FontSize": 22,
+      "FontFamily": "Yu Gothic UI"
+    },
+    {
+      "Id": "ja-save-1",
+      "Text": "ー",
+      "TextElements": [
+        "ー"
+      ],
+      "Language": "ja-JP",
+      "Orientation": 2,
+      "Bounds": {
+        "X": 146,
+        "Y": 166,
+        "Width": 28,
+        "Height": 32
+      },
+      "FontSize": 22,
+      "FontFamily": "Yu Gothic UI"
+    },
+    {
+      "Id": "ja-save-2",
+      "Text": "ブ",
+      "TextElements": [
+        "ブ"
+      ],
+      "Language": "ja-JP",
+      "Orientation": 2,
+      "Bounds": {
+        "X": 146,
+        "Y": 202,
+        "Width": 28,
+        "Height": 32
+      },
+      "FontSize": 22,
+      "FontFamily": "Yu Gothic UI"
+    },
+    {
+      "Id": "ja-save-3",
+      "Text": "し",
+      "TextElements": [
+        "し"
+      ],
+      "Language": "ja-JP",
+      "Orientation": 2,
+      "Bounds": {
+        "X": 146,
+        "Y": 238,
+        "Width": 28,
+        "Height": 32
+      },
+      "FontSize": 22,
+      "FontFamily": "Yu Gothic UI"
+    },
+    {
+      "Id": "en-title-0",
+      "Text": "OPTIONS",
+      "TextElements": [
+        "OPTIONS"
+      ],
+      "Language": "en",
+      "Orientation": 1,
+      "Bounds": {
+        "X": 316,
+        "Y": 132,
+        "Width": 154,
+        "Height": 34
+      },
+      "FontSize": 24,
+      "FontFamily": "Segoe UI"
+    },
+    {
+      "Id": "en-title-1",
+      "Text": "MENU",
+      "TextElements": [
+        "MENU"
+      ],
+      "Language": "en",
+      "Orientation": 1,
+      "Bounds": {
+        "X": 316,
+        "Y": 178,
+        "Width": 118,
+        "Height": 34
+      },
+      "FontSize": 24,
+      "FontFamily": "Segoe UI"
+    },
+    {
+      "Id": "tha-dialog-0",
+      "Text": "พร้อม",
+      "TextElements": [
+        "พร้อม"
+      ],
+      "Language": "tha",
+      "Orientation": 1,
+      "Bounds": {
+        "X": 776,
+        "Y": 180,
+        "Width": 178,
+        "Height": 34
+      },
+      "FontSize": 25,
+      "FontFamily": "Leelawadee UI"
+    },
+    {
+      "Id": "tha-dialog-1",
+      "Text": "แล้ว",
+      "TextElements": [
+        "แล้ว"
+      ],
+      "Language": "tha",
+      "Orientation": 1,
+      "Bounds": {
+        "X": 776,
+        "Y": 228,
+        "Width": 134,
+        "Height": 34
+      },
+      "FontSize": 25,
+      "FontFamily": "Leelawadee UI"
+    },
+    {
+      "Id": "tha-dialog-2",
+      "Text": "ไปกัน",
+      "TextElements": [
+        "ไปกัน"
+      ],
+      "Language": "tha",
+      "Orientation": 1,
+      "Bounds": {
+        "X": 776,
+        "Y": 276,
+        "Width": 150,
+        "Height": 34
+      },
+      "FontSize": 25,
+      "FontFamily": "Leelawadee UI"
+    },
+    {
+      "Id": "zh-vertical-0",
+      "Text": "你",
+      "TextElements": [
+        "你"
+      ],
+      "Language": "zh-CN",
+      "Orientation": 2,
+      "Bounds": {
+        "X": 1334,
+        "Y": 126,
+        "Width": 30,
+        "Height": 36
+      },
+      "FontSize": 25,
+      "FontFamily": "Microsoft YaHei UI"
+    },
+    {
+      "Id": "zh-vertical-1",
+      "Text": "好",
+      "TextElements": [
+        "好"
+      ],
+      "Language": "zh-CN",
+      "Orientation": 2,
+      "Bounds": {
+        "X": 1334,
+        "Y": 168,
+        "Width": 30,
+        "Height": 36
+      },
+      "FontSize": 25,
+      "FontFamily": "Microsoft YaHei UI"
+    },
+    {
+      "Id": "ko-dialog-0",
+      "Text": "저장 완료",
+      "TextElements": [
+        "저장",
+        "완료"
+      ],
+      "Language": "kor",
+      "Orientation": 1,
+      "Bounds": {
+        "X": 1408,
+        "Y": 504,
+        "Width": 240,
+        "Height": 40
+      },
+      "FontSize": 27,
+      "FontFamily": "Malgun Gothic"
+    },
+    {
+      "Id": "en-book-0",
+      "Text": "THE OLD CITY",
+      "TextElements": [
+        "THE OLD CITY"
+      ],
+      "Language": "en",
+      "Orientation": 1,
+      "Bounds": {
+        "X": 154,
+        "Y": 820,
+        "Width": 260,
+        "Height": 34
+      },
+      "FontSize": 24,
+      "FontFamily": "Segoe UI"
+    },
+    {
+      "Id": "en-book-1",
+      "Text": "WAS QUIET",
+      "TextElements": [
+        "WAS QUIET"
+      ],
+      "Language": "en",
+      "Orientation": 1,
+      "Bounds": {
+        "X": 154,
+        "Y": 866,
+        "Width": 214,
+        "Height": 34
+      },
+      "FontSize": 24,
+      "FontFamily": "Segoe UI"
+    }
+  ],
+  "expectedSemanticGroups": [
+    {
+      "Id": "vertical-japanese-save",
+      "Language": "ja-JP",
+      "Orientation": 2,
+      "Bounds": {
+        "X": 136,
+        "Y": 122,
+        "Width": 58,
+        "Height": 158
+      },
+      "RequiredFragments": [
+        "セ",
+        "ー",
+        "ブ",
+        "し"
+      ]
+    },
+    {
+      "Id": "english-options-menu",
+      "Language": "en",
+      "Orientation": 1,
+      "Bounds": {
+        "X": 300,
+        "Y": 124,
+        "Width": 188,
+        "Height": 100
+      },
+      "RequiredFragments": [
+        "OPTIONS",
+        "MENU"
+      ]
+    },
+    {
+      "Id": "thai-three-line-dialogue",
+      "Language": "tha",
+      "Orientation": 1,
+      "Bounds": {
+        "X": 760,
+        "Y": 172,
+        "Width": 210,
+        "Height": 146
+      },
+      "RequiredFragments": [
+        "พร้อม",
+        "แล้ว",
+        "ไปกัน"
+      ]
+    },
+    {
+      "Id": "vertical-chinese-greeting",
+      "Language": "zh-CN",
+      "Orientation": 2,
+      "Bounds": {
+        "X": 1324,
+        "Y": 118,
+        "Width": 58,
+        "Height": 100
+      },
+      "RequiredFragments": [
+        "你",
+        "好"
+      ]
+    },
+    {
+      "Id": "korean-save-complete",
+      "Language": "kor",
+      "Orientation": 1,
+      "Bounds": {
+        "X": 1396,
+        "Y": 492,
+        "Width": 270,
+        "Height": 64
+      },
+      "RequiredFragments": [
+        "저장",
+        "완료"
+      ]
+    },
+    {
+      "Id": "english-book-two-line",
+      "Language": "en",
+      "Orientation": 1,
+      "Bounds": {
+        "X": 140,
+        "Y": 812,
+        "Width": 292,
+        "Height": 100
+      },
+      "RequiredFragments": [
+        "THE OLD CITY",
+        "WAS QUIET"
+      ]
+    }
+  ],
+  "generatedArtifacts": [
+    "clean-frame.png",
+    "readable-final-overlays.png",
+    "readable-final-crops.png",
+    "candidate-scorecard.json"
+  ]
+}

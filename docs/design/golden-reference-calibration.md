@@ -68,6 +68,40 @@ A candidate calibration result becomes production behavior only after:
 
 Until then, calibration tests are evidence, not application rules.
 
+## Full-Screen Mixed-Content Calibration - 2026-07-03
+
+Status: active test-only development fixture.
+
+Scope:
+
+- Tracked xUnit calibration test: `tests/GameTranslator.Tests/Calibration/FullScreenMixedContentCalibrationTests.cs`.
+- Single OCR capture zone covering the full generated `1920x1080` frame.
+- Mixed content in one frame: vertical Japanese, horizontal English UI text, horizontal Thai dialogue, vertical Simplified Chinese, Korean dialogue, and horizontal book text.
+- Deterministic approved OCR blocks are injected for CI stability; this is not a real OCR quality gate.
+- Candidate sweep compares OCR language, orientation mode, grouping mode, and nearby-block merge distance before selecting the readable reference result.
+
+Current accepted calibration result:
+
+- Selected candidate: `jpn-vert-auto-nearby-6_5`.
+- Source OCR blocks: `14`.
+- Final semantic groups: `6`.
+- Grouping mode: `NearbyBlocks`.
+- Orientation mode: `Auto`.
+- Merge distance: `6.5%`.
+
+Generated evidence:
+
+- `artifacts/calibration/full-screen-mixed-content-frame/clean-frame.png`
+- `artifacts/calibration/full-screen-mixed-content-frame/readable-final-overlays.png`
+- `artifacts/calibration/full-screen-mixed-content-frame/readable-final-crops.png`
+- `artifacts/calibration/full-screen-mixed-content-frame/candidate-scorecard.json`
+- `artifacts/calibration/full-screen-mixed-content-frame/manifest.json`
+
+Boundary:
+
+- The fixture is meant to keep full-screen capture, mixed language/orientation grouping, and readability checks inside the tracked test project instead of ignored one-off harnesses.
+- Passing this test is calibration evidence only. Production OCR language selection, grouping defaults, overlay rules, profile schema, and diagnostics behavior still require explicit approval before runtime changes.
+
 ## Sprint 26 Placement Decision Record - 2026-07-01
 
 Status: accepted for calibration only. Production issue #32 promotion is not approved by this record.

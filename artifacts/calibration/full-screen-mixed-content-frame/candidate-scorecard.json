@@ -1,0 +1,615 @@
+{
+  "schemaVersion": 1,
+  "testOnly": true,
+  "fixtureId": "full-screen-mixed-content-frame",
+  "fullScreenOcrZone": {
+    "X": 0,
+    "Y": 0,
+    "Width": 1920,
+    "Height": 1080
+  },
+  "selectedCandidateId": "jpn-vert-auto-nearby-6_5",
+  "candidates": [
+    {
+      "CandidateId": "eng-horizontal-block",
+      "OcrLanguage": "eng",
+      "OrientationMode": "Horizontal",
+      "GroupingMode": "BlockByBlock",
+      "MergeDistancePercent": 6.5,
+      "SourceBlockCount": 14,
+      "GroupedTextCount": 14,
+      "GroupingScore": 0,
+      "OrientationScore": 0.16666666666666666,
+      "TotalScore": 0.0417,
+      "GroupedTexts": [
+        "セ",
+        "ー",
+        "ブ",
+        "し",
+        "OPTIONS",
+        "MENU",
+        "พร้อม",
+        "แล้ว",
+        "ไปกัน",
+        "你",
+        "好",
+        "저장 완료",
+        "THE OLD CITY",
+        "WAS QUIET"
+      ],
+      "OverlayBounds": [
+        {
+          "X": 144,
+          "Y": 119,
+          "Width": 30,
+          "Height": 47
+        },
+        {
+          "X": 114,
+          "Y": 159,
+          "Width": 30,
+          "Height": 47
+        },
+        {
+          "X": 114,
+          "Y": 195,
+          "Width": 30,
+          "Height": 47
+        },
+        {
+          "X": 144,
+          "Y": 236,
+          "Width": 30,
+          "Height": 47
+        },
+        {
+          "X": 316,
+          "Y": 126,
+          "Width": 154,
+          "Height": 47
+        },
+        {
+          "X": 316,
+          "Y": 172,
+          "Width": 118,
+          "Height": 47
+        },
+        {
+          "X": 776,
+          "Y": 174,
+          "Width": 178,
+          "Height": 47
+        },
+        {
+          "X": 776,
+          "Y": 222,
+          "Width": 134,
+          "Height": 47
+        },
+        {
+          "X": 776,
+          "Y": 270,
+          "Width": 150,
+          "Height": 47
+        },
+        {
+          "X": 1334,
+          "Y": 121,
+          "Width": 30,
+          "Height": 47
+        },
+        {
+          "X": 1334,
+          "Y": 163,
+          "Width": 30,
+          "Height": 47
+        },
+        {
+          "X": 1408,
+          "Y": 501,
+          "Width": 240,
+          "Height": 47
+        },
+        {
+          "X": 154,
+          "Y": 814,
+          "Width": 260,
+          "Height": 47
+        },
+        {
+          "X": 154,
+          "Y": 860,
+          "Width": 214,
+          "Height": 47
+        }
+      ]
+    },
+    {
+      "CandidateId": "jpn-vert-auto-whole",
+      "OcrLanguage": "jpn_vert",
+      "OrientationMode": "Auto",
+      "GroupingMode": "WholeZone",
+      "MergeDistancePercent": 6.5,
+      "SourceBlockCount": 14,
+      "GroupedTextCount": 1,
+      "GroupingScore": 0.16666666666666663,
+      "OrientationScore": 0.3333333333333333,
+      "TotalScore": 0.2083,
+      "GroupedTexts": [
+        "セ OPTIONS 你 ー ブ し MENU พร้อม แล้ว 好 ไปกัน 저장완료 THE OLD CITY WAS QUIET"
+      ],
+      "OverlayBounds": [
+        {
+          "X": 146,
+          "Y": 485,
+          "Width": 1502,
+          "Height": 47
+        }
+      ]
+    },
+    {
+      "CandidateId": "jpn-vert-auto-nearby-3_5",
+      "OcrLanguage": "jpn_vert",
+      "OrientationMode": "Auto",
+      "GroupingMode": "NearbyBlocks",
+      "MergeDistancePercent": 3.5,
+      "SourceBlockCount": 14,
+      "GroupedTextCount": 6,
+      "GroupingScore": 1,
+      "OrientationScore": 1,
+      "TotalScore": 1,
+      "GroupedTexts": [
+        "セ ー ブ し",
+        "OPTIONS MENU",
+        "พร้อม แล้ว ไปกัน",
+        "你 好",
+        "저장완료",
+        "THE OLD CITY WAS QUIET"
+      ],
+      "OverlayBounds": [
+        {
+          "X": 146,
+          "Y": 130,
+          "Width": 28,
+          "Height": 117
+        },
+        {
+          "X": 316,
+          "Y": 124,
+          "Width": 154,
+          "Height": 80
+        },
+        {
+          "X": 744,
+          "Y": 164,
+          "Width": 221,
+          "Height": 130
+        },
+        {
+          "X": 1334,
+          "Y": 126,
+          "Width": 30,
+          "Height": 71
+        },
+        {
+          "X": 1408,
+          "Y": 501,
+          "Width": 240,
+          "Height": 47
+        },
+        {
+          "X": 112,
+          "Y": 812,
+          "Width": 316,
+          "Height": 80
+        }
+      ]
+    },
+    {
+      "CandidateId": "jpn-vert-auto-nearby-6_5",
+      "OcrLanguage": "jpn_vert",
+      "OrientationMode": "Auto",
+      "GroupingMode": "NearbyBlocks",
+      "MergeDistancePercent": 6.5,
+      "SourceBlockCount": 14,
+      "GroupedTextCount": 6,
+      "GroupingScore": 1,
+      "OrientationScore": 1,
+      "TotalScore": 1,
+      "GroupedTexts": [
+        "セ ー ブ し",
+        "OPTIONS MENU",
+        "พร้อม แล้ว ไปกัน",
+        "你 好",
+        "저장완료",
+        "THE OLD CITY WAS QUIET"
+      ],
+      "OverlayBounds": [
+        {
+          "X": 146,
+          "Y": 130,
+          "Width": 28,
+          "Height": 117
+        },
+        {
+          "X": 316,
+          "Y": 124,
+          "Width": 154,
+          "Height": 80
+        },
+        {
+          "X": 744,
+          "Y": 164,
+          "Width": 221,
+          "Height": 130
+        },
+        {
+          "X": 1334,
+          "Y": 126,
+          "Width": 30,
+          "Height": 71
+        },
+        {
+          "X": 1408,
+          "Y": 501,
+          "Width": 240,
+          "Height": 47
+        },
+        {
+          "X": 112,
+          "Y": 812,
+          "Width": 316,
+          "Height": 80
+        }
+      ]
+    },
+    {
+      "CandidateId": "jpn-vert-horizontal-nearby-6_5",
+      "OcrLanguage": "jpn_vert",
+      "OrientationMode": "Horizontal",
+      "GroupingMode": "NearbyBlocks",
+      "MergeDistancePercent": 6.5,
+      "SourceBlockCount": 14,
+      "GroupedTextCount": 6,
+      "GroupingScore": 1,
+      "OrientationScore": 0.6666666666666666,
+      "TotalScore": 0.9167,
+      "GroupedTexts": [
+        "セ ー ブ し",
+        "OPTIONS MENU",
+        "พร้อม แล้ว ไปกัน",
+        "你 好",
+        "저장완료",
+        "THE OLD CITY WAS QUIET"
+      ],
+      "OverlayBounds": [
+        {
+          "X": 114,
+          "Y": 106,
+          "Width": 71,
+          "Height": 140
+        },
+        {
+          "X": 316,
+          "Y": 124,
+          "Width": 154,
+          "Height": 80
+        },
+        {
+          "X": 744,
+          "Y": 164,
+          "Width": 221,
+          "Height": 130
+        },
+        {
+          "X": 1293,
+          "Y": 118,
+          "Width": 84,
+          "Height": 78
+        },
+        {
+          "X": 1408,
+          "Y": 501,
+          "Width": 240,
+          "Height": 47
+        },
+        {
+          "X": 112,
+          "Y": 812,
+          "Width": 316,
+          "Height": 80
+        }
+      ]
+    },
+    {
+      "CandidateId": "jpn-vert-vertical-nearby-6_5",
+      "OcrLanguage": "jpn_vert",
+      "OrientationMode": "Vertical",
+      "GroupingMode": "NearbyBlocks",
+      "MergeDistancePercent": 6.5,
+      "SourceBlockCount": 14,
+      "GroupedTextCount": 6,
+      "GroupingScore": 1,
+      "OrientationScore": 0.3333333333333333,
+      "TotalScore": 0.8333,
+      "GroupedTexts": [
+        "セ ー ブ し",
+        "OPTIONS MENU",
+        "พร้อม แล้ว ไปกัน",
+        "你 好",
+        "저장완료",
+        "THE OLD CITY WAS QUIET"
+      ],
+      "OverlayBounds": [
+        {
+          "X": 146,
+          "Y": 130,
+          "Width": 28,
+          "Height": 117
+        },
+        {
+          "X": 316,
+          "Y": 144,
+          "Width": 154,
+          "Height": 47
+        },
+        {
+          "X": 776,
+          "Y": 188,
+          "Width": 178,
+          "Height": 76
+        },
+        {
+          "X": 1334,
+          "Y": 126,
+          "Width": 30,
+          "Height": 71
+        },
+        {
+          "X": 1408,
+          "Y": 504,
+          "Width": 240,
+          "Height": 40
+        },
+        {
+          "X": 154,
+          "Y": 820,
+          "Width": 260,
+          "Height": 76
+        }
+      ]
+    },
+    {
+      "CandidateId": "tha-auto-nearby-6_5",
+      "OcrLanguage": "tha",
+      "OrientationMode": "Auto",
+      "GroupingMode": "NearbyBlocks",
+      "MergeDistancePercent": 6.5,
+      "SourceBlockCount": 14,
+      "GroupedTextCount": 6,
+      "GroupingScore": 1,
+      "OrientationScore": 1,
+      "TotalScore": 1,
+      "GroupedTexts": [
+        "セ ー ブ し",
+        "OPTIONS MENU",
+        "พร้อม แล้ว ไปกัน",
+        "你 好",
+        "저장완료",
+        "THE OLD CITY WAS QUIET"
+      ],
+      "OverlayBounds": [
+        {
+          "X": 146,
+          "Y": 130,
+          "Width": 28,
+          "Height": 117
+        },
+        {
+          "X": 316,
+          "Y": 124,
+          "Width": 154,
+          "Height": 80
+        },
+        {
+          "X": 744,
+          "Y": 164,
+          "Width": 221,
+          "Height": 130
+        },
+        {
+          "X": 1334,
+          "Y": 126,
+          "Width": 30,
+          "Height": 71
+        },
+        {
+          "X": 1408,
+          "Y": 501,
+          "Width": 240,
+          "Height": 47
+        },
+        {
+          "X": 112,
+          "Y": 812,
+          "Width": 316,
+          "Height": 80
+        }
+      ]
+    },
+    {
+      "CandidateId": "kor-auto-nearby-6_5",
+      "OcrLanguage": "kor",
+      "OrientationMode": "Auto",
+      "GroupingMode": "NearbyBlocks",
+      "MergeDistancePercent": 6.5,
+      "SourceBlockCount": 14,
+      "GroupedTextCount": 6,
+      "GroupingScore": 1,
+      "OrientationScore": 1,
+      "TotalScore": 1,
+      "GroupedTexts": [
+        "セ ー ブ し",
+        "OPTIONS MENU",
+        "พร้อม แล้ว ไปกัน",
+        "你 好",
+        "저장완료",
+        "THE OLD CITY WAS QUIET"
+      ],
+      "OverlayBounds": [
+        {
+          "X": 146,
+          "Y": 130,
+          "Width": 28,
+          "Height": 117
+        },
+        {
+          "X": 316,
+          "Y": 124,
+          "Width": 154,
+          "Height": 80
+        },
+        {
+          "X": 744,
+          "Y": 164,
+          "Width": 221,
+          "Height": 130
+        },
+        {
+          "X": 1334,
+          "Y": 126,
+          "Width": 30,
+          "Height": 71
+        },
+        {
+          "X": 1408,
+          "Y": 501,
+          "Width": 240,
+          "Height": 47
+        },
+        {
+          "X": 112,
+          "Y": 812,
+          "Width": 316,
+          "Height": 80
+        }
+      ]
+    },
+    {
+      "CandidateId": "chi-sim-vert-auto-nearby-6_5",
+      "OcrLanguage": "chi_sim_vert",
+      "OrientationMode": "Auto",
+      "GroupingMode": "NearbyBlocks",
+      "MergeDistancePercent": 6.5,
+      "SourceBlockCount": 14,
+      "GroupedTextCount": 6,
+      "GroupingScore": 1,
+      "OrientationScore": 1,
+      "TotalScore": 1,
+      "GroupedTexts": [
+        "セ ー ブ し",
+        "OPTIONS MENU",
+        "พร้อม แล้ว ไปกัน",
+        "你 好",
+        "저장완료",
+        "THE OLD CITY WAS QUIET"
+      ],
+      "OverlayBounds": [
+        {
+          "X": 146,
+          "Y": 130,
+          "Width": 28,
+          "Height": 117
+        },
+        {
+          "X": 316,
+          "Y": 124,
+          "Width": 154,
+          "Height": 80
+        },
+        {
+          "X": 744,
+          "Y": 164,
+          "Width": 221,
+          "Height": 130
+        },
+        {
+          "X": 1334,
+          "Y": 126,
+          "Width": 30,
+          "Height": 71
+        },
+        {
+          "X": 1408,
+          "Y": 501,
+          "Width": 240,
+          "Height": 47
+        },
+        {
+          "X": 112,
+          "Y": 812,
+          "Width": 316,
+          "Height": 80
+        }
+      ]
+    },
+    {
+      "CandidateId": "jpn-vert-auto-nearby-10_0",
+      "OcrLanguage": "jpn_vert",
+      "OrientationMode": "Auto",
+      "GroupingMode": "NearbyBlocks",
+      "MergeDistancePercent": 10,
+      "SourceBlockCount": 14,
+      "GroupedTextCount": 6,
+      "GroupingScore": 1,
+      "OrientationScore": 1,
+      "TotalScore": 1,
+      "GroupedTexts": [
+        "セ ー ブ し",
+        "OPTIONS MENU",
+        "พร้อม แล้ว ไปกัน",
+        "你 好",
+        "저장완료",
+        "THE OLD CITY WAS QUIET"
+      ],
+      "OverlayBounds": [
+        {
+          "X": 146,
+          "Y": 130,
+          "Width": 28,
+          "Height": 117
+        },
+        {
+          "X": 316,
+          "Y": 124,
+          "Width": 154,
+          "Height": 80
+        },
+        {
+          "X": 744,
+          "Y": 164,
+          "Width": 221,
+          "Height": 130
+        },
+        {
+          "X": 1334,
+          "Y": 126,
+          "Width": 30,
+          "Height": 71
+        },
+        {
+          "X": 1408,
+          "Y": 501,
+          "Width": 240,
+          "Height": 47
+        },
+        {
+          "X": 112,
+          "Y": 812,
+          "Width": 316,
+          "Height": 80
+        }
+      ]
+    }
+  ]
+}

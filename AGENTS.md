@@ -18,6 +18,15 @@ Before changing code or documentation, read the source-of-truth documents in thi
 For architecture changes, also read `docs/adr/README.md`.
 For restricted changes, read `docs/governance/change-approval-required.md` and obtain explicit project-owner approval before proceeding.
 
+## Local Instruction Files
+
+This repository uses nested `AGENTS.md` files for area-specific rules. Before changing files in a scoped area, read the root instructions first, then the matching child instruction files:
+
+- For changes under `tests/**`, also read `tests/AGENTS.md`.
+- For calibration or golden-reference work under `tests/GameTranslator.Tests/Calibration/**`, also read `tests/GameTranslator.Tests/Calibration/AGENTS.md`.
+
+Child instruction files extend these root rules within their directory scope. Calibration tests may use approved fixture data and generated evidence, but a passing calibration test is evidence only and must not be treated as production behavior without explicit approval.
+
 ## Current Stage
 
 - Roadmap stage: Stage 0, project preparation.

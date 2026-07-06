@@ -454,6 +454,86 @@ Capture
 
 ---
 
+# ADR-016
+
+## Vertical OCR Translation Overlay Layout
+
+Status:
+ACCEPTED
+
+Date:
+2026-07-04
+
+### Context
+
+Vertical Japanese and Chinese OCR blocks are usually narrow columns. Russian translations are often much longer than the original vertical text. The current fixed-bounds or center-expanded horizontal layout can either make the translated text unreadable or let it grow into a long horizontal strip that overlaps neighboring columns and comic bubbles.
+
+Real no-UI GoogleWeb overlay smoke runs on 2026-07-04 showed this clearly on Japanese two-column and three-column vertical fixtures. OCR grouping was correct, but the translated overlay needed a vertical-source-specific placement policy.
+
+### Options
+
+1. Keep strict source bounds and reduce font size until the text fits.
+2. Let translated text expand freely from the source center.
+3. Use a vertical-source wrap box: start with a controlled width based on the original column width, wrap translated text inside it, then grow vertically around the original block center before reducing font size.
+4. Use a bubble-wide comic layout solver that places translations inside the whole detected speech bubble or group.
+5. Use caption mode outside the original text area.
+
+### Decision
+
+Use option 3 as the default vertical OCR translation layout.
+
+For vertical OCR sources:
+
+* keep mask bounds tied to the original OCR semantic bounds;
+* separate mask bounds from translation text bounds;
+* initialize translation text width from the source column width, defaulting to approximately two source widths;
+* clamp translation width between a minimum readable width and the available OCR zone bounds;
+* wrap translated text inside that box;
+* grow the translation box upward and downward around the original source center before reducing font size;
+* reduce font size only after width and vertical growth limits are reached;
+* if text still cannot fit, keep deterministic clipping or ellipsis and surface the case as a debug/quality warning.
+
+Comic bubble-wide placement remains a future enhancement, not the default. It may be implemented later as a higher-level layout solver for `NearbyBlocks` groups.
+
+### Reasons
+
+* It keeps original text masking precise and conservative.
+* It avoids unreadably tiny text for long Russian translations.
+* It prevents translated vertical text from becoming unbounded horizontal strips.
+* It preserves the existing overlay layering model: OCR layer, mask layer, translation layer, debug layer.
+* It can be implemented inside the overlay positioning service without changing OCR or translator interfaces.
+* It is backward-compatible with existing profiles because it refines layout behavior for vertical sources instead of changing profile schema.
+
+### Consequences
+
+Positive:
+
+* Vertical CJK translations become more readable by default.
+* Mask placement remains stable and does not over-cover neighboring UI.
+* Translation text can use nearby whitespace without pretending that the mask area is also the text layout area.
+
+Negative:
+
+* Translation text bounds may be wider and taller than the original OCR block.
+* Dense comic pages may still need collision avoidance between neighboring translated blocks.
+* Very long translations can still require font reduction or quality warnings.
+
+Compatibility:
+
+* No profile migration is required.
+* Existing horizontal text behavior is unchanged.
+* Existing overlay debug output should show both mask bounds and translation text bounds when they differ.
+
+### Requires Migration
+
+No.
+
+### Approved
+
+Project owner, explicit chat approval on 2026-07-04.
+
+---
+
 # ADR TEMPLATE
 
 Использовать для новых решений.

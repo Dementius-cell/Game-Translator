@@ -3030,7 +3030,7 @@ public sealed class ProfileManagerViewModelTests
 
     private sealed class TestTranslatorProvider : ITranslatorProvider
     {
-        private static readonly DateTimeOffset TranslatedAt = new(2026, 6, 19, 12, 0, 3, TimeSpan.Zero);
+        private static readonly DateTimeOffset TranslatedAt = DateTimeOffset.UtcNow.AddMinutes(1);
 
         private readonly IReadOnlyList<string>? translatedTexts;
         private readonly Exception? failure;

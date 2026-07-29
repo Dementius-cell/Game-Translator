@@ -16,7 +16,7 @@ Before changing code or documentation, read the source-of-truth documents in thi
 8. `docs/05-ai-development-rules.md`
 
 For architecture changes, also read `docs/adr/README.md`.
-For restricted changes, read `docs/governance/change-approval-required.md` and obtain explicit project-owner approval before proceeding.
+For restricted or decision-level changes, read `docs/governance/change-approval-required.md`. Hard-stop changes and new decision records require explicit project-owner approval; implementation within an accepted ADR is normal delivery.
 
 ## Local Instruction Files
 
@@ -29,7 +29,7 @@ Child instruction files extend these root rules within their directory scope. Ca
 
 ## Project Status Source
 
-Do not treat this file as the current sprint/status source. The project has progressed beyond initial scaffolding; use GitHub Issues, current handoff docs, and the roadmap/sprint documents to determine active work before editing. If these disagree, report the conflict before proceeding.
+Do not treat this file as the current sprint/status source. The project has progressed beyond initial scaffolding; use GitHub Issues and their explicit dependency graph as the current delivery source. The roadmap and sprint documents preserve scope and historical context. If current Issue dependencies and a task request disagree, report the conflict before proceeding.
 
 ## Non-Negotiable Constraints
 
@@ -45,9 +45,9 @@ Do not treat this file as the current sprint/status source. The project has prog
 
 ## Work Rules
 
-- Follow the roadmap and sprint order unless the project owner explicitly approves a change.
+- Follow the current GitHub Issue dependency graph. The historical roadmap does not block independent fixes, tests, documentation, or compatible improvements.
 - Keep changes minimal and tied to the current sprint.
-- Add or update tests for new behavior according to the quality gates.
+- Add or update tests for changed behavior according to the applicable quality gates, and record justified N/A gates in the final report when relevant.
 - When adding documentation references to generated screenshots, scorecards, debug reports, harnesses, or built binaries, label whether the path is tracked, generated/reproducible, local-only, ignored output, or a build output. Follow `docs/evidence-artifacts.md`.
 - Report changed files, created files, validation performed, discovered risks, remaining work, and the next step after each task.
 - When posting or editing multi-line GitHub issue/PR comments, do not pass Markdown through inline shell strings or `gh ... --body` in PowerShell. Write the comment body to a UTF-8 file and use `--body-file`, or send JSON from a file through the GitHub API, then verify the published body with `gh issue view --json comments` or `gh api` before reporting success.

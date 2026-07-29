@@ -26,7 +26,7 @@
 **WPF** (замена WinUI 3). Причины: стабильность, зрелость, поддержка прозрачности, аппаратное ускорение, простота реализации сложных overlay.
 
 ## Overlay
-Отдельное окно без рамки, прозрачное, всегда поверх игры, click-through. Реализация: **SharpDX + SwapChainPanel** или Direct2D через WPF. Прозрачность и эффекты через Composition API.
+Отдельное WPF-окно без рамки, прозрачное, всегда поверх игры, click-through. Текущая реализация использует WPF overlay window и platform interop для click-through/capture exclusion. Direct2D или иной renderer могут обсуждаться отдельным ADR, если WPF-рендеринг перестанет удовлетворять измеренным требованиям.
 
 ------------------------------------------------------------------------
 
@@ -38,12 +38,12 @@
 
 # 5. OCR-подсистема
 
-Абстрактный слой `IOcrEngine` с методами DetectText(), DetectTextBlocks(), DetectTextOrientation(), GetBoundingBoxes().
+Абстрактный слой `IOcrEngine` принимает `OcrRequest` и возвращает `OcrResult` с текстовыми блоками и bounding boxes. Orientation и preprocessing являются частью request/pipeline, а не отдельными обязательными методами интерфейса.
 
 ## OCR движки
-- **Windows OCR** – основной для латиницы и горизонтальных текстов (кроме японского/китайского).
-- **Tesseract OCR** – резервный, обязателен для вертикального текста (японский, китайский).
-- **PaddleOCR** – экспериментальный модуль (будущее).
+- **Windows OCR** – быстрый вариант для поддерживаемого горизонтального текста.
+- **Tesseract OCR** – обязательный движок для вертикального японского и китайского текста, а также fallback для отсутствующих Windows OCR language packs.
+- Современный detector-plus-recognizer OCR может исследоваться локально через screen capture benchmark, но не входит в продукт без ADR и решения владельца.
 
 ------------------------------------------------------------------------
 
@@ -55,13 +55,13 @@
 
 # 7. Предобработка изображения
 
-Библиотека: OpenCvSharp. Операции: Resize, Sharpen, Denoise, Contrast, Brightness, Threshold, Adaptive Threshold, Morphology.
+Текущая реализация не закрепляет обязательную библиотеку обработки изображений. Поддерживаются настройки contrast, brightness, sharpness, noise reduction, threshold и scale. Adaptive threshold, deskew, inversion, morphology или внешняя библиотека допускаются после измеримого benchmark и в рамках действующего OCR seam.
 
 ------------------------------------------------------------------------
 
 # 8. Подсистема перевода
 
-Архитектура Translator Provider Model. Интерфейс `ITranslatorProvider` с методами Translate(), DetectLanguage(), ValidateCredentials(). Провайдеры: Google, Azure, Яндекс. Автоматическое переключение между провайдерами не требуется – пользователь выбирает один на профиль.
+Архитектура Translator Provider Model. `ITranslatorProvider` из Application задаёт переводческий seam. Credentialed Google, Azure и Yandex являются поддерживаемыми провайдерами; пользователь выбирает официальный provider в профиле. Experimental WebAuto может выполнять диагностический fallback между web-провайдерами, но не является release default и не заменяет official providers.
 
 ------------------------------------------------------------------------
 
@@ -93,7 +93,7 @@
 
 # 13. Система маскирования
 
-Методы: Solid (сплошная заливка) или Dark Overlay (затемнение). Настройки: цвет, Opacity, Padding, Corner Radius. Размытие не используется.
+Методы: Solid (сплошная заливка) или Dark Overlay (затемнение). Настройки: цвет, Opacity, Padding, Corner Radius. Blur не является текущим MVP-режимом; AI/content-aware реконструкция игрового изображения запрещена.
 
 ------------------------------------------------------------------------
 
@@ -129,7 +129,7 @@ SQLite для кэша переводов, статистики, настрое�
 
 # 19. Потоки выполнения
 
-Thread 1: UI, Thread 2: Screen Capture, Thread 3: OCR Processing, Thread 4: Translation, Thread 5: Overlay Rendering.
+UI остаётся на UI thread. Capture, OCR, translation и cache выполняются асинхронно вне UI thread с cancellation и измерением latency; конкретное число закреплённых потоков не является архитектурным контрактом.
 
 ------------------------------------------------------------------------
 
@@ -164,10 +164,10 @@ MVVM + Clean Architecture. Слои: Presentation (WPF), Application, Domain, In
 
 - Язык: C# (.NET 9)
 - UI: WPF
-- Overlay: SharpDX + SwapChainPanel (или Direct2D)
+- Overlay: WPF overlay window; другой renderer только по измеренному ADR
 - Захват экрана: Windows Graphics Capture
 - OCR: Windows OCR + Tesseract
-- Обработка изображения: OpenCvSharp
+- Обработка изображения: текущий preprocessing pipeline; библиотека не закреплена
 - Перевод: Google + Azure + Яндекс
 - Кэш: SQLite (TTL 30 дней)
 - Профили: JSON (версия 1.0)

@@ -431,7 +431,7 @@ schemaVersion
 ## Порядок реализации проекта
 
 Статус:
-ACCEPTED
+SUPERSEDED
 
 ### Решение
 
@@ -451,6 +451,10 @@ Capture
 → OCR
 → Translate
 → Overlay
+
+### Superseded By
+
+ADR-017. Исторический порядок MVP сохранён, но текущие зависимости ведутся в GitHub Issues и не образуют абсолютную линейную блокировку.
 
 ---
 
@@ -531,6 +535,63 @@ No.
 ### Approved
 
 Project owner, explicit chat approval on 2026-07-04.
+
+---
+
+# ADR-017
+
+## Governance Levels and Dependency-Based Delivery
+
+Status:
+ACCEPTED
+
+Date:
+2026-07-29
+
+### Context
+
+Ранние правила проекта одинаково блокировали опасные изменения, продуктовые решения и небольшие исправления. Это создало противоречия с semantic text grouping, ADR-016 и текущими Sprint 26 follow-up задачами: обычная реализация внутри принятого решения требовала повторного одобрения, а линейный roadmap блокировал независимую подготовительную работу.
+
+### Decision
+
+Использовать три уровня управления изменениями:
+
+1. Hard Stop для безопасности игры, секретов, разрушительной потери данных и нарушения направлений архитектурных зависимостей.
+2. Decision Record для breaking contract, platform replacement, schema/data migration, KPI/default-semantic change и новой продуктовой политики.
+3. Normal Delivery для bug fix, тестов, additive-compatible изменений и реализации внутри scope принятого ADR.
+
+Принятый ADR является разрешением на normal implementation, тестирование и исправления внутри его stated scope. Новое решение владельца требуется только при расширении scope.
+
+Roadmap задаёт направление, а GitHub Issues являются текущим источником зависимостей. Независимая работа допускается при закрытых либо явно отложенных собственных зависимостях.
+
+Quality Gates выбираются по impact; build, relevant tests, архитектурные границы и секреты обязательны всегда, а неприменимые gates фиксируются с причиной.
+
+### Consequences
+
+Positive:
+
+* Сохраняются запреты на небезопасное взаимодействие с играми и утечки секретов.
+* Реализация ADR-016 и другие bounded fixes не требуют повторного согласования каждой детали.
+* Решения с большим blast radius остаются reviewable через ADR и Change Request.
+* GitHub Issues становятся живой картой зависимостей вместо исторической нумерации документа.
+
+Negative:
+
+* Агент обязан аккуратно классифицировать изменение и фиксировать evidence.
+* Команда должна поддерживать issue dependencies и актуальные acceptance criteria.
+
+Compatibility:
+
+* Нет изменения production-кода, формата профилей или runtime behavior.
+* ADR-015 superseded только для правила строгой линейной последовательности; его историческая информация сохраняется.
+
+### Requires Migration
+
+No.
+
+### Approved
+
+Project owner, explicit chat approval on 2026-07-29.
 
 ---
 

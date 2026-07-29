@@ -13,7 +13,7 @@ public sealed class TranslationPipelineServiceTests
 {
     private static readonly DateTimeOffset FrameTime = new(2026, 6, 19, 12, 0, 1, TimeSpan.Zero);
     private static readonly DateTimeOffset OcrTime = new(2026, 6, 19, 12, 0, 2, TimeSpan.Zero);
-    private static readonly DateTimeOffset TranslatedAt = new(2026, 6, 19, 12, 0, 3, TimeSpan.Zero);
+    private static readonly DateTimeOffset TranslatedAt = DateTimeOffset.UtcNow.AddMinutes(1);
 
     [Fact]
     public async Task RunAsync_WhenTextIsRecognized_TranslatesAndShowsOverlay()

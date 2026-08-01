@@ -194,7 +194,7 @@ public sealed class OverlayPositioningServiceTests
     }
 
     [Fact]
-    public void CreateSnapshot_WithExpandedTextStyle_DampensRightOverflowAndKeepsSourceMask()
+    public void CreateSnapshot_WithExpandedTextStyle_KeepsTranslationCenteredAndSourceMaskStable()
     {
         var service = new OverlayPositioningService();
         var textStyle = new OcrZoneTextStyle
@@ -218,7 +218,7 @@ public sealed class OverlayPositioningServiceTests
         Assert.Equal(textStyle, item.TextStyle);
         Assert.True(item.Width > 40);
         Assert.True(item.Height > 20);
-        Assert.InRange(item.X + item.Width / 2d, 185d, 186d);
+        Assert.InRange(item.X + item.Width / 2d, 200d, 201d);
         Assert.InRange(item.Y + item.Height / 2d, 220d, 240d);
         var mask = Assert.Single(snapshot.MaskItems);
         Assert.Equal(180, mask.X);
@@ -268,6 +268,44 @@ public sealed class OverlayPositioningServiceTests
     }
 
     [Fact]
+    public void CreateSnapshot_WithExpandedNeighbors_AvoidsPreviouslyPlacedTranslationBounds()
+    {
+        var measurer = new RecordingOverlayTextMeasurer(request => new OverlayTextMeasurement(
+            Math.Min(request.MaxWidth, 120),
+            20,
+            new[] { new OverlayTextLineMeasurement(Math.Min(request.MaxWidth, 120), 20, request.Text.Length, false) }));
+        var service = new OverlayPositioningService(measurer);
+        var textStyle = new OcrZoneTextStyle
+        {
+            FontSize = 16,
+            LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter,
+        };
+        var blocks = new[]
+        {
+            new OcrTextBlock("First translation", new BoundingBox(10, 40, 20, 16)),
+            new OcrTextBlock("Second translation", new BoundingBox(100, 40, 20, 16)),
+        };
+        var result = CreateResultWithSources(
+            new CaptureRegion(0, 0, 260, 120),
+            inputWidth: 260,
+            inputHeight: 120,
+            OcrOrientationMode.Horizontal,
+            blocks,
+            blocks
+                .Select(block => new OcrTextBlockSource(block.Bounds, new[] { block.Bounds }, OcrOrientationMode.Horizontal))
+                .ToArray());
+
+        var snapshot = service.CreateSnapshot(result, ShownAt, previousSnapshot: null, textStyle);
+
+        Assert.Equal(2, snapshot.TextItems.Count);
+        var first = snapshot.TextItems[0];
+        var second = snapshot.TextItems[1];
+        Assert.False(Intersects(second, first));
+        Assert.True(second.X >= first.X + first.Width + 2);
+        Assert.Empty(snapshot.DebugMetricLines);
+    }
+
+    [Fact]
     public void CreateSnapshot_WithExpandedLongText_WrapsAroundSourceCenterAndKeepsSourceMask()
     {
         var service = new OverlayPositioningService();
@@ -288,9 +326,9 @@ public sealed class OverlayPositioningServiceTests
         var snapshot = service.CreateSnapshot(result, ShownAt, previousSnapshot: null, textStyle);
 
         var item = Assert.Single(snapshot.TextItems);
-        Assert.True(item.Width <= 200);
+        Assert.True(item.Width > 88);
         Assert.True(item.Height > 20);
-        Assert.InRange(item.X + item.Width / 2d, 210d, 220d);
+        Assert.InRange(item.X + item.Width / 2d, 220d, 221d);
         Assert.InRange(item.Y + item.Height / 2d, 140d, 160d);
         var mask = Assert.Single(snapshot.MaskItems);
         Assert.Equal(180, mask.X);
@@ -322,7 +360,7 @@ public sealed class OverlayPositioningServiceTests
         var item = Assert.Single(snapshot.TextItems);
         Assert.True(item.Width > 60);
         Assert.True(item.Height > 160);
-        Assert.InRange(item.X + item.Width / 2d, 350d, 370d);
+        Assert.InRange(item.X + item.Width / 2d, 370d, 371d);
         Assert.True(item.Y >= 0);
         Assert.True(item.Y + item.Height <= 600);
         var mask = Assert.Single(snapshot.MaskItems);
@@ -330,6 +368,308 @@ public sealed class OverlayPositioningServiceTests
         Assert.Equal(250, mask.Y);
         Assert.Equal(60, mask.Width);
         Assert.Equal(16, mask.Height);
+    }
+
+    [Fact]
+    public void CreateSnapshot_WithExpandedTextStyle_UsesInjectedTextMeasurementForHeight()
+    {
+        var measurer = new RecordingOverlayTextMeasurer(request => new OverlayTextMeasurement(
+            Math.Min(request.MaxWidth, 50),
+            72,
+            new[] { new OverlayTextLineMeasurement(Math.Min(request.MaxWidth, 50), 72, request.Text.Length, false) }));
+        var service = new OverlayPositioningService(measurer);
+        var textStyle = new OcrZoneTextStyle
+        {
+            FontFamily = "Arial",
+            FontSize = 20,
+            LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter,
+        };
+        var result = CreateResult(
+            new CaptureRegion(0, 0, 400, 300),
+            inputWidth: 400,
+            inputHeight: 300,
+            new OcrTextBlock("Measured text", new BoundingBox(180, 130, 80, 20)));
+
+        var snapshot = service.CreateSnapshot(result, ShownAt, previousSnapshot: null, textStyle);
+
+        var item = Assert.Single(snapshot.TextItems);
+        Assert.Equal(82, item.Height);
+        Assert.Contains(measurer.Requests, request => request.MaxWidth == item.Width - 16);
+        Assert.All(measurer.Requests, request => Assert.Equal(textStyle, request.TextStyle));
+    }
+
+    [Fact]
+    public void CreateSnapshot_WithExpandedVerticalText_ReducesFontAfterMeasuredHeightExceedsLimit()
+    {
+        var measurer = new RecordingOverlayTextMeasurer(request =>
+        {
+            var height = request.TextStyle.FontSize >= 14 ? 120 : 70;
+
+            return new OverlayTextMeasurement(
+                Math.Min(request.MaxWidth, 24),
+                height,
+                new[] { new OverlayTextLineMeasurement(Math.Min(request.MaxWidth, 24), height, request.Text.Length, false) });
+        });
+        var service = new OverlayPositioningService(measurer);
+        var textStyle = new OcrZoneTextStyle
+        {
+            FontSize = 16,
+            LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter,
+        };
+        var bounds = new BoundingBox(40, 5, 30, 80);
+        var block = new OcrTextBlock("Long vertical translation", bounds);
+        var result = CreateResultWithSources(
+            new CaptureRegion(0, 0, 160, 90),
+            inputWidth: 160,
+            inputHeight: 90,
+            OcrOrientationMode.Auto,
+            new[] { block },
+            new[]
+            {
+                new OcrTextBlockSource(bounds, new[] { bounds }, OcrOrientationMode.Vertical),
+            });
+
+        var snapshot = service.CreateSnapshot(result, ShownAt, previousSnapshot: null, textStyle);
+
+        var item = Assert.Single(snapshot.TextItems);
+        Assert.Equal(13, item.TextStyle.FontSize);
+        Assert.Equal(96, item.Width);
+        Assert.Equal(80, item.Height);
+        Assert.Contains(measurer.Requests, request => request.TextStyle.FontSize == 16);
+        Assert.Contains(measurer.Requests, request => request.TextStyle.FontSize == 15);
+        Assert.Contains(measurer.Requests, request => request.TextStyle.FontSize == 14);
+        Assert.Contains(measurer.Requests, request => request.TextStyle.FontSize == 13);
+    }
+
+    [Fact]
+    public void CreateSnapshot_WithExpandedVerticalText_GrowsInsideOcrZoneBeforeFontReduction()
+    {
+        var measurer = new RecordingOverlayTextMeasurer(request => new OverlayTextMeasurement(
+            Math.Min(request.MaxWidth, 48),
+            120,
+            new[] { new OverlayTextLineMeasurement(Math.Min(request.MaxWidth, 48), 120, request.Text.Length, false) }));
+        var service = new OverlayPositioningService(measurer);
+        var textStyle = new OcrZoneTextStyle
+        {
+            FontSize = 16,
+            LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter,
+        };
+        var block = new OcrTextBlock("Vertical translation can grow", new BoundingBox(40, 5, 30, 80));
+        var result = CreateResultWithSources(
+            new CaptureRegion(0, 0, 160, 160),
+            inputWidth: 160,
+            inputHeight: 160,
+            OcrOrientationMode.Auto,
+            new[] { block },
+            new[]
+            {
+                new OcrTextBlockSource(block.Bounds, new[] { block.Bounds }, OcrOrientationMode.Vertical),
+            });
+
+        var snapshot = service.CreateSnapshot(result, ShownAt, previousSnapshot: null, textStyle);
+
+        var item = Assert.Single(snapshot.TextItems);
+        Assert.Equal(16, item.TextStyle.FontSize);
+        Assert.True(item.Width > 96);
+        Assert.Equal(130, item.Height);
+        Assert.True(item.Height > 80);
+        Assert.Empty(snapshot.DebugMetricLines);
+    }
+
+    [Fact]
+    public void CreateSnapshot_WithExpandedVerticalText_ExpandsAtPreferredFontBeforeReducingFont()
+    {
+        var measurer = new RecordingOverlayTextMeasurer(request =>
+        {
+            var height = request.MaxWidth < 112 ? 180 : 48;
+
+            return new OverlayTextMeasurement(
+                Math.Min(request.MaxWidth, 48),
+                height,
+                new[] { new OverlayTextLineMeasurement(Math.Min(request.MaxWidth, 48), height, request.Text.Length, false) });
+        });
+        var service = new OverlayPositioningService(measurer);
+        var textStyle = new OcrZoneTextStyle
+        {
+            FontSize = 16,
+            LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter,
+        };
+        var block = new OcrTextBlock("Vertical text uses width before font reduction", new BoundingBox(100, 50, 30, 50));
+        var result = CreateResultWithSources(
+            new CaptureRegion(0, 0, 300, 220),
+            inputWidth: 300,
+            inputHeight: 220,
+            OcrOrientationMode.Auto,
+            new[] { block },
+            new[]
+            {
+                new OcrTextBlockSource(block.Bounds, new[] { block.Bounds }, OcrOrientationMode.Vertical),
+            });
+
+        var snapshot = service.CreateSnapshot(result, ShownAt, previousSnapshot: null, textStyle);
+
+        var item = Assert.Single(snapshot.TextItems);
+        Assert.Equal(16, item.TextStyle.FontSize);
+        Assert.True(item.Width >= 112);
+        Assert.Equal(58, item.Height);
+        Assert.Contains(measurer.Requests, request => request.TextStyle.FontSize == 16 && request.MaxWidth >= 96);
+        Assert.DoesNotContain(measurer.Requests, request => request.TextStyle.FontSize < 16);
+    }
+
+    [Fact]
+    public void CreateSnapshot_WithExpandedVerticalText_ExhaustsWidthBeforeIncreasingHeightAllowance()
+    {
+        var measurer = new RecordingOverlayTextMeasurer(request =>
+        {
+            var height = request.MaxWidth switch
+            {
+                <= 80 => 80,
+                <= 95 => 60,
+                _ => 40,
+            };
+
+            return new OverlayTextMeasurement(
+                Math.Min(request.MaxWidth, 48),
+                height,
+                new[] { new OverlayTextLineMeasurement(Math.Min(request.MaxWidth, 48), height, request.Text.Length, false) });
+        });
+        var service = new OverlayPositioningService(measurer);
+        var textStyle = new OcrZoneTextStyle
+        {
+            FontSize = 16,
+            LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter,
+        };
+        var bounds = new BoundingBox(100, 50, 30, 50);
+        var block = new OcrTextBlock("Vertical text expands width before height", bounds);
+        var result = CreateResultWithSources(
+            new CaptureRegion(0, 0, 300, 220),
+            inputWidth: 300,
+            inputHeight: 220,
+            OcrOrientationMode.Auto,
+            new[] { block },
+            new[]
+            {
+                new OcrTextBlockSource(bounds, new[] { bounds }, OcrOrientationMode.Vertical),
+            });
+
+        var snapshot = service.CreateSnapshot(result, ShownAt, previousSnapshot: null, textStyle);
+
+        var item = Assert.Single(snapshot.TextItems);
+        Assert.Equal(16, item.TextStyle.FontSize);
+        Assert.Equal(128, item.Width);
+        Assert.Equal(50, item.Height);
+        Assert.Equal(new[] { 80, 95, 112 }, measurer.Requests.Skip(1).Select(request => request.MaxWidth));
+    }
+
+    [Fact]
+    public void CreateSnapshot_WithShortVerticalSource_ReservesOneMeasuredLineBeforeWidthExpansion()
+    {
+        var measurer = new RecordingOverlayTextMeasurer(request =>
+        {
+            var isSingleLine = request.MaxWidth >= 120;
+            var height = isSingleLine ? 24 : 48;
+
+            return new OverlayTextMeasurement(
+                Math.Min(request.MaxWidth, 96),
+                height,
+                new[] { new OverlayTextLineMeasurement(Math.Min(request.MaxWidth, 96), 24, request.Text.Length, false) });
+        });
+        var service = new OverlayPositioningService(measurer);
+        var textStyle = new OcrZoneTextStyle
+        {
+            FontSize = 18,
+            LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter,
+        };
+        var bounds = new BoundingBox(120, 40, 20, 22);
+        var result = CreateResultWithSources(
+            new CaptureRegion(0, 0, 400, 180),
+            inputWidth: 400,
+            inputHeight: 180,
+            OcrOrientationMode.Auto,
+            new[] { new OcrTextBlock("Да, верно.", bounds) },
+            new[]
+            {
+                new OcrTextBlockSource(bounds, new[] { bounds }, OcrOrientationMode.Vertical),
+            });
+
+        var snapshot = service.CreateSnapshot(result, ShownAt, previousSnapshot: null, textStyle);
+
+        var item = Assert.Single(snapshot.TextItems);
+        Assert.True(item.Width < 200);
+        Assert.Equal(34, item.Height);
+        Assert.Empty(snapshot.DebugMetricLines);
+    }
+
+    [Fact]
+    public void SetSessionVerticalSourceWidthMultiplier_ChangesOnlyTheVerticalStartingWidth()
+    {
+        var measurer = new RecordingOverlayTextMeasurer(request => new OverlayTextMeasurement(
+            Math.Min(request.MaxWidth, 48),
+            20,
+            new[] { new OverlayTextLineMeasurement(Math.Min(request.MaxWidth, 48), 20, request.Text.Length, false) }));
+        var service = new OverlayPositioningService(measurer);
+        var textStyle = new OcrZoneTextStyle
+        {
+            FontSize = 16,
+            LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter,
+        };
+        var block = new OcrTextBlock("Vertical text", new BoundingBox(130, 60, 60, 80));
+        var result = CreateResultWithSources(
+            new CaptureRegion(0, 0, 400, 260),
+            inputWidth: 400,
+            inputHeight: 260,
+            OcrOrientationMode.Auto,
+            new[] { block },
+            new[]
+            {
+                new OcrTextBlockSource(block.Bounds, new[] { block.Bounds }, OcrOrientationMode.Vertical),
+            });
+
+        Assert.Equal(2.5, service.SetSessionVerticalSourceWidthMultiplier(2.5));
+
+        var snapshot = service.CreateSnapshot(result, ShownAt, previousSnapshot: null, textStyle);
+
+        var item = Assert.Single(snapshot.TextItems);
+        Assert.Equal(2.5, service.SessionVerticalSourceWidthMultiplier);
+        Assert.Equal(150, item.Width);
+        Assert.Equal(160d, item.X + item.Width / 2d, precision: 0);
+        Assert.Equal(1, service.SetSessionVerticalSourceWidthMultiplier(0.5));
+        Assert.Equal(1, service.SessionVerticalSourceWidthMultiplier);
+    }
+
+    [Fact]
+    public void CreateSnapshot_WithExpandedVerticalText_AddsWarningWhenMinimumFontStillClips()
+    {
+        var measurer = new RecordingOverlayTextMeasurer(request => new OverlayTextMeasurement(
+            Math.Min(request.MaxWidth, 48),
+            200,
+            new[] { new OverlayTextLineMeasurement(Math.Min(request.MaxWidth, 48), 200, request.Text.Length, false) }));
+        var service = new OverlayPositioningService(measurer);
+        var textStyle = new OcrZoneTextStyle
+        {
+            FontSize = 16,
+            LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter,
+        };
+        var block = new OcrTextBlock("Vertical translation still too tall", new BoundingBox(40, 5, 30, 50));
+        var result = CreateResultWithSources(
+            new CaptureRegion(0, 0, 120, 60),
+            inputWidth: 120,
+            inputHeight: 60,
+            OcrOrientationMode.Auto,
+            new[] { block },
+            new[]
+            {
+                new OcrTextBlockSource(block.Bounds, new[] { block.Bounds }, OcrOrientationMode.Vertical),
+            });
+
+        var snapshot = service.CreateSnapshot(result, ShownAt, previousSnapshot: null, textStyle);
+
+        var item = Assert.Single(snapshot.TextItems);
+        Assert.Equal(OcrZoneTextStyle.MinimumFontSize, item.TextStyle.FontSize);
+        Assert.Equal(60, item.Height);
+        Assert.Contains(
+            snapshot.DebugMetricLines,
+            line => line.StartsWith("Overlay fit warning: vertical translation clipped", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -355,7 +695,7 @@ public sealed class OverlayPositioningServiceTests
     }
 
     [Fact]
-    public void CreateSnapshot_WithExpandedVerticalOcrBounds_BoundsAreaAndKeepsSourceMask()
+    public void CreateSnapshot_WithExpandedVerticalOcrBounds_UsesReadableTextBoundsAndKeepsSourceMask()
     {
         var service = new OverlayPositioningService();
         var textStyle = new OcrZoneTextStyle
@@ -380,11 +720,14 @@ public sealed class OverlayPositioningServiceTests
 
         var item = Assert.Single(snapshot.TextItems);
         Assert.Equal("Давно не виделись. Рад снова встретиться.", item.Text);
-        Assert.Equal(30, item.Width);
-        Assert.True(item.Height <= 400);
-        Assert.True(item.Width * item.Height <= 30 * 400 * 1.10);
+        Assert.Equal(96, item.Width);
+        Assert.True(item.Height > 0);
+        Assert.True(item.Height <= 500);
+        Assert.True(item.X >= 100);
+        Assert.True(item.X + item.Width <= 400);
         Assert.Equal(235d, item.X + item.Width / 2d, precision: 0);
-        Assert.InRange(item.Y, 25, 425);
+        Assert.True(item.Y >= 0);
+        Assert.True(item.Y + item.Height <= 500);
         var mask = Assert.Single(snapshot.MaskItems);
         Assert.Equal(220, mask.X);
         Assert.Equal(25, mask.Y);
@@ -393,7 +736,7 @@ public sealed class OverlayPositioningServiceTests
     }
 
     [Fact]
-    public void CreateSnapshot_WithHorizontalMultilineRightOverflow_AppliesLineOffsetAndDampening()
+    public void CreateSnapshot_WithHorizontalMultilineText_AppliesLineOffsetWithoutHorizontalDampening()
     {
         var service = new OverlayPositioningService();
         var textStyle = new OcrZoneTextStyle
@@ -423,9 +766,8 @@ public sealed class OverlayPositioningServiceTests
         var snapshot = service.CreateSnapshot(result, ShownAt, previousSnapshot: null, textStyle);
 
         var item = Assert.Single(snapshot.TextItems);
-        Assert.Equal(92, item.Y);
-        Assert.True(item.X < 100);
-        Assert.True(item.X + item.Width > 180);
+        Assert.Equal(141, item.Y);
+        Assert.InRange(item.X + item.Width / 2d, 139d, 141d);
         var mask = Assert.Single(snapshot.MaskItems);
         Assert.Equal(100, mask.X);
         Assert.Equal(100, mask.Y);
@@ -461,11 +803,12 @@ public sealed class OverlayPositioningServiceTests
 
         var item = Assert.Single(snapshot.TextItems);
         Assert.Equal(14, item.TextStyle.FontSize);
-        Assert.Equal(58, item.Width);
-        Assert.Equal(70, item.X);
+        Assert.Equal(116, item.Width);
+        Assert.Equal(41, item.X);
         Assert.Equal(99d, item.X + item.Width / 2d, precision: 0);
-        Assert.Equal(128, item.X + item.Width);
-        Assert.True(item.Width * item.Height <= 58 * 116 * 1.10);
+        Assert.Equal(157, item.X + item.Width);
+        Assert.True(item.Y >= 0);
+        Assert.True(item.Y + item.Height <= 260);
         var mask = Assert.Single(snapshot.MaskItems);
         Assert.Equal(70, mask.X);
         Assert.Equal(108, mask.Y);
@@ -474,7 +817,7 @@ public sealed class OverlayPositioningServiceTests
     }
 
     [Fact]
-    public void CreateSnapshot_WithWideVerticalFitToSource_DampensRightOverflow()
+    public void CreateSnapshot_WithWideVerticalFitToSource_KeepsSourceCenter()
     {
         var service = new OverlayPositioningService();
         var block = new OcrTextBlock("Wide vertical", new BoundingBox(100, 50, 120, 180));
@@ -495,7 +838,7 @@ public sealed class OverlayPositioningServiceTests
         var snapshot = service.CreateSnapshot(result, ShownAt);
 
         var item = Assert.Single(snapshot.TextItems);
-        Assert.Equal(55, item.X);
+        Assert.Equal(70, item.X);
         Assert.Equal(80, item.Y);
         Assert.Equal(180, item.Width);
         Assert.Equal(120, item.Height);
@@ -578,6 +921,14 @@ public sealed class OverlayPositioningServiceTests
         return width > 2 && height > 2;
     }
 
+    private static bool Intersects(OverlayTextItem left, OverlayTextItem right)
+    {
+        var width = Math.Min(left.X + left.Width, right.X + right.Width) - Math.Max(left.X, right.X);
+        var height = Math.Min(left.Y + left.Height, right.Y + right.Height) - Math.Max(left.Y, right.Y);
+
+        return width > 2 && height > 2;
+    }
+
     private static OcrResult CreateResult(
         CaptureRegion region,
         int inputWidth,
@@ -632,5 +983,25 @@ public sealed class OverlayPositioningServiceTests
             "Bgra32",
             pixels,
             FrameTime);
+    }
+
+    private sealed class RecordingOverlayTextMeasurer : IOverlayTextMeasurer
+    {
+        private readonly Func<OverlayTextMeasurementRequest, OverlayTextMeasurement> measure;
+        private readonly List<OverlayTextMeasurementRequest> requests = new();
+
+        public RecordingOverlayTextMeasurer(Func<OverlayTextMeasurementRequest, OverlayTextMeasurement> measure)
+        {
+            this.measure = measure;
+        }
+
+        public IReadOnlyList<OverlayTextMeasurementRequest> Requests => requests;
+
+        public OverlayTextMeasurement Measure(OverlayTextMeasurementRequest request)
+        {
+            requests.Add(request);
+
+            return measure(request);
+        }
     }
 }

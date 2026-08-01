@@ -11,7 +11,8 @@ public sealed class OcrResult
         OcrRequest request,
         IEnumerable<OcrTextBlock> textBlocks,
         DateTimeOffset recognizedAt,
-        IEnumerable<OcrTextBlockSource>? textBlockSources = null)
+        IEnumerable<OcrTextBlockSource>? textBlockSources = null,
+        IEnumerable<OcrWord>? words = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(textBlocks);
@@ -51,6 +52,17 @@ public sealed class OcrResult
             }
         }
 
+        var wordList = words?.ToArray() ?? Array.Empty<OcrWord>();
+        foreach (var word in wordList)
+        {
+            if (!word.Bounds.IsWithin(request.Frame.Width, request.Frame.Height))
+            {
+                throw new ArgumentException(
+                    "OCR word bounds must stay within the captured frame.",
+                    nameof(words));
+            }
+        }
+
         Request = request;
         ZoneId = request.ZoneId;
         Region = request.Region;
@@ -59,6 +71,7 @@ public sealed class OcrResult
         InputHeight = request.Frame.Height;
         TextBlocks = blockList;
         TextBlockSources = sourceList;
+        Words = wordList;
         RecognizedAt = recognizedAt;
     }
 
@@ -77,6 +90,11 @@ public sealed class OcrResult
     public IReadOnlyList<OcrTextBlock> TextBlocks { get; }
 
     public IReadOnlyList<OcrTextBlockSource> TextBlockSources { get; }
+
+    /// <summary>
+    /// Gets optional engine-reported word geometry and quality metadata.
+    /// </summary>
+    public IReadOnlyList<OcrWord> Words { get; }
 
     public DateTimeOffset RecognizedAt { get; }
 

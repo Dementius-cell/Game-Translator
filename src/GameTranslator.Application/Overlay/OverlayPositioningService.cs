@@ -9,23 +9,74 @@ namespace GameTranslator.Application.Overlay;
 public sealed class OverlayPositioningService
 {
     private const int DefaultJitterTolerancePixels = 4;
-    private const double AverageGlyphWidthFactor = 0.62;
-    private const double BoldGlyphWidthFactor = 0.68;
-    private const double LineHeightFactor = 1.45;
     private const double SameReadingLineCenterToleranceFactor = 0.8;
     private const double SameReadingLineOverlapRatio = 0.15;
     private const int ExpandedTextHorizontalPadding = 8;
     private const int ExpandedTextVerticalPadding = 4;
-    private const int ExpandedTextVerticalSafetyPadding = 10;
+    private const int ExpandedTextVerticalSafetyPadding = 2;
+    private const int InitialTranslationFramePadding = 4;
     private const int MinimumExpandedTextWidth = 96;
     private const int ExpandedTextMaxWidth = 960;
-    private const double ExpandedTextSourceWidthMultiplier = 1.35;
-    private const double VerticalExpandedTextSourceHeightMultiplier = 1.25;
+    private const double DefaultSessionVerticalSourceWidthMultiplier = 2.0;
+    private const double MinimumSessionVerticalSourceWidthMultiplier = 1.0;
+    private const double MaximumSessionVerticalSourceWidthMultiplier = 2.5;
+    private const double CenteredExpansionStepRatio = 0.15;
+    private const int MinimumCenteredExpansionStep = 8;
     private const double VerticalSourceAspectRatioThreshold = 1.1;
     private const int AdditionalHorizontalLineYOffsetPixels = -8;
-    private const double RightOverflowDampeningRatio = 0.5;
-    private const int CompactVerticalSemanticWidthThreshold = 100;
-    private const double VerticalMaxOverlayAreaRatio = 1.10;
+    private const string OverlayFitWarningPrefix = "Overlay fit warning:";
+
+    private readonly IOverlayTextMeasurer textMeasurer;
+    private readonly object sessionLayoutTuningSync = new();
+    private double sessionVerticalSourceWidthMultiplier = DefaultSessionVerticalSourceWidthMultiplier;
+
+    public OverlayPositioningService()
+        : this(LegacyOverlayTextMeasurer.Instance)
+    {
+    }
+
+    public OverlayPositioningService(IOverlayTextMeasurer textMeasurer)
+    {
+        this.textMeasurer = textMeasurer ?? throw new ArgumentNullException(nameof(textMeasurer));
+    }
+
+    /// <summary>
+    /// Gets the session-only starting-width multiplier for vertical-source translation text.
+    /// </summary>
+    public double SessionVerticalSourceWidthMultiplier
+    {
+        get
+        {
+            lock (sessionLayoutTuningSync)
+            {
+                return sessionVerticalSourceWidthMultiplier;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Updates the session-only starting-width multiplier for vertical-source translation text.
+    /// This value is intentionally not persisted in profiles or settings.
+    /// </summary>
+    public double SetSessionVerticalSourceWidthMultiplier(double multiplier)
+    {
+        if (!double.IsFinite(multiplier))
+        {
+            throw new ArgumentOutOfRangeException(nameof(multiplier), multiplier, "The vertical source-width multiplier must be finite.");
+        }
+
+        var normalizedMultiplier = Math.Clamp(
+            multiplier,
+            MinimumSessionVerticalSourceWidthMultiplier,
+            MaximumSessionVerticalSourceWidthMultiplier);
+
+        lock (sessionLayoutTuningSync)
+        {
+            sessionVerticalSourceWidthMultiplier = normalizedMultiplier;
+        }
+
+        return normalizedMultiplier;
+    }
 
     public OverlaySnapshot CreateSnapshot(
         OcrResult result,
@@ -82,11 +133,16 @@ public sealed class OverlayPositioningService
             maskItems = StabilizeMaskItems(maskItems, textItems, previousSnapshot);
         }
 
+        var debugMetricLines = positionedItems
+            .SelectMany(item => item.DebugMetricLines)
+            .ToArray();
+
         return new OverlaySnapshot(
             textItems,
             shownAt,
             settings,
-            maskItems);
+            maskItems,
+            debugMetricLines: debugMetricLines);
     }
 
     private static OverlayMaskItem CreateMaskItem(OverlayMaskBounds maskBounds, OverlaySettings settings)
@@ -107,7 +163,7 @@ public sealed class OverlayPositioningService
             height);
     }
 
-    private static OverlayPositionedTextItem CreatePositionedTextItem(
+    private OverlayPositionedTextItem CreatePositionedTextItem(
         OcrResult result,
         OcrTextBlock block,
         OcrTextBlockSource source,
@@ -119,6 +175,7 @@ public sealed class OverlayPositioningService
             .ToArray();
         var isVerticalSource = IsVerticalSource(result, source, sourceBounds.Width, sourceBounds.Height);
         var layoutBounds = CreateLayoutBounds(
+            block.Text,
             sourceBounds.X,
             sourceBounds.Y,
             sourceBounds.Width,
@@ -128,14 +185,17 @@ public sealed class OverlayPositioningService
 
         if (textStyle.LayoutMode == OverlayTextLayoutMode.ExpandFromSourceCenter)
         {
+            var placement = CreateExpandedTextItem(result, block.Text, sourceBounds, textStyle, isVerticalSource);
+
             return new OverlayPositionedTextItem(
                 ApplySemanticPlacementRules(
-                    CreateExpandedTextItem(result, block.Text, sourceBounds, textStyle, isVerticalSource),
+                    placement.TextItem,
                     sourceBounds,
                     memberBounds,
                     isVerticalSource),
                 new OverlayMaskBounds(sourceBounds.X, sourceBounds.Y, sourceBounds.Width, sourceBounds.Height),
-                sourceBounds);
+                sourceBounds,
+                placement.DebugMetricLines);
         }
 
         return new OverlayPositionedTextItem(
@@ -151,10 +211,12 @@ public sealed class OverlayPositioningService
                 memberBounds,
                 isVerticalSource),
             new OverlayMaskBounds(sourceBounds.X, sourceBounds.Y, sourceBounds.Width, sourceBounds.Height),
-            sourceBounds);
+            sourceBounds,
+            Array.Empty<string>());
     }
 
-    private static OverlayLayoutBounds CreateLayoutBounds(
+    private OverlayLayoutBounds CreateLayoutBounds(
+        string text,
         int sourceX,
         int sourceY,
         int sourceWidth,
@@ -170,214 +232,237 @@ public sealed class OverlayPositioningService
         var centerX = sourceX + sourceWidth / 2d;
         var centerY = sourceY + sourceHeight / 2d;
         var width = Math.Min(ExpandedTextMaxWidth, Math.Max(sourceHeight, sourceWidth));
-        var height = Math.Max(sourceWidth, EstimateSingleLineTextHeight(textStyle));
+        var height = Math.Max(sourceWidth, MeasureSingleLineTextHeight(text, textStyle, width));
         var x = Math.Max(0, (int)Math.Round(centerX - width / 2d, MidpointRounding.AwayFromZero));
         var y = Math.Max(0, (int)Math.Round(centerY - height / 2d, MidpointRounding.AwayFromZero));
 
         return new OverlayLayoutBounds(x, y, width, height);
     }
 
-    private static OverlayTextItem CreateExpandedTextItem(
+    private OverlayTextPlacement CreateExpandedTextItem(
         OcrResult result,
         string text,
         OverlayLayoutBounds sourceBounds,
         OcrZoneTextStyle textStyle,
         bool isVerticalSource)
     {
-        if (isVerticalSource)
+        var regionBounds = new OverlayLayoutBounds(
+            result.Region.X,
+            result.Region.Y,
+            result.Region.Width,
+            result.Region.Height);
+        var maximumWidth = Math.Max(1, Math.Min(ExpandedTextMaxWidth, regionBounds.Width));
+        var maximumHeight = Math.Max(1, regionBounds.Height);
+        var initialWidth = isVerticalSource
+            ? GetInitialVerticalTranslationWidth(sourceBounds.Width, maximumWidth)
+            : GetInitialHorizontalTranslationWidth(sourceBounds.Width, maximumWidth);
+        var initialHeight = Math.Max(
+            1,
+            checked(sourceBounds.Height + InitialTranslationFramePadding * 2));
+        var minimumSourceHeightForMeasuredLine = checked(textStyle.FontSize + ExpandedTextVerticalPadding * 2);
+        if (isVerticalSource && sourceBounds.Height < minimumSourceHeightForMeasuredLine)
         {
-            return CreateVerticalExpandedTextItem(text, sourceBounds, textStyle);
+            initialHeight = Math.Max(
+                initialHeight,
+                MeasureMinimumExpandedLineHeight(text, textStyle, initialWidth));
         }
 
-        var centerX = sourceBounds.X + sourceBounds.Width / 2d;
-        var centerY = sourceBounds.Y + sourceBounds.Height / 2d;
-        var measuredSize = EstimateExpandedTextSize(
-            text,
-            sourceBounds.Width,
-            sourceBounds.Height,
-            textStyle,
-            Math.Min(ExpandedTextMaxWidth, Math.Max(sourceBounds.Width, result.Region.Width)),
-            isVerticalSource);
-        var x = ClampToScreenOrigin(
-            (int)Math.Round(centerX - measuredSize.Width / 2d, MidpointRounding.AwayFromZero));
-        var y = ClampToScreenOrigin(
-            (int)Math.Round(centerY - measuredSize.Height / 2d, MidpointRounding.AwayFromZero));
+        initialHeight = Math.Min(maximumHeight, initialHeight);
 
-        return new OverlayTextItem(
+        return CreateCenteredExpandedTextItem(
             text,
-            x,
-            y,
-            measuredSize.Width,
-            measuredSize.Height,
-            textStyle);
+            sourceBounds,
+            regionBounds,
+            textStyle,
+            initialWidth,
+            initialHeight,
+            maximumWidth,
+            maximumHeight,
+            isVerticalSource);
     }
 
-    private static OverlayTextItem CreateVerticalExpandedTextItem(
+    private OverlayTextPlacement CreateCenteredExpandedTextItem(
         string text,
         OverlayLayoutBounds sourceBounds,
-        OcrZoneTextStyle textStyle)
-    {
-        var fontSize = Math.Max(OcrZoneTextStyle.MinimumFontSize, textStyle.FontSize);
-        var semanticArea = checked(sourceBounds.Width * sourceBounds.Height);
-        var maxOverlayArea = semanticArea * VerticalMaxOverlayAreaRatio;
-        var width = Math.Max(1, sourceBounds.Width);
-        var maxHeight = Math.Max(
-            1,
-            Math.Min(
-                sourceBounds.Height,
-                (int)Math.Floor(maxOverlayArea / width)));
-        var fittedFontSize = fontSize;
-        var desiredHeight = EstimateExpandedTextHeight(text, width, fittedFontSize, textStyle.IsBold);
-
-        while (desiredHeight > maxHeight && fittedFontSize > OcrZoneTextStyle.MinimumFontSize)
-        {
-            fittedFontSize = Math.Max(OcrZoneTextStyle.MinimumFontSize, fittedFontSize - 1);
-            desiredHeight = EstimateExpandedTextHeight(text, width, fittedFontSize, textStyle.IsBold);
-        }
-
-        var height = Math.Max(1, Math.Min(maxHeight, desiredHeight));
-        var centerX = sourceBounds.X + sourceBounds.Width / 2d;
-        var centerY = sourceBounds.Y + sourceBounds.Height / 2d;
-        var initialHeight = Math.Max(1, Math.Min(maxHeight, EstimateSingleLineTextHeight(textStyle)));
-        var initialBottom = Math.Min(
-            sourceBounds.Bottom,
-            Math.Max(
-                sourceBounds.Y + initialHeight,
-                (int)Math.Round(centerY + initialHeight / 2d, MidpointRounding.AwayFromZero)));
-        var bottom = height >= sourceBounds.Height
-            ? sourceBounds.Bottom
-            : Math.Min(sourceBounds.Bottom, Math.Max(sourceBounds.Y + height, initialBottom));
-        var x = ClampToScreenOrigin(
-            (int)Math.Round(centerX - width / 2d, MidpointRounding.AwayFromZero));
-        var y = ClampToScreenOrigin(bottom - height);
-        var fittedTextStyle = fittedFontSize.Equals(fontSize)
-            ? textStyle
-            : textStyle with { FontSize = fittedFontSize };
-
-        return new OverlayTextItem(
-            text,
-            x,
-            y,
-            width,
-            height,
-            fittedTextStyle);
-    }
-
-    private static ExpandedTextSize EstimateExpandedTextSize(
-        string text,
-        int sourceWidth,
-        int sourceHeight,
+        OverlayLayoutBounds regionBounds,
         OcrZoneTextStyle textStyle,
-        int maxWidth,
+        int initialWidth,
+        int initialHeight,
+        int maximumWidth,
+        int maximumHeight,
         bool isVerticalSource)
     {
         var normalizedText = text.Trim();
-        var characterCount = Math.Max(1, normalizedText.Length);
-        var glyphWidthFactor = textStyle.IsBold ? BoldGlyphWidthFactor : AverageGlyphWidthFactor;
-        var fontSize = Math.Max(OcrZoneTextStyle.MinimumFontSize, textStyle.FontSize);
-        var singleLineWidth = (int)Math.Ceiling(
-            characterCount * fontSize * glyphWidthFactor + ExpandedTextHorizontalPadding * 2);
-        var sourceWidthBasis = isVerticalSource
-            ? Math.Max(sourceWidth * ExpandedTextSourceWidthMultiplier, sourceHeight * VerticalExpandedTextSourceHeightMultiplier)
-            : sourceWidth * ExpandedTextSourceWidthMultiplier;
-        var readableLimit = Math.Max(
-            MinimumExpandedTextWidth,
-            (int)Math.Ceiling(sourceWidthBasis));
-        var layoutLimit = Math.Max(1, Math.Min(maxWidth, Math.Min(ExpandedTextMaxWidth, readableLimit)));
-        var width = Math.Max(Math.Min(sourceWidth, layoutLimit), Math.Min(singleLineWidth, layoutLimit));
-        var contentWidth = Math.Max(1, width - ExpandedTextHorizontalPadding * 2);
-        var lineCount = EstimateWrappedLineCount(normalizedText, contentWidth, fontSize, glyphWidthFactor);
-        var minimumHeight = isVerticalSource
-            ? EstimateSingleLineTextHeight(textStyle)
-            : sourceHeight;
-        var height = Math.Max(
-            minimumHeight,
-            (int)Math.Ceiling(
-                fontSize * LineHeightFactor * lineCount
-                + ExpandedTextVerticalPadding * 2
-                + ExpandedTextVerticalSafetyPadding));
+        var originalFontSize = Math.Max(OcrZoneTextStyle.MinimumFontSize, textStyle.FontSize);
+        var finalWidth = initialWidth;
+        var finalHeight = initialHeight;
+        var finalFontSize = originalFontSize;
+        var fits = false;
 
-        return new ExpandedTextSize(width, height);
-    }
-
-    private static int EstimateWrappedLineCount(
-        string text,
-        int maxContentWidth,
-        double fontSize,
-        double glyphWidthFactor)
-    {
-        var normalizedText = text.Trim();
-        if (string.IsNullOrWhiteSpace(normalizedText))
+        var fontSize = originalFontSize;
+        while (true)
         {
-            return 1;
-        }
+            var candidateTextStyle = fontSize.Equals(originalFontSize)
+                ? textStyle
+                : textStyle with { FontSize = fontSize };
+            var width = initialWidth;
+            var heightLimit = initialHeight;
 
-        if (!normalizedText.Any(char.IsWhiteSpace))
-        {
-            return Math.Max(1, (int)Math.Ceiling(EstimateTextWidth(normalizedText, fontSize, glyphWidthFactor) / maxContentWidth));
-        }
-
-        var lineCount = 1;
-        var currentLineWidth = 0d;
-        var spaceWidth = EstimateTextWidth(" ", fontSize, glyphWidthFactor);
-        foreach (var word in normalizedText.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
-        {
-            var wordWidth = EstimateTextWidth(word, fontSize, glyphWidthFactor);
-            if (wordWidth > maxContentWidth)
+            while (true)
             {
-                if (currentLineWidth > 0)
+                var desiredHeight = MeasureExpandedTextHeight(normalizedText, width, candidateTextStyle);
+                if (desiredHeight <= heightLimit)
                 {
-                    lineCount++;
-                    currentLineWidth = 0;
+                    finalWidth = width;
+                    finalHeight = desiredHeight;
+                    finalFontSize = fontSize;
+                    fits = true;
+                    break;
                 }
 
-                lineCount += Math.Max(1, (int)Math.Ceiling(wordWidth / maxContentWidth)) - 1;
-                currentLineWidth = wordWidth % maxContentWidth;
-                continue;
+                finalWidth = width;
+                finalHeight = Math.Min(maximumHeight, desiredHeight);
+                finalFontSize = fontSize;
+
+                if (width < maximumWidth)
+                {
+                    var widthExpansionStep = Math.Max(
+                        MinimumCenteredExpansionStep,
+                        (int)Math.Ceiling(width * CenteredExpansionStepRatio));
+                    width = Math.Min(maximumWidth, checked(width + widthExpansionStep));
+
+                    if (!isVerticalSource)
+                    {
+                        heightLimit = Math.Min(maximumHeight, checked(heightLimit + widthExpansionStep));
+                    }
+
+                    continue;
+                }
+
+                if (heightLimit >= maximumHeight)
+                {
+                    break;
+                }
+
+                var heightExpansionStep = Math.Max(
+                    MinimumCenteredExpansionStep,
+                    (int)Math.Ceiling(heightLimit * CenteredExpansionStepRatio));
+                heightLimit = Math.Min(maximumHeight, checked(heightLimit + heightExpansionStep));
             }
 
-            var nextWidth = currentLineWidth <= 0
-                ? wordWidth
-                : currentLineWidth + spaceWidth + wordWidth;
-            if (nextWidth <= maxContentWidth)
+            if (fits)
             {
-                currentLineWidth = nextWidth;
-                continue;
+                break;
             }
 
-            lineCount++;
-            currentLineWidth = wordWidth;
+            if (fontSize <= OcrZoneTextStyle.MinimumFontSize)
+            {
+                break;
+            }
+
+            fontSize = Math.Max(OcrZoneTextStyle.MinimumFontSize, fontSize - 1);
         }
 
-        return Math.Max(1, lineCount);
+        var fittedTextStyle = finalFontSize.Equals(originalFontSize)
+            ? textStyle
+            : textStyle with { FontSize = finalFontSize };
+        var x = ClampOriginToBounds(
+            (int)Math.Round(sourceBounds.CenterX - finalWidth / 2d, MidpointRounding.AwayFromZero),
+            finalWidth,
+            regionBounds);
+        var y = ClampOriginToBounds(
+            (int)Math.Round(sourceBounds.CenterY - finalHeight / 2d, MidpointRounding.AwayFromZero),
+            finalHeight,
+            regionBounds.Y,
+            regionBounds.Bottom);
+        var debugMetricLines = fits
+            ? Array.Empty<string>()
+            : new[]
+            {
+                CreateFitWarning(
+                    isVerticalSource ? "vertical translation clipped" : "translation clipped",
+                    finalWidth,
+                    finalHeight,
+                    finalFontSize,
+                    regionBounds),
+            };
+
+        return new OverlayTextPlacement(
+            new OverlayTextItem(
+                text,
+                x,
+                y,
+                finalWidth,
+                finalHeight,
+                fittedTextStyle),
+            debugMetricLines);
     }
 
-    private static double EstimateTextWidth(string text, double fontSize, double glyphWidthFactor)
+    private int GetInitialVerticalTranslationWidth(int sourceWidth, int maximumWidth)
     {
-        return Math.Max(1, text.Length) * fontSize * glyphWidthFactor;
+        var desiredWidth = Math.Max(
+            1,
+            (int)Math.Ceiling(sourceWidth * SessionVerticalSourceWidthMultiplier));
+        var paddedSourceWidth = checked(sourceWidth + InitialTranslationFramePadding * 2);
+        var minimumReadableWidth = Math.Min(MinimumExpandedTextWidth, maximumWidth);
+
+        return Math.Clamp(Math.Max(desiredWidth, paddedSourceWidth), minimumReadableWidth, maximumWidth);
     }
 
-    private static int EstimateExpandedTextHeight(
+    private static int GetInitialHorizontalTranslationWidth(int sourceWidth, int maximumWidth)
+    {
+        var paddedSourceWidth = checked(sourceWidth + InitialTranslationFramePadding * 2);
+
+        return Math.Clamp(paddedSourceWidth, 1, maximumWidth);
+    }
+
+    private int MeasureExpandedTextHeight(
         string text,
         int width,
-        double fontSize,
-        bool isBold)
+        OcrZoneTextStyle textStyle)
     {
-        var glyphWidthFactor = isBold ? BoldGlyphWidthFactor : AverageGlyphWidthFactor;
         var contentWidth = Math.Max(1, width - ExpandedTextHorizontalPadding * 2);
-        var lineCount = EstimateWrappedLineCount(text.Trim(), contentWidth, fontSize, glyphWidthFactor);
+        var measured = MeasureText(text.Trim(), textStyle, contentWidth);
 
         return Math.Max(
             1,
-            (int)Math.Ceiling(
-                fontSize * LineHeightFactor * lineCount
-                + ExpandedTextVerticalPadding * 2
-                + ExpandedTextVerticalSafetyPadding));
+            checked(measured.Height + ExpandedTextVerticalPadding * 2 + ExpandedTextVerticalSafetyPadding));
     }
 
-    private static int EstimateSingleLineTextHeight(OcrZoneTextStyle textStyle)
+    private int MeasureMinimumExpandedLineHeight(
+        string text,
+        OcrZoneTextStyle textStyle,
+        int maxWidth)
     {
-        return (int)Math.Ceiling(textStyle.FontSize * LineHeightFactor + ExpandedTextVerticalPadding * 2);
+        var measurement = MeasureText(text.Trim(), textStyle, Math.Max(1, maxWidth - ExpandedTextHorizontalPadding * 2));
+        var lineHeight = measurement.Lines.FirstOrDefault()?.Height ?? measurement.Height;
+
+        return Math.Max(
+            1,
+            checked(lineHeight + ExpandedTextVerticalPadding * 2 + ExpandedTextVerticalSafetyPadding));
+    }
+
+    private int MeasureSingleLineTextHeight(
+        string text,
+        OcrZoneTextStyle textStyle,
+        int maxWidth)
+    {
+        var measurement = MeasureText(text, textStyle, Math.Max(1, maxWidth));
+
+        return Math.Max(
+            1,
+            checked((measurement.Lines.FirstOrDefault()?.Height ?? measurement.Height) + ExpandedTextVerticalPadding * 2));
+    }
+
+    private OverlayTextMeasurement MeasureText(
+        string text,
+        OcrZoneTextStyle textStyle,
+        int maxWidth)
+    {
+        return textMeasurer.Measure(new OverlayTextMeasurementRequest(
+            text,
+            textStyle,
+            Math.Max(1, maxWidth)));
     }
 
     private static OverlayTextItem[] StabilizeTextItems(
@@ -496,25 +581,10 @@ public sealed class OverlayPositioningService
         var lineCount = EstimateSourceLineCount(memberBounds);
         var x = item.X;
         var y = item.Y;
-        var lineOffsetApplied = false;
 
         if (!isVerticalSource && lineCount > 1)
         {
             y = ClampToScreenOrigin(y + (lineCount - 1) * AdditionalHorizontalLineYOffsetPixels);
-            lineOffsetApplied = true;
-        }
-
-        var rightOverflow = Math.Max(0, (x + item.Width) - semanticBounds.Right);
-        var dampeningApplied = rightOverflow > 0
-            && (!isVerticalSource || semanticBounds.Width >= CompactVerticalSemanticWidthThreshold);
-        if (dampeningApplied)
-        {
-            x = ClampToScreenOrigin(x - (int)Math.Round(rightOverflow * RightOverflowDampeningRatio, MidpointRounding.AwayFromZero));
-        }
-
-        if (!isVerticalSource && lineOffsetApplied && dampeningApplied && y > semanticBounds.Y)
-        {
-            y = semanticBounds.Y;
         }
 
         return x == item.X && y == item.Y
@@ -544,7 +614,16 @@ public sealed class OverlayPositioningService
                 .Where((_, otherIndex) => otherIndex != index)
                 .Select(item => item.SemanticBounds)
                 .ToArray();
-            adjusted[index] = AdjustTextItemForSemanticNeighbors(items[index], others, regionBounds);
+            var placedTranslationBounds = adjusted
+                .Take(index)
+                .Select(item => CreateLayoutBounds(item.TextItem))
+                .ToArray();
+
+            adjusted[index] = AdjustTextItemForSemanticNeighbors(
+                items[index],
+                others,
+                placedTranslationBounds,
+                regionBounds);
         }
 
         return adjusted;
@@ -553,21 +632,46 @@ public sealed class OverlayPositioningService
     private static OverlayPositionedTextItem AdjustTextItemForSemanticNeighbors(
         OverlayPositionedTextItem item,
         IReadOnlyList<OverlayLayoutBounds> otherSemanticBounds,
+        IReadOnlyList<OverlayLayoutBounds> placedTranslationBounds,
         OverlayLayoutBounds regionBounds)
     {
         var clamped = ClampTextItemToBounds(item.TextItem, regionBounds);
-        if (!OverlapsAnySemanticGroup(clamped, otherSemanticBounds))
+        var debugMetricLines = item.DebugMetricLines;
+        if (clamped.Width != item.TextItem.Width || clamped.Height != item.TextItem.Height)
         {
-            return item with { TextItem = clamped };
+            debugMetricLines = AppendDebugMetricLine(
+                debugMetricLines,
+                CreateFitWarning(
+                    "translation bounds clipped",
+                    clamped.Width,
+                    clamped.Height,
+                    item.TextItem.TextStyle.FontSize,
+                    regionBounds));
         }
 
-        var candidates = CreateCandidateTextItems(clamped, item.SemanticBounds, otherSemanticBounds, regionBounds)
-            .Where(candidate => !OverlapsAnySemanticGroup(candidate, otherSemanticBounds))
+        var obstacleBounds = otherSemanticBounds
+            .Concat(placedTranslationBounds)
+            .ToArray();
+
+        if (!OverlapsAnyBounds(clamped, obstacleBounds))
+        {
+            return item with { TextItem = clamped, DebugMetricLines = debugMetricLines };
+        }
+
+        var candidates = CreateCandidateTextItems(clamped, item.SemanticBounds, obstacleBounds, regionBounds)
+            .Where(candidate => !OverlapsAnyBounds(candidate, obstacleBounds))
             .OrderBy(candidate => CalculateCenterDistance(candidate, item.SemanticBounds))
             .ThenBy(candidate => Math.Abs(candidate.X - clamped.X) + Math.Abs(candidate.Y - clamped.Y))
             .ToArray();
+        var selected = candidates.FirstOrDefault();
+        if (selected is null)
+        {
+            debugMetricLines = AppendDebugMetricLine(
+                debugMetricLines,
+                $"{OverlayFitWarningPrefix} translation still overlaps neighboring OCR/text bounds after placement.");
+        }
 
-        return item with { TextItem = candidates.FirstOrDefault() ?? clamped };
+        return item with { TextItem = selected ?? clamped, DebugMetricLines = debugMetricLines };
     }
 
     private static IEnumerable<OverlayTextItem> CreateCandidateTextItems(
@@ -634,6 +738,11 @@ public sealed class OverlayPositioningService
             item.TextStyle);
     }
 
+    private static OverlayLayoutBounds CreateLayoutBounds(OverlayTextItem item)
+    {
+        return new OverlayLayoutBounds(item.X, item.Y, item.Width, item.Height);
+    }
+
     private static OverlayTextItem CreateMovedTextItem(
         OverlayTextItem item,
         int x,
@@ -659,11 +768,36 @@ public sealed class OverlayPositioningService
         return Math.Clamp(origin, minimum, Math.Max(minimum, maximum - size));
     }
 
-    private static bool OverlapsAnySemanticGroup(
+    private static bool OverlapsAnyBounds(
         OverlayTextItem item,
-        IReadOnlyList<OverlayLayoutBounds> semanticBounds)
+        IReadOnlyList<OverlayLayoutBounds> bounds)
     {
-        return semanticBounds.Any(bounds => HasMeaningfulIntersection(item, bounds));
+        return bounds.Any(candidate => HasMeaningfulIntersection(item, candidate));
+    }
+
+    private static IReadOnlyList<string> AppendDebugMetricLine(
+        IReadOnlyList<string> debugMetricLines,
+        string line)
+    {
+        if (debugMetricLines.Count == 0)
+        {
+            return new[] { line };
+        }
+
+        return debugMetricLines
+            .Concat(new[] { line })
+            .ToArray();
+    }
+
+    private static string CreateFitWarning(
+        string reason,
+        int width,
+        int height,
+        double fontSize,
+        OverlayLayoutBounds regionBounds)
+    {
+        return FormattableString.Invariant(
+            $"{OverlayFitWarningPrefix} {reason} to {width}x{height} at {fontSize:0.#}px inside OCR zone {regionBounds.Width}x{regionBounds.Height}.");
     }
 
     private static bool HasMeaningfulIntersection(OverlayTextItem item, OverlayLayoutBounds bounds)
@@ -796,7 +930,11 @@ public sealed class OverlayPositioningService
     private sealed record OverlayPositionedTextItem(
         OverlayTextItem TextItem,
         OverlayMaskBounds MaskBounds,
-        OverlayLayoutBounds SemanticBounds);
+        OverlayLayoutBounds SemanticBounds,
+        IReadOnlyList<string> DebugMetricLines);
 
-    private sealed record ExpandedTextSize(int Width, int Height);
+    private sealed record OverlayTextPlacement(
+        OverlayTextItem TextItem,
+        IReadOnlyList<string> DebugMetricLines);
+
 }

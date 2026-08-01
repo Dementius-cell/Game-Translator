@@ -247,6 +247,7 @@
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
@@ -298,6 +299,40 @@
                                         Foreground="#56616F"
                                         Text="{Binding DebugOverlayStatus}"
                                         TextWrapping="Wrap" />
+                                    <TextBlock
+                                        Grid.Row="3"
+                                        Grid.Column="0"
+                                        Margin="0,12,0,0"
+                                        VerticalAlignment="Center"
+                                        Foreground="#253238"
+                                        Text="Vertical width" />
+                                    <Grid
+                                        Grid.Row="3"
+                                        Grid.Column="1"
+                                        Grid.ColumnSpan="2"
+                                        Margin="12,12,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="64" />
+                                        </Grid.ColumnDefinitions>
+                                        <Slider
+                                            Grid.Column="0"
+                                            Minimum="1"
+                                            Maximum="2.5"
+                                            TickFrequency="0.1"
+                                            SmallChange="0.1"
+                                            LargeChange="0.5"
+                                            IsEnabled="{Binding IsDebugOverlayEnabled}"
+                                            ToolTip="Session-only starting width for vertical-source translations."
+                                            Value="{Binding DebugVerticalSourceWidthMultiplier, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBox
+                                            Grid.Column="1"
+                                            Margin="12,0,0,0"
+                                            Padding="8,6"
+                                            IsEnabled="{Binding IsDebugOverlayEnabled}"
+                                            ToolTip="Session-only starting width for vertical-source translations."
+                                            Text="{Binding DebugVerticalSourceWidthMultiplier, UpdateSourceTrigger=PropertyChanged, StringFormat=F1, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                    </Grid>
                                 </Grid>
                             </Border>
 

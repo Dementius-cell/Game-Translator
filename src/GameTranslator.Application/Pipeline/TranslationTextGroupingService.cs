@@ -47,7 +47,8 @@ public static class TranslationTextGroupingService
             sourceResult.Request,
             new[] { new OcrTextBlock(joinedText, source.SemanticBounds) },
             sourceResult.RecognizedAt,
-            new[] { source });
+            new[] { source },
+            sourceResult.Words);
     }
 
     private static OcrResult CreateNearbyBlocksResult(
@@ -83,7 +84,8 @@ public static class TranslationTextGroupingService
                 sourceResult.Request,
                 groupedBlocks.Select(group => group.TextBlock),
                 sourceResult.RecognizedAt,
-                groupedBlocks.Select(group => group.Source));
+                groupedBlocks.Select(group => group.Source),
+                sourceResult.Words);
     }
 
     private static IReadOnlyList<IReadOnlyList<OcrTextBlock>> ClusterNearbyBlocks(

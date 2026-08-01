@@ -186,6 +186,29 @@ public sealed class OcrServiceTests
         Assert.Equal(80, engineRequest.Frame.Height);
         Assert.Equal(request.PreprocessingSettings, engineRequest.PreprocessingSettings);
         Assert.Equal(OcrOrientationMode.Horizontal, engineRequest.OrientationMode);
+        Assert.Equal(OcrLayoutMode.Auto, engineRequest.LayoutMode);
+    }
+
+    [Fact]
+    public async Task RecognizeAsync_WithPreprocessingSettings_PreservesLayoutModeForTheEngine()
+    {
+        var engine = new FakeOcrEngine();
+        var service = new OcrService(engine, new OcrPreprocessor());
+        var request = new OcrRequest(
+            CreateFrame(FirstRegion),
+            "en",
+            "zone-a",
+            new OcrPreprocessingSettings
+            {
+                IsEnabled = true,
+                Scale = 2,
+            },
+            layoutMode: OcrLayoutMode.Comic);
+
+        await service.RecognizeAsync(request);
+
+        var engineRequest = Assert.Single(engine.Requests);
+        Assert.Equal(OcrLayoutMode.Comic, engineRequest.LayoutMode);
     }
     [Fact]
     public void OcrResult_WhenTextBlockExceedsFrame_ThrowsArgumentException()
@@ -194,6 +217,43 @@ public sealed class OcrServiceTests
         var block = new OcrTextBlock("overflow", new BoundingBox(90, 30, 20, 11));
 
         Assert.Throws<ArgumentException>(() => new OcrResult(request, new[] { block }, FrameTime));
+    }
+
+    [Fact]
+    public void OcrResult_WithOptionalWordMetadata_PreservesEngineReportedGeometryAndQuality()
+    {
+        var request = CreateRequest(FirstRegion, "en", "zone-a");
+        var word = new OcrWord(
+            "Start",
+            new BoundingBox(4, 5, 24, 10),
+            confidence: 96.25,
+            recognitionPassId: "tesseract:SingleBlock");
+
+        var result = new OcrResult(
+            request,
+            new[] { new OcrTextBlock("Start", new BoundingBox(4, 5, 24, 10)) },
+            FrameTime,
+            words: new[] { word });
+
+        var actual = Assert.Single(result.Words);
+        Assert.Equal("Start", actual.Text);
+        Assert.Equal(new BoundingBox(4, 5, 24, 10), actual.Bounds);
+        Assert.Equal(96.25, actual.Confidence);
+        Assert.Equal("tesseract:SingleBlock", actual.RecognitionPassId);
+    }
+
+    [Fact]
+    public void OcrResult_WhenWordExceedsFrame_ThrowsArgumentException()
+    {
+        var request = CreateRequest(FirstRegion, "en", "zone-a");
+        var word = new OcrWord(
+            "overflow",
+            new BoundingBox(90, 30, 20, 11),
+            confidence: null,
+            recognitionPassId: "tesseract:SingleBlock");
+
+        Assert.Throws<ArgumentException>(
+            () => new OcrResult(request, Array.Empty<OcrTextBlock>(), FrameTime, words: new[] { word }));
     }
 
     [Theory]

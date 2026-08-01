@@ -201,7 +201,8 @@ public sealed class TranslationPipelineService
             zone.Id,
             profile.OcrPreprocessingSettings,
             profile.OcrSettings.Engine,
-            profile.OcrSettings.OrientationMode);
+            profile.OcrSettings.OrientationMode,
+            ResolveOcrLayoutMode(zone));
         var ocrMeasurement = await RunTimedStageAsync(
             TranslationPipelineStage.Ocr,
             () => ocrService.RecognizeAsync(request, cancellationToken));
@@ -649,12 +650,15 @@ public sealed class TranslationPipelineService
             zone.Id,
             profile.OcrPreprocessingSettings,
             profile.OcrSettings.Engine,
-            profile.OcrSettings.OrientationMode);
+            profile.OcrSettings.OrientationMode,
+            ResolveOcrLayoutMode(zone));
 
         return new OcrResult(
             request,
             previousResult.TextBlocks,
-            previousResult.RecognizedAt);
+            previousResult.RecognizedAt,
+            previousResult.TextBlockSources,
+            previousResult.Words);
     }
 
     private static TranslationPipelineOptimizationInfo CreateProcessedOptimization(PipelineOptimizationContext optimizationContext)
@@ -688,6 +692,17 @@ public sealed class TranslationPipelineService
     private static string ResolveOcrLanguage(GameProfile profile, OcrZone zone)
     {
         return zone.ResolveOcrLanguage(profile.TranslatorSettings.SourceLanguage);
+    }
+
+    private static OcrLayoutMode ResolveOcrLayoutMode(OcrZone zone)
+    {
+        return zone.TranslationGroupingMode switch
+        {
+            TranslationGroupingMode.BlockByBlock => OcrLayoutMode.Menu,
+            TranslationGroupingMode.WholeZone => OcrLayoutMode.Dialog,
+            TranslationGroupingMode.NearbyBlocks => OcrLayoutMode.Comic,
+            _ => OcrLayoutMode.Auto,
+        };
     }
 
     private static CaptureRegion CreateCaptureRegion(OcrZone zone)

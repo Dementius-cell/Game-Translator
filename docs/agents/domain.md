@@ -1,6 +1,6 @@
 # Domain Docs
 
-How the engineering skills should consume this repo's domain documentation when exploring the codebase.
+How engineering skills should consume this repo's domain documentation and local instruction files when exploring the codebase.
 
 ## Before exploring, read these
 
@@ -19,15 +19,16 @@ How the engineering skills should consume this repo's domain documentation when 
 If a future `CONTEXT.md` is added, read it before implementation work and use its vocabulary for issue titles, test names, refactor proposals, and design notes.
 This is an optional future-file rule, not a current required file in the repository.
 
-## File structure
+## Local instruction structure
 
-This is currently a single-context repo:
+This repo uses a small `AGENTS.md` hierarchy. Read the root file first, then the child instruction files that match the path you will touch.
 
 ```text
 /
 |-- AGENTS.md
 |-- README.md
 |-- docs/
+|   |-- AGENTS.md
 |   |-- README.md
 |   |-- 00-project-constitution.md
 |   |-- 01-technical-specification.md
@@ -42,6 +43,21 @@ This is currently a single-context repo:
 |   |-- ai/
 |   |-- governance/
 |   `-- prompts/
+|-- src/
+|   |-- AGENTS.md
+|   |-- GameTranslator.Application/
+|   |   `-- AGENTS.md
+|   |-- GameTranslator.Domain/
+|   |   `-- AGENTS.md
+|   |-- GameTranslator.Infrastructure/
+|   |   `-- AGENTS.md
+|   `-- GameTranslator.UI/
+|       `-- AGENTS.md
+`-- tests/
+    |-- AGENTS.md
+    `-- GameTranslator.Tests/
+        `-- Calibration/
+            `-- AGENTS.md
 ```
 
 ## Use project vocabulary

@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Runtime.Loader;
 using GameTranslator.Application.Cache;
 using GameTranslator.Application.Abstractions;
+using GameTranslator.Application.DependencyInjection;
 using GameTranslator.Application.Overlay;
 using GameTranslator.Application.Profiles;
 using GameTranslator.Application.Settings;
@@ -63,7 +64,30 @@ public sealed class PresentationCompositionTests
                 && descriptor.ImplementationType?.FullName == "GameTranslator.UI.Services.WpfOverlayService");
         Assert.Contains(
             services,
+            descriptor => descriptor.ServiceType == typeof(IOverlayTextMeasurer)
+                && descriptor.ImplementationType?.FullName == "GameTranslator.UI.Services.WpfOverlayTextMeasurer");
+        Assert.Contains(
+            services,
             descriptor => descriptor.ServiceType.FullName == "GameTranslator.UI.Views.OverlayWindow");
+    }
+
+    [Fact]
+    public void CombinedCompositionRoot_UsesWpfTextMeasurerForOverlayPositioning()
+    {
+        var services = new ServiceCollection();
+        services.AddApplicationServices();
+        InvokePresentationCompositionRoot(services);
+
+        using var provider = services.BuildServiceProvider();
+        var positioningService = provider.GetRequiredService<OverlayPositioningService>();
+        var textMeasurerField = typeof(OverlayPositioningService).GetField(
+            "textMeasurer",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+
+        Assert.NotNull(textMeasurerField);
+        Assert.Equal(
+            "GameTranslator.UI.Services.WpfOverlayTextMeasurer",
+            textMeasurerField!.GetValue(positioningService)?.GetType().FullName);
     }
 
     [Fact]
@@ -136,7 +160,7 @@ public sealed class PresentationCompositionTests
         Assert.Contains("\"native\"", source, StringComparison.Ordinal);
     }
 
-    private static IServiceCollection InvokePresentationCompositionRoot()
+    private static IServiceCollection InvokePresentationCompositionRoot(IServiceCollection? services = null)
     {
         var uiAssembly = LoadUiAssembly();
         var extensionType = uiAssembly.GetType(
@@ -149,7 +173,7 @@ public sealed class PresentationCompositionTests
             BindingFlags.Public | BindingFlags.Static)
             ?? throw new InvalidOperationException("AddPresentationServices method was not found.");
 
-        var services = new ServiceCollection();
+        services ??= new ServiceCollection();
         var result = method.Invoke(null, new object[] { services });
 
         Assert.Same(services, result);

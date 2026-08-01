@@ -14,7 +14,8 @@ public sealed class OcrRequest
         string? zoneId = null,
         OcrPreprocessingSettings? preprocessingSettings = null,
         string? engineId = null,
-        OcrOrientationMode? orientationMode = null)
+        OcrOrientationMode? orientationMode = null,
+        OcrLayoutMode? layoutMode = null)
     {
         Frame = frame ?? throw new ArgumentNullException(nameof(frame));
         ArgumentException.ThrowIfNullOrWhiteSpace(language);
@@ -31,6 +32,9 @@ public sealed class OcrRequest
             ? OcrSettings.Default.Engine
             : engineId.Trim();
         OrientationMode = orientationMode ?? OcrSettings.Default.OrientationMode;
+        LayoutMode = layoutMode is { } requestedLayoutMode && Enum.IsDefined(requestedLayoutMode)
+            ? requestedLayoutMode
+            : OcrLayoutMode.Auto;
     }
 
     public CapturedFrame Frame { get; }
@@ -46,4 +50,6 @@ public sealed class OcrRequest
     public string EngineId { get; }
 
     public OcrOrientationMode OrientationMode { get; }
+
+    public OcrLayoutMode LayoutMode { get; }
 }

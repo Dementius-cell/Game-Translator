@@ -19,6 +19,7 @@ public static class PresentationServiceCollectionExtensions
         services.AddSingleton<INavigationService, NavigationService>();
         services.AddSingleton<IDebugResourceMonitor, ProcessDebugResourceMonitor>();
         services.AddSingleton<IScreenRegionPickerService, WpfScreenRegionPickerService>();
+        services.AddSingleton<IOverlayTextMeasurer, WpfOverlayTextMeasurer>();
         services.AddSingleton<WpfGlobalHotkeyRegistrar>();
         services.AddSingleton<IGlobalHotkeyRegistrar>(provider => provider.GetRequiredService<WpfGlobalHotkeyRegistrar>());
 

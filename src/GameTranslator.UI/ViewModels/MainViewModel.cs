@@ -423,6 +423,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private bool isLiveTranslationRunning;
     private bool isLoaded;
     private bool isDebugOverlayEnabled;
+    private double debugVerticalSourceWidthMultiplier = 2;
     private LiveTranslationTimingPreset liveTranslationTimingPreset = LiveTranslationTimingPreset.Balanced;
     private bool suppressDraftStatePersistence;
     private bool isZoneSelectionActive;
@@ -554,6 +555,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         this.ocrLanguagePackService = ocrLanguagePackService;
         this.settings = settings;
         this.logger = logger;
+        debugVerticalSourceWidthMultiplier = overlayPositioningService.SessionVerticalSourceWidthMultiplier;
         globalHotkeyService.HotkeyPressed += OnGlobalHotkeyPressed;
         pendingSelectedProfileId = settings.GetValue<string>(SelectedProfileSettingKey);
         isDebugOverlayEnabled = settings.GetValue<bool?>(DebugOverlayEnabledSettingKey) ?? false;
@@ -1287,6 +1289,19 @@ public sealed class MainViewModel : ValidatableObservableObject
             {
                 settings.SetValue(DebugOverlayEnabledSettingKey, value);
                 DebugOverlayStatus = value ? "Debug overlay enabled." : "Debug overlay disabled.";
+            }
+        }
+    }
+
+    public double DebugVerticalSourceWidthMultiplier
+    {
+        get => debugVerticalSourceWidthMultiplier;
+        set
+        {
+            var normalizedMultiplier = overlayPositioningService.SetSessionVerticalSourceWidthMultiplier(value);
+            if (SetProperty(ref debugVerticalSourceWidthMultiplier, normalizedMultiplier) && IsDebugOverlayEnabled)
+            {
+                DebugOverlayStatus = $"Vertical source width: {normalizedMultiplier:0.0}x for this session.";
             }
         }
     }

@@ -41,6 +41,41 @@ public sealed class TranslationTextGroupingServiceTests
         Assert.Equal(new[] { 2, 1 }, grouped.TextBlockSources.Select(source => source.MemberBounds.Count));
     }
 
+    [Fact]
+    public void CreateTranslationSourceResult_WhenBlocksAreGrouped_PreservesRawWordMetadata()
+    {
+        var rawResult = CreateResult(
+            inputWidth: 300,
+            inputHeight: 120,
+            new OcrTextBlock("Long", new BoundingBox(40, 20, 32, 14)),
+            new OcrTextBlock("time", new BoundingBox(78, 20, 34, 14)));
+        var expectedWords = new[]
+        {
+            new OcrWord("Long", new BoundingBox(40, 20, 32, 14), 94.5, "tesseract:SingleBlock"),
+            new OcrWord("time", new BoundingBox(78, 20, 34, 14), 96.25, "tesseract:SingleBlock"),
+        };
+        var result = new OcrResult(
+            rawResult.Request,
+            rawResult.TextBlocks,
+            rawResult.RecognizedAt,
+            rawResult.TextBlockSources,
+            expectedWords);
+        var zone = new OcrZone
+        {
+            Id = "comic-page",
+            Name = "Comic page",
+            TranslationGroupingMode = TranslationGroupingMode.WholeZone,
+        };
+
+        var grouped = TranslationTextGroupingService.CreateTranslationSourceResult(result, zone);
+
+        Assert.Single(grouped.TextBlocks);
+        Assert.Collection(
+            grouped.Words,
+            word => Assert.Same(expectedWords[0], word),
+            word => Assert.Same(expectedWords[1], word));
+    }
+
     private static OcrResult CreateResult(int inputWidth, int inputHeight, params OcrTextBlock[] blocks)
     {
         var region = new CaptureRegion(0, 0, inputWidth, inputHeight);

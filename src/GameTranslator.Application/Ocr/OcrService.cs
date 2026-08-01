@@ -45,7 +45,14 @@ public sealed class OcrService
         var preprocessedFrame = preprocessor.Apply(request.Frame, request.PreprocessingSettings);
         var preprocessedRequest = ReferenceEquals(preprocessedFrame, request.Frame)
             ? request
-            : new OcrRequest(preprocessedFrame, request.Language, request.ZoneId, request.PreprocessingSettings, request.EngineId, request.OrientationMode);
+            : new OcrRequest(
+                preprocessedFrame,
+                request.Language,
+                request.ZoneId,
+                request.PreprocessingSettings,
+                request.EngineId,
+                request.OrientationMode,
+                request.LayoutMode);
 
         return engine.RecognizeAsync(preprocessedRequest, cancellationToken);
     }

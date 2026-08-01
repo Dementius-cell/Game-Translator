@@ -1716,6 +1716,24 @@ public sealed class ProfileManagerViewModelTests
             GetPropertyValue(viewModel, "DebugOverlayStatus")?.ToString(),
             StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void DebugVerticalSourceWidthMultiplier_UpdatesOnlyTheSessionLayoutTuning()
+    {
+        var settings = new TestSettingsService();
+        var positioningService = new OverlayPositioningService();
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            settings,
+            overlayPositioningService: positioningService);
+
+        SetPropertyValue(viewModel, "DebugVerticalSourceWidthMultiplier", 2.5d);
+
+        Assert.Equal(2.5d, GetPropertyValue(viewModel, "DebugVerticalSourceWidthMultiplier"));
+        Assert.Equal(2.5d, positioningService.SessionVerticalSourceWidthMultiplier);
+        Assert.Null(settings.GetValue<double?>("debug.overlay.verticalSourceWidthMultiplier"));
+    }
+
     [Fact]
     public void HideOverlayPreview_HidesOverlayAndUpdatesStatus()
     {
@@ -2505,7 +2523,8 @@ public sealed class ProfileManagerViewModelTests
         TestApplicationUpdateProvider? updateProvider = null,
         TestGlobalHotkeyRegistrar? hotkeyRegistrar = null,
         TestOcrLanguagePackService? ocrLanguagePackService = null,
-        object? screenRegionPickerService = null)
+        object? screenRegionPickerService = null,
+        OverlayPositioningService? overlayPositioningService = null)
     {
         var profileService = new ProfileService(repository, new ProfileValidator());
         var profileExchangeService = new ProfileExchangeService(
@@ -2515,7 +2534,7 @@ public sealed class ProfileManagerViewModelTests
         var captureService = new CaptureService(frameSource ?? new TestCaptureFrameSource());
         var ocrService = new OcrService(ocrEngine ?? new TestOcrEngine());
         var credentialService = new TranslatorCredentialService(credentialStorage ?? new TestCredentialStorage());
-        var overlayPositioningService = new OverlayPositioningService();
+        var effectiveOverlayPositioningService = overlayPositioningService ?? new OverlayPositioningService();
         var overlay = overlayService ?? new TestOverlayService();
         var translationCacheService = new TranslationCacheService(
             translationCacheRepository ?? new TestTranslationCacheRepository(),
@@ -2529,7 +2548,7 @@ public sealed class ProfileManagerViewModelTests
             new TranslatorManager(new ITranslatorProvider[] { translatorProvider ?? new TestTranslatorProvider("Google") }),
             credentialService,
             translationCacheService,
-            overlayPositioningService,
+            effectiveOverlayPositioningService,
             overlay);
         var applicationLogger = logger ?? new TestApplicationLogger();
         var globalHotkeyService = new GlobalHotkeyService(settings, hotkeyRegistrar ?? new TestGlobalHotkeyRegistrar());
@@ -2562,7 +2581,7 @@ public sealed class ProfileManagerViewModelTests
                 new DebugMetricFormatter(),
                 new TestDebugResourceMonitor(),
                 overlay,
-                overlayPositioningService,
+                effectiveOverlayPositioningService,
                 dialog ?? new TestDialogService(),
                 effectiveScreenRegionPickerService!,
                 ocrLanguagePackService,
@@ -2586,7 +2605,7 @@ public sealed class ProfileManagerViewModelTests
                 new DebugMetricFormatter(),
                 new TestDebugResourceMonitor(),
                 overlay,
-                overlayPositioningService,
+                effectiveOverlayPositioningService,
                 dialog ?? new TestDialogService(),
                 settings,
                 applicationLogger,
@@ -2608,7 +2627,7 @@ public sealed class ProfileManagerViewModelTests
                 new DebugMetricFormatter(),
                 new TestDebugResourceMonitor(),
                 overlay,
-                overlayPositioningService,
+                effectiveOverlayPositioningService,
                 dialog ?? new TestDialogService(),
                 effectiveScreenRegionPickerService,
                 settings,

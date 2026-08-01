@@ -20,12 +20,20 @@ For restricted or decision-level changes, read `docs/governance/change-approval-
 
 ## Local Instruction Files
 
-This repository uses nested `AGENTS.md` files for area-specific rules. Before changing files in a scoped area, read the root instructions first, then the matching child instruction files:
+This repository uses a small DOX-style `AGENTS.md` hierarchy for area-specific rules. Before changing files in a scoped area, read the root instructions first, then walk down to the nearest matching child instruction file. The closest instruction file controls local details, but no child file may weaken the root constraints, the source-of-truth documents, accepted ADRs, or explicit owner decisions.
 
+- For changes under `docs/**`, also read `docs/AGENTS.md`.
+- For changes under `src/**`, also read `src/AGENTS.md`.
+- For changes under `src/GameTranslator.Domain/**`, also read `src/GameTranslator.Domain/AGENTS.md`.
+- For changes under `src/GameTranslator.Application/**`, also read `src/GameTranslator.Application/AGENTS.md`.
+- For changes under `src/GameTranslator.Infrastructure/**`, also read `src/GameTranslator.Infrastructure/AGENTS.md`.
+- For changes under `src/GameTranslator.UI/**`, also read `src/GameTranslator.UI/AGENTS.md`.
 - For changes under `tests/**`, also read `tests/AGENTS.md`.
 - For calibration or golden-reference work under `tests/GameTranslator.Tests/Calibration/**`, also read `tests/GameTranslator.Tests/Calibration/AGENTS.md`.
 
-Child instruction files extend these root rules within their directory scope. Calibration tests may use approved fixture data and generated evidence, but a passing calibration test is evidence only and must not be treated as production behavior without explicit approval.
+Child instruction files extend these root rules within their directory scope. When a meaningful change alters a subtree's durable purpose, ownership, contracts, workflow, verification, or child instruction index, update the nearest owning `AGENTS.md` and any affected parent index before finishing. Small edits that do not change those contracts may leave local instruction files unchanged, but the final report should make that clear when relevant.
+
+Calibration tests may use approved fixture data and generated evidence, but a passing calibration test is evidence only and must not be treated as production behavior without explicit approval.
 
 ## Project Status Source
 
@@ -64,4 +72,4 @@ The repository uses the standard mattpocock/skills triage label vocabulary. See 
 
 ### Domain docs
 
-This is a single-context repository with project-wide documentation under `docs/` and ADRs under `docs/adr/`. See `docs/agents/domain.md`.
+This repository has project-wide documentation under `docs/`, ADRs under `docs/adr/`, and local `AGENTS.md` contracts for scoped work. See `docs/agents/domain.md`.

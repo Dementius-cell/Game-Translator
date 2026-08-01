@@ -12,6 +12,10 @@ public sealed class OverlayPublicSeamTests
         AssertPublicApplicationType<OverlaySnapshot>();
         AssertPublicApplicationType<OverlayTextItem>();
         AssertPublicApplicationType<OverlayMaskItem>();
+        AssertPublicApplicationType<IOverlayTextMeasurer>();
+        AssertPublicApplicationType<OverlayTextMeasurementRequest>();
+        AssertPublicApplicationType<OverlayTextMeasurement>();
+        AssertPublicApplicationType<OverlayTextLineMeasurement>();
         AssertPublicApplicationType<OverlayPositioningService>();
     }
 
@@ -24,6 +28,10 @@ public sealed class OverlayPublicSeamTests
             typeof(OverlaySnapshot),
             typeof(OverlayTextItem),
             typeof(OverlayMaskItem),
+            typeof(IOverlayTextMeasurer),
+            typeof(OverlayTextMeasurementRequest),
+            typeof(OverlayTextMeasurement),
+            typeof(OverlayTextLineMeasurement),
             typeof(OverlayPositioningService),
         };
 

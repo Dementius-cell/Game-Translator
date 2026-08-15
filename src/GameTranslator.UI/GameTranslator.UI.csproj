@@ -29,7 +29,7 @@
     <MSBuild
       Projects="..\GameTranslator.Infrastructure\GameTranslator.Infrastructure.csproj"
       Targets="Build"
-      Properties="Configuration=$(Configuration)" />
+      Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier)" />
   </Target>
 
   <Target Name="CopyInfrastructureCompositionModule" AfterTargets="Build">
@@ -41,6 +41,17 @@
       DestinationFiles="@(InfrastructureCompositionModuleRuntime->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')"
       SkipUnchangedFiles="true"
       Condition="'@(InfrastructureCompositionModuleRuntime)' != ''" />
+  </Target>
+
+  <Target Name="PublishInfrastructureCompositionModule" AfterTargets="Publish">
+    <ItemGroup>
+      <InfrastructureCompositionModulePublish Include="..\GameTranslator.Infrastructure\bin\$(Configuration)\net9.0-windows10.0.19041.0\$(RuntimeIdentifier)\**\*" />
+    </ItemGroup>
+    <Copy
+      SourceFiles="@(InfrastructureCompositionModulePublish)"
+      DestinationFiles="@(InfrastructureCompositionModulePublish->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true"
+      Condition="'@(InfrastructureCompositionModulePublish)' != ''" />
   </Target>
 
 </Project>

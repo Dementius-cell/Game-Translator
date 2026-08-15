@@ -10,7 +10,8 @@ public sealed class OverlaySnapshot
         OverlaySettings? overlaySettings = null,
         IEnumerable<OverlayMaskItem>? maskItems = null,
         IEnumerable<OverlayDebugItem>? debugItems = null,
-        IEnumerable<string>? debugMetricLines = null)
+        IEnumerable<string>? debugMetricLines = null,
+        OverlayPlacementConstraints? placementConstraints = null)
     {
         ArgumentNullException.ThrowIfNull(textItems);
 
@@ -23,6 +24,7 @@ public sealed class OverlaySnapshot
             .Where(line => !string.IsNullOrWhiteSpace(line))
             .Select(line => line.Trim())
             .ToArray() ?? Array.Empty<string>();
+        PlacementConstraints = placementConstraints;
     }
 
     public IReadOnlyList<OverlayTextItem> TextItems { get; }
@@ -32,6 +34,12 @@ public sealed class OverlaySnapshot
     public IReadOnlyList<OverlayDebugItem> DebugItems { get; }
 
     public IReadOnlyList<string> DebugMetricLines { get; }
+
+    /// <summary>
+    /// Gets the transient candidate placement space for this snapshot, when it has one.
+    /// Ordinary overlays leave this unset.
+    /// </summary>
+    public OverlayPlacementConstraints? PlacementConstraints { get; }
 
     public DateTimeOffset ShownAt { get; }
 

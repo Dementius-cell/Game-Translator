@@ -673,6 +673,84 @@ public sealed class OverlayPositioningServiceTests
     }
 
     [Fact]
+    public void CreateSnapshot_WithCandidatePlacementConstraints_ExpandsIntoSourceZoneAndAvoidsNeighbor()
+    {
+        var measurer = new RecordingOverlayTextMeasurer(request =>
+        {
+            var height = request.MaxWidth < 120 ? 180 : 48;
+            return new OverlayTextMeasurement(
+                Math.Min(request.MaxWidth, 116),
+                height,
+                new[] { new OverlayTextLineMeasurement(Math.Min(request.MaxWidth, 116), height, request.Text.Length, false) });
+        });
+        var service = new OverlayPositioningService(measurer);
+        var sourceBounds = new BoundingBox(0, 0, 32, 120);
+        var result = CreateResultWithSources(
+            new CaptureRegion(100, 100, 32, 120),
+            inputWidth: 32,
+            inputHeight: 120,
+            OcrOrientationMode.Vertical,
+            new[] { new OcrTextBlock("Long translated candidate text", sourceBounds) },
+            new[]
+            {
+                new OcrTextBlockSource(sourceBounds, new[] { sourceBounds }, OcrOrientationMode.Vertical),
+            });
+        var constraints = new OverlayPlacementConstraints(
+            new CaptureRegion(0, 0, 400, 300),
+            new[] { new CaptureRegion(140, 100, 30, 120) });
+        var textStyle = new OcrZoneTextStyle
+        {
+            FontSize = 16,
+            LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter,
+        };
+
+        var snapshot = service.CreateSnapshot(
+            result,
+            ShownAt,
+            previousSnapshot: null,
+            textStyle,
+            placementConstraints: constraints);
+
+        var item = Assert.Single(snapshot.TextItems);
+        Assert.Equal(16, item.TextStyle.FontSize);
+        Assert.True(item.UseCalloutPresentation);
+        Assert.True(item.Width > sourceBounds.Width);
+        Assert.True(item.Height >= 58);
+        Assert.True(item.X >= 0 && item.X + item.Width <= 400);
+        Assert.True(item.Y >= 0 && item.Y + item.Height <= 300);
+        Assert.False(Intersects(item, new BoundingBox(140, 100, 30, 120)));
+        Assert.Empty(snapshot.DebugMetricLines);
+    }
+
+    [Fact]
+    public void CombineCandidateSnapshots_ReflowsLaterCalloutAwayFromEarlierPublishedText()
+    {
+        var constraints = new OverlayPlacementConstraints(new CaptureRegion(0, 0, 400, 240));
+        var first = new OverlaySnapshot(
+            [new OverlayTextItem("First candidate", 100, 80, 140, 60, useCalloutPresentation: true)],
+            ShownAt,
+            maskItems: [new OverlayMaskItem(OverlayMaskMode.Solid, "#000000", .75, 80, 70, 35, 100)],
+            placementConstraints: constraints);
+        var second = new OverlaySnapshot(
+            [new OverlayTextItem("Second candidate", 110, 90, 140, 60, useCalloutPresentation: true)],
+            ShownAt,
+            maskItems: [new OverlayMaskItem(OverlayMaskMode.Solid, "#000000", .75, 240, 70, 35, 100)],
+            placementConstraints: constraints);
+
+        var combined = OverlayPositioningService.CombineCandidateSnapshots(
+            [first, second],
+            ShownAt,
+            OverlaySettings.Default);
+
+        Assert.Equal(2, combined.TextItems.Count);
+        Assert.False(Intersects(combined.TextItems[0], combined.TextItems[1]));
+        Assert.All(
+            combined.TextItems,
+            item => Assert.True(item.X >= 0 && item.X + item.Width <= 400 && item.Y >= 0 && item.Y + item.Height <= 240));
+        Assert.Empty(combined.DebugMetricLines);
+    }
+
+    [Fact]
     public void CreateSnapshot_WhenVerticalOcrBoundsAreTall_UsesReadableHorizontalTextBounds()
     {
         var service = new OverlayPositioningService();

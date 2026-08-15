@@ -5,10 +5,10 @@
 /artifacts/manual-smoke-diagnostics/
 /artifacts/manual-real-smoke-diagnostics/
 
-# Generated calibration review packages are local until intentionally promoted.
-# Tracked fixtures under this path remain tracked; use git add -f for an
-# explicitly approved new fixture or evidence package.
-/artifacts/calibration/*/
+# Calibration material and release packages are local-only. They can contain
+# third-party game or manga content and must not be added to GitHub.
+/artifacts/calibration/
+/artifacts/releases/
 bin/
 obj/
 logs/

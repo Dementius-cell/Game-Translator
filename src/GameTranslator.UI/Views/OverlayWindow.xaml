@@ -46,6 +46,27 @@
         </ItemsControl>
         <ItemsControl
             IsHitTestVisible="False"
+            ItemsSource="{Binding CalloutItems}">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <Canvas />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Line
+                        X1="{Binding StartX}"
+                        Y1="{Binding StartY}"
+                        X2="{Binding EndX}"
+                        Y2="{Binding EndY}"
+                        Stroke="#E2E8F0"
+                        StrokeThickness="1.5"
+                        SnapsToDevicePixels="True" />
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <ItemsControl
+            IsHitTestVisible="False"
             ItemsSource="{Binding TextItems}">
             <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
@@ -69,6 +90,10 @@
                         RenderOptions.ClearTypeHint="Enabled"
                         SnapsToDevicePixels="True">
                         <Grid>
+                            <Border
+                                Background="#E0111827"
+                                CornerRadius="4"
+                                Visibility="{Binding UsesCalloutPresentation, Converter={StaticResource BooleanToVisibilityConverter}}" />
                             <Viewbox
                                 Stretch="Uniform"
                                 StretchDirection="Both"

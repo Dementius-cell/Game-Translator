@@ -61,6 +61,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private const string SelectedProfileSettingKey = "profiles.selectedId";
     private const string ProfileFileDialogFilter = "Game Translator profile (*.json)|*.json|JSON files (*.json)|*.json|All files (*.*)|*.*";
     private const string DebugInfoFileDialogFilter = "Text files (*.txt)|*.txt|All files (*.*)|*.*";
+    private const string LiveDiagnosticsDirectorySettingKey = "diagnostics.live.directory";
     private const string DraftProfileNameSettingKey = "shell.draft.profile.name";
     private const string DraftProfileDescriptionSettingKey = "shell.draft.profile.description";
     private const string DraftTranslatorProviderSettingKey = "shell.draft.translator.provider";
@@ -228,6 +229,17 @@ public sealed class MainViewModel : ValidatableObservableObject
             new("zu", "Zulu"),
         };
 
+        return options.ToArray();
+    }
+
+    private static LanguageOption[] BuildSupportedOcrLanguageOptions()
+    {
+        var options = new List<LanguageOption>
+        {
+            new(string.Empty, "Inherit translator source language"),
+        };
+        options.AddRange(SupportedLanguageOptions);
+
         foreach (var language in TesseractLanguageCatalog.Languages)
         {
             if (options.Any(option => string.Equals(option.Code, language.Code, StringComparison.OrdinalIgnoreCase)))
@@ -239,13 +251,6 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
 
         return options.ToArray();
-    }
-
-    private static LanguageOption[] BuildSupportedOcrLanguageOptions()
-    {
-        return new[] { new LanguageOption(string.Empty, "Inherit translator source language") }
-            .Concat(SupportedLanguageOptions)
-            .ToArray();
     }
 
     private static OcrLanguagePackChecklistItemViewModel[] CreateDefaultOcrLanguagePackChecklistItems()
@@ -366,6 +371,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private readonly IOcrLanguagePackService ocrLanguagePackService;
     private readonly ISettingsService settings;
     private readonly IApplicationLogger logger;
+    private readonly string liveDiagnosticsDirectory;
     private readonly GlobalHotkeyService globalHotkeyService;
     private readonly DebugMetricFormatter debugMetricFormatter;
     private readonly IDebugResourceMonitor debugResourceMonitor;
@@ -437,6 +443,10 @@ public sealed class MainViewModel : ValidatableObservableObject
     private int zoneResizeOriginalAbsoluteX;
     private int zoneResizeOriginalAbsoluteY;
     private CancellationTokenSource? liveTranslationCancellation;
+    private CandidatePipelineReadiness? lastCandidatePipelineReadiness;
+    private string? lastLiveTranslationFailureKind;
+    private string? lastCandidateDegradedDiagnosticsFingerprint;
+    private int liveDiagnosticsSequence;
 
     public MainViewModel(
         ProfileService profileService,
@@ -555,6 +565,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         this.ocrLanguagePackService = ocrLanguagePackService;
         this.settings = settings;
         this.logger = logger;
+        liveDiagnosticsDirectory = ResolveLiveDiagnosticsDirectory(settings);
         debugVerticalSourceWidthMultiplier = overlayPositioningService.SessionVerticalSourceWidthMultiplier;
         globalHotkeyService.HotkeyPressed += OnGlobalHotkeyPressed;
         pendingSelectedProfileId = settings.GetValue<string>(SelectedProfileSettingKey);
@@ -593,6 +604,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         MeasureCaptureRefreshCommand = new AsyncRelayCommand(MeasureCaptureRefreshAsync, CanRefreshCapturePreview);
         RecognizeOcrPreviewCommand = new AsyncRelayCommand(RecognizeOcrPreviewAsync, CanRecognizeOcrPreview);
         CollectDebugInfoCommand = new AsyncRelayCommand(CollectDebugInfoAsync, CanCollectDebugInfo);
+        OpenLiveDiagnosticsFolderCommand = new RelayCommand(OpenLiveDiagnosticsFolder, () => !IsBusy);
         CheckOcrLanguagePackCommand = new AsyncRelayCommand(CheckOcrLanguagePackAsync, CanManageOcrLanguagePack);
         InstallOcrLanguagePackCommand = new AsyncRelayCommand(InstallOcrLanguagePackAsync, CanManageOcrLanguagePack);
         CheckOcrLanguagePackChecklistCommand = new AsyncRelayCommand(
@@ -606,7 +618,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             CanManageOcrLanguagePackChecklist);
         RunTranslationPipelineCommand = new AsyncRelayCommand(RunTranslationPipelineAsync, CanRunTranslationPipeline);
         StartLiveTranslationCommand = new AsyncRelayCommand(StartLiveTranslationAsync, CanStartLiveTranslation);
-        StopLiveTranslationCommand = new RelayCommand(StopLiveTranslation, () => IsLiveTranslationRunning);
+        StopLiveTranslationCommand = new RelayCommand(StopLiveTranslation, CanStopLiveTranslation);
         CleanupTranslationCacheCommand = new AsyncRelayCommand(CleanupTranslationCacheAsync, () => !IsBusy);
         CheckForUpdatesCommand = new AsyncRelayCommand(CheckForUpdatesAsync, () => !IsBusy);
         ApplyGlobalHotkeysCommand = new RelayCommand(ApplyGlobalHotkeys, CanApplyGlobalHotkeys);
@@ -735,6 +747,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         get => sourceLanguage;
         set
         {
+            value = NormalizeTranslatorLanguageTag(value);
             if (SetProperty(ref sourceLanguage, value))
             {
                 OnPropertyChanged(nameof(TranslatorSettingsSummary));
@@ -752,6 +765,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         get => targetLanguage;
         set
         {
+            value = NormalizeTranslatorLanguageTag(value);
             if (SetProperty(ref targetLanguage, value))
             {
                 OnPropertyChanged(nameof(TranslatorSettingsSummary));
@@ -763,6 +777,12 @@ public sealed class MainViewModel : ValidatableObservableObject
     }
 
     public IReadOnlyList<string> OcrEngines => SupportedOcrEngines;
+
+    public bool HasOcrEngineValidationError => GetErrors(nameof(OcrEngine)).Cast<string>().Any();
+
+    public string? OcrEngineValidationMessage => GetErrors(nameof(OcrEngine)).Cast<string>().FirstOrDefault();
+
+    public string OcrEngineBorderBrush => HasOcrEngineValidationError ? "#C84B4B" : "#9AA5B1";
 
     public IReadOnlyList<OcrOrientationMode> OcrOrientations => SupportedOcrOrientations;
 
@@ -800,7 +820,8 @@ public sealed class MainViewModel : ValidatableObservableObject
         get => ocrEngine;
         set
         {
-            if (SetProperty(ref ocrEngine, value))
+            var normalizedEngine = NormalizeOcrEngine(value);
+            if (SetProperty(ref ocrEngine, normalizedEngine))
             {
                 OnPropertyChanged(nameof(ProfileSummary));
                 ResetOcrLanguagePackStatus();
@@ -1349,6 +1370,8 @@ public sealed class MainViewModel : ValidatableObservableObject
     public ICommand RecognizeOcrPreviewCommand { get; }
 
     public ICommand CollectDebugInfoCommand { get; }
+
+    public ICommand OpenLiveDiagnosticsFolderCommand { get; }
 
     public ICommand CheckOcrLanguagePackCommand { get; }
 
@@ -2113,6 +2136,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
             OcrLanguagePackStatus = status.Message;
             StatusMessage = OcrLanguagePackStatus;
+            RefreshValidationState();
         }
         catch (Exception exception)
         {
@@ -2154,6 +2178,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
             OcrLanguagePackStatus = result.Message;
             StatusMessage = OcrLanguagePackStatus;
+            RefreshValidationState();
         }
         catch (Exception exception)
         {
@@ -2415,6 +2440,25 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
     }
 
+    public void OpenLiveDiagnosticsFolder()
+    {
+        try
+        {
+            Directory.CreateDirectory(liveDiagnosticsDirectory);
+            Process.Start(new ProcessStartInfo(liveDiagnosticsDirectory)
+            {
+                UseShellExecute = true,
+            });
+            StatusMessage = $"Opened live diagnostics folder: {liveDiagnosticsDirectory}";
+            logger.Information($"Opened live diagnostics folder '{liveDiagnosticsDirectory}'.");
+        }
+        catch (Exception exception)
+        {
+            logger.Error(exception, "Could not open the live diagnostics folder.");
+            StatusMessage = "Could not open live diagnostics folder. Check logs for details.";
+        }
+    }
+
     public async Task RunTranslationPipelineAsync()
     {
         RefreshValidationState();
@@ -2511,9 +2555,13 @@ public sealed class MainViewModel : ValidatableObservableObject
         var liveTiming = CreateLiveTranslationTiming(LiveTranslationTimingPreset);
         var cancellationSource = new CancellationTokenSource();
         liveTranslationCancellation = cancellationSource;
+        lastCandidatePipelineReadiness = null;
+        lastLiveTranslationFailureKind = null;
+        lastCandidateDegradedDiagnosticsFingerprint = null;
         IsLiveTranslationRunning = true;
         PipelineStatus = $"Live translation running for {profile.OcrZones.Count} OCR zone(s). {CreateLiveTimingStatus(liveTiming)}";
         StatusMessage = PipelineStatus;
+        QueueLiveDiagnosticsSnapshot("start-live");
         _ = RunLiveTranslationLoopAsync(profile, cancellationSource, liveTiming);
 
         await Task.Yield();
@@ -2523,6 +2571,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     {
         if (!IsLiveTranslationRunning || liveTranslationCancellation is null)
         {
+            QueueLiveDiagnosticsSnapshot("stop-live-without-session");
             if (overlayService.IsVisible)
             {
                 HideLiveTranslationOverlay();
@@ -2534,6 +2583,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
         PipelineStatus = "Stopping live translation...";
         StatusMessage = PipelineStatus;
+        QueueLiveDiagnosticsSnapshot("stop-live-requested");
         liveTranslationCancellation.Cancel();
         HideLiveTranslationOverlay();
         NotifyCommandStateChanged();
@@ -2547,24 +2597,24 @@ public sealed class MainViewModel : ValidatableObservableObject
         var cancellationToken = cancellationSource.Token;
         try
         {
+            using var liveSession = translationPipelineService.CreateLiveSession(
+                profile,
+                liveTiming.RunOptions,
+                cancellationToken);
             while (!cancellationToken.IsCancellationRequested)
             {
-                OverlaySnapshot? overlaySnapshotBeforeCapture = null;
-
                 try
                 {
-                    overlaySnapshotBeforeCapture = overlayService.IsVisible
-                        ? overlayService.CurrentSnapshot
-                        : null;
-
-                    var result = await translationPipelineService.RunAllZonesAsync(
-                        profile,
-                        overlaySnapshotBeforeCapture,
-                        liveTiming.RunOptions,
-                        cancellationToken);
+                    var update = await liveSession.RefreshAsync();
 
                     cancellationToken.ThrowIfCancellationRequested();
-                    ApplyBatchPipelineResult(profile, result, isLiveMode: true);
+                    if (update.OverlayChanged)
+                    {
+                        ApplyBatchPipelineResult(profile, update.BatchResult, isLiveMode: true);
+                    }
+
+                    ApplyCandidatePipelineReadinessStatus(update.CandidateReadiness);
+
                     await Task.Delay(liveTiming.PollingInterval, cancellationToken);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -2573,6 +2623,7 @@ public sealed class MainViewModel : ValidatableObservableObject
                 }
                 catch (TranslationPipelineException exception)
                 {
+                    lastLiveTranslationFailureKind = exception.GetType().Name;
                     logger.Error(exception, "Live translation pipeline failed.");
                     PipelineStatus = exception.Message;
                     StatusMessage = PipelineStatus;
@@ -2580,6 +2631,7 @@ public sealed class MainViewModel : ValidatableObservableObject
                 }
                 catch (Exception exception)
                 {
+                    lastLiveTranslationFailureKind = exception.GetType().Name;
                     logger.Error(exception, "Unexpected live translation pipeline failure.");
                     PipelineStatus = "Live translation failed. Check logs for details.";
                     StatusMessage = PipelineStatus;
@@ -2591,7 +2643,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         {
             if (ReferenceEquals(liveTranslationCancellation, cancellationSource))
             {
-                if (cancellationToken.IsCancellationRequested)
+                if (overlayService.IsVisible)
                 {
                     HideLiveTranslationOverlay();
                 }
@@ -2601,6 +2653,7 @@ public sealed class MainViewModel : ValidatableObservableObject
                 IsLiveTranslationRunning = false;
                 PipelineStatus = "Live translation stopped.";
                 StatusMessage = PipelineStatus;
+                QueueLiveDiagnosticsSnapshot("live-stopped");
                 NotifyCommandStateChanged();
             }
         }
@@ -2654,12 +2707,55 @@ public sealed class MainViewModel : ValidatableObservableObject
                 requireStableTextBeforeTranslation: true,
                 stableTextInterval: stableTextInterval,
                 preservePreviousOverlayWhileWaitingForStableText: true,
-                restorePreviousOverlayAfterCapture: true));
+                restorePreviousOverlayAfterCapture: true,
+                enableCandidateDetectorPilot: true,
+                requireCandidateReadinessBarrier: true));
     }
 
     private static string CreateLiveTimingStatus(LiveTranslationTiming timing)
     {
         return $"Polling {timing.PollingInterval.TotalMilliseconds:0} ms; translating after {timing.StableTextInterval.TotalMilliseconds:0} ms of stable OCR text.";
+    }
+
+    private void ApplyCandidatePipelineReadinessStatus(CandidatePipelineReadiness readiness)
+    {
+        lastCandidatePipelineReadiness = readiness;
+        QueueCandidateDegradedDiagnosticsIfNeeded(readiness);
+        if (readiness.Status == CandidatePipelineReadinessStatus.Ready
+            || readiness.Status == CandidatePipelineReadinessStatus.Disabled)
+        {
+            return;
+        }
+
+        PipelineStatus = readiness.Status == CandidatePipelineReadinessStatus.Prewarming
+            ? "Preparing the candidate text pipeline..."
+            : $"Candidate text pipeline degraded: {readiness.UnavailableReason ?? "runtime is unavailable."}";
+        StatusMessage = PipelineStatus;
+    }
+
+    private void QueueCandidateDegradedDiagnosticsIfNeeded(CandidatePipelineReadiness readiness)
+    {
+        if (readiness.Status != CandidatePipelineReadinessStatus.Degraded)
+        {
+            return;
+        }
+
+        var fingerprint = string.Join(
+            '|',
+            readiness.Generation,
+            readiness.RestartCount,
+            readiness.UnavailableReason ?? string.Empty,
+            readiness.NextRetryAt?.ToUnixTimeMilliseconds().ToString() ?? string.Empty);
+        if (string.Equals(
+            lastCandidateDegradedDiagnosticsFingerprint,
+            fingerprint,
+            StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        lastCandidateDegradedDiagnosticsFingerprint = fingerprint;
+        QueueLiveDiagnosticsSnapshot("candidate-degraded");
     }
 
     public async Task CleanupTranslationCacheAsync()
@@ -2820,7 +2916,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         switch (action)
         {
             case GlobalHotkeyAction.StartPausePipeline:
-                if (IsLiveTranslationRunning)
+                if (IsLiveTranslationRunning || overlayService.IsVisible)
                 {
                     StopLiveTranslation();
                     return;
@@ -3788,6 +3884,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     {
         return !IsBusy
             && !IsLiveTranslationRunning
+            && !HasValidationErrors
             && OcrZones.Count > 0
             && !string.IsNullOrWhiteSpace(TranslatorProvider)
             && !string.IsNullOrWhiteSpace(SourceLanguage)
@@ -3799,11 +3896,17 @@ public sealed class MainViewModel : ValidatableObservableObject
     {
         return !IsBusy
             && !IsLiveTranslationRunning
+            && !HasValidationErrors
             && OcrZones.Count > 0
             && !string.IsNullOrWhiteSpace(TranslatorProvider)
             && !string.IsNullOrWhiteSpace(SourceLanguage)
             && !string.IsNullOrWhiteSpace(TargetLanguage)
             && !string.IsNullOrWhiteSpace(OcrEngine);
+    }
+
+    private bool CanStopLiveTranslation()
+    {
+        return IsLiveTranslationRunning || overlayService.IsVisible;
     }
 
     private bool CanSelectTranslatorProvider()
@@ -3936,6 +4039,18 @@ public sealed class MainViewModel : ValidatableObservableObject
     private static bool IsTesseractOnlyLanguage(string language)
     {
         return TesseractLanguageCatalog.TryGetTrainedDataCode(language, out _);
+    }
+
+    private static string NormalizeTranslatorLanguageTag(string languageTag)
+    {
+        if (string.IsNullOrWhiteSpace(languageTag))
+        {
+            return languageTag;
+        }
+
+        return TesseractLanguageCatalog.TryMapTrainedDataCodeToPreferredLanguageTag(languageTag, out var preferredLanguageTag)
+            ? preferredLanguageTag
+            : languageTag.Trim();
     }
 
     private static void OpenExternalUri(Uri uri)
@@ -4085,6 +4200,9 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
 
         SetErrors(nameof(OcrEngine), ocrEngineErrors);
+        OnPropertyChanged(nameof(HasOcrEngineValidationError));
+        OnPropertyChanged(nameof(OcrEngineValidationMessage));
+        OnPropertyChanged(nameof(OcrEngineBorderBrush));
         SetErrors(
             nameof(OcrOrientationMode),
             !OcrSettings.IsSupportedOrientationMode(OcrOrientationMode)
@@ -4194,6 +4312,22 @@ public sealed class MainViewModel : ValidatableObservableObject
         return normalized.Length == 0 ? null : normalized;
     }
 
+    private static string NormalizeOcrEngine(string? value)
+    {
+        var normalized = value?.Trim() ?? string.Empty;
+        if (string.Equals(normalized, OcrSettings.WindowsEngineId, StringComparison.OrdinalIgnoreCase))
+        {
+            return OcrSettings.WindowsEngineId;
+        }
+
+        if (string.Equals(normalized, OcrSettings.TesseractEngineId, StringComparison.OrdinalIgnoreCase))
+        {
+            return OcrSettings.TesseractEngineId;
+        }
+
+        return normalized;
+    }
+
     private string BuildDuplicateZoneName(string sourceName)
     {
         var baseName = string.IsNullOrWhiteSpace(sourceName)
@@ -4279,6 +4413,60 @@ public sealed class MainViewModel : ValidatableObservableObject
     private static string BuildDefaultDebugInfoFileName()
     {
         return $"game-translator-debug-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.txt";
+    }
+
+    private static string ResolveLiveDiagnosticsDirectory(ISettingsService settings)
+    {
+        var configuredDirectory = settings.GetValue<string>(LiveDiagnosticsDirectorySettingKey);
+        return string.IsNullOrWhiteSpace(configuredDirectory)
+            ? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "GameTranslator",
+                "Diagnostics",
+                "Live")
+            : configuredDirectory.Trim();
+    }
+
+    private void QueueLiveDiagnosticsSnapshot(string trigger)
+    {
+        var capturedAt = DateTimeOffset.UtcNow;
+        var report = BuildLiveDiagnosticsReport(trigger, capturedAt);
+        var sequence = Interlocked.Increment(ref liveDiagnosticsSequence);
+        _ = SaveLiveDiagnosticsSnapshotAsync(trigger, capturedAt, sequence, report);
+    }
+
+    private async Task SaveLiveDiagnosticsSnapshotAsync(
+        string trigger,
+        DateTimeOffset capturedAt,
+        int sequence,
+        string report)
+    {
+        try
+        {
+            Directory.CreateDirectory(liveDiagnosticsDirectory);
+            var fileName = $"game-translator-live-{trigger}-{capturedAt:yyyyMMdd-HHmmss-fff}-{sequence:D4}.txt";
+            var filePath = Path.Combine(liveDiagnosticsDirectory, fileName);
+            await File.WriteAllTextAsync(filePath, report, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            logger.Information($"Live diagnostics saved for '{trigger}' to '{filePath}'.");
+        }
+        catch (Exception exception)
+        {
+            logger.Error(exception, $"Live diagnostics could not be saved for '{trigger}'.");
+        }
+    }
+
+    private string BuildLiveDiagnosticsReport(string trigger, DateTimeOffset capturedAt)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("Game Translator live-session diagnostics");
+        builder.AppendLine($"Trigger: {trigger}");
+        builder.AppendLine($"CapturedUtc: {capturedAt:O}");
+        builder.AppendLine($"Directory: {liveDiagnosticsDirectory}");
+        builder.AppendLine("Privacy: profile free-text fields and credential values are omitted.");
+        builder.AppendLine();
+        builder.Append(BuildDebugInfoReport());
+
+        return builder.ToString();
     }
 
     private void MoveSelectedZoneBy(int offset)
@@ -4479,6 +4667,8 @@ public sealed class MainViewModel : ValidatableObservableObject
         builder.AppendLine("State");
         builder.AppendLine($"  IsBusy: {IsBusy}");
         builder.AppendLine($"  IsLiveTranslationRunning: {IsLiveTranslationRunning}");
+        builder.AppendLine($"  IsOverlayServiceVisible: {overlayService.IsVisible}");
+        AppendDebugLine(builder, "LastLiveTranslationFailureKind", lastLiveTranslationFailureKind ?? "(none)");
         builder.AppendLine($"  HasCapturePreview: {HasCapturePreview}");
         builder.AppendLine($"  CapturePreviewSize: {CapturePreviewWidth}x{CapturePreviewHeight}");
         builder.AppendLine($"  HasOcrPreview: {HasOcrPreview}");
@@ -4533,9 +4723,32 @@ public sealed class MainViewModel : ValidatableObservableObject
             }
         }
 
+        AppendLiveCandidateReadinessDebugInfo(builder);
         AppendOverlaySnapshotDebugInfo(builder);
 
         return builder.ToString();
+    }
+
+    private void AppendLiveCandidateReadinessDebugInfo(StringBuilder builder)
+    {
+        builder.AppendLine();
+        builder.AppendLine("Live candidate pipeline");
+
+        if (lastCandidatePipelineReadiness is null)
+        {
+            builder.AppendLine("  not initialized for this live session");
+            return;
+        }
+
+        builder.AppendLine($"  Status: {lastCandidatePipelineReadiness.Status}");
+        builder.AppendLine($"  Generation: {lastCandidatePipelineReadiness.Generation}");
+        builder.AppendLine($"  RestartCount: {lastCandidatePipelineReadiness.RestartCount}");
+        AppendDebugLine(
+            builder,
+            "UnavailableReason",
+            lastCandidatePipelineReadiness.UnavailableReason ?? "(none)");
+        builder.AppendLine(
+            $"  NextRetryAt: {lastCandidatePipelineReadiness.NextRetryAt?.ToString("O") ?? "(none)"}");
     }
 
     private void AppendOverlaySnapshotDebugInfo(StringBuilder builder)
@@ -4668,6 +4881,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         ((AsyncRelayCommand)MeasureCaptureRefreshCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)RecognizeOcrPreviewCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)CollectDebugInfoCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)OpenLiveDiagnosticsFolderCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)CheckOcrLanguagePackCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)InstallOcrLanguagePackCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)CheckOcrLanguagePackChecklistCommand).RaiseCanExecuteChanged();

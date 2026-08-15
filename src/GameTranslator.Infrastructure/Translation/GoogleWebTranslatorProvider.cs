@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using GameTranslator.Application.Ocr;
 using GameTranslator.Application.Translation;
 
 namespace GameTranslator.Infrastructure.Translation;
@@ -70,11 +71,18 @@ public sealed class GoogleWebTranslatorProvider : ITranslatorProvider
     private static Uri CreateTranslateUri(TranslateRequest request, string text)
     {
         var endpoint = request.Credentials.Endpoint.ToString().TrimEnd('/');
-        var source = Uri.EscapeDataString(request.SourceLanguage);
-        var target = Uri.EscapeDataString(request.TargetLanguage);
+        var source = Uri.EscapeDataString(NormalizeLanguageTag(request.SourceLanguage));
+        var target = Uri.EscapeDataString(NormalizeLanguageTag(request.TargetLanguage));
         var query = Uri.EscapeDataString(text);
 
         return new Uri($"{endpoint}/translate_a/single?client=gtx&sl={source}&tl={target}&dt=t&q={query}");
+    }
+
+    private static string NormalizeLanguageTag(string languageTag)
+    {
+        return TesseractLanguageCatalog.TryMapTrainedDataCodeToPreferredLanguageTag(languageTag, out var preferredLanguageTag)
+            ? preferredLanguageTag
+            : languageTag.Trim();
     }
 
     private static string ParseGoogleWebTranslation(string responseBody)

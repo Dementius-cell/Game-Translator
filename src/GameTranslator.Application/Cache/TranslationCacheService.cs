@@ -8,6 +8,7 @@ public sealed class TranslationCacheService
     private readonly ITranslationCacheRepository repository;
     private readonly TranslationCacheOptions options;
     private readonly Dictionary<TranslationCacheKey, TranslationCacheEntry> memoryEntries = new();
+    private readonly object memoryEntriesLock = new();
 
     public TranslationCacheService(
         ITranslationCacheRepository repository,
@@ -52,7 +53,7 @@ public sealed class TranslationCacheService
             var persistentEntry = await repository.GetAsync(key, now, cancellationToken);
             if (persistentEntry is not null)
             {
-                memoryEntries[key] = persistentEntry;
+                StoreMemoryEntry(key, persistentEntry);
                 translatedTexts[index] = persistentEntry.TranslatedText;
                 persistentHits++;
                 continue;
@@ -92,7 +93,7 @@ public sealed class TranslationCacheService
                     translatedAt,
                     hitCount: 0);
                 await repository.SaveAsync(entry, cancellationToken);
-                memoryEntries[miss.Key] = entry;
+                StoreMemoryEntry(miss.Key, entry);
                 storedCount++;
             }
         }
@@ -114,13 +115,17 @@ public sealed class TranslationCacheService
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var expiredMemoryKeys = memoryEntries
-            .Where(pair => pair.Value.IsExpired(now))
-            .Select(pair => pair.Key)
-            .ToArray();
-        foreach (var key in expiredMemoryKeys)
+        TranslationCacheKey[] expiredMemoryKeys;
+        lock (memoryEntriesLock)
         {
-            memoryEntries.Remove(key);
+            expiredMemoryKeys = memoryEntries
+                .Where(pair => pair.Value.IsExpired(now))
+                .Select(pair => pair.Key)
+                .ToArray();
+            foreach (var key in expiredMemoryKeys)
+            {
+                memoryEntries.Remove(key);
+            }
         }
 
         var persistentCount = await repository.DeleteExpiredAsync(now, cancellationToken);
@@ -133,22 +138,33 @@ public sealed class TranslationCacheService
         DateTimeOffset now,
         out TranslationCacheEntry entry)
     {
-        if (!memoryEntries.TryGetValue(key, out var candidate))
+        lock (memoryEntriesLock)
         {
-            entry = null!;
-            return false;
-        }
+            if (!memoryEntries.TryGetValue(key, out var candidate))
+            {
+                entry = null!;
+                return false;
+            }
 
-        if (candidate.IsExpired(now))
+            if (candidate.IsExpired(now))
+            {
+                memoryEntries.Remove(key);
+                entry = null!;
+                return false;
+            }
+
+            entry = candidate.MarkAccessed(now);
+            memoryEntries[key] = entry;
+            return true;
+        }
+    }
+
+    private void StoreMemoryEntry(TranslationCacheKey key, TranslationCacheEntry entry)
+    {
+        lock (memoryEntriesLock)
         {
-            memoryEntries.Remove(key);
-            entry = null!;
-            return false;
+            memoryEntries[key] = entry;
         }
-
-        entry = candidate.MarkAccessed(now);
-        memoryEntries[key] = entry;
-        return true;
     }
 
     private static TranslationCacheKey CreateKey(TranslatorSettings settings, string sourceText)

@@ -853,6 +853,7 @@ public sealed class TesseractOcrEngine : IOcrEngine
             "zh-vert" or "zh-cn-vert" or "zh-hans-vert" or "chi-sim-vert" => "chi_sim_vert",
             "zh-tw" or "zh-hk" or "zh-mo" or "zh-hant" or "chi-tra" => useVerticalModel ? "chi_tra_vert" : "chi_tra",
             "zh-tw-vert" or "zh-hk-vert" or "zh-mo-vert" or "zh-hant-vert" or "chi-tra-vert" => "chi_tra_vert",
+            "th" or "th-th" or "tha" => "tha",
             "ko" or "ko-kr" or "kor" => "kor",
             "fr" or "fr-fr" or "fra" => "fra",
             "de" or "de-de" or "deu" => "deu",
@@ -860,7 +861,7 @@ public sealed class TesseractOcrEngine : IOcrEngine
             "it" or "it-it" or "ita" => "ita",
             "pt" or "pt-br" or "pt-pt" or "por" => "por",
             "auto" => throw new OcrEngineException("Tesseract OCR does not support automatic language detection."),
-            _ when TesseractLanguageCatalog.TryGetTrainedDataCode(directCode, out var trainedDataCode) => trainedDataCode,
+            _ when TesseractLanguageCatalog.TryMapLanguageTagToTrainedDataCode(languageTag, out var trainedDataCode) => trainedDataCode,
             _ when normalized.Length == 3 => normalized,
             _ => throw new OcrEngineException($"Tesseract OCR language '{languageTag}' is not mapped to a traineddata code."),
         };

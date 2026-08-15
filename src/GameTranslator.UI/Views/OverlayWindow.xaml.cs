@@ -108,10 +108,26 @@ public partial class OverlayWindow : Window
     {
         var transformFromDevice = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformFromDevice
             ?? Matrix.Identity;
+        var maskItems = snapshot.MaskItems
+            .Select(item => OverlayWindowMaskItemViewModel.FromDevicePixels(item, transformFromDevice))
+            .ToArray();
+        var textItems = snapshot.TextItems
+            .Select(item => OverlayWindowTextItemViewModel.FromDevicePixels(item, transformFromDevice))
+            .ToArray();
+        var calloutItems = snapshot.TextItems
+            .Select((item, index) => index < snapshot.MaskItems.Count
+                ? OverlayWindowCalloutItemViewModel.TryCreate(
+                    item,
+                    snapshot.MaskItems[index],
+                    transformFromDevice)
+                : null)
+            .OfType<OverlayWindowCalloutItemViewModel>()
+            .ToArray();
 
         return new OverlayWindowSnapshotViewModel(
-            snapshot.MaskItems.Select(item => OverlayWindowMaskItemViewModel.FromDevicePixels(item, transformFromDevice)),
-            snapshot.TextItems.Select(item => OverlayWindowTextItemViewModel.FromDevicePixels(item, transformFromDevice)),
+            maskItems,
+            textItems,
+            calloutItems,
             snapshot.DebugItems.Select(item => OverlayWindowDebugItemViewModel.FromDevicePixels(item, transformFromDevice)),
             snapshot.DebugMetricLines);
     }
@@ -121,11 +137,13 @@ public partial class OverlayWindow : Window
         public OverlayWindowSnapshotViewModel(
             IEnumerable<OverlayWindowMaskItemViewModel> maskItems,
             IEnumerable<OverlayWindowTextItemViewModel> textItems,
+            IEnumerable<OverlayWindowCalloutItemViewModel> calloutItems,
             IEnumerable<OverlayWindowDebugItemViewModel> debugItems,
             IEnumerable<string> debugMetricLines)
         {
             MaskItems = maskItems.ToArray();
             TextItems = textItems.ToArray();
+            CalloutItems = calloutItems.ToArray();
             DebugItems = debugItems.ToArray();
             DebugMetricLines = debugMetricLines.ToArray();
         }
@@ -133,6 +151,8 @@ public partial class OverlayWindow : Window
         public IReadOnlyList<OverlayWindowMaskItemViewModel> MaskItems { get; }
 
         public IReadOnlyList<OverlayWindowTextItemViewModel> TextItems { get; }
+
+        public IReadOnlyList<OverlayWindowCalloutItemViewModel> CalloutItems { get; }
 
         public IReadOnlyList<OverlayWindowDebugItemViewModel> DebugItems { get; }
 
@@ -215,7 +235,8 @@ public partial class OverlayWindow : Window
             double fontSize,
             FontWeight fontWeight,
             FontStyle fontStyle,
-            bool usesExpandedLayout)
+            bool usesExpandedLayout,
+            bool usesCalloutPresentation)
         {
             Text = text;
             X = x;
@@ -227,6 +248,7 @@ public partial class OverlayWindow : Window
             FontWeight = fontWeight;
             FontStyle = fontStyle;
             UsesExpandedLayout = usesExpandedLayout;
+            UsesCalloutPresentation = usesCalloutPresentation;
         }
 
         public string Text { get; }
@@ -250,6 +272,8 @@ public partial class OverlayWindow : Window
         public FontStyle FontStyle { get; }
 
         public bool UsesExpandedLayout { get; }
+
+        public bool UsesCalloutPresentation { get; }
 
         public bool UsesFitToSourceBounds => !UsesExpandedLayout;
 
@@ -281,12 +305,64 @@ public partial class OverlayWindow : Window
                     OcrZoneTextStyle.MaximumFontSize),
                 item.TextStyle.IsBold ? FontWeights.Bold : FontWeights.Normal,
                 item.TextStyle.IsItalic ? FontStyles.Italic : FontStyles.Normal,
-                item.TextStyle.LayoutMode == OverlayTextLayoutMode.ExpandFromSourceCenter);
+                item.TextStyle.LayoutMode == OverlayTextLayoutMode.ExpandFromSourceCenter,
+                item.UseCalloutPresentation);
         }
 
         private static double ClampOrigin(double origin, double extent, double size)
         {
             return Math.Min(Math.Max(0, origin), Math.Max(0, extent - size));
+        }
+    }
+
+    private sealed class OverlayWindowCalloutItemViewModel
+    {
+        private OverlayWindowCalloutItemViewModel(double startX, double startY, double endX, double endY)
+        {
+            StartX = startX;
+            StartY = startY;
+            EndX = endX;
+            EndY = endY;
+        }
+
+        public double StartX { get; }
+
+        public double StartY { get; }
+
+        public double EndX { get; }
+
+        public double EndY { get; }
+
+        public static OverlayWindowCalloutItemViewModel? TryCreate(
+            OverlayTextItem textItem,
+            OverlayMaskItem sourceMask,
+            Matrix transformFromDevice)
+        {
+            if (!textItem.UseCalloutPresentation || Intersects(textItem, sourceMask))
+            {
+                return null;
+            }
+
+            var sourceCenter = new Point(
+                sourceMask.X + sourceMask.Width / 2d,
+                sourceMask.Y + sourceMask.Height / 2d);
+            var textEdge = new Point(
+                Math.Clamp(sourceCenter.X, textItem.X, textItem.X + textItem.Width),
+                Math.Clamp(sourceCenter.Y, textItem.Y, textItem.Y + textItem.Height));
+            var start = transformFromDevice.Transform(sourceCenter);
+            var end = transformFromDevice.Transform(textEdge);
+
+            return new OverlayWindowCalloutItemViewModel(start.X, start.Y, end.X, end.Y);
+        }
+
+        private static bool Intersects(OverlayTextItem textItem, OverlayMaskItem sourceMask)
+        {
+            var width = Math.Min(textItem.X + textItem.Width, sourceMask.X + sourceMask.Width)
+                - Math.Max(textItem.X, sourceMask.X);
+            var height = Math.Min(textItem.Y + textItem.Height, sourceMask.Y + sourceMask.Height)
+                - Math.Max(textItem.Y, sourceMask.Y);
+
+            return width > 2 && height > 2;
         }
     }
 

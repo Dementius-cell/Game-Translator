@@ -828,8 +828,17 @@
                                                     <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="OCR engine" />
                                                     <ComboBox
                                                         Padding="6,4"
+                                                        BorderBrush="{Binding OcrEngineBorderBrush}"
                                                         ItemsSource="{Binding OcrEngines}"
-                                                        SelectedItem="{Binding OcrEngine, Mode=TwoWay}" />
+                                                        SelectedValue="{Binding OcrEngine, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                        ToolTip="{Binding OcrEngineValidationMessage}"
+                                                        Validation.ErrorTemplate="{x:Null}" />
+                                                    <TextBlock
+                                                        Margin="0,4,0,0"
+                                                        Foreground="#A33A3A"
+                                                        Text="{Binding OcrEngineValidationMessage}"
+                                                        TextWrapping="Wrap"
+                                                        Visibility="{Binding HasOcrEngineValidationError, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                                 </StackPanel>
                                                 <StackPanel
                                                     Grid.Row="1"
@@ -945,7 +954,7 @@
                                                                 Margin="8,0,0,0"
                                                                 Padding="8,4"
                                                                 Command="{Binding ShowWindowsOcrLanguagePackHelpCommand}"
-                                                                Content="Windows OCR command" />
+                                                                Content="Windows OCR help" />
                                                         </StackPanel>
                                                     </DockPanel>
                                                     <Grid Margin="0,8,0,4">
@@ -1350,7 +1359,6 @@
                                                             <RowDefinition Height="Auto" />
                                                             <RowDefinition Height="Auto" />
                                                             <RowDefinition Height="Auto" />
-                                                            <RowDefinition Height="Auto" />
                                                         </Grid.RowDefinitions>
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="2*" />
@@ -1410,30 +1418,15 @@
                                                             Margin="0,12,8,0"
                                                             VerticalAlignment="Center"
                                                             Foreground="#56616F"
-                                                            Text="Grouping" />
-                                                        <ComboBox
+                                                            Text="Candidate grouping" />
+                                                        <TextBlock
                                                             Grid.Row="3"
                                                             Grid.Column="1"
                                                             Grid.ColumnSpan="3"
                                                             Margin="0,10,0,0"
-                                                            Padding="8,6"
-                                                            ItemsSource="{Binding TranslationGroupingModeOptions}"
-                                                            SelectedValuePath="Mode"
-                                                            SelectedValue="{Binding SelectedZone.TranslationGroupingMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
-                                                        <TextBlock
-                                                            Grid.Row="4"
-                                                            Grid.Column="0"
-                                                            Margin="0,10,8,0"
-                                                            VerticalAlignment="Center"
                                                             Foreground="#56616F"
-                                                            Text="Group gap %" />
-                                                        <TextBox
-                                                            Grid.Row="4"
-                                                            Grid.Column="1"
-                                                            Grid.ColumnSpan="3"
-                                                            Margin="0,8,0,0"
-                                                            Padding="8,6"
-                                                            Text="{Binding SelectedZone.TextGroupMergeDistancePercent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                            Text="Automatic bounded Paddle grouping. Legacy full-page grouping is diagnostic-only and is not used by live translation."
+                                                            TextWrapping="Wrap" />
                                                     </Grid>
                                                 </Border>
 
@@ -1455,7 +1448,6 @@
                                                     Padding="10">
                                                     <Grid>
                                                         <Grid.RowDefinitions>
-                                                            <RowDefinition Height="Auto" />
                                                             <RowDefinition Height="Auto" />
                                                             <RowDefinition Height="Auto" />
                                                             <RowDefinition Height="Auto" />
@@ -1563,6 +1555,14 @@
                                                             Padding="12,6"
                                                             Command="{Binding StopLiveTranslationCommand}"
                                                             Content="Stop live" />
+                                                        <Button
+                                                            Grid.Row="4"
+                                                            Grid.Column="2"
+                                                            Margin="8,10,0,0"
+                                                            Padding="12,6"
+                                                            Command="{Binding OpenLiveDiagnosticsFolderCommand}"
+                                                            Content="Open live reports"
+                                                            ToolTip="Open the folder with automatically saved live-session reports." />
                                                         <TextBlock
                                                             Grid.Row="4"
                                                             Grid.Column="3"
@@ -1586,24 +1586,8 @@
                                                             VerticalAlignment="Center"
                                                             Foreground="#56616F"
                                                             Text="{Binding TranslationCacheStatus}" />
-                                                        <Button
-                                                            Grid.Row="6"
-                                                            Grid.Column="0"
-                                                            Margin="0,10,0,0"
-                                                            Padding="12,6"
-                                                            Command="{Binding CheckForUpdatesCommand}"
-                                                            Content="Check updates" />
-                                                        <TextBlock
-                                                            Grid.Row="6"
-                                                            Grid.Column="1"
-                                                            Grid.ColumnSpan="3"
-                                                            Margin="12,10,0,0"
-                                                            VerticalAlignment="Center"
-                                                            Foreground="#56616F"
-                                                            Text="{Binding UpdateStatus}"
-                                                            TextWrapping="Wrap" />
                                                         <ItemsControl
-                                                            Grid.Row="7"
+                                                            Grid.Row="6"
                                                             Grid.ColumnSpan="4"
                                                             Margin="0,10,0,0"
                                                             ItemsSource="{Binding OcrDebugTextBlocks}"
@@ -1633,7 +1617,7 @@
                                                             </ItemsControl.ItemTemplate>
                                                         </ItemsControl>
                                                         <Border
-                                                            Grid.Row="8"
+                                                            Grid.Row="7"
                                                             Grid.ColumnSpan="4"
                                                             Margin="0,10,0,0"
                                                             Background="#F8FAFC"

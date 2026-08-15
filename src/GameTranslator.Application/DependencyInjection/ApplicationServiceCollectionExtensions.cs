@@ -33,9 +33,16 @@ public static class ApplicationServiceCollectionExtensions
         services.AddSingleton<ProfileExchangeService>();
         services.AddSingleton<CaptureService>();
         services.AddSingleton<OcrPreprocessor>();
+        services.AddSingleton<ITextCandidateDetector, UnavailableTextCandidateDetector>();
+        services.AddSingleton(new TextCandidateRegionOcrOptions
+        {
+            EnableCjkTargetPostFilter = true,
+        });
+        services.AddSingleton<BoundedTextCandidateGroupingService>();
         services.AddSingleton(provider => new OcrService(
             provider.GetServices<IOcrEngine>(),
             provider.GetRequiredService<OcrPreprocessor>()));
+        services.AddSingleton<TextCandidateRegionOcrService>();
         services.AddSingleton<OverlayPositioningService>();
         services.AddSingleton<TranslationPipelineService>();
         services.AddSingleton<TranslatorManager>();

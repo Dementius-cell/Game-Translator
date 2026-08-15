@@ -133,6 +133,53 @@ public static class TesseractLanguageCatalog
     private static readonly IReadOnlyDictionary<string, string> KnownLanguageCodes =
         KnownLanguages.ToDictionary(language => language.Code, language => language.Code, StringComparer.OrdinalIgnoreCase);
 
+    // Google/Windows-style language tags used by profiles are ISO 639-1 in most cases,
+    // whereas Tesseract model filenames use ISO 639-2/3-style identifiers.
+    // Keep this separate from KnownLanguageCodes: callers that need to distinguish an
+    // explicit Tesseract model from a Windows language tag must retain that distinction.
+    private static readonly IReadOnlyDictionary<string, string> KnownLanguageTagAliases =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["af"] = "afr", ["am"] = "amh", ["ar"] = "ara", ["az"] = "aze",
+            ["be"] = "bel", ["bg"] = "bul", ["bn"] = "ben", ["bs"] = "bos",
+            ["ca"] = "cat", ["co"] = "cos", ["cs"] = "ces", ["cy"] = "cym",
+            ["da"] = "dan", ["de"] = "deu", ["el"] = "ell", ["en"] = "eng",
+            ["eo"] = "epo", ["es"] = "spa", ["et"] = "est", ["eu"] = "eus",
+            ["fa"] = "fas", ["fi"] = "fin", ["fr"] = "fra", ["fy"] = "fry",
+            ["ga"] = "gle", ["gd"] = "gla", ["gl"] = "glg", ["gu"] = "guj",
+            ["he"] = "heb", ["hi"] = "hin", ["hr"] = "hrv", ["ht"] = "hat",
+            ["hu"] = "hun", ["hy"] = "hye", ["id"] = "ind", ["is"] = "isl",
+            ["it"] = "ita", ["ja"] = "jpn", ["jv"] = "jav", ["ka"] = "kat",
+            ["kk"] = "kaz", ["km"] = "khm", ["kn"] = "kan", ["ko"] = "kor",
+            ["ku"] = "kmr", ["ky"] = "kir", ["la"] = "lat", ["lb"] = "ltz",
+            ["lo"] = "lao", ["lt"] = "lit", ["lv"] = "lav", ["mi"] = "mri",
+            ["mk"] = "mkd", ["ml"] = "mal", ["mn"] = "mon", ["mr"] = "mar",
+            ["ms"] = "msa", ["mt"] = "mlt", ["my"] = "mya", ["ne"] = "nep",
+            ["nl"] = "nld", ["no"] = "nor", ["or"] = "ori", ["pa"] = "pan",
+            ["pl"] = "pol", ["ps"] = "pus", ["pt"] = "por", ["ro"] = "ron",
+            ["ru"] = "rus", ["sd"] = "snd", ["si"] = "sin", ["sk"] = "slk",
+            ["sl"] = "slv", ["sq"] = "sqi", ["sr"] = "srp", ["su"] = "sun",
+            ["sv"] = "swe", ["sw"] = "swa", ["ta"] = "tam", ["te"] = "tel",
+            ["tg"] = "tgk", ["th"] = "tha", ["tr"] = "tur", ["uk"] = "ukr",
+            ["ur"] = "urd", ["uz"] = "uzb", ["vi"] = "vie", ["yi"] = "yid",
+            ["yo"] = "yor",
+        };
+
+    private static readonly IReadOnlyDictionary<string, string> PreferredLanguageTagsByTrainedDataCode =
+        new Dictionary<string, string>(
+            KnownLanguageTagAliases.ToDictionary(pair => pair.Value, pair => pair.Key, StringComparer.OrdinalIgnoreCase),
+            StringComparer.OrdinalIgnoreCase)
+        {
+            ["aze_cyrl"] = "az",
+            ["chi_sim"] = "zh-CN",
+            ["chi_sim_vert"] = "zh-CN",
+            ["chi_tra"] = "zh-TW",
+            ["chi_tra_vert"] = "zh-TW",
+            ["jpn_vert"] = "ja",
+            ["srp_latn"] = "sr",
+            ["uzb_cyrl"] = "uz",
+        };
+
     public static IReadOnlyList<TesseractLanguageInfo> Languages => KnownLanguages;
 
     public static bool TryGetTrainedDataCode(string languageCode, out string trainedDataCode)
@@ -150,6 +197,71 @@ public static class TesseractLanguageCatalog
         }
 
         trainedDataCode = knownCode;
+        return true;
+    }
+
+    public static bool TryMapLanguageTagToTrainedDataCode(string languageTag, out string trainedDataCode)
+    {
+        trainedDataCode = string.Empty;
+        if (string.IsNullOrWhiteSpace(languageTag))
+        {
+            return false;
+        }
+
+        if (TryGetTrainedDataCode(languageTag, out trainedDataCode))
+        {
+            return true;
+        }
+
+        var normalizedTag = languageTag.Trim().Replace('_', '-');
+        if (normalizedTag.Equals("zh-tw", StringComparison.OrdinalIgnoreCase)
+            || normalizedTag.Equals("zh-hk", StringComparison.OrdinalIgnoreCase)
+            || normalizedTag.Equals("zh-mo", StringComparison.OrdinalIgnoreCase)
+            || normalizedTag.Equals("zh-hant", StringComparison.OrdinalIgnoreCase))
+        {
+            trainedDataCode = "chi_tra";
+            return true;
+        }
+
+        if (normalizedTag.Equals("zh", StringComparison.OrdinalIgnoreCase)
+            || normalizedTag.Equals("zh-cn", StringComparison.OrdinalIgnoreCase)
+            || normalizedTag.Equals("zh-hans", StringComparison.OrdinalIgnoreCase))
+        {
+            trainedDataCode = "chi_sim";
+            return true;
+        }
+
+        var primaryLanguage = normalizedTag
+            .Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(primaryLanguage))
+        {
+            return false;
+        }
+
+        if (!KnownLanguageTagAliases.TryGetValue(primaryLanguage, out var mappedCode))
+        {
+            return false;
+        }
+
+        trainedDataCode = mappedCode;
+        return true;
+    }
+
+    public static bool TryMapTrainedDataCodeToPreferredLanguageTag(string trainedDataCode, out string languageTag)
+    {
+        languageTag = string.Empty;
+        if (!TryGetTrainedDataCode(trainedDataCode, out var normalizedTrainedDataCode))
+        {
+            return false;
+        }
+
+        if (!PreferredLanguageTagsByTrainedDataCode.TryGetValue(normalizedTrainedDataCode, out var mappedLanguageTag))
+        {
+            return false;
+        }
+
+        languageTag = mappedLanguageTag;
         return true;
     }
 }

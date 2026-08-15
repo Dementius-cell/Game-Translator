@@ -934,6 +934,562 @@ Project owner, explicit chat approval on 2026-07-30.
 
 ---
 
+# ADR-023
+
+## Progressive Per-Region Overlay Delivery and GPU Candidate-Detector Evaluation
+
+Status:
+ACCEPTED
+
+Date:
+2026-08-01
+
+### Context
+
+The prior frame-oriented flow can delay every overlay until OCR, translation, and layout finish for all detected text on the frame. This fails the product scenario where one simple subtitle or dialogue region disappears after three to four seconds while other concurrent regions have difficult comic geometry.
+
+Track D evidence established that current full-page Tesseract geometry is not reliable enough to act as a universal candidate detector. The bounded 2x experiment improved pre-grouping candidate recall only from 6/10 to 7/10 on S9 and from 1/6 to 3/6 on S10, while substantially increasing outside candidates and latency. PaddleOCR CPU research is not a runtime answer: its full-page Windows CPU latency was measured in seconds, not real-time budgets.
+
+The owner requires progressive delivery after text stabilizes, while preserving manual OCR-zone capture scope. The target benchmark floor is a current Windows system with a CPU of at least six cores and an NVIDIA RTX 3060 with 8 GiB VRAM.
+
+### Options
+
+1. Keep frame-level batch delivery and wait for every region before rendering any overlay.
+2. Add more full-frame Tesseract retries and continue to treat the frame as one unit of work.
+3. Deliver confirmed source regions independently and research a GPU candidate detector that proposes transient regions inside an existing OCR zone.
+4. Integrate PaddleOCR or another third OCR runtime immediately as the production detector.
+
+### Decision
+
+Use option 3.
+
+* After a source region stabilizes, its OCR, cache lookup, translation, and overlay delivery form an independent cancellable work item.
+* A completed simple region renders immediately; it must not wait for unresolved regions from the same captured frame.
+* Only a region whose source identity changes or disappears is cancelled. Unchanged completed regions remain valid until their own identity changes or the overlay lifecycle removes them.
+* Saved OCR zones remain the manual user-selected capture scope. Candidate detection may create transient per-frame source regions only inside that scope and must not change profile persistence.
+* Candidate-detector research must benchmark candidate recall, outside-candidate noise, cold and steady latency, CPU/GPU utilization, VRAM, and end-to-end per-region delivery on at least an RTX 3060 8 GiB system with a six-core-or-better CPU.
+* Text visible for three to four seconds is the product scenario for end-to-end evidence. Numerical P50/P95 acceptance thresholds are deliberately deferred until the first benchmark establishes a credible baseline.
+* Windows OCR and Tesseract remain mandatory product capabilities. This ADR does not approve a third OCR runtime, alter `IOcrEngine`, replace manual OCR zones, or add unconditional full-frame retries.
+
+### Reasons
+
+* Per-region completion directly prevents difficult geometry from hiding an already-ready simple translation.
+* Region-scoped cancellation avoids spending work on text that has changed or disappeared without discarding useful completed overlays.
+* GPU research is justified by the approved hardware baseline, but the detector is evaluated by measured recall and latency rather than assumed to be faster.
+* Keeping the candidate detector separate from text recognition preserves the existing engine-neutral OCR seam and avoids accepting the PaddleOCR CPU benchmark as a product dependency.
+
+### Consequences
+
+Positive:
+
+* A simple subtitle or dialogue block can appear while complex comic regions are still processing.
+* Candidate-detector experiments have an explicit hardware floor and measurable acceptance surface.
+* Existing manual zones, OCR engines, profile compatibility, and screen-capture-only safety rules remain intact.
+
+Negative:
+
+* Pipeline and overlay lifecycle implementation must become region-aware and require cancellation, ordering, and multi-region regression tests.
+* Candidate detections can still be rejected when geometry is insufficient; progressive delivery does not guarantee a translation for every region.
+* The latency and packaging cost of any GPU detector remains unknown until benchmarked.
+
+Compatibility:
+
+* No profile migration or public OCR contract change is approved by this ADR.
+* Current full-page Tesseract grouping and empty-only fallback behavior remain unchanged until future evidence authorizes a separate change.
+
+### Requires Migration
+
+No.
+
+### Approved
+
+Project owner, explicit chat approval on 2026-08-01.
+
+---
+
+# ADR-024
+
+## GPU Candidate Detector as a Gated Transient-Region Provider for Tesseract OCR
+
+Status:
+SUPERSEDED by ADR-025 on 2026-08-02
+
+Date:
+2026-08-02
+
+### Context
+
+Full-page Tesseract geometry did not meet the comic OCR quality bar: the owner S9 and S10 pages matched zero source regions before research-only recovery. Research using a GPU PaddleOCR detector followed by the existing Tesseract crop recognizer reached the owner geometry target and met the held-out Japanese crop-recognition evidence threshold. The detector remains a third runtime, so ADR-023 required a separate owner-approved Change Request before any product pilot.
+
+### Decision
+
+Permit a narrowly gated, opt-in production pilot in which a GPU PaddleOCR text detector proposes transient candidate bounds only inside an existing saved OCR zone. The existing Tesseract implementation remains the recognizer for every accepted candidate crop.
+
+The pilot remains disabled by default until release validation. It preserves ADR-023 progressive per-region publication and source-identity-scoped cancellation. When the detector is unavailable, hardware is unsupported, packaging validation fails, or candidate quality checks fail, it publishes no detector-derived overlay. It must not silently broaden into a full-frame retry.
+
+### Boundaries
+
+* Windows OCR and Tesseract remain mandatory capabilities; Tesseract remains the only recognizer in the pilot path.
+* Do not change `IOcrEngine`, saved OCR-zone semantics, profile schema, translation-cache contract, or global cancellation behavior.
+* Detector candidates are transient, remain inside the saved OCR zone, and never become profile data.
+* Do not use the research transitive merge. Any production grouping is bounded, deterministic, and must meet the gates below.
+* Do not automatically enable the pilot on unsupported hardware. The minimum pilot hardware is Windows, a CPU with at least six cores, and an NVIDIA RTX 3060 with 8 GiB VRAM.
+* No unconditional full-frame 2x retry is permitted.
+
+### Acceptance Thresholds
+
+1. Owner golden geometry: S9 10/10 and S10 6/6 accepted source regions after filtering, with zero retained extras, no overlap, no out-of-page bounds, and no source-mask regression.
+2. Held-out Japanese manga corpus: speech-region anchor recall >= 95%, non-empty Tesseract crops >= 98% of mapped regions, and micro CER <= 15%.
+3. Vertical dense-text geometry stress set: strict one-to-one recall >= 99%, and no candidate may cover more than one tight reference line after the guard.
+4. RTX 3060 8 GiB benchmark: warm detector P95 <= 250 ms; cold initialization plus first detector result P95 <= 2.0 s; end-to-end P95 to a ready simple-region overlay <= 3.0 s for the three-to-four-second product scenario; incremental detector VRAM <= 2.5 GiB.
+5. Deterministic cancellation, progressive publication, detector-unavailable behavior, packaging and license validation, headless S9/S10 integration, focused and full tests, Release build, and documentation checks pass.
+
+### Consequences
+
+Positive:
+
+* The product can evaluate materially stronger candidate geometry without replacing its required OCR recognizer.
+* The pilot has explicit quality, latency, hardware, and rollback boundaries.
+
+Negative:
+
+* The runtime, model packaging, and GPU resource cost require release evidence before the pilot can be enabled.
+* Candidate false positives remain a product risk and must be rejected before overlay publication.
+
+Compatibility:
+
+* No profile migration, public OCR contract change, game-process interaction, or persisted detector state is allowed.
+* Existing manual zones remain the capture and compatibility boundary.
+
+### Requires Migration
+
+No.
+
+### Approved
+
+Project owner, explicit chat approval of ADR-024 and Issue #42 thresholds on 2026-08-02.
+
+---
+
+# ADR-025
+
+## Relax the Opt-In GPU Candidate-Detector Cold-Start Gate
+
+Status:
+ACCEPTED
+
+Date:
+2026-08-02
+
+Supersedes:
+ADR-024, only for its cold initialization plus first detector result threshold.
+
+### Context
+
+The ADR-024 research path materially improves full-page comic candidate geometry while retaining Tesseract as the recognizer: the bounded candidate flow reached S9 10/10 and S10 6/6 with no retained extras. On the research RTX 3080 host, the actual cached Python/Paddle worker first detector result took 3.72-3.94 seconds. The previous 2.0-second cold gate therefore rejected a quality-positive opt-in pilot solely because Python/Paddle import and detector initialization occur before the first result.
+
+### Decision
+
+For the opt-in, disabled-by-default pilot only, replace ADR-024 acceptance threshold 4's cold initialization plus first detector result P95 from <= 2.0 seconds to <= 5.0 seconds.
+
+Cold timing starts when the packaged worker process is launched and ends when it returns its first detector result with model files already present. Downloading models is not part of an accepted cold measurement. The warm detector P95 <= 250 ms, the ready simple-region overlay P95 <= 3.0 seconds for the three-to-four-second product scenario, and every other ADR-024 acceptance threshold remain unchanged. The product must not block its UI while the opt-in worker initializes.
+
+### Boundaries
+
+* This decision does not enable the pilot by default, add a UI setting, change `IOcrEngine`, add profile data, or permit a full-frame retry.
+* Windows OCR and Tesseract remain mandatory; Tesseract remains the recognizer for every accepted candidate crop.
+* The revised timing must still be measured on the minimum RTX 3060 8 GiB hardware floor, with packaging, license, checksum, offline-install, rollback, quality, mask, cancellation, and Release validation evidence.
+* Python/Paddle startup optimization remains deferred final-stage work. It is not a reason to weaken the 5.0-second gate or automatically expose the pilot.
+
+### Consequences
+
+Positive:
+
+* The measured 3.72-3.94-second research cold result is eligible for the opt-in pilot's remaining gates instead of being rejected by an unrealistically strict startup budget.
+
+Negative:
+
+* A first detector result can take up to five seconds; the pilot must remain opt-in, asynchronous, and clearly bounded from the normal product path.
+* The current RTX 3080 result does not satisfy the separate RTX 3060 evidence requirement.
+
+### Requires Migration
+
+No.
+
+### Approved
+
+Project owner, explicit chat approval on 2026-08-02: "подтверждаю изменение с <=2 с до <=5 приемлемым для opt-in пилота".
+
+---
+
+# ADR-026
+
+## Quality-First Target Architecture: GPU Detector to Tesseract Crop Recognition
+
+Status:
+ACCEPTED
+
+Date:
+2026-08-10
+
+Related Change Request:
+[#43](https://github.com/Dementius-cell/Game-Translator/issues/43)
+
+### Контекст
+
+Legacy full-page Tesseract OCR/grouping не достиг geometry quality для owner comic references: `S9` matched `0/10`, а `S10` matched `0/6` semantic groups. Дальнейшее развитие этого пути как целевой архитектуры не имеет подтверждённого quality basis.
+
+Research-only chain из GPU Paddle detector, bounded grouping и существующего Tesseract crop recognition достигла owner geometry `S9 10/10` и `S10 6/6`. Research Tesseract crop filter оставил zero retained extras. Это является quality evidence для target direction, но не доказательством production enablement.
+
+ADR-024 и ADR-025 уже разрешают только узкий opt-in detector pilot. Они сохраняют Tesseract recognizer, manual saved OCR zone, disabled-by-default state и cold initialization plus first detector result P95 `<= 5.0 s`. Cache-free packaged `r8-pruned` не выдал `ready` ни за `5 s`, ни за diagnostic `10 s`; этот No-Go не разрешает ослабить ADR-025 или изменить default path.
+
+### Варианты
+
+1. Продолжать развивать legacy full-page Tesseract OCR/grouping как основной путь к comic geometry quality.
+2. Использовать GPU Paddle runtime как recognizer и заменить Tesseract crop recognition.
+3. Сохранить legacy и detector path как равноправные долгосрочные target architectures без quality priority.
+4. Сделать quality-first target chain: GPU detector -> bounded grouping -> existing Tesseract crop recognition -> per-region overlay; legacy full-page путь сохраняется только как временный fallback до закрытия gates.
+
+### Решение
+
+Предлагается вариант 4.
+
+Target chain работает только внутри существующей manual saved OCR zone:
+
+```text
+saved OCR zone
+  -> GPU Paddle detector (transient candidate bounds)
+  -> bounded deterministic grouping
+  -> existing Tesseract crop recognition
+  -> quality/text filter
+  -> independent cache -> translation -> per-region overlay
+```
+
+* Paddle может предлагать только transient candidate bounds; его output не является финальным OCR text.
+* Grouping должен быть bounded и deterministic, без transitive merge; принимаются только in-zone, non-overlapping, in-page candidates.
+* Tesseract остаётся обязательным и единственным recognizer для каждого принятого candidate crop. Windows OCR и Tesseract остаются обязательными product capabilities.
+* OCR, cache, translation и overlay каждого допустимого candidate остаются независимой region-scoped цепочкой согласно ADR-023.
+* Legacy full-page OCR/grouping не развивается как целевой путь. До закрытия всех release gates он остаётся временным legacy fallback; эта запись не меняет текущий runtime selection, default или UI.
+* Pilot остаётся disabled by default. Не меняются profile schema, saved-zone semantics, `IOcrEngine`, translation-cache contract, global cancellation или full-frame retry policy.
+* Не удалять legacy implementation до отдельного owner decision после закрытия gates.
+
+### Gates до любого enablement
+
+Все ADR-024/ADR-025 gates сохраняются без ослабления, включая:
+
+1. Owner golden geometry: `S9 10/10`, `S10 6/6`, zero retained extras, no overlap, no out-of-page bounds и no source-mask regression.
+2. Held-out Japanese: speech-region anchor recall `>= 95%`, non-empty Tesseract crops `>= 98%` mapped regions, micro CER `<= 15%`.
+3. Vertical dense-text geometry: strict one-to-one recall `>= 99%`; no candidate covers more than one tight reference line.
+4. Benchmark floor: Windows, CPU `>= 6` cores, NVIDIA RTX 3060 `8 GiB`; warm detector P95 `<= 250 ms`, ready simple-region overlay P95 `<= 3.0 s`, incremental detector VRAM `<= 2.5 GiB`.
+5. Cold initialization plus first detector result P95 remains `<= 5.0 s`. Cache-free `r8-pruned` is a No-Go and cannot justify a higher threshold or a longer product timeout.
+6. Deterministic progressive publication, candidate-scoped cancellation, detector-unavailable behavior, headless S9/S10 integration, packaging/licence/checksum/offline-install/rollback, Release build, focused/full tests and documentation checks all pass.
+
+Persistent worker/prewarm and normal bytecode cache may be evaluated only by separate reproducible evidence. Neither waives the RTX 3060/package evidence nor changes the cold gate, default, UI, profiles or recognizer rule.
+
+### Non-goals
+
+* Default enablement or UI exposure of the detector pilot.
+* New persisted profile data or changes to saved OCR zones.
+* Any `IOcrEngine` change.
+* Unconditional full-frame retry, including full-frame `2x` retry.
+* Replacing Tesseract with Paddle as recognizer.
+* Removal of Windows OCR, Tesseract, or legacy implementation.
+* Modification of accepted ADR-024 or ADR-025.
+
+### Причины
+
+* Research geometry evidence supports the bounded detector-plus-Tesseract crop chain and does not support full-page legacy geometry as a target.
+* Keeping Tesseract recognition preserves vertical-text requirements, the existing OCR seam and accepted compatibility boundaries.
+* Region-scoped delivery preserves the product benefit that a ready simple translation is not delayed by a difficult neighbour.
+* Explicit release gates prevent favourable two-page research evidence or an unproven package optimization from becoming default product behavior.
+
+### Последствия
+
+Positive:
+
+* Future work has one quality-first target path with a clear detector/recognizer boundary.
+* Legacy work is constrained to compatibility and fallback safety instead of competing target-algorithm investment.
+* The owner can evaluate release readiness against retained, measurable gates.
+
+Negative:
+
+* The product retains a temporary fallback while detector quality, RTX 3060, startup and packaging gates remain open.
+* GPU runtime packaging and startup remain material risks; cache-free pruning has already failed.
+* Separate evidence is required for persistent worker/prewarm or normal bytecode-cache behavior.
+
+Compatibility:
+
+* No profile migration, persisted state, public OCR-contract, capture-scope or default-behavior change is proposed.
+* ADR-024 and ADR-025 remain accepted and unchanged. This ADR does not supersede either one.
+
+### Requires Migration
+
+No.
+
+### Approved
+
+Project owner, explicit chat approval on 2026-08-10: "Подтверждаю ADR-026 как direction-only; production enablement не разрешаю".
+
+---
+
+# ADR-027
+
+## Current RTX 3080 Host as the Project Target Evidence Baseline
+
+Status:
+ACCEPTED
+
+Date:
+2026-08-10
+
+Supersedes:
+ADR-024 and ADR-025 only for their named RTX 3060 8 GiB evidence-baseline requirement.
+
+Related Change Request:
+[#44](https://github.com/Dementius-cell/Game-Translator/issues/44)
+
+### Контекст
+
+ADR-024/ADR-025 require GPU candidate-detector evidence on an RTX 3060 with 8 GiB VRAM. The available project host is an AMD Ryzen 7 5700X3D with 8 physical cores, NVIDIA GeForce RTX 3080 with 10,240 MiB VRAM, 47.93 GiB RAM and NVIDIA driver `610.47`.
+
+The project owner explicitly directed on 2026-08-10: «считаем мою машину с RTX 3080 за целевую с RTX 3060 8 GiB».
+
+### Варианты
+
+1. Keep the named RTX 3060 8 GiB evidence requirement and block final evidence until that separate host is available.
+2. Treat the current RTX 3080 host as automatically equivalent to every RTX 3060 and publish its results as RTX 3060 performance claims.
+3. Make the documented current RTX 3080 host the project target evidence baseline while retaining every numerical gate and clearly limiting evidence claims to that host.
+
+### Решение
+
+Use option 3.
+
+The documented RTX 3080 host is the project target evidence baseline for the GPU candidate-detector pilot. Evidence that passes all retained ADR-024/ADR-025 thresholds on this host can satisfy the project's hardware-baseline gate.
+
+This decision changes no numerical threshold: warm detector P95 remains `<= 250 ms`, cold initialization plus first detector result P95 remains `<= 5.0 s`, ready simple-region overlay P95 remains `<= 3.0 s`, and incremental detector VRAM remains `<= 2.5 GiB`.
+
+This decision does not claim that the same P95, VRAM or enablement result applies to a generic RTX 3060 8 GiB system. It does not change the quality, package, licence, checksum, offline-install, rollback, cancellation, Release, default, UI, profile, `IOcrEngine`, Tesseract-recognizer, legacy-fallback or full-frame-retry boundaries.
+
+### Причины
+
+* The project owner can run reproducible evidence on the available target host now.
+* The actual hardware configuration is explicitly recorded instead of being silently substituted for an RTX 3060.
+* Retaining every numerical and quality gate prevents a stronger GPU from becoming an implicit production-enablement waiver.
+
+### Последствия
+
+Positive:
+
+* The final-stage benchmark can proceed on the owner-approved target host.
+* Reports can state one concrete, reproducible hardware baseline.
+
+Negative:
+
+* Results cannot be represented as performance evidence for every RTX 3060 8 GiB system.
+* The selected host may hide constraints of lower-performing hardware; this is an explicit owner baseline choice.
+
+Compatibility:
+
+* No profile migration, persistence, public contract, capture-scope, default or production behavior change occurs.
+* Cache-free `r8-pruned` remains a No-Go. Persistent worker/prewarm and normal bytecode-cache evidence remain separate required experiments.
+
+### Requires Migration
+
+No.
+
+### Approved
+
+Project owner, explicit chat approval on 2026-08-10: «считаем мою машину с RTX 3080 за целевую с RTX 3060 8 GiB».
+
+---
+
+---
+
+# ADR-028
+
+## User-visible end-to-end translated-overlay SLO after required prewarm
+
+Status:
+ACCEPTED
+
+Date:
+2026-08-11
+
+Supersedes:
+ADR-025 only for its `<= 5.0 s` cold-worker-initialization-plus-first-detector-result timing gate. All other ADR-025 gates remain binding.
+
+Related Change Request:
+[#45](https://github.com/Dementius-cell/Game-Translator/issues/45)
+
+### Context
+
+The fresh normal-bytecode package cannot satisfy ADR-025's cold-start gate: the worker reached ready at 11,479 ms and first result at 12,204 ms in the offline package experiment. In contrast, the prewarmed target chain — GPU Paddle detector, bounded grouping, existing Tesseract crop recognition, direct GoogleWeb translation and per-region overlay — met a cache-miss first-region P95 of 1,111.0 ms across 30 samples on the ADR-027 target host. The project owner accepts up to five seconds from an already-ready captured text region to a translated overlay.
+
+### Decision
+
+For the opt-in detector pilot only, the binding timing SLO is P95 `<= 5.0 s` from a successfully acquired captured frame after the required detector and direct-GoogleWeb provider readiness barrier until publication of the first valid translated `OverlaySnapshot` for a retained region. The run uses cache miss and reports provider failure, timeout and throttling; it never silently replaces them with cache hit, `WebAuto`, a default provider, full-page retry or legacy fallback.
+
+The GPU candidate detector remains transient inside the saved OCR zone. The target chain stays `GPU Paddle detector -> bounded grouping -> existing Tesseract crop recognition -> translation -> per-region overlay`; Tesseract remains mandatory.
+
+Each region may publish as soon as its own direct-GoogleWeb translation is ready. A conditional `MinimumOverlayVisibleDuration` of two seconds starts after publication only while that region's source identity remains current. A changed/disappeared source, capture loss, zone change, feature disable or safety invalidation removes it immediately; an invalidated-epoch result cannot publish on an unrelated later frame.
+
+Future pilot delivery uses direct GoogleWeb per-page bounded concurrency of three, indexed response mapping, cancellation and epoch validation before publication. It retains direct-only provider identity and failure/throttling telemetry.
+
+Cold initialization plus first detector result remains mandatory diagnostic/release telemetry for every package, but is no longer itself the accepted `<= 5.0 s` enablement gate. Physical WPF rendered visibility remains a separate quality gate.
+
+### Consequences
+
+Positive:
+
+* The user-facing performance gate measures a translated overlay in a ready session rather than Python/Paddle import latency before monitoring begins.
+* Regions appear progressively, with a bounded readability interval when their source remains current.
+* Bounded concurrency improves multi-region completion while protecting first-region responsiveness and provider stability.
+
+Negative:
+
+* Delivery must introduce a deterministic readiness state, cancellation/epoch ownership, source-identity validation, bounded concurrency and tests for late-result suppression.
+* Direct GoogleWeb remains an experimental external endpoint, so failures and throttling remain first-class evidence rather than hidden fallback conditions.
+
+Compatibility:
+
+* Pilot/default remains disabled and unchanged pending a separate owner Go/No-Go decision.
+* No UI/profile/schema/`IOcrEngine`/translation-cache contract change, full-frame retry, legacy removal, `WebAuto` fallback or direct-GoogleWeb default is authorized.
+* ADR-024, ADR-026 and ADR-027 are unchanged; ADR-025 changes only as named above.
+
+### Requires Migration
+
+No.
+
+### Approved
+
+Project owner, explicit chat approval on 2026-08-11: “принимаю”, accepting the proposed ADR-028 after its stated scope, direct-GoogleWeb evidence, progressive per-region publication and conditional two-second readability direction were presented. Pilot/default enablement remains unauthorized.
+
+---
+
+# ADR-029
+
+## Retained-Candidate Quality Baseline for the Disabled Detector Pilot
+
+Status:
+ACCEPTED
+
+Date:
+2026-08-12
+
+Supersedes:
+ADR-026 only for Gate 2's held-out non-empty mapped Tesseract-crop threshold. All other ADR-026, ADR-024, ADR-025, ADR-027 and ADR-028 boundaries remain binding.
+
+Related Change Request:
+[#46](https://github.com/Dementius-cell/Game-Translator/issues/46)
+
+### Context
+
+The owner reference geometry remains strong under the current strict CJK retained-candidate filter: S9 `10/10`, S10 `6/6`, zero retained extras and no overlay/mask regressions. On the fixed 25-page OpenMantra Japanese held-out corpus, the same path maps `198/206` speech anchors (`96.12%`), returns `187/198` non-empty mapped Tesseract crops (`94.44%`), has micro CER `11.05%`, and has zero overlay warnings, out-of-page items and overlaps.
+
+ADR-026 predeclared `>=98%` non-empty mapped crops. Disabling the filter reaches `98.99%` but reintroduces four known S10 extras. Calibrated enclosure and local image-classifier probes did not safely improve the trade-off: both suppress genuine speech candidates. The owner accepts the current quality result and directs the work to continue rather than repeat filter tuning.
+
+### Options
+
+1. Keep the `>=98%` threshold and block all remaining pilot evidence until a new retained-candidate policy is found.
+2. Disable or loosen the current filter to reach `>=98%`, accepting known owner-reference extras.
+3. Accept the current strict filter as the disabled-pilot quality baseline, set the held-out non-empty threshold to `>=94%`, and retain every zero-extra/overlay-safety gate.
+
+### Decision
+
+Use option 3.
+
+For the opt-in, disabled-by-default detector pilot's held-out Japanese quality gate, replace ADR-026 Gate 2's non-empty mapped Tesseract-crop threshold with `>=94%`. The accepted current baseline is `187/198` (`94.44%`). Retain the other held-out criteria: speech-region anchor recall `>=95%`, micro CER `<=15%`, and zero overlay warnings, out-of-page items and text overlaps.
+
+Owner S9/S10 remains unchanged and strict: S9 `10/10`, S10 `6/6`, zero retained extras, no source-mask regression and no overlay geometry regression. The current strict CJK filter is accepted as-is; this ADR does not authorize a configuration, source or runtime-policy change.
+
+### Consequences
+
+Positive:
+
+* Remaining package, readiness and physical-render evidence can proceed on one stable quality baseline.
+* The accepted policy preserves owner-verified zero-extra geometry rather than silently optimizing a corpus metric at the expense of known false positives.
+
+Negative:
+
+* The accepted held-out policy can omit a non-empty crop for up to six percent of mapped speech regions.
+* This is a documented quality trade-off, not a claim that the filter is optimal or a substitute for future quality work.
+
+Compatibility:
+
+* No profile, saved-zone, UI, default, `IOcrEngine`, recognizer, cache, retry, fallback or legacy-selection behavior changes.
+* Tesseract remains mandatory for every accepted crop.
+* Pilot/default and production enablement remain unauthorized. This ADR only changes the quality threshold for future disabled-pilot gate evaluation.
+
+### Requires Migration
+
+No.
+
+### Approved
+
+Project owner, explicit chat approval on 2026-08-12: «принимаю текущий quality результат». The same owner direction does not authorize production enablement.
+
+---
+
+# ADR-030
+
+## Default Candidate-Region Pipeline and Retirement of Legacy Full-Page Orchestration
+
+Status:
+ACCEPTED
+
+Date:
+2026-08-13
+
+Supersedes:
+ADR-026 only for its direction-only temporary legacy fallback and its no-production-enablement boundary; ADR-028 and ADR-029 only for their disabled-pilot/default compatibility boundaries. Their target chain, mandatory Tesseract recognition, quality gates, direct-provider behavior, safety semantics and timing limits remain binding.
+
+Related Change Request:
+[#47](https://github.com/Dementius-cell/Game-Translator/issues/47)
+
+### Context
+
+The legacy full-page OCR/grouping path has failed the owner geometry reference: S9 `0/10` and S10 `0/6`. The validated target chain — GPU Paddle detector, bounded deterministic grouping, existing Tesseract crop recognition and per-region overlay — has passed S9 `10/10`, S10 `6/6`, zero retained extras, accepted held-out quality, readiness/recovery, package integrity, same-host clean-root offline-install, rollback and resource evidence.
+
+The project owner accepts the available verification record and directs the product away from legacy full-page orchestration to the quality-first target chain.
+
+### Decision
+
+1. The default one-shot and live translation paths use `GPU Paddle detector -> bounded grouping -> existing Tesseract crop recognition -> configured translation provider -> per-region overlay` inside every saved manual OCR zone.
+2. Live translation uses the persistent-worker and provider readiness barrier. Candidate regions retain bounded translation concurrency, source-identity validation, per-region progressive publication, cancellation and the conditional post-publication readability interval.
+3. Detector/runtime/readiness failure produces a controlled degraded result; it does not silently invoke legacy full-page OCR/grouping, a full-frame retry, `WebAuto`, cached data or another provider as a substitute.
+4. Legacy full-page orchestration is removed from normal product entry points. It may be retained temporarily only as an explicit diagnostic/compatibility implementation while a later cleanup verifies safe deletion.
+5. Tesseract remains mandatory for every accepted candidate crop. Windows OCR and Tesseract remain mandatory product capabilities. This decision does not require a public `IOcrEngine` change or remove an OCR engine.
+6. Existing selected translator-provider behavior remains unchanged. Direct GoogleWeb is accepted as release evidence, but this ADR does not make a web provider a silent application default.
+
+### Consequences
+
+Positive:
+
+* Normal product behavior follows the owner-validated geometry rather than the failed legacy full-page path.
+* A detector failure is visible and diagnosable instead of concealing quality loss behind an unvalidated fallback.
+* Saved OCR zones remain the user-controlled capture boundary; detector-derived candidates remain transient.
+
+Negative:
+
+* A package without the verified detector runtime cannot translate through the default path and must report a degraded state.
+* Legacy implementation remains temporarily in the codebase for diagnostic/compatibility use, so its deletion is a separate cleanup task rather than an unverified destructive edit.
+
+Compatibility:
+
+* This decision authorizes necessary default, UI, profile and composition changes for the target path. The current implementation needs no profile migration or public OCR-contract change.
+* The owner-accepted quality gates and the ADR-028 P95 `<= 5.0 s` ready-session translated-overlay SLO remain binding.
+* No game-process interaction, secret-storage change, automatic full-frame retry, direct-GoogleWeb default or silent fallback is authorized.
+
+### Requires Migration
+
+No. Existing saved manual OCR zones remain the migration boundary.
+
+### Approved
+
+Project owner, explicit chat approval on 2026-08-13: «снимем запреты на изменение так как нам нужно уйти от легаси логики к текущей обеспечивающий отличный результат».
+
+---
+
 # ADR TEMPLATE
 
 Использовать для новых решений.

@@ -68,6 +68,27 @@ public sealed class OcrLanguagePackServiceTests
     }
 
     [Fact]
+    public async Task InstallAsync_WhenThaiLanguageTagIsSelected_DownloadsThaiTrainedData()
+    {
+        using var workspace = new TemporaryDirectory();
+        var modelBytes = Encoding.UTF8.GetBytes("fake Thai traineddata");
+        var handler = new StaticHttpMessageHandler(modelBytes);
+        var service = new OcrLanguagePackService(new HttpClient(handler), workspace.Path);
+
+        var result = await service.InstallAsync(
+            OcrSettings.TesseractEngineId,
+            "th",
+            OcrOrientationMode.Horizontal);
+
+        Assert.True(result.Succeeded);
+        Assert.True(File.Exists(Path.Combine(workspace.Path, "tha.traineddata")));
+        Assert.Equal(modelBytes, File.ReadAllBytes(Path.Combine(workspace.Path, "tha.traineddata")));
+        Assert.Equal("Ready: Tesseract OCR th Horizontal uses tha.traineddata.", result.Message);
+        var request = Assert.Single(handler.Requests);
+        Assert.EndsWith("/tha.traineddata", request.RequestUri?.AbsoluteUri, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task InstallAsync_WhenTesseractCatalogCodeIsSelected_DownloadsThatTrainedData()
     {
         using var workspace = new TemporaryDirectory();

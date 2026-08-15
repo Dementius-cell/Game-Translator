@@ -10,7 +10,8 @@ public sealed class OverlayTextItem
         int y,
         int width,
         int height,
-        OcrZoneTextStyle? textStyle = null)
+        OcrZoneTextStyle? textStyle = null,
+        bool useCalloutPresentation = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(text);
 
@@ -40,6 +41,7 @@ public sealed class OverlayTextItem
         Width = width;
         Height = height;
         TextStyle = textStyle ?? OcrZoneTextStyle.Default;
+        UseCalloutPresentation = useCalloutPresentation;
     }
 
     public string Text { get; }
@@ -53,4 +55,9 @@ public sealed class OverlayTextItem
     public int Height { get; }
 
     public OcrZoneTextStyle TextStyle { get; }
+
+    /// <summary>
+    /// Gets whether this transient item should render as a readable callout when it is placed outside its source mask.
+    /// </summary>
+    public bool UseCalloutPresentation { get; }
 }

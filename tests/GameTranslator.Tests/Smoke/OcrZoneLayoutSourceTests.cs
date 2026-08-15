@@ -44,7 +44,7 @@ public sealed class OcrZoneLayoutSourceTests
                 .Elements(wpf + "Border")
                 .Any(border => (string?)border.Attribute("Grid.Column") == "2"
                     && border
-                        .Descendants(wpf + "Button")
-                        .Any(button => (string?)button.Attribute("Content") == "Check updates"));
+                        .Descendants(wpf + "TextBlock")
+                        .Any(textBlock => (string?)textBlock.Attribute("Text") == "Zone name"));
     }
 }

@@ -246,7 +246,7 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
-    public void LanguageOptions_ExposeCommonWebTranslatorLanguages()
+    public void LanguageOptions_ExposeGoogleWebLanguagesAndKeepTesseractModelsInOcrOptions()
     {
         var viewModel = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService());
 
@@ -261,16 +261,27 @@ public sealed class ProfileManagerViewModelTests
         Assert.Contains(languages, language => IsLanguageOption(language, "ru", "ru Russian"));
         Assert.Contains(languages, language => IsLanguageOption(language, "zh-CN", "zh-CN Chinese (Simplified)"));
         Assert.Contains(languages, language => IsLanguageOption(language, "zh-TW", "zh-TW Chinese (Traditional)"));
-        Assert.Contains(languages, language => IsLanguageOption(language, "aze_cyrl", "aze_cyrl Azerbaijani (Cyrillic) (Tesseract OCR)"));
-        Assert.Contains(languages, language => IsLanguageOption(language, "jpn_vert", "jpn_vert Japanese vertical (Tesseract OCR)"));
-        Assert.Contains(languages, language => IsLanguageOption(language, "srp_latn", "srp_latn Serbian (Latin) (Tesseract OCR)"));
+        Assert.DoesNotContain(languages, language => IsLanguageOption(language, "tha", "tha Thai (Tesseract OCR)"));
 
         var ocrLanguages = Assert.IsAssignableFrom<System.Collections.IEnumerable>(GetPropertyValue(viewModel, "OcrLanguageOptions"))
             .Cast<object>()
             .ToArray();
 
         Assert.Contains(ocrLanguages, language => IsLanguageOption(language, string.Empty, "Inherit translator source language"));
+        Assert.Contains(ocrLanguages, language => IsLanguageOption(language, "tha", "tha Thai (Tesseract OCR)"));
         Assert.Contains(ocrLanguages, language => IsLanguageOption(language, "chi_tra_vert", "chi_tra_vert Chinese (Traditional vertical) (Tesseract OCR)"));
+    }
+
+    [Fact]
+    public void TranslatorLanguageFields_NormalizeTesseractModelTagsToGoogleWebTags()
+    {
+        var viewModel = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService());
+
+        SetPropertyValue(viewModel, "SourceLanguage", "tha");
+        SetPropertyValue(viewModel, "TargetLanguage", "rus");
+
+        Assert.Equal("th", GetPropertyValue(viewModel, "SourceLanguage"));
+        Assert.Equal("ru", GetPropertyValue(viewModel, "TargetLanguage"));
     }
 
     [Fact]
@@ -296,6 +307,30 @@ public sealed class ProfileManagerViewModelTests
         Assert.Equal("chi_tra_vert", check.LanguageTag);
         Assert.Equal(OcrOrientationMode.Vertical, check.OrientationMode);
         Assert.Contains("chi_tra_vert", GetPropertyValue(viewModel, "OcrLanguagePackStatus")?.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CheckOcrLanguagePackAsync_NormalizesTheSelectedEngineBeforeReportingReadiness()
+    {
+        var languagePackService = new TestOcrLanguagePackService();
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            ocrLanguagePackService: languagePackService);
+        ConfigureValidDraftProfile(viewModel, "OCR language normalization");
+        SetPropertyValue(viewModel, "OcrEngine", " Tesseract ");
+        InvokeMethod(viewModel, "AddZone");
+
+        await InvokeTaskMethodAsync(viewModel, "CheckOcrLanguagePackAsync");
+
+        Assert.Equal(OcrSettings.TesseractEngineId, GetPropertyValue(viewModel, "OcrEngine"));
+        Assert.Empty(((System.ComponentModel.INotifyDataErrorInfo)viewModel)
+            .GetErrors("OcrEngine")
+            .Cast<object>());
+        Assert.False((bool)(GetPropertyValue(viewModel, "HasOcrEngineValidationError") ?? true));
+        Assert.Null(GetPropertyValue(viewModel, "OcrEngineValidationMessage"));
+        Assert.Equal("#9AA5B1", GetPropertyValue(viewModel, "OcrEngineBorderBrush"));
+        Assert.Equal(OcrSettings.TesseractEngineId, Assert.Single(languagePackService.Checks).EngineId);
     }
 
     [Fact]
@@ -1890,20 +1925,22 @@ public sealed class ProfileManagerViewModelTests
         Assert.Equal(3, ocrEngine.Requests.Count);
         Assert.Equal(new[] { "jpn", "jpn_vert", "jpn" }, ocrEngine.Requests.Select(request => request.Language));
         Assert.All(ocrEngine.Requests, request => Assert.Equal(OcrSettings.TesseractEngineId, request.EngineId));
-        Assert.Equal(3, translator.Requests.Count);
+        Assert.True(
+            translator.Requests.Count == 3,
+            GetPropertyValue(viewModel, "PipelineStatus")?.ToString());
         Assert.All(translator.Requests, request =>
         {
             Assert.Equal("ja", request.SourceLanguage);
             Assert.Equal("ru", request.TargetLanguage);
         });
-        Assert.Equal(new[] { "Press start", "The old road is blocked ahead" }, translator.Requests[0].Texts);
+        Assert.Equal(new[] { "Press start The old road is blocked ahead" }, translator.Requests[0].Texts);
         Assert.Equal(new[] { "Save Load Options" }, translator.Requests[1].Texts);
-        Assert.Equal(new[] { "Quest updated reward ready", "HP +25" }, translator.Requests[2].Texts);
+        Assert.Equal(new[] { "Quest updated reward ready HP +25" }, translator.Requests[2].Texts);
 
         Assert.True(overlay.IsVisible);
         var snapshot = overlay.CurrentSnapshot ?? throw new InvalidOperationException("Overlay snapshot was not shown.");
-        Assert.Equal(5, snapshot.TextItems.Count);
-        Assert.Equal(5, snapshot.MaskItems.Count);
+        Assert.Equal(3, snapshot.TextItems.Count);
+        Assert.Equal(3, snapshot.MaskItems.Count);
         Assert.Equal(OverlayMaskMode.Solid, snapshot.OverlaySettings.MaskMode);
         Assert.Equal("#202020", snapshot.OverlaySettings.MaskColor);
         Assert.Equal(0.8d, snapshot.OverlaySettings.Opacity);
@@ -1917,7 +1954,7 @@ public sealed class ProfileManagerViewModelTests
         });
         Assert.Contains(snapshot.TextItems, item => string.Equals(item.Text, "Translated Save Load Options", StringComparison.Ordinal));
         Assert.Contains(
-            "Full pipeline translated 5 text block(s) across 3 OCR zone(s).",
+            "Full pipeline translated 3 text block(s) across 3 OCR zone(s).",
             GetPropertyValue(viewModel, "PipelineStatus")?.ToString(),
             StringComparison.Ordinal);
 
@@ -1948,6 +1985,139 @@ public sealed class ProfileManagerViewModelTests
         Assert.True(File.Exists(evidencePath), $"Evidence image was not created: {evidencePath}");
         Assert.True(new FileInfo(evidencePath).Length > 1_000);
         Assert.True(File.Exists(summaryPath), $"Smoke summary was not created: {summaryPath}");
+    }
+
+    [Fact]
+    public async Task LiveTranslation_AutomaticallySavesDiagnosticsAtStartAndStop()
+    {
+        var diagnosticsDirectory = Path.Combine(
+            Path.GetTempPath(),
+            "GameTranslator.Tests",
+            "live-diagnostics",
+            Guid.NewGuid().ToString("N"));
+        var settings = new TestSettingsService();
+        settings.SetValue("diagnostics.live.directory", diagnosticsDirectory);
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            settings);
+        ConfigureValidDraftProfile(viewModel, "Live diagnostics");
+        InvokeMethod(viewModel, "AddZone");
+
+        try
+        {
+            await InvokeTaskMethodAsync(viewModel, "StartLiveTranslationAsync");
+            await WaitForConditionAsync(() => Directory.Exists(diagnosticsDirectory)
+                && Directory.EnumerateFiles(diagnosticsDirectory, "*.txt").Any(
+                    path => Path.GetFileName(path).Contains("start-live", StringComparison.Ordinal)));
+
+            InvokeMethod(viewModel, "StopLiveTranslation");
+            await WaitForConditionAsync(() => !(bool)(GetPropertyValue(viewModel, "IsLiveTranslationRunning") ?? true));
+            await WaitForConditionAsync(() => Directory.EnumerateFiles(diagnosticsDirectory, "*.txt").Count() >= 3);
+
+            var reportPaths = Directory.EnumerateFiles(diagnosticsDirectory, "*.txt").ToArray();
+            Assert.Contains(reportPaths, path => Path.GetFileName(path).Contains("start-live", StringComparison.Ordinal));
+            Assert.Contains(reportPaths, path => Path.GetFileName(path).Contains("stop-live-requested", StringComparison.Ordinal));
+            var stoppedReportPath = Assert.Single(
+                reportPaths,
+                path => Path.GetFileName(path).Contains("live-stopped", StringComparison.Ordinal));
+            var stoppedReport = await File.ReadAllTextAsync(stoppedReportPath);
+
+            Assert.Contains("Trigger: live-stopped", stoppedReport, StringComparison.Ordinal);
+            Assert.Contains("Live candidate pipeline", stoppedReport, StringComparison.Ordinal);
+            Assert.Contains("Privacy: profile free-text fields and credential values are omitted.", stoppedReport, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(diagnosticsDirectory))
+            {
+                Directory.Delete(diagnosticsDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void PipelineCommands_WhenDraftHasOcrValidationErrors_AreDisabled()
+    {
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService());
+        ConfigureValidDraftProfile(viewModel, "Validation-gated pipeline commands");
+        InvokeMethod(viewModel, "AddZone");
+        SetPropertyValue(viewModel, "OcrEngine", OcrSettings.WindowsEngineId);
+        SetPropertyValue(viewModel, "SourceLanguage", "en");
+        var selectedZone = GetPropertyValue(viewModel, "SelectedZone");
+        SetPropertyValue(selectedZone!, "OcrLanguage", "chi_sim");
+
+        Assert.True((bool)(GetPropertyValue(viewModel, "HasValidationErrors") ?? false));
+        var validationErrors = GetValidationErrorMessages(viewModel);
+        Assert.Contains(
+            validationErrors,
+            error => error.Contains("Tesseract OCR language 'chi_sim'", StringComparison.Ordinal));
+        Assert.True((bool)(GetPropertyValue(viewModel, "HasOcrEngineValidationError") ?? false));
+        Assert.Contains(
+            "Tesseract OCR language 'chi_sim'",
+            GetPropertyValue(viewModel, "OcrEngineValidationMessage")?.ToString(),
+            StringComparison.Ordinal);
+        Assert.Equal("#C84B4B", GetPropertyValue(viewModel, "OcrEngineBorderBrush"));
+
+        var runAllCommand = Assert.IsAssignableFrom<System.Windows.Input.ICommand>(
+            GetPropertyValue(viewModel, "RunTranslationPipelineCommand"));
+        var startLiveCommand = Assert.IsAssignableFrom<System.Windows.Input.ICommand>(
+            GetPropertyValue(viewModel, "StartLiveTranslationCommand"));
+
+        Assert.False(runAllCommand.CanExecute(null));
+        Assert.False(startLiveCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void StopLiveTranslationCommand_WhenOverlayIsVisibleWithoutLiveSession_IsEnabledAndHidesOverlay()
+    {
+        var overlay = new TestOverlayService();
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            overlayService: overlay);
+        overlay.Show(new OverlaySnapshot(
+            new[] { new OverlayTextItem("Stale overlay", 10, 20, 220, 48) },
+            DateTimeOffset.UtcNow));
+
+        var stopLiveCommand = Assert.IsAssignableFrom<System.Windows.Input.ICommand>(
+            GetPropertyValue(viewModel, "StopLiveTranslationCommand"));
+
+        Assert.True(stopLiveCommand.CanExecute(null));
+
+        stopLiveCommand.Execute(null);
+
+        Assert.False(overlay.IsVisible);
+        Assert.Equal("Live translation overlay hidden.", GetPropertyValue(viewModel, "OverlayPreviewStatus"));
+    }
+
+    [Fact]
+    public async Task StartPauseHotkey_WhenStaleOverlayIsVisible_HidesOverlayInsteadOfStartingAnotherLiveSession()
+    {
+        var hotkeyRegistrar = new TestGlobalHotkeyRegistrar();
+        var overlay = new TestOverlayService();
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            overlayService: overlay,
+            hotkeyRegistrar: hotkeyRegistrar);
+        ConfigureValidDraftProfile(viewModel, "Hotkey stale overlay");
+        InvokeMethod(viewModel, "AddZone");
+        InvokeMethod(viewModel, "ResetGlobalHotkeys");
+        overlay.Show(new OverlaySnapshot(
+            new[] { new OverlayTextItem("Stale overlay", 10, 20, 220, 48) },
+            DateTimeOffset.UtcNow));
+
+        var registration = Assert.Single(
+            hotkeyRegistrar.Registered,
+            hotkey => hotkey.Action == GlobalHotkeyAction.StartPausePipeline);
+        hotkeyRegistrar.RaisePressed(registration.Id);
+
+        await WaitForConditionAsync(() => !overlay.IsVisible);
+
+        Assert.False((bool)(GetPropertyValue(viewModel, "IsLiveTranslationRunning") ?? true));
+        Assert.Equal("Live translation overlay hidden.", GetPropertyValue(viewModel, "OverlayPreviewStatus"));
     }
 
     [Fact]
@@ -2137,11 +2307,11 @@ public sealed class ProfileManagerViewModelTests
 
         Assert.Equal(3, ocrEngine.Requests.Count);
         var ocrPreviewText = GetPropertyValue(viewModel, "OcrPreviewText")?.ToString() ?? string.Empty;
-        Assert.Contains("[Zone 1] Text", ocrPreviewText, StringComparison.Ordinal);
-        Assert.Contains("[Zone 2] Text", ocrPreviewText, StringComparison.Ordinal);
-        Assert.Contains("[Zone 3] Text", ocrPreviewText, StringComparison.Ordinal);
+        Assert.Contains("[Zone 1 candidate] Text", ocrPreviewText, StringComparison.Ordinal);
+        Assert.Contains("[Zone 2 candidate] Text", ocrPreviewText, StringComparison.Ordinal);
+        Assert.Contains("[Zone 3 candidate] Text", ocrPreviewText, StringComparison.Ordinal);
         Assert.Equal(
-            "Recognized 3 text block(s) across 3 OCR zone(s). Preview image shows 'Zone 3'.",
+            "Recognized 3 text block(s) across 3 OCR zone(s). Preview image shows 'Zone 1 candidate'.",
             GetPropertyValue(viewModel, "OcrPreviewStatus"));
 
         var pipelineStatus = GetPropertyValue(viewModel, "PipelineStatus")?.ToString() ?? string.Empty;
@@ -2264,10 +2434,18 @@ public sealed class ProfileManagerViewModelTests
         OcrRequest request,
         IReadOnlyList<FullAppSmokeZoneEvidence> zones)
     {
-        var zoneIndex = zones
+        var requestZoneId = request.ZoneId
+            ?? throw new InvalidOperationException("Full app smoke OCR request must identify its source zone.");
+        var zoneMatch = zones
             .Select((candidate, index) => new { Zone = candidate, Index = index })
-            .FirstOrDefault(candidate => string.Equals(candidate.Zone.Id, request.ZoneId, StringComparison.Ordinal))
-            ?? throw new InvalidOperationException($"Unknown full app smoke OCR zone '{request.ZoneId}'.");
+            .FirstOrDefault(candidate => string.Equals(candidate.Zone.Id, requestZoneId, StringComparison.Ordinal)
+                || requestZoneId.StartsWith(candidate.Zone.Id + ":candidate:", StringComparison.Ordinal));
+        if (zoneMatch is null)
+        {
+            throw new InvalidOperationException($"Unknown full app smoke OCR zone '{requestZoneId}'.");
+        }
+
+        var zoneIndex = zoneMatch;
         var blocks = zoneIndex.Zone.GroupingMode switch
         {
             TranslationGroupingMode.WholeZone => new[]
@@ -2524,7 +2702,8 @@ public sealed class ProfileManagerViewModelTests
         TestGlobalHotkeyRegistrar? hotkeyRegistrar = null,
         TestOcrLanguagePackService? ocrLanguagePackService = null,
         object? screenRegionPickerService = null,
-        OverlayPositioningService? overlayPositioningService = null)
+        OverlayPositioningService? overlayPositioningService = null,
+        ITextCandidateDetector? candidateDetector = null)
     {
         var profileService = new ProfileService(repository, new ProfileValidator());
         var profileExchangeService = new ProfileExchangeService(
@@ -2532,7 +2711,14 @@ public sealed class ProfileManagerViewModelTests
             new ProfileMigrationService(),
             new ProfileValidator());
         var captureService = new CaptureService(frameSource ?? new TestCaptureFrameSource());
-        var ocrService = new OcrService(ocrEngine ?? new TestOcrEngine());
+        var effectiveOcrEngine = ocrEngine ?? new TestOcrEngine();
+        var ocrEngines = string.Equals(
+            effectiveOcrEngine.EngineId,
+            OcrSettings.TesseractEngineId,
+            StringComparison.OrdinalIgnoreCase)
+            ? new IOcrEngine[] { effectiveOcrEngine }
+            : new IOcrEngine[] { effectiveOcrEngine, new TestTesseractOcrEngine(effectiveOcrEngine) };
+        var ocrService = new OcrService(ocrEngines);
         var credentialService = new TranslatorCredentialService(credentialStorage ?? new TestCredentialStorage());
         var effectiveOverlayPositioningService = overlayPositioningService ?? new OverlayPositioningService();
         var overlay = overlayService ?? new TestOverlayService();
@@ -2549,7 +2735,10 @@ public sealed class ProfileManagerViewModelTests
             credentialService,
             translationCacheService,
             effectiveOverlayPositioningService,
-            overlay);
+            overlay,
+            candidateRegionOcrService: new TextCandidateRegionOcrService(
+                candidateDetector ?? new TestFullZoneCandidateDetector(),
+                ocrService));
         var applicationLogger = logger ?? new TestApplicationLogger();
         var globalHotkeyService = new GlobalHotkeyService(settings, hotkeyRegistrar ?? new TestGlobalHotkeyRegistrar());
         var assembly = LoadUiAssembly();
@@ -3044,6 +3233,43 @@ public sealed class ProfileManagerViewModelTests
             Results.Add(result);
 
             return Task.FromResult(result);
+        }
+    }
+
+    private sealed class TestTesseractOcrEngine : IOcrEngine
+    {
+        private readonly TestOcrEngine inner;
+
+        public TestTesseractOcrEngine(TestOcrEngine inner)
+        {
+            this.inner = inner ?? throw new ArgumentNullException(nameof(inner));
+        }
+
+        public string EngineId => OcrSettings.TesseractEngineId;
+
+        public Task<OcrResult> RecognizeAsync(OcrRequest request, CancellationToken cancellationToken = default)
+        {
+            return inner.RecognizeAsync(request, cancellationToken);
+        }
+    }
+
+    private sealed class TestFullZoneCandidateDetector : ITextCandidateDetector
+    {
+        public Task<TextCandidateDetectionResult> DetectAsync(
+            TextCandidateDetectionRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult(TextCandidateDetectionResult.Available(
+                "test-full-zone-candidate-detector",
+                new[]
+                {
+                    new TextCandidate(
+                        new BoundingBox(0, 0, request.Frame.Width, request.Frame.Height),
+                        0.99d),
+                }));
         }
     }
 

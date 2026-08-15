@@ -48,6 +48,23 @@ public sealed class ExperimentalWebTranslatorProviderTests
     }
 
     [Fact]
+    public async Task GoogleWebTranslateAsync_WhenTesseractThaiModelTagIsConfigured_UsesGoogleThaiTag()
+    {
+        var handler = new SequenceHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = CreateJsonContent("""[[["РџСЂРёРІРµС‚","สวัสดี",null,null,10]],null,"th"]"""),
+            });
+        var provider = new GoogleWebTranslatorProvider(new HttpClient(handler));
+
+        await provider.TranslateAsync(CreateRequest("GoogleWeb", "https://translate.googleapis.com", sourceLanguage: "tha"));
+
+        var request = Assert.Single(handler.Requests);
+        Assert.Contains("sl=th", request.Uri?.Query, StringComparison.Ordinal);
+        Assert.DoesNotContain("sl=tha", request.Uri?.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task GoogleWebTranslateAsync_WhenResponseCannotBeParsed_ReportsParseFailure()
     {
         var handler = new SequenceHttpMessageHandler(
@@ -252,12 +269,12 @@ public sealed class ExperimentalWebTranslatorProviderTests
         Assert.Contains("YandexWeb [Throttled]", exception.Message, StringComparison.Ordinal);
     }
 
-    private static TranslateRequest CreateRequest(string provider, string endpoint)
+    private static TranslateRequest CreateRequest(string provider, string endpoint, string sourceLanguage = "en", string targetLanguage = "ru")
     {
         return new TranslateRequest(
             new[] { "Hello" },
-            "en",
-            "ru",
+            sourceLanguage,
+            targetLanguage,
             new TranslatorCredentials(
                 "experimental-web-provider",
                 provider,

@@ -1,3 +1,4 @@
+using GameTranslator.Application.Capture;
 using GameTranslator.Application.Ocr;
 using GameTranslator.Domain.Profiles;
 
@@ -100,7 +101,8 @@ public sealed class OverlayPositioningService
         DateTimeOffset shownAt,
         OverlaySnapshot? previousSnapshot,
         OcrZoneTextStyle? textStyle,
-        OverlaySettings? overlaySettings = null)
+        OverlaySettings? overlaySettings = null,
+        OverlayPlacementConstraints? placementConstraints = null)
     {
         ArgumentNullException.ThrowIfNull(result);
 
@@ -112,8 +114,10 @@ public sealed class OverlayPositioningService
                 result,
                 block,
                 result.TextBlockSources[index],
-                effectiveTextStyle))
-            .ToArray());
+                effectiveTextStyle,
+                placementConstraints))
+            .ToArray(),
+            placementConstraints);
         var textItems = positionedItems
             .Select(item => item.TextItem)
             .ToArray();
@@ -142,7 +146,64 @@ public sealed class OverlayPositioningService
             shownAt,
             settings,
             maskItems,
-            debugMetricLines: debugMetricLines);
+            debugMetricLines: debugMetricLines,
+            placementConstraints: placementConstraints);
+    }
+
+    /// <summary>
+    /// Combines independently published snapshots and reflows only transient candidate callouts
+    /// that would otherwise cover an already published translated item.
+    /// </summary>
+    public static OverlaySnapshot CombineCandidateSnapshots(
+        IReadOnlyList<OverlaySnapshot> snapshots,
+        DateTimeOffset shownAt,
+        OverlaySettings overlaySettings)
+    {
+        ArgumentNullException.ThrowIfNull(snapshots);
+        ArgumentNullException.ThrowIfNull(overlaySettings);
+
+        var textItems = new List<OverlayTextItem>();
+        var maskItems = new List<OverlayMaskItem>();
+        var debugItems = new List<OverlayDebugItem>();
+        var debugMetricLines = new List<string>();
+
+        foreach (var snapshot in snapshots)
+        {
+            ArgumentNullException.ThrowIfNull(snapshot);
+            var constraints = snapshot.PlacementConstraints;
+            for (var index = 0; index < snapshot.TextItems.Count; index++)
+            {
+                var item = snapshot.TextItems[index];
+                if (constraints is null || !item.UseCalloutPresentation)
+                {
+                    textItems.Add(item);
+                    continue;
+                }
+
+                var sourceBounds = index < snapshot.MaskItems.Count
+                    ? CreateLayoutBounds(snapshot.MaskItems[index])
+                    : CreateLayoutBounds(item);
+                var reflowed = ReflowCandidateTextItem(
+                    item,
+                    sourceBounds,
+                    constraints,
+                    textItems.Select(CreateLayoutBounds).ToArray());
+                textItems.Add(reflowed.TextItem);
+                debugMetricLines.AddRange(reflowed.DebugMetricLines);
+            }
+
+            maskItems.AddRange(snapshot.MaskItems);
+            debugItems.AddRange(snapshot.DebugItems);
+            debugMetricLines.AddRange(snapshot.DebugMetricLines);
+        }
+
+        return new OverlaySnapshot(
+            textItems,
+            shownAt,
+            overlaySettings,
+            maskItems,
+            debugItems,
+            debugMetricLines);
     }
 
     private static OverlayMaskItem CreateMaskItem(OverlayMaskBounds maskBounds, OverlaySettings settings)
@@ -167,7 +228,8 @@ public sealed class OverlayPositioningService
         OcrResult result,
         OcrTextBlock block,
         OcrTextBlockSource source,
-        OcrZoneTextStyle textStyle)
+        OcrZoneTextStyle textStyle,
+        OverlayPlacementConstraints? placementConstraints)
     {
         var sourceBounds = ScaleBounds(result, source.SemanticBounds);
         var memberBounds = source.MemberBounds
@@ -185,11 +247,27 @@ public sealed class OverlayPositioningService
 
         if (textStyle.LayoutMode == OverlayTextLayoutMode.ExpandFromSourceCenter)
         {
-            var placement = CreateExpandedTextItem(result, block.Text, sourceBounds, textStyle, isVerticalSource);
+            var placement = CreateExpandedTextItem(
+                result,
+                block.Text,
+                sourceBounds,
+                textStyle,
+                isVerticalSource,
+                placementConstraints?.PlacementRegion);
+            var textItem = placementConstraints is null
+                ? placement.TextItem
+                : new OverlayTextItem(
+                    placement.TextItem.Text,
+                    placement.TextItem.X,
+                    placement.TextItem.Y,
+                    placement.TextItem.Width,
+                    placement.TextItem.Height,
+                    placement.TextItem.TextStyle,
+                    useCalloutPresentation: true);
 
             return new OverlayPositionedTextItem(
                 ApplySemanticPlacementRules(
-                    placement.TextItem,
+                    textItem,
                     sourceBounds,
                     memberBounds,
                     isVerticalSource),
@@ -244,13 +322,15 @@ public sealed class OverlayPositioningService
         string text,
         OverlayLayoutBounds sourceBounds,
         OcrZoneTextStyle textStyle,
-        bool isVerticalSource)
+        bool isVerticalSource,
+        CaptureRegion? placementRegion)
     {
+        var effectivePlacementRegion = placementRegion ?? result.Region;
         var regionBounds = new OverlayLayoutBounds(
-            result.Region.X,
-            result.Region.Y,
-            result.Region.Width,
-            result.Region.Height);
+            effectivePlacementRegion.X,
+            effectivePlacementRegion.Y,
+            effectivePlacementRegion.Width,
+            effectivePlacementRegion.Height);
         var maximumWidth = Math.Max(1, Math.Min(ExpandedTextMaxWidth, regionBounds.Width));
         var maximumHeight = Math.Max(1, regionBounds.Height);
         var initialWidth = isVerticalSource
@@ -479,7 +559,14 @@ public sealed class OverlayPositioningService
                 : null;
 
             stabilizedItems[index] = CanReusePreviousBounds(current, previous)
-                ? new OverlayTextItem(current.Text, previous!.X, previous.Y, previous.Width, previous.Height, current.TextStyle)
+                ? new OverlayTextItem(
+                    current.Text,
+                    previous!.X,
+                    previous.Y,
+                    previous.Width,
+                    previous.Height,
+                    current.TextStyle,
+                    current.UseCalloutPresentation)
                 : current;
         }
 
@@ -589,23 +676,29 @@ public sealed class OverlayPositioningService
 
         return x == item.X && y == item.Y
             ? item
-            : new OverlayTextItem(item.Text, x, y, item.Width, item.Height, item.TextStyle);
+            : new OverlayTextItem(item.Text, x, y, item.Width, item.Height, item.TextStyle, item.UseCalloutPresentation);
     }
 
     private static OverlayPositionedTextItem[] AvoidCoveringOtherSemanticGroups(
         OcrResult result,
-        IReadOnlyList<OverlayPositionedTextItem> items)
+        IReadOnlyList<OverlayPositionedTextItem> items,
+        OverlayPlacementConstraints? placementConstraints = null)
     {
         if (items.Count <= 0)
         {
             return Array.Empty<OverlayPositionedTextItem>();
         }
 
+        var effectivePlacementRegion = placementConstraints?.PlacementRegion ?? result.Region;
         var regionBounds = new OverlayLayoutBounds(
-            result.Region.X,
-            result.Region.Y,
-            result.Region.Width,
-            result.Region.Height);
+            effectivePlacementRegion.X,
+            effectivePlacementRegion.Y,
+            effectivePlacementRegion.Width,
+            effectivePlacementRegion.Height);
+        var occupiedBounds = placementConstraints?.OccupiedRegions
+            .Select(region => new OverlayLayoutBounds(region.X, region.Y, region.Width, region.Height))
+            .ToArray()
+            ?? Array.Empty<OverlayLayoutBounds>();
         var adjusted = new OverlayPositionedTextItem[items.Count];
 
         for (var index = 0; index < items.Count; index++)
@@ -613,6 +706,7 @@ public sealed class OverlayPositioningService
             var others = items
                 .Where((_, otherIndex) => otherIndex != index)
                 .Select(item => item.SemanticBounds)
+                .Concat(occupiedBounds)
                 .ToArray();
             var placedTranslationBounds = adjusted
                 .Take(index)
@@ -672,6 +766,43 @@ public sealed class OverlayPositioningService
         }
 
         return item with { TextItem = selected ?? clamped, DebugMetricLines = debugMetricLines };
+    }
+
+    private static CandidateReflowResult ReflowCandidateTextItem(
+        OverlayTextItem item,
+        OverlayLayoutBounds sourceBounds,
+        OverlayPlacementConstraints constraints,
+        IReadOnlyList<OverlayLayoutBounds> placedTranslationBounds)
+    {
+        var regionBounds = new OverlayLayoutBounds(
+            constraints.PlacementRegion.X,
+            constraints.PlacementRegion.Y,
+            constraints.PlacementRegion.Width,
+            constraints.PlacementRegion.Height);
+        var clamped = ClampTextItemToBounds(item, regionBounds);
+        var obstacleBounds = constraints.OccupiedRegions
+            .Select(region => new OverlayLayoutBounds(region.X, region.Y, region.Width, region.Height))
+            .Concat(placedTranslationBounds)
+            .ToArray();
+
+        if (!OverlapsAnyBounds(clamped, obstacleBounds))
+        {
+            return new CandidateReflowResult(clamped, Array.Empty<string>());
+        }
+
+        var selected = CreateCandidateTextItems(clamped, sourceBounds, obstacleBounds, regionBounds)
+            .Where(candidate => !OverlapsAnyBounds(candidate, obstacleBounds))
+            .OrderBy(candidate => CalculateCenterDistance(candidate, sourceBounds))
+            .ThenBy(candidate => Math.Abs(candidate.X - clamped.X) + Math.Abs(candidate.Y - clamped.Y))
+            .FirstOrDefault();
+        if (selected is not null)
+        {
+            return new CandidateReflowResult(selected, Array.Empty<string>());
+        }
+
+        return new CandidateReflowResult(
+            clamped,
+            new[] { $"{OverlayFitWarningPrefix} candidate translation still overlaps a published translated item after combined reflow." });
     }
 
     private static IEnumerable<OverlayTextItem> CreateCandidateTextItems(
@@ -735,10 +866,16 @@ public sealed class OverlayPositioningService
             ClampOriginToBounds(item.Y, height, bounds.Y, bounds.Bottom),
             width,
             height,
-            item.TextStyle);
+            item.TextStyle,
+            item.UseCalloutPresentation);
     }
 
     private static OverlayLayoutBounds CreateLayoutBounds(OverlayTextItem item)
+    {
+        return new OverlayLayoutBounds(item.X, item.Y, item.Width, item.Height);
+    }
+
+    private static OverlayLayoutBounds CreateLayoutBounds(OverlayMaskItem item)
     {
         return new OverlayLayoutBounds(item.X, item.Y, item.Width, item.Height);
     }
@@ -755,7 +892,8 @@ public sealed class OverlayPositioningService
             ClampOriginToBounds(y, item.Height, bounds.Y, bounds.Bottom),
             item.Width,
             item.Height,
-            item.TextStyle);
+            item.TextStyle,
+            item.UseCalloutPresentation);
     }
 
     private static int ClampOriginToBounds(int origin, int size, OverlayLayoutBounds bounds)
@@ -931,6 +1069,10 @@ public sealed class OverlayPositioningService
         OverlayTextItem TextItem,
         OverlayMaskBounds MaskBounds,
         OverlayLayoutBounds SemanticBounds,
+        IReadOnlyList<string> DebugMetricLines);
+
+    private sealed record CandidateReflowResult(
+        OverlayTextItem TextItem,
         IReadOnlyList<string> DebugMetricLines);
 
     private sealed record OverlayTextPlacement(

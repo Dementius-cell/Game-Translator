@@ -17,6 +17,11 @@ public sealed class OcrPublicSeamTests
         AssertPublicApplicationType<OcrEngineException>();
         AssertPublicApplicationType<OcrService>();
         AssertPublicApplicationType<OcrPreprocessor>();
+        AssertPublicApplicationType<ITextCandidateDetector>();
+        AssertPublicApplicationType<TextCandidateDetectionRequest>();
+        AssertPublicApplicationType<TextCandidateDetectionResult>();
+        AssertPublicApplicationType<TextCandidateRegionOcrService>();
+        AssertPublicApplicationType<BoundedTextCandidateGroupingService>();
     }
 
     [Fact]
@@ -50,6 +55,11 @@ public sealed class OcrPublicSeamTests
             typeof(OcrEngineException),
             typeof(OcrService),
             typeof(OcrPreprocessor),
+            typeof(ITextCandidateDetector),
+            typeof(TextCandidateDetectionRequest),
+            typeof(TextCandidateDetectionResult),
+            typeof(TextCandidateRegionOcrService),
+            typeof(BoundedTextCandidateGroupingService),
         };
 
         foreach (var ocrType in ocrTypes)

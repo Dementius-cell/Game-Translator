@@ -88,6 +88,12 @@
 
 ## QG18: Проверка автообновления – применяется при изменении обновления: проверка, загрузка и установка не ломают приложение.
 
+## QG19: Воспроизводимый Paddle runtime – применяется при изменении bootstrap, Python/Paddle, detector model или Tesseract packs: lock/URL/hash проверяются, GPU worker и model probe проходят успешно, normal Python bytecode cache не удаляется.
+
+## QG20: Candidate pipeline – применяется при изменении live/one-shot OCR orchestration: default использует ADR-030 candidate route; Tesseract распознаёт только принятые crop; detector/runtime failure видим как degraded result и не запускает скрытый legacy, full-frame retry, cache или provider fallback.
+
+## QG21: Release package/recovery – применяется к RC: manifest и archive checksum проверены, offline-install/recovery/rollback проверены в разрешённом объёме, а WPF UI физически проверяется только после отдельного разрешения. Same-host clean-root фиксируется именно так и не называется физическим clean host.
+
 ------------------------------------------------------------------------
 
 # 5. Требования к коду

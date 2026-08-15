@@ -22,13 +22,13 @@
 
 # 3. Риск точности OCR игровых текстов
 
-**Решение:** продукт сохраняет Windows OCR и Tesseract. Pipeline выбирает движок по профилю, языку и orientation; fallback или comparison вводятся только после измеримого benchmark. Нельзя удалять обязательный движок или делать продукт зависимым от одного OCR.
+**Решение:** продукт сохраняет Windows OCR и Tesseract. По ADR-030 normal one-shot/live orchestration использует GPU Paddle detector, bounded grouping и Tesseract crop recognition; Paddle не заменяет recognizer. Нельзя удалять обязательный движок или делать продукт зависимым от одного OCR. Недоступность candidate runtime является контролируемым degraded-состоянием, а не основанием для скрытого fallback.
 
 ------------------------------------------------------------------------
 
 # 4. Риск вертикального японского/китайского текста
 
-**Решение:** Tesseract является обязательным default для вертикального текста. Orientation поддерживает Auto/Horizontal/Vertical, а ручное переключение остаётся допустимым. Дополнительный OCR возможен после screen-capture benchmark и ADR, не заменяя Windows OCR и Tesseract.
+**Решение:** Tesseract является обязательным recognizer для вертикального текста. Orientation поддерживает Auto/Horizontal/Vertical, а ручное переключение остаётся допустимым. Разрешённый ADR-030 Paddle detector предлагает только crop bounds внутри ручной зоны и не заменяет Windows OCR или Tesseract.
 
 ------------------------------------------------------------------------
 
@@ -88,13 +88,13 @@
 
 # 14. Спорное решение №1: выбор OCR
 
-Почему не только Tesseract? Windows OCR быстрее для горизонтальных текстов. Принято: основной – Windows OCR, резервный – Tesseract, будущее – PaddleOCR.
+Почему не только Tesseract? Windows OCR остаётся поддерживаемым горизонтальным движком, а Tesseract необходим для вертикального текста и candidate crops. Принято по ADR-030: default orchestration использует GPU Paddle только как detector, затем Tesseract recognizer; Windows OCR и Tesseract не удаляются.
 
 ------------------------------------------------------------------------
 
 # 15. Спорное решение №2: выбор языка
 
-Почему не Python? Слабая интеграция с Windows, сложность overlay, нагрузка. Решение: C# + .NET.
+Почему не Python как приложение? WPF, Windows integration и orchestration остаются в C# + .NET. Принято по ADR-030: Python допустим только как закреплённый packaged worker GPU Paddle detector без UI, профилей, provider selection или overlay responsibility.
 
 ------------------------------------------------------------------------
 
@@ -114,7 +114,7 @@ SQLite (не требует сервера, надежна, быстра). Postg
 
 Отказано из-за низкой надежности. Решение: ручная настройка сохранённых OCR-зон профиля.
 
-ADR-023 не отменяет это решение. GPU candidate detector может исследоваться только как transient source-region proposal внутри уже выбранной OCR-зоны; он не меняет профиль, не создаёт сохранённые зоны и не заменяет ручную настройку capture scope.
+ADR-030 не отменяет это решение. GPU candidate detector является штатным transient source-region provider внутри уже выбранной OCR-зоны; он не меняет профиль, не создаёт сохранённые зоны и не заменяет ручную настройку capture scope.
 
 ------------------------------------------------------------------------
 

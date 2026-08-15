@@ -16,7 +16,7 @@
 
 # 2. Выбор языка программирования
 
-Основной язык: C# (.NET 9). Причины: лучший доступ к Windows API, производительность, безопасность, удобство поддержки. Python не используется как основной (допустим только для прототипов).
+Основной язык приложения: C# (.NET 9). Он отвечает за Windows API, WPF UI, capture, orchestration, перевод и overlay. Python не является вторым приложением или UI-слоем: по ADR-030 он поставляется как зафиксированный runtime узкого GPU Paddle detector worker. Его версии, модель и хеши воспроизводимо собираются через `tools/bootstrap-paddle-runtime.ps1`; recognizer остаётся в .NET/Tesseract пути.
 
 ------------------------------------------------------------------------
 
@@ -42,8 +42,10 @@
 
 ## OCR движки
 - **Windows OCR** – быстрый вариант для поддерживаемого горизонтального текста.
-- **Tesseract OCR** – обязательный движок для вертикального японского и китайского текста, а также fallback для отсутствующих Windows OCR language packs.
-- Современный detector-plus-recognizer OCR может исследоваться локально через screen capture benchmark, но не входит в продукт без ADR и решения владельца.
+- **Tesseract OCR** – обязательный recognizer для вертикального японского и китайского текста и каждого принятого candidate crop; также поддерживается как fallback для отсутствующих Windows OCR language packs, когда такой путь выбран пользователем.
+- **GPU Paddle detector worker** – штатный provider transient candidate bounds по ADR-030. Его output не является финальным OCR text и не заменяет Windows OCR или Tesseract.
+
+Нормальный one-shot и live маршрут: `GPU Paddle detector → bounded grouping → Tesseract crop recognition → configured translator → per-region overlay`. Failure detector/runtime приводит к видимому degraded result без автоматического legacy full-page OCR, full-frame retry, provider/cache fallback. Legacy full-page orchestration сохранён только за явным `TranslationPipelineRunOptions.LegacyFullPage` для диагностики и compatibility.
 
 ------------------------------------------------------------------------
 
@@ -131,7 +133,7 @@ SQLite для кэша переводов, статистики, настрое�
 
 UI остаётся на UI thread. Capture, OCR, translation и cache выполняются асинхронно вне UI thread с cancellation и измерением latency; конкретное число закреплённых потоков не является архитектурным контрактом.
 
-По ADR-023 pipeline работает с transient candidate regions внутри настроенной OCR-зоны. После стабилизации региона его OCR, cache lookup, translation и overlay delivery являются независимой cancellable цепочкой: готовый overlay отображается прогрессивно и не ждёт соседние регионы. Смена или исчезновение региона отменяет только его цепочку; общая отмена кадра не должна скрывать уже готовые неизменённые регионы. GPU candidate detector остаётся опциональным Infrastructure-адаптером за Application seam и может передавать только candidate bounds; Windows OCR и Tesseract остаются обязательными OCR-движками.
+По ADR-030 pipeline работает с transient candidate regions внутри настроенной OCR-зоны. После стабилизации региона его OCR, cache lookup, translation и overlay delivery являются независимой cancellable цепочкой: готовый overlay отображается прогрессивно и не ждёт соседние регионы. Смена или исчезновение региона отменяет только его цепочку; общая отмена кадра не должна скрывать уже готовые неизменённые регионы. GPU candidate detector является default Infrastructure-адаптером за Application seam и может передавать только candidate bounds; Windows OCR и Tesseract остаются обязательными OCR-движками.
 
 ------------------------------------------------------------------------
 
@@ -168,7 +170,7 @@ MVVM + Clean Architecture. Слои: Presentation (WPF), Application, Domain, In
 - UI: WPF
 - Overlay: WPF overlay window; другой renderer только по измеренному ADR
 - Захват экрана: Windows Graphics Capture
-- OCR: Windows OCR + Tesseract
+- OCR: GPU Paddle candidate detector + bounded grouping + Tesseract crop recognition; Windows OCR и Tesseract обязательны
 - Обработка изображения: текущий preprocessing pipeline; библиотека не закреплена
 - Перевод: Google + Azure + Яндекс
 - Кэш: SQLite (TTL 30 дней)

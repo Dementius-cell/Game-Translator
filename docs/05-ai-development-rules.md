@@ -28,6 +28,16 @@
 
 ------------------------------------------------------------------------
 
+## Текущий OCR baseline (ADR-030)
+
+Перед изменением OCR, live pipeline, packaging или release agent читает ADR-030 и `docs/agents/ocr-overlay-work-status.md`. Нормальный маршрут — GPU Paddle detector → bounded grouping → существующий Tesseract crop recognition → configured translator → per-region overlay. Python допустим только как зафиксированный packaged detector worker; UI, профили, orchestration, provider selection и overlay остаются в .NET.
+
+Legacy full-page OCR/grouping не выбирается автоматически и доступен только через явный diagnostic/compatibility option. Недоступность detector/runtime должна оставлять контролируемое degraded-состояние: агент не добавляет full-frame retry, WebAuto/cache/provider fallback и не меняет provider default без нового решения владельца. Windows OCR и Tesseract остаются обязательными продуктными возможностями.
+
+Для внешней публикации агент не добавляет в Git screenshots, game/manga OCR-тексты, calibration evidence, release candidates, модели или Tesseract data, если владелец отдельно не одобрил именно эти материалы.
+
+------------------------------------------------------------------------
+
 # 3. Классификация изменений
 
 Перед правкой агент сверяет `docs/governance/change-approval-required.md`.

@@ -71,7 +71,7 @@ Hard Stop: удаление Windows OCR, Tesseract OCR или переход п�
 
 Decision Record: ломающая смена публичного `IOcrEngine` контракта или новая семантика вертикального текста вне ACCEPTED ADR.
 
-Normal Delivery: новая реализация за существующим seam, OCR bug fix, benchmark, тест, preprocessing tuning и реализация уже принятого ADR. Экспериментальный третий OCR допускается только через screen capture и не заменяет обязательные движки.
+Normal Delivery: новая реализация за существующим seam, OCR bug fix, benchmark, тест, preprocessing tuning и реализация уже принятого ADR. По ADR-030 GPU Paddle detector допускается как штатный transient candidate provider, но не как recognizer и не как замена обязательных Windows OCR/Tesseract. Новый recognizer или изменение default/fallback вне scope принятого ADR требует Decision Record.
 
 ### D. Переводчики
 

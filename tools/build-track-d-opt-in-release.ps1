@@ -1,16 +1,19 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)]
+    [Parameter()]
     [ValidateScript({ Test-Path -LiteralPath $_ -PathType Container })]
     [string]$PythonRuntimeRoot,
 
-    [Parameter(Mandatory)]
+    [Parameter()]
     [ValidateScript({ Test-Path -LiteralPath $_ -PathType Container })]
     [string]$PaddleVenvRoot,
 
-    [Parameter(Mandatory)]
+    [Parameter()]
     [ValidateScript({ Test-Path -LiteralPath $_ -PathType Container })]
     [string]$ModelCacheRoot,
+
+    [ValidateScript({ Test-Path -LiteralPath $_ -PathType Container })]
+    [string]$BootstrapRuntimeRoot,
 
     [string]$ReleaseName = "v0.1.0-pre.20260802-track-d-adr025",
 
@@ -19,6 +22,8 @@ param(
     [ValidatePattern("^[a-z0-9_]+$")]
     [string[]]$TesseractLanguagePacks = @(),
 
+    [switch]$ValidateRuntimeOnly,
+
     [switch]$PruneRuntimePayload
 )
 
@@ -26,6 +31,40 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$bootstrapRuntimeManifest = $null
+$usesBootstrapRuntime = -not [string]::IsNullOrWhiteSpace($BootstrapRuntimeRoot)
+$explicitRuntimeInputs = @($PythonRuntimeRoot, $PaddleVenvRoot, $ModelCacheRoot)
+if ($usesBootstrapRuntime) {
+    if ($explicitRuntimeInputs | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) {
+        throw "Specify either -BootstrapRuntimeRoot or the explicit Python/Paddle/model roots, not both."
+    }
+
+    $BootstrapRuntimeRoot = (Resolve-Path $BootstrapRuntimeRoot).Path
+    $bootstrapVerifier = Join-Path $PSScriptRoot "verify-paddle-runtime.ps1"
+    & $bootstrapVerifier -RuntimeRoot $BootstrapRuntimeRoot
+    if ($LASTEXITCODE -ne 0) {
+        throw "Pinned Paddle runtime verification failed with exit code $LASTEXITCODE."
+    }
+
+    $PythonRuntimeRoot = Join-Path $BootstrapRuntimeRoot "python"
+    $PaddleVenvRoot = Join-Path $BootstrapRuntimeRoot "venv"
+    $ModelCacheRoot = Join-Path $BootstrapRuntimeRoot "models"
+    $bootstrapRuntimeManifest = Get-Content -LiteralPath (Join-Path $BootstrapRuntimeRoot "paddle-runtime-manifest.json") -Raw | ConvertFrom-Json
+}
+elseif ($explicitRuntimeInputs | Where-Object { [string]::IsNullOrWhiteSpace($_) }) {
+    throw "Specify -BootstrapRuntimeRoot or all of -PythonRuntimeRoot, -PaddleVenvRoot and -ModelCacheRoot."
+}
+
+if ($ValidateRuntimeOnly) {
+    if (-not $usesBootstrapRuntime) {
+        throw "-ValidateRuntimeOnly requires -BootstrapRuntimeRoot."
+    }
+
+    Write-Host "Pinned Paddle runtime is valid for packaging: $BootstrapRuntimeRoot"
+    $global:LASTEXITCODE = 0
+    return
+}
+
 $uiProject = Join-Path $repositoryRoot "src\GameTranslator.UI\GameTranslator.UI.csproj"
 $releaseRootPath = [System.IO.Path]::GetFullPath($ReleaseRoot)
 $releaseDirectory = Join-Path $releaseRootPath $ReleaseName
@@ -52,9 +91,14 @@ function Invoke-Robocopy {
     )
 
     & robocopy $Source $Destination @Arguments | Out-Host
-    if ($LASTEXITCODE -gt 7) {
-        throw "robocopy failed from '$Source' to '$Destination' with exit code $LASTEXITCODE."
+    $robocopyExitCode = $LASTEXITCODE
+    if ($robocopyExitCode -gt 7) {
+        throw "robocopy failed from '$Source' to '$Destination' with exit code $robocopyExitCode."
     }
+
+    # Robocopy uses 1-7 for successful copy outcomes. Normalize those so a
+    # successful release build does not report a false non-zero exit code.
+    $global:LASTEXITCODE = 0
 }
 
 function Get-MetadataValue {
@@ -262,6 +306,15 @@ $manifest = [ordered]@{
         name = "PP-OCRv6_medium_det"
         relativePath = "candidate-detector/paddlex-cache/official_models/PP-OCRv6_medium_det"
     }
+    bootstrapRuntime = if ($null -eq $bootstrapRuntimeManifest) { $null } else {
+        [ordered]@{
+            runtimeId = $bootstrapRuntimeManifest.runtimeId
+            generatedAtUtc = $bootstrapRuntimeManifest.generatedAtUtc
+            python = $bootstrapRuntimeManifest.python
+            packages = $bootstrapRuntimeManifest.packages
+            model = $bootstrapRuntimeManifest.model
+        }
+    }
     tesseractLanguagePacks = $packagedTesseractLanguagePackRecords
     runtimePruning = $runtimePruning
     distributions = $distributions | Sort-Object Name
@@ -318,3 +371,4 @@ $hashes | Set-Content -LiteralPath (Join-Path $releaseDirectory "SHA256SUMS.txt"
 
 Write-Host "ADR-030 default candidate-pipeline release candidate assembled at: $releaseDirectory"
 Write-Host "Run tools/verify-track-d-opt-in-release.ps1 against this directory before treating it as packaging evidence."
+$global:LASTEXITCODE = 0

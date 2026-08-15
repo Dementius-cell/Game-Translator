@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "runtimeId": "paddle-win-x64-cpython-3.12.10",
+  "platform": "win-x64",
+  "python": {
+    "version": "3.12.10",
+    "majorMinor": "3.12",
+    "source": "https://www.python.org/downloads/release/python-31210/"
+  },
+  "pythonPackages": {
+    "requirementsPath": "paddle-runtime-win-x64.requirements.txt",
+    "paddlePackageIndex": "https://www.paddlepaddle.org.cn/packages/stable/cu129/",
+    "paddlepaddleGpu": "3.2.1",
+    "paddleOcr": "3.7.0",
+    "paddleX": "3.7.2"
+  },
+  "model": {
+    "name": "PP-OCRv6_medium_det",
+    "source": "https://huggingface.co/PaddlePaddle/PP-OCRv6_medium_det",
+    "revision": "8e0f56fb2ef86b461d99cfc7ac5c137738985f61",
+    "files": [
+      {
+        "path": "inference.json",
+        "sha256": "0f1a7ec35da36173529c7a60238b7f7919e3831929c3f700ad90ad4896adecd5"
+      },
+      {
+        "path": "inference.pdiparams",
+        "sha256": "85218d2e3d98f5a21c58b4220627be923a97aee5db3cc71f39536ab31ac53960"
+      },
+      {
+        "path": "inference.yml",
+        "sha256": "7298d5ead546584af2504d03355f881ac7a7bc0eb1e282d3e159277c1d0af871"
+      }
+    ]
+  },
+  "tesseractLanguagePacks": [
+    {
+      "code": "eng",
+      "source": "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/eng.traineddata",
+      "sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2"
+    },
+    {
+      "code": "jpn",
+      "source": "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/jpn.traineddata",
+      "sha256": "1f5de9236d2e85f5fdf4b3c500f2d4926f8d9449f28f5394472d9e8d83b91b4d"
+    },
+    {
+      "code": "chi_sim",
+      "source": "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/chi_sim.traineddata",
+      "sha256": "a5fcb6f0db1e1d6d8522f39db4e848f05984669172e584e8d76b6b3141e1f730"
+    },
+    {
+      "code": "tha",
+      "source": "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/tha.traineddata",
+      "sha256": "294227cc2d1292b0acb28d61d4115c88252b96d466ca90b417cf4cf0c67bf07c"
+    }
+  ]
+}

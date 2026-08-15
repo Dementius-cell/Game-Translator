@@ -23,6 +23,20 @@ public static class TranslationTextGroupingService
         };
     }
 
+    /// <summary>
+    /// Produces the grouped source for translation while preserving the original OCR blocks for masking.
+    /// Retained for callers compiled against the earlier two-result grouping contract.
+    /// </summary>
+    public static TranslationTextGroupingResult CreateTextGroupingResult(OcrResult sourceResult, OcrZone zone)
+    {
+        ArgumentNullException.ThrowIfNull(sourceResult);
+        ArgumentNullException.ThrowIfNull(zone);
+
+        return new TranslationTextGroupingResult(
+            CreateTranslationSourceResult(sourceResult, zone),
+            sourceResult);
+    }
+
     private static OcrResult CreateWholeZoneResult(OcrResult sourceResult)
     {
         if (sourceResult.TextBlocks.Count <= 1)
@@ -357,3 +371,7 @@ public static class TranslationTextGroupingService
 
     private sealed record TranslationTextGroup(OcrTextBlock TextBlock, OcrTextBlockSource Source);
 }
+
+public sealed record TranslationTextGroupingResult(
+    OcrResult TranslationSourceResult,
+    OcrResult MaskSourceResult);

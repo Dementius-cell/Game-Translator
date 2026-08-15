@@ -76,6 +76,28 @@ public sealed class TranslationTextGroupingServiceTests
             word => Assert.Same(expectedWords[1], word));
     }
 
+    [Fact]
+    public void CreateTextGroupingResult_PreservesRawBlocksForMasking()
+    {
+        var source = CreateResult(
+            inputWidth: 300,
+            inputHeight: 120,
+            new OcrTextBlock("Right", new BoundingBox(90, 20, 35, 14)),
+            new OcrTextBlock("Left", new BoundingBox(40, 20, 35, 14)));
+        var zone = new OcrZone
+        {
+            Id = "compatibility-zone",
+            Name = "Compatibility zone",
+            TranslationGroupingMode = TranslationGroupingMode.WholeZone,
+        };
+
+        var result = TranslationTextGroupingService.CreateTextGroupingResult(source, zone);
+
+        Assert.Equal(new[] { "Left Right" }, result.TranslationSourceResult.TextBlocks.Select(block => block.Text));
+        Assert.Same(source, result.MaskSourceResult);
+        Assert.Equal(new[] { "Right", "Left" }, result.MaskSourceResult.TextBlocks.Select(block => block.Text));
+    }
+
     private static OcrResult CreateResult(int inputWidth, int inputHeight, params OcrTextBlock[] blocks)
     {
         var region = new CaptureRegion(0, 0, inputWidth, inputHeight);

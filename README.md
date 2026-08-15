@@ -1,8 +1,42 @@
 # Game-Translator
 
-Game-Translator is a planned Windows 11 desktop application for real-time OCR and translation overlay in games.
+Game-Translator is a Windows 11 desktop application for real-time OCR and translation overlay in games. The implementation must follow the project constitution, architecture decisions, roadmap, quality gates, and AI development rules stored in `docs/`.
 
-The project is currently at Sprint 0: repository and documentation initialization. The implementation must follow the project constitution, architecture decisions, roadmap, quality gates, and AI development rules stored in `docs/`.
+## Reproducible live-Paddle build
+
+The source repository deliberately does not contain game or manga screenshots, OCR/translation evidence, release candidates, Paddle model files, or Tesseract language data. They are local-only under `artifacts/`, `work/`, and `tessdata/`.
+
+To assemble the same class of live-Paddle package as the verified r15 candidate, use a Windows x64 host with:
+
+- .NET SDK 9;
+- CPython 3.12.10 x64, installed from the official Python release;
+- an NVIDIA GPU and driver that make `paddlepaddle-gpu` available;
+- network access for the first bootstrap only.
+
+From a clean clone, run:
+
+```powershell
+.\tools\bootstrap-paddle-runtime.ps1 `
+  -PythonRuntimeRoot "$env:LocalAppData\Programs\Python\Python312"
+
+.\tools\verify-paddle-runtime.ps1 `
+  -RuntimeRoot .\work\paddle-runtime-win-x64
+
+.\tools\build-track-d-opt-in-release.ps1 `
+  -BootstrapRuntimeRoot .\work\paddle-runtime-win-x64 `
+  -ValidateRuntimeOnly
+
+dotnet restore GameTranslator.sln -r win-x64
+dotnet build GameTranslator.sln -c Release --no-restore
+dotnet test GameTranslator.sln -c Release --no-build --no-restore
+
+.\tools\build-track-d-opt-in-release.ps1 `
+  -BootstrapRuntimeRoot .\work\paddle-runtime-win-x64 `
+  -TesseractLanguagePacks eng,jpn,chi_sim,tha `
+  -ReleaseName v0.1.0-local-paddle
+```
+
+The bootstrap pins CPython/Paddle package versions (including the official Paddle CUDA 12.9 wheel index) and verifies the PP-OCRv6 detector and four Tesseract packs by SHA-256. The first run downloads only their official distributions. The package build verifies the bootstrap before copying it; if the GPU runtime is unavailable, the script fails rather than silently producing a non-live package.
 
 ## Documentation
 
@@ -30,7 +64,7 @@ Governance and AI-agent materials:
 - UI: WPF
 - Architecture: Clean Architecture + MVVM
 - Capture: Windows Graphics Capture
-- OCR: Windows OCR first, Tesseract for vertical Japanese/Chinese text
+- OCR: GPU Paddle text detector → bounded grouping → Tesseract crop recognition; Windows OCR and Tesseract remain supported engines
 - Translation cache: SQLite
 - Secrets: Windows Credential Manager
 

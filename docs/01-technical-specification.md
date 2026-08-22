@@ -60,6 +60,8 @@
 
 Штатный путь по ADR-030 внутри каждой вручную сохранённой OCR-зоны: GPU Paddle detector → bounded deterministic grouping → Tesseract recognition отдельных crop → выбранный переводчик → overlay по регионам. Paddle предлагает только transient bounds и не является recognizer. При недоступности detector/runtime пользователь получает контролируемое degraded-состояние; legacy full-page OCR, full-frame retry, другой provider или cache не выбираются автоматически.
 
+По ADR-031 каждая сохранённая OCR-зона имеет `ContentLayoutMode`. Начальное и текущее значение `DialogComic` объединяет штатную bounded writing-system grouping policy, centered per-region overlay и участие зоны в каждом live refresh. Язык и orientation по-прежнему автоматически выбирают частный writing-system grouping profile внутри режима. Новые `Book`, `StaticMenu`, ненулевая частота обновления или иная overlay policy требуют отдельного решения и измеримых регрессий; режим не может включать legacy/full-frame/provider fallback.
+
 ## Перевод
 Поддерживаемые сервисы: Google Translate API, Microsoft Azure Translator, Яндекс Переводчик API. Архитектура позволяет добавление новых переводчиков.
 

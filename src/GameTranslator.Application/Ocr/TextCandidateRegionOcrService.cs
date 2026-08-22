@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using GameTranslator.Application.Capture;
+using GameTranslator.Application.Content;
 using GameTranslator.Domain.Profiles;
 
 namespace GameTranslator.Application.Ocr;
@@ -93,9 +94,13 @@ public sealed class TextCandidateRegionOcrService
                 Array.Empty<TextCandidateRegion>());
         }
 
+        var contentPolicy = ContentLayoutPolicyResolver.Resolve(zoneRequest.ContentLayoutMode);
         var candidates = FilterCandidates(detection.Candidates, zoneRequest.Frame);
         var regions = SelectCandidates(
-                groupingService.Group(candidates, zoneRequest.Frame.Height),
+                groupingService.Group(
+                    candidates,
+                    zoneRequest.Frame.Height,
+                    ResolveWritingSystemGroupingProfile(zoneRequest, contentPolicy)),
                 zoneRequest.Frame)
             .Select(candidate => new TextCandidateRegion(candidate, CreateCroppedFrame(zoneRequest.Frame, candidate.Bounds)))
             .ToArray();
@@ -104,6 +109,20 @@ public sealed class TextCandidateRegionOcrService
             detection.DetectorId,
             detection.UnavailableReason,
             regions);
+    }
+
+    private static WritingSystemGroupingProfile ResolveWritingSystemGroupingProfile(
+        OcrRequest zoneRequest,
+        ContentLayoutPolicy contentPolicy)
+    {
+        return contentPolicy.CandidateGrouping switch
+        {
+            ContentCandidateGroupingPolicy.BoundedWritingSystem => WritingSystemGroupingProfileResolver.Resolve(
+                zoneRequest.Language,
+                zoneRequest.OrientationMode),
+            _ => throw new InvalidOperationException(
+                $"Candidate grouping policy '{contentPolicy.CandidateGrouping}' is not supported."),
+        };
     }
 
     private async Task<TextCandidateRegionOcrResult?> RecognizeCandidateAsync(
@@ -123,7 +142,7 @@ public sealed class TextCandidateRegionOcrService
             return null;
         }
 
-        if (ShouldApplyCjkTargetPostFilter(zoneRequest.Language)
+        if (ShouldApplyCjkTargetPostFilter(zoneRequest.Language, zoneRequest.OrientationMode)
             && !IsCjkTargetCandidate(region.Candidate, zoneRequest.Frame.Height, recognizedText))
         {
             return null;
@@ -281,9 +300,12 @@ public sealed class TextCandidateRegionOcrService
         }
     }
 
-    private bool ShouldApplyCjkTargetPostFilter(string language)
+    private bool ShouldApplyCjkTargetPostFilter(
+        string language,
+        OcrOrientationMode orientationMode)
     {
         return options.EnableCjkTargetPostFilter
+            && orientationMode == OcrOrientationMode.Vertical
             && (language.StartsWith("ja", StringComparison.OrdinalIgnoreCase)
                 || language.StartsWith("zh", StringComparison.OrdinalIgnoreCase));
     }
@@ -339,7 +361,8 @@ public sealed class TextCandidateRegion
             zoneRequest.PreprocessingSettings,
             OcrSettings.TesseractEngineId,
             zoneRequest.OrientationMode,
-            OcrLayoutMode.Dialog);
+            OcrLayoutMode.Dialog,
+            zoneRequest.ContentLayoutMode);
     }
 }
 
@@ -430,7 +453,7 @@ public sealed class TextCandidateRegionOcrResult
     {
         return new OcrTextBlockSource(
             Candidate.Bounds,
-            new[] { Candidate.Bounds },
+            Candidate.SourceCandidateBounds,
             OrientationMode);
     }
 }

@@ -27,6 +27,7 @@ public sealed class JsonProfileExchangeGatewayTests : IDisposable
         Assert.Equal(profile.OverlaySettings.MaskColor, imported.OverlaySettings.MaskColor);
         Assert.Equal(profile.OcrZones[0].AbsoluteBounds, imported.OcrZones[0].AbsoluteBounds);
         Assert.Equal(profile.OcrZones[0].OcrLanguage, imported.OcrZones[0].OcrLanguage);
+        Assert.Equal(profile.OcrZones[0].ContentLayoutMode, imported.OcrZones[0].ContentLayoutMode);
         Assert.Equal(profile.OcrZones[0].TextStyle, imported.OcrZones[0].TextStyle);
         Assert.Equal(profile.OcrZones[0].TranslationGroupingMode, imported.OcrZones[0].TranslationGroupingMode);
         Assert.Equal(profile.OcrZones[0].TextGrouping, imported.OcrZones[0].TextGrouping);
@@ -67,6 +68,7 @@ public sealed class JsonProfileExchangeGatewayTests : IDisposable
                     AbsoluteBounds = new AbsoluteRectangle(10, 20, 300, 80),
                     RelativeBounds = new RelativeRectangle(0.1, 0.2, 0.4, 0.1),
                     OcrLanguage = "chi_tra_vert",
+                    ContentLayoutMode = ContentLayoutMode.DialogComic,
                     TextStyle = new OcrZoneTextStyle
                     {
                         FontFamily = "Segoe UI",

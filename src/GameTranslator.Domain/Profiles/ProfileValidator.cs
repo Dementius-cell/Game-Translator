@@ -47,6 +47,7 @@ public sealed class ProfileValidator
                     $"OCR zone '{zones[index].Name}' must have positive absolute width and height."));
             }
 
+            ValidateOcrZoneContentLayoutMode(zones[index], errors);
             ValidateOcrZoneTextStyle(zones[index], errors);
             ValidateOcrZoneTranslationGroupingMode(zones[index], errors);
             ValidateOcrZoneTextGrouping(zones[index], errors);
@@ -64,6 +65,18 @@ public sealed class ProfileValidator
                 }
             }
         }
+    }
+
+    private static void ValidateOcrZoneContentLayoutMode(OcrZone zone, List<ProfileValidationError> errors)
+    {
+        if (Enum.IsDefined(zone.ContentLayoutMode))
+        {
+            return;
+        }
+
+        errors.Add(new ProfileValidationError(
+            ProfileValidationErrorCodes.InvalidOcrZoneContentLayoutMode,
+            $"OCR zone '{zone.Name}' content layout mode is not supported."));
     }
 
     private static void ValidateOcrZoneTextStyle(OcrZone zone, List<ProfileValidationError> errors)

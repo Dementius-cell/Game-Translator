@@ -25,6 +25,8 @@
 ## Основной UI
 **WPF** (замена WinUI 3). Причины: стабильность, зрелость, поддержка прозрачности, аппаратное ускорение, простота реализации сложных overlay.
 
+The main editor keeps profile selection and lifecycle actions in a persistent left rail. The right workspace is tabbed into `Zones & OCR`, `Translation`, `Overlay`, `Live & Diagnostics`, `OCR Packs`, and `Hotkeys & Settings`; compact profile details and Save/Reset remain shared editor context outside the tabs. There is no duplicate Profile tab. A profile name can be edited inline by double-clicking its left-rail card. Start/Stop Live remain in the Live workspace and are duplicated in the shared header for access from every tab; both surfaces bind the same commands, and automatic session-report creation is unchanged. The common OCR language-pack checklist has its own tab, so zone geometry and global runtime installation are not mixed. The zone surface retains its fixed logical coordinate space while a user can create, move and resize zones directly; its rendered size is presentation-only. The zone surface and OCR preprocessing cards wrap between one and two rows according to available width, and the selected zone's parameters are shown below without a duplicate zone list. Experimental web translators hide the unused stored-credential editor; official providers keep it available.
+
 ## Overlay
 Отдельное WPF-окно без рамки, прозрачное, всегда поверх игры, click-through. Текущая реализация использует WPF overlay window и platform interop для click-through/capture exclusion. Direct2D или иной renderer могут обсуждаться отдельным ADR, если WPF-рендеринг перестанет удовлетворять измеренным требованиям.
 
@@ -46,6 +48,8 @@
 - **GPU Paddle detector worker** – штатный provider transient candidate bounds по ADR-030. Его output не является финальным OCR text и не заменяет Windows OCR или Tesseract.
 
 Нормальный one-shot и live маршрут: `GPU Paddle detector → bounded grouping → Tesseract crop recognition → configured translator → per-region overlay`. Failure detector/runtime приводит к видимому degraded result без автоматического legacy full-page OCR, full-frame retry, provider/cache fallback. Legacy full-page orchestration сохранён только за явным `TranslationPipelineRunOptions.LegacyFullPage` для диагностики и compatibility.
+
+ADR-031 добавляет per-zone `ContentLayoutMode` как единый Application policy seam для candidate grouping strategy, candidate overlay layout и minimum live refresh interval. Единственный принятый режим `DialogComic` сохраняет текущую ADR-030 семантику: automatic bounded writing-system grouping, centered per-region overlay и нулевой minimum interval. Saved profile, pipeline state identity, OCR request, UI editor и live scheduler несут один и тот же mode. Historical full-page grouping fields остаются compatibility-only и не управляют candidate path.
 
 ------------------------------------------------------------------------
 

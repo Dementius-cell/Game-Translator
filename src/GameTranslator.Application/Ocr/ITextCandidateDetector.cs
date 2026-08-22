@@ -115,6 +115,14 @@ public enum TextCandidateDetectorAvailability
 
 public sealed record TextCandidate(BoundingBox Bounds, double Confidence)
 {
+    /// <summary>
+    /// Gets the original detector rectangles represented by this bounded candidate.
+    /// A raw detector result has one member; bounded grouping retains every member for diagnostics.
+    /// </summary>
+    public IReadOnlyList<BoundingBox> SourceCandidateBounds { get; init; } = new[] { Bounds };
+
+    public int SourceCandidateCount => SourceCandidateBounds.Count;
+
     public bool HasValidConfidence => double.IsFinite(Confidence)
         && Confidence is >= 0d and <= 1d;
 }

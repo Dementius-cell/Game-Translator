@@ -24,6 +24,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
     private double relativeWidth = 0.25;
     private double relativeHeight = 0.05;
     private string ocrLanguage = string.Empty;
+    private ContentLayoutMode contentLayoutMode = ContentLayoutMode.DialogComic;
     private string overlayFontFamily = OcrZoneTextStyle.DefaultFontFamily;
     private double overlayFontSize = OcrZoneTextStyle.DefaultFontSize;
     private bool overlayIsBold = true;
@@ -174,6 +175,19 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         }
     }
 
+    public ContentLayoutMode ContentLayoutMode
+    {
+        get => contentLayoutMode;
+        set
+        {
+            if (SetProperty(ref contentLayoutMode, value))
+            {
+                NotifyDerivedPropertiesChanged();
+                Validate();
+            }
+        }
+    }
+
     public string OverlayFontFamily
     {
         get => overlayFontFamily;
@@ -280,6 +294,19 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         ? "OCR language inherits source"
         : $"OCR language {OcrLanguage.Trim()}";
 
+    public string ContentLayoutModeSummary => ContentLayoutMode switch
+    {
+        ContentLayoutMode.DialogComic => "Dialog / Comic",
+        _ => "Unsupported content layout mode",
+    };
+
+    public string ContentLayoutPolicySummary => ContentLayoutMode switch
+    {
+        ContentLayoutMode.DialogComic =>
+            "Automatic bounded writing-system grouping; centered per-region overlay; refresh on every live cycle.",
+        _ => "No policy is available for this content layout mode.",
+    };
+
     public double SurfaceX => Math.Round(AbsoluteX * PreviewSurfaceWidth / ReferenceSurfaceWidth, 2);
 
     public double SurfaceY => Math.Round(AbsoluteY * PreviewSurfaceHeight / ReferenceSurfaceHeight, 2);
@@ -296,9 +323,8 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         $"{OverlayFontFamily} {OverlayFontSize:0.#}"
         + (OverlayIsBold ? " bold" : string.Empty)
         + (OverlayIsItalic ? " italic" : string.Empty)
-        + (OverlayCanExpandBeyondSource ? " expand" : " fit")
         + $" | {OcrLanguageSummary}"
-        + $" | {TranslationGroupingModeSummary}";
+        + $" | {ContentLayoutModeSummary}";
 
     public string TranslationGroupingModeSummary => TranslationGroupingMode switch
     {
@@ -332,6 +358,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
             OcrLanguage = string.IsNullOrWhiteSpace(zone.OcrLanguage)
                 ? string.Empty
                 : zone.OcrLanguage.Trim(),
+            ContentLayoutMode = zone.ContentLayoutMode,
             OverlayFontFamily = string.IsNullOrWhiteSpace(zone.TextStyle?.FontFamily)
                 ? OcrZoneTextStyle.DefaultFontFamily
                 : zone.TextStyle.FontFamily,
@@ -368,6 +395,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
             AbsoluteBounds = new AbsoluteRectangle(AbsoluteX, AbsoluteY, AbsoluteWidth, AbsoluteHeight),
             RelativeBounds = new RelativeRectangle(RelativeX, RelativeY, RelativeWidth, RelativeHeight),
             OcrLanguage = string.IsNullOrWhiteSpace(OcrLanguage) ? string.Empty : OcrLanguage.Trim(),
+            ContentLayoutMode = ContentLayoutMode,
             TextStyle = new OcrZoneTextStyle
             {
                 FontFamily = string.IsNullOrWhiteSpace(OverlayFontFamily)
@@ -402,6 +430,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
             RelativeWidth = RelativeWidth,
             RelativeHeight = RelativeHeight,
             OcrLanguage = OcrLanguage,
+            ContentLayoutMode = ContentLayoutMode,
             OverlayFontFamily = OverlayFontFamily,
             OverlayFontSize = OverlayFontSize,
             OverlayIsBold = OverlayIsBold,
@@ -418,6 +447,11 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
             nameof(Name),
             string.IsNullOrWhiteSpace(Name)
                 ? new[] { "Zone name is required." }
+                : Array.Empty<string>());
+        SetErrors(
+            nameof(ContentLayoutMode),
+            !Enum.IsDefined(ContentLayoutMode)
+                ? new[] { "Content layout mode is not supported." }
                 : Array.Empty<string>());
         SetErrors(
             nameof(OverlayFontFamily),
@@ -482,6 +516,8 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         OnPropertyChanged(nameof(AbsoluteArea));
         OnPropertyChanged(nameof(RelativeAreaPercent));
         OnPropertyChanged(nameof(OcrLanguageSummary));
+        OnPropertyChanged(nameof(ContentLayoutModeSummary));
+        OnPropertyChanged(nameof(ContentLayoutPolicySummary));
         OnPropertyChanged(nameof(SurfaceX));
         OnPropertyChanged(nameof(SurfaceY));
         OnPropertyChanged(nameof(SurfaceWidth));

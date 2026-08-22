@@ -106,6 +106,26 @@ public sealed class ProfileValidatorTests
     }
 
     [Fact]
+    public void Validate_WhenContentLayoutModeIsInvalid_ReturnsInvalidContentLayoutModeError()
+    {
+        var profile = CreateValidProfile() with
+        {
+            OcrZones = new[]
+            {
+                CreateZone("dialog", new AbsoluteRectangle(10, 10, 120, 40)) with
+                {
+                    ContentLayoutMode = (ContentLayoutMode)999,
+                },
+            },
+        };
+
+        var result = validator.Validate(profile);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Code == ProfileValidationErrorCodes.InvalidOcrZoneContentLayoutMode);
+    }
+
+    [Fact]
     public void Validate_WhenTranslationGroupingModeIsInvalid_ReturnsInvalidGroupingModeError()
     {
         var profile = CreateValidProfile() with

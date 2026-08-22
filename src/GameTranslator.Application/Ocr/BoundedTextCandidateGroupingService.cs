@@ -11,6 +11,7 @@ public sealed class BoundedTextCandidateGroupingService
     private const double MinimumSharedHorizontalOverlapRatio = 0.5d;
     private const int MaximumVerticalGroupMembers = 4;
     private const int MaximumHorizontalStackGroupMembers = 6;
+    private const int MaximumComplexSouthEastAsianHorizontalStackGroupMembers = 8;
     private const int DenseLayoutMinimumCandidates = 20;
     private const double DenseTopAlignmentMaximumZoneFraction = 0.05d;
 
@@ -18,10 +19,26 @@ public sealed class BoundedTextCandidateGroupingService
         IEnumerable<TextCandidate> candidates,
         int zoneHeight)
     {
+        return Group(candidates, zoneHeight, WritingSystemGroupingProfile.SpacedLeftToRight);
+    }
+
+    /// <summary>
+    /// Forms bounded candidates using the global geometry limits plus a writing-system-specific tolerance where evidence supports it.
+    /// </summary>
+    public IReadOnlyList<TextCandidate> Group(
+        IEnumerable<TextCandidate> candidates,
+        int zoneHeight,
+        WritingSystemGroupingProfile groupingProfile)
+    {
         ArgumentNullException.ThrowIfNull(candidates);
         if (zoneHeight <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(zoneHeight));
+        }
+
+        if (!Enum.IsDefined(groupingProfile))
+        {
+            throw new ArgumentOutOfRangeException(nameof(groupingProfile));
         }
 
         var materialized = candidates.ToArray();
@@ -84,10 +101,10 @@ public sealed class BoundedTextCandidateGroupingService
         {
             var group = new List<TextCandidate> { horizontalCandidates[0] };
             horizontalCandidates.RemoveAt(0);
-            while (group.Count < MaximumHorizontalStackGroupMembers)
+            while (group.Count < GetMaximumHorizontalStackGroupMembers(groupingProfile))
             {
                 var next = horizontalCandidates
-                    .Where(candidate => CanExtendVerticalStack(group, candidate))
+                    .Where(candidate => CanExtendVerticalStack(group, candidate, groupingProfile))
                     .OrderBy(candidate => group.Min(member => VerticalGap(member.Bounds, candidate.Bounds)))
                     .ThenBy(candidate => candidate.Bounds.Y)
                     .ThenBy(candidate => candidate.Bounds.X)
@@ -139,15 +156,38 @@ public sealed class BoundedTextCandidateGroupingService
 
     private static bool CanExtendVerticalStack(
         IReadOnlyList<TextCandidate> group,
-        TextCandidate candidate)
+        TextCandidate candidate,
+        WritingSystemGroupingProfile groupingProfile)
     {
-        if (SharedHorizontalOverlapRatio(group.Append(candidate)) < MinimumSharedHorizontalOverlapRatio)
+        if (SharedHorizontalOverlapRatio(group.Append(candidate))
+            < GetMinimumSharedHorizontalOverlapRatio(groupingProfile))
         {
             return false;
         }
 
         return group.Min(member => VerticalGap(member.Bounds, candidate.Bounds))
             <= group.Min(member => MaximumVerticalGap(member.Bounds, candidate.Bounds));
+    }
+
+    private static double GetMinimumSharedHorizontalOverlapRatio(
+        WritingSystemGroupingProfile groupingProfile)
+    {
+        // Thai, Lao, Khmer and Myanmar use complex word-boundary rules. Their detected
+        // line boxes may be more ragged than spaced-language lines in one dialog bubble.
+        // All gap, group-size and dense-layout bounds remain the global limits.
+        return groupingProfile is WritingSystemGroupingProfile.ComplexSouthEastAsian
+            ? 0.4d
+            : MinimumSharedHorizontalOverlapRatio;
+    }
+
+    private static int GetMaximumHorizontalStackGroupMembers(
+        WritingSystemGroupingProfile groupingProfile)
+    {
+        // Preserve the global cap for every other profile. Complex SEA dialog text
+        // can produce more short lines inside a single bounded bubble.
+        return groupingProfile is WritingSystemGroupingProfile.ComplexSouthEastAsian
+            ? MaximumComplexSouthEastAsianHorizontalStackGroupMembers
+            : MaximumHorizontalStackGroupMembers;
     }
 
     private static TextCandidate CreateGroupedCandidate(IReadOnlyList<TextCandidate> group)
@@ -158,7 +198,12 @@ public sealed class BoundedTextCandidateGroupingService
         var bottom = group.Max(candidate => candidate.Bounds.Bottom);
         return new TextCandidate(
             new BoundingBox(left, top, right - left, bottom - top),
-            group.Min(candidate => candidate.Confidence));
+            group.Min(candidate => candidate.Confidence))
+        {
+            SourceCandidateBounds = group
+                .SelectMany(candidate => candidate.SourceCandidateBounds)
+                .ToArray(),
+        };
     }
 
     private static double SharedVerticalOverlapRatio(IEnumerable<TextCandidate> candidates)

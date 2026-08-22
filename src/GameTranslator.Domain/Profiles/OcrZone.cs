@@ -12,6 +12,8 @@ public sealed record OcrZone
 
     public string OcrLanguage { get; init; } = string.Empty;
 
+    public ContentLayoutMode ContentLayoutMode { get; init; } = ContentLayoutMode.DialogComic;
+
     public OcrZoneTextStyle TextStyle { get; init; } = OcrZoneTextStyle.Default;
 
     public TranslationGroupingMode TranslationGroupingMode { get; init; } = TranslationGroupingMode.BlockByBlock;

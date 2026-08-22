@@ -56,8 +56,22 @@ public sealed record TranslationGroupingModeOption(TranslationGroupingMode Mode,
     }
 }
 
+public sealed record ContentLayoutModeOption(ContentLayoutMode Mode, string DisplayName)
+{
+    public override string ToString()
+    {
+        return DisplayName;
+    }
+}
+
 public sealed class MainViewModel : ValidatableObservableObject
 {
+    private const int ZonesOcrWorkspaceTabIndex = 0;
+    private const int TranslationWorkspaceTabIndex = 1;
+    private const int OverlayWorkspaceTabIndex = 2;
+    private const int LiveDiagnosticsWorkspaceTabIndex = 3;
+    private const int OcrPacksWorkspaceTabIndex = 4;
+    private const int HotkeysSettingsWorkspaceTabIndex = 5;
     private const string SelectedProfileSettingKey = "profiles.selectedId";
     private const string ProfileFileDialogFilter = "Game Translator profile (*.json)|*.json|JSON files (*.json)|*.json|All files (*.*)|*.*";
     private const string DebugInfoFileDialogFilter = "Text files (*.txt)|*.txt|All files (*.*)|*.*";
@@ -194,6 +208,11 @@ public sealed class MainViewModel : ValidatableObservableObject
         new(TranslationGroupingMode.BlockByBlock, "Menu / block-by-block"),
         new(TranslationGroupingMode.WholeZone, "Book / dialog whole-zone"),
         new(TranslationGroupingMode.NearbyBlocks, "Comic / nearby groups"),
+    };
+
+    private static readonly ContentLayoutModeOption[] SupportedContentLayoutModeOptions =
+    {
+        new(ContentLayoutMode.DialogComic, "Dialog / Comic"),
     };
 
     private static LanguageOption[] BuildSupportedLanguageOptions()
@@ -380,6 +399,8 @@ public sealed class MainViewModel : ValidatableObservableObject
     private string? pendingSelectedProfileId;
     private string? editingProfileId;
     private GameProfile? selectedProfile;
+    private bool isProfileRenameActive;
+    private string profileRenameText = string.Empty;
     private string profileName = string.Empty;
     private string profileDescription = string.Empty;
     private string translatorProvider = string.Empty;
@@ -408,8 +429,12 @@ public sealed class MainViewModel : ValidatableObservableObject
     private OcrPreprocessingPresetOption selectedOcrPreprocessingPreset = SupportedOcrPreprocessingPresetOptions[0];
     private bool isApplyingOcrPreprocessingPreset;
     private bool isSyncingOcrPreprocessingPresetSelection;
+    private int selectedWorkspaceTabIndex;
     private OcrZoneEditorViewModel? selectedZone;
     private OcrResult? latestOcrPreviewResult;
+    private IReadOnlyList<CandidateGroupingDebugEntry> latestCandidateGroupingEntries = Array.Empty<CandidateGroupingDebugEntry>();
+    private IReadOnlyList<LiveCandidateLifecycleEvent> latestCandidateLifecycleEvents = Array.Empty<LiveCandidateLifecycleEvent>();
+    private int droppedCandidateLifecycleEventCount;
     private CaptureRefreshMetrics? latestCaptureRefreshMetrics;
     private ImageSource? capturePreviewImage;
     private string capturePreviewStatus = "No capture preview yet.";
@@ -434,6 +459,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private bool suppressDraftStatePersistence;
     private bool isZoneSelectionActive;
     private bool isZoneResizeActive;
+    private bool isZoneMoveActive;
     private double zoneSelectionStartX;
     private double zoneSelectionStartY;
     private double zoneSelectionPreviewX;
@@ -442,6 +468,12 @@ public sealed class MainViewModel : ValidatableObservableObject
     private double zoneSelectionPreviewHeight;
     private int zoneResizeOriginalAbsoluteX;
     private int zoneResizeOriginalAbsoluteY;
+    private double zoneMoveStartSurfaceX;
+    private double zoneMoveStartSurfaceY;
+    private double zoneMoveOriginalSurfaceX;
+    private double zoneMoveOriginalSurfaceY;
+    private double zoneMoveOriginalSurfaceWidth;
+    private double zoneMoveOriginalSurfaceHeight;
     private CancellationTokenSource? liveTranslationCancellation;
     private CandidatePipelineReadiness? lastCandidatePipelineReadiness;
     private string? lastLiveTranslationFailureKind;
@@ -635,8 +667,6 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public string ApplicationName => "Game Translator";
 
-    public string CurrentStage => "Sprint 26";
-
     public double ZoneSurfaceWidth => OcrZoneEditorViewModel.PreviewSurfaceWidth;
 
     public double ZoneSurfaceHeight => OcrZoneEditorViewModel.PreviewSurfaceHeight;
@@ -675,6 +705,7 @@ public sealed class MainViewModel : ValidatableObservableObject
                 return;
             }
 
+            ClearProfileRenameState();
             editingProfileId = value?.Id;
             settings.SetValue(SelectedProfileSettingKey, value?.Id);
 
@@ -733,6 +764,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             {
                 OnPropertyChanged(nameof(TranslatorSettingsSummary));
                 OnPropertyChanged(nameof(ProfileSummary));
+                OnPropertyChanged(nameof(RequiresStoredTranslatorCredentials));
                 RefreshTranslatorCredentialDefaults();
                 _ = ValidateTranslatorCredentialsAsync();
                 PersistDraftShellStateIfNeeded();
@@ -793,6 +825,56 @@ public sealed class MainViewModel : ValidatableObservableObject
     public IReadOnlyList<LiveTranslationTimingPreset> LiveTranslationTimingPresets => SupportedLiveTranslationTimingPresets;
 
     public IReadOnlyList<TranslationGroupingModeOption> TranslationGroupingModeOptions => SupportedTranslationGroupingModeOptions;
+
+    public IReadOnlyList<ContentLayoutModeOption> ContentLayoutModeOptions => SupportedContentLayoutModeOptions;
+
+    public int SelectedWorkspaceTabIndex
+    {
+        get => selectedWorkspaceTabIndex;
+        set
+        {
+            var normalizedValue = Math.Clamp(value, ZonesOcrWorkspaceTabIndex, HotkeysSettingsWorkspaceTabIndex);
+            if (!SetProperty(ref selectedWorkspaceTabIndex, normalizedValue))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(IsZonesOcrTabSelected));
+            OnPropertyChanged(nameof(IsTranslationTabSelected));
+            OnPropertyChanged(nameof(IsOverlayTabSelected));
+            OnPropertyChanged(nameof(IsLiveDiagnosticsTabSelected));
+            OnPropertyChanged(nameof(IsOcrPacksTabSelected));
+            OnPropertyChanged(nameof(IsHotkeysSettingsTabSelected));
+            OnPropertyChanged(nameof(IsZonesOcrOrLiveDiagnosticsTabSelected));
+        }
+    }
+
+    public bool IsProfileRenameActive
+    {
+        get => isProfileRenameActive;
+        private set => SetProperty(ref isProfileRenameActive, value);
+    }
+
+    public string ProfileRenameText
+    {
+        get => profileRenameText;
+        set => SetProperty(ref profileRenameText, value);
+    }
+
+    public bool IsZonesOcrTabSelected => SelectedWorkspaceTabIndex == ZonesOcrWorkspaceTabIndex;
+
+    public bool IsTranslationTabSelected => SelectedWorkspaceTabIndex == TranslationWorkspaceTabIndex;
+
+    public bool IsOverlayTabSelected => SelectedWorkspaceTabIndex == OverlayWorkspaceTabIndex;
+
+    public bool IsLiveDiagnosticsTabSelected => SelectedWorkspaceTabIndex == LiveDiagnosticsWorkspaceTabIndex;
+
+    public bool IsOcrPacksTabSelected => SelectedWorkspaceTabIndex == OcrPacksWorkspaceTabIndex;
+
+    public bool IsHotkeysSettingsTabSelected => SelectedWorkspaceTabIndex == HotkeysSettingsWorkspaceTabIndex;
+
+    public bool IsZonesOcrOrLiveDiagnosticsTabSelected =>
+        IsZonesOcrTabSelected || IsLiveDiagnosticsTabSelected;
 
     public LiveTranslationTimingPreset LiveTranslationTimingPreset
     {
@@ -1314,6 +1396,10 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
     }
 
+    public bool RequiresStoredTranslatorCredentials =>
+        !string.IsNullOrWhiteSpace(TranslatorProvider)
+        && TranslatorCredentialService.RequiresStoredCredentials(TranslatorProvider);
+
     public double DebugVerticalSourceWidthMultiplier
     {
         get => debugVerticalSourceWidthMultiplier;
@@ -1597,6 +1683,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
 
         ClearZoneResizeState();
+        ClearZoneMoveState();
 
         zoneSelectionStartX = Math.Clamp(surfaceX, 0, ZoneSurfaceWidth);
         zoneSelectionStartY = Math.Clamp(surfaceY, 0, ZoneSurfaceHeight);
@@ -1665,6 +1752,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
 
         ClearZoneSelectionPreview();
+        ClearZoneMoveState();
         isZoneResizeActive = true;
         zoneResizeOriginalAbsoluteX = SelectedZone.AbsoluteX;
         zoneResizeOriginalAbsoluteY = SelectedZone.AbsoluteY;
@@ -1708,6 +1796,147 @@ public sealed class MainViewModel : ValidatableObservableObject
         {
             StatusMessage = $"Resized zone '{SelectedZone.DisplayName}'.";
         }
+    }
+
+    public void StartSelectedZoneMove(double surfaceX, double surfaceY)
+    {
+        if (IsBusy || SelectedZone is null)
+        {
+            return;
+        }
+
+        ClearZoneSelectionPreview();
+        ClearZoneResizeState();
+        zoneMoveStartSurfaceX = Math.Clamp(surfaceX, 0, ZoneSurfaceWidth);
+        zoneMoveStartSurfaceY = Math.Clamp(surfaceY, 0, ZoneSurfaceHeight);
+        zoneMoveOriginalSurfaceX = SelectedZone.SurfaceX;
+        zoneMoveOriginalSurfaceY = SelectedZone.SurfaceY;
+        zoneMoveOriginalSurfaceWidth = SelectedZone.SurfaceWidth;
+        zoneMoveOriginalSurfaceHeight = SelectedZone.SurfaceHeight;
+        isZoneMoveActive = true;
+        StatusMessage = $"Move '{SelectedZone.DisplayName}' by dragging it on the surface.";
+    }
+
+    public void UpdateSelectedZoneMove(double surfaceX, double surfaceY)
+    {
+        if (!isZoneMoveActive || SelectedZone is null)
+        {
+            return;
+        }
+
+        var deltaX = surfaceX - zoneMoveStartSurfaceX;
+        var deltaY = surfaceY - zoneMoveStartSurfaceY;
+        var maxLeft = Math.Max(0, ZoneSurfaceWidth - zoneMoveOriginalSurfaceWidth);
+        var maxTop = Math.Max(0, ZoneSurfaceHeight - zoneMoveOriginalSurfaceHeight);
+        var left = Math.Clamp(zoneMoveOriginalSurfaceX + deltaX, 0, maxLeft);
+        var top = Math.Clamp(zoneMoveOriginalSurfaceY + deltaY, 0, maxTop);
+
+        ApplySurfaceBoundsToZone(
+            SelectedZone,
+            left,
+            top,
+            zoneMoveOriginalSurfaceWidth,
+            zoneMoveOriginalSurfaceHeight);
+        PersistDraftShellStateIfNeeded();
+        OnPropertyChanged(nameof(ProfileSummary));
+        RefreshValidationState();
+    }
+
+    public void CompleteSelectedZoneMove(double surfaceX, double surfaceY)
+    {
+        if (!isZoneMoveActive)
+        {
+            return;
+        }
+
+        UpdateSelectedZoneMove(surfaceX, surfaceY);
+        ClearZoneMoveState();
+
+        if (SelectedZone is not null)
+        {
+            StatusMessage = $"Moved zone '{SelectedZone.DisplayName}'.";
+        }
+    }
+
+    public void BeginProfileRename(string profileId)
+    {
+        if (IsBusy || string.IsNullOrWhiteSpace(profileId))
+        {
+            return;
+        }
+
+        var profile = Profiles.FirstOrDefault(candidate =>
+            string.Equals(candidate.Id, profileId, StringComparison.Ordinal));
+        if (profile is null)
+        {
+            return;
+        }
+
+        if (!ReferenceEquals(SelectedProfile, profile))
+        {
+            SelectedProfile = profile;
+        }
+
+        ProfileRenameText = profile.Name;
+        IsProfileRenameActive = true;
+        StatusMessage = "Enter a new profile name. Press Enter to save or Escape to cancel.";
+    }
+
+    public async Task CommitProfileRenameAsync()
+    {
+        if (!IsProfileRenameActive || IsBusy || SelectedProfile is null)
+        {
+            return;
+        }
+
+        var newName = ProfileRenameText.Trim();
+        if (newName.Length == 0)
+        {
+            StatusMessage = "Profile name cannot be empty.";
+            return;
+        }
+
+        if (Profiles.Any(profile =>
+                !string.Equals(profile.Id, SelectedProfile.Id, StringComparison.Ordinal)
+                && string.Equals(profile.Name.Trim(), newName, StringComparison.OrdinalIgnoreCase)))
+        {
+            StatusMessage = $"A profile named '{newName}' already exists.";
+            return;
+        }
+
+        if (string.Equals(SelectedProfile.Name, newName, StringComparison.Ordinal))
+        {
+            ClearProfileRenameState();
+            StatusMessage = "Profile name was not changed.";
+            return;
+        }
+
+        var profileId = SelectedProfile.Id;
+        var renamedProfile = SelectedProfile with { Name = newName };
+        ClearProfileRenameState();
+        var succeeded = await RunProfileOperationAsync(
+            $"Renaming profile to '{newName}'...",
+            async () =>
+            {
+                await profileService.UpdateAsync(renamedProfile);
+                await RefreshProfilesAsync(profileId);
+            });
+
+        if (succeeded)
+        {
+            StatusMessage = $"Profile renamed to '{newName}'.";
+        }
+    }
+
+    public void CancelProfileRename()
+    {
+        if (!IsProfileRenameActive)
+        {
+            return;
+        }
+
+        ClearProfileRenameState();
+        StatusMessage = "Profile rename canceled.";
     }
 
     public void BeginCreateProfile()
@@ -2558,6 +2787,8 @@ public sealed class MainViewModel : ValidatableObservableObject
         lastCandidatePipelineReadiness = null;
         lastLiveTranslationFailureKind = null;
         lastCandidateDegradedDiagnosticsFingerprint = null;
+        latestCandidateLifecycleEvents = Array.Empty<LiveCandidateLifecycleEvent>();
+        droppedCandidateLifecycleEventCount = 0;
         IsLiveTranslationRunning = true;
         PipelineStatus = $"Live translation running for {profile.OcrZones.Count} OCR zone(s). {CreateLiveTimingStatus(liveTiming)}";
         StatusMessage = PipelineStatus;
@@ -2608,6 +2839,9 @@ public sealed class MainViewModel : ValidatableObservableObject
                     var update = await liveSession.RefreshAsync();
 
                     cancellationToken.ThrowIfCancellationRequested();
+                    ApplyCandidateLifecycleTrace(
+                        update.CandidateLifecycleEvents,
+                        update.DroppedCandidateLifecycleEventCount);
                     if (update.OverlayChanged)
                     {
                         ApplyBatchPipelineResult(profile, update.BatchResult, isLiveMode: true);
@@ -2715,6 +2949,20 @@ public sealed class MainViewModel : ValidatableObservableObject
     private static string CreateLiveTimingStatus(LiveTranslationTiming timing)
     {
         return $"Polling {timing.PollingInterval.TotalMilliseconds:0} ms; translating after {timing.StableTextInterval.TotalMilliseconds:0} ms of stable OCR text.";
+    }
+
+    private void ApplyCandidateLifecycleTrace(
+        IReadOnlyList<LiveCandidateLifecycleEvent> lifecycleEvents,
+        int droppedEventCount)
+    {
+        ArgumentNullException.ThrowIfNull(lifecycleEvents);
+        if (droppedEventCount < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(droppedEventCount));
+        }
+
+        latestCandidateLifecycleEvents = lifecycleEvents.ToArray();
+        droppedCandidateLifecycleEventCount = droppedEventCount;
     }
 
     private void ApplyCandidatePipelineReadinessStatus(CandidatePipelineReadiness readiness)
@@ -3087,6 +3335,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         bool isLiveMode)
     {
         var previewEntries = CreateBatchOcrPreviewEntries(result, profile);
+        latestCandidateGroupingEntries = CreateCandidateGroupingDebugEntries(previewEntries);
         var previewEntry = SelectBatchOcrPreviewEntry(previewEntries);
         if (previewEntry is not null)
         {
@@ -3102,6 +3351,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         else
         {
             latestOcrPreviewResult = null;
+            latestCandidateGroupingEntries = Array.Empty<CandidateGroupingDebugEntry>();
             ReplaceOcrPreviewTextBlocks(Array.Empty<OcrTextBlock>());
             CapturePreviewStatus = "No OCR zone captured successfully.";
             OcrPreviewStatus = "No OCR results available.";
@@ -3250,11 +3500,31 @@ public sealed class MainViewModel : ValidatableObservableObject
             ?? zoneId;
     }
 
+    private static IReadOnlyList<CandidateGroupingDebugEntry> CreateCandidateGroupingDebugEntries(
+        IEnumerable<BatchOcrPreviewEntry> entries)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+
+        return entries
+            .Where(entry => entry.ZoneId.Contains(":candidate:", StringComparison.Ordinal))
+            .Select(entry => new CandidateGroupingDebugEntry(
+                entry.ZoneId,
+                entry.SourceOcrResult.TextBlockSources
+                    .SelectMany(source => source.MemberBounds)
+                    .Distinct()
+                    .ToArray()))
+            .ToArray();
+    }
+
     private sealed record BatchOcrPreviewEntry(
         string ZoneId,
         string ZoneName,
         CapturedFrame CapturedFrame,
         OcrResult SourceOcrResult);
+
+    private sealed record CandidateGroupingDebugEntry(
+        string CandidateId,
+        IReadOnlyList<BoundingBox> MemberBounds);
 
     private sealed record LiveTranslationTiming(
         TimeSpan PollingInterval,
@@ -4048,9 +4318,15 @@ public sealed class MainViewModel : ValidatableObservableObject
             return languageTag;
         }
 
-        return TesseractLanguageCatalog.TryMapTrainedDataCodeToPreferredLanguageTag(languageTag, out var preferredLanguageTag)
+        var normalizedLanguageTag = languageTag.Trim();
+        if (string.Equals(normalizedLanguageTag, "zh", StringComparison.OrdinalIgnoreCase))
+        {
+            return "zh-CN";
+        }
+
+        return TesseractLanguageCatalog.TryMapTrainedDataCodeToPreferredLanguageTag(normalizedLanguageTag, out var preferredLanguageTag)
             ? preferredLanguageTag
-            : languageTag.Trim();
+            : normalizedLanguageTag;
     }
 
     private static void OpenExternalUri(Uri uri)
@@ -4581,10 +4857,22 @@ public sealed class MainViewModel : ValidatableObservableObject
         isZoneResizeActive = false;
     }
 
+    private void ClearZoneMoveState()
+    {
+        isZoneMoveActive = false;
+    }
+
+    private void ClearProfileRenameState()
+    {
+        IsProfileRenameActive = false;
+        ProfileRenameText = string.Empty;
+    }
+
     private void ClearSurfaceInteractionState()
     {
         ClearZoneSelectionPreview();
         ClearZoneResizeState();
+        ClearZoneMoveState();
     }
 
     private void ClearCapturePreview()
@@ -4604,6 +4892,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private void ClearOcrPreview()
     {
         latestOcrPreviewResult = null;
+        latestCandidateGroupingEntries = Array.Empty<CandidateGroupingDebugEntry>();
         ReplaceOcrPreviewTextBlocks(Array.Empty<OcrTextBlock>());
         OcrPreviewStatus = SelectedZone is null
             ? "Select an OCR zone to recognize text."
@@ -4660,7 +4949,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
         builder.AppendLine("Game Translator debug info");
         builder.AppendLine($"GeneratedLocal: {generatedAt:O}");
-        builder.AppendLine($"CurrentStage: {CurrentStage}");
+        builder.AppendLine($"Application: {ApplicationName}");
         builder.AppendLine("Privacy: profile free-text fields and credential values are omitted.");
         builder.AppendLine();
 
@@ -4704,7 +4993,9 @@ public sealed class MainViewModel : ValidatableObservableObject
             builder.AppendLine($"  OCR language: {ResolveSelectedOcrLanguage()}");
             builder.AppendLine($"  OCR orientation: {OcrOrientationMode}");
             builder.AppendLine($"  Overlay style: {SelectedZone.OverlayTextStyleSummary}");
-            builder.AppendLine($"  Grouping: {SelectedZone.TranslationGroupingModeSummary}");
+            builder.AppendLine($"  Content layout: {SelectedZone.ContentLayoutModeSummary}");
+            builder.AppendLine($"  Content policy: {SelectedZone.ContentLayoutPolicySummary}");
+            builder.AppendLine($"  Legacy grouping (diagnostic only): {SelectedZone.TranslationGroupingModeSummary}");
         }
 
         builder.AppendLine();
@@ -4723,10 +5014,34 @@ public sealed class MainViewModel : ValidatableObservableObject
             }
         }
 
+        AppendCandidateGroupingDebugInfo(builder);
+
         AppendLiveCandidateReadinessDebugInfo(builder);
+        AppendLiveCandidateLifecycleDebugInfo(builder);
         AppendOverlaySnapshotDebugInfo(builder);
 
         return builder.ToString();
+    }
+
+    private void AppendCandidateGroupingDebugInfo(StringBuilder builder)
+    {
+        builder.AppendLine();
+        builder.AppendLine("Candidate grouping geometry");
+        if (latestCandidateGroupingEntries.Count == 0)
+        {
+            builder.AppendLine("  none");
+            return;
+        }
+
+        for (var index = 0; index < latestCandidateGroupingEntries.Count; index++)
+        {
+            var entry = latestCandidateGroupingEntries[index];
+            var memberBounds = string.Join(
+                "; ",
+                entry.MemberBounds.Select(bounds => $"X {bounds.X} Y {bounds.Y} W {bounds.Width} H {bounds.Height}"));
+            builder.AppendLine(
+                $"  [{index + 1}] Id={entry.CandidateId} SourceCandidates={entry.MemberBounds.Count} MemberBounds={memberBounds}");
+        }
     }
 
     private void AppendLiveCandidateReadinessDebugInfo(StringBuilder builder)
@@ -4749,6 +5064,113 @@ public sealed class MainViewModel : ValidatableObservableObject
             lastCandidatePipelineReadiness.UnavailableReason ?? "(none)");
         builder.AppendLine(
             $"  NextRetryAt: {lastCandidatePipelineReadiness.NextRetryAt?.ToString("O") ?? "(none)"}");
+    }
+
+    private void AppendLiveCandidateLifecycleDebugInfo(StringBuilder builder)
+    {
+        builder.AppendLine();
+        builder.AppendLine("Live candidate lifecycle");
+        builder.AppendLine("  Privacy: IDs, geometry, counts, timestamps, and durations only; OCR and translated text are not recorded here.");
+        builder.AppendLine($"  RetainedEvents: {latestCandidateLifecycleEvents.Count}");
+        builder.AppendLine($"  DroppedOldestEvents: {droppedCandidateLifecycleEventCount}");
+        if (latestCandidateLifecycleEvents.Count == 0)
+        {
+            builder.AppendLine("  none");
+            return;
+        }
+
+        foreach (var entry in latestCandidateLifecycleEvents)
+        {
+            builder.Append(
+                $"  [{entry.Sequence}] Refresh={entry.RefreshSequence} At={entry.OccurredAt:O} Event={entry.Kind}");
+            AppendLifecycleField(builder, "ZoneId", entry.ZoneId);
+            AppendLifecycleField(builder, "CandidateId", entry.CandidateId);
+            if (entry.CandidateBounds is { } candidateBounds)
+            {
+                AppendLifecycleField(builder, "CandidateBounds", FormatBounds(candidateBounds));
+            }
+
+            if (entry.SourceCandidateBounds.Count > 0)
+            {
+                AppendLifecycleField(builder, "SourceCandidates", entry.SourceCandidateBounds.Count.ToString());
+                AppendLifecycleField(
+                    builder,
+                    "MemberBounds",
+                    string.Join(";", entry.SourceCandidateBounds.Select(FormatBounds)));
+            }
+
+            if (entry.CandidateRevision > 0)
+            {
+                AppendLifecycleField(builder, "Revision", entry.CandidateRevision.ToString());
+            }
+
+            if (entry.WorkAttempt > 0)
+            {
+                AppendLifecycleField(builder, "WorkAttempt", entry.WorkAttempt.ToString());
+            }
+
+            if (entry.FrameCapturedAt is { } frameCapturedAt)
+            {
+                AppendLifecycleField(builder, "FrameCapturedAt", frameCapturedAt.ToString("O"));
+            }
+
+            if (entry.Elapsed is { } elapsed)
+            {
+                AppendLifecycleField(builder, "ElapsedMs", elapsed.TotalMilliseconds.ToString("F1"));
+            }
+
+            AppendLifecycleField(builder, "CandidateCount", entry.CandidateCount?.ToString());
+            AppendLifecycleField(builder, "RecognizedBlocks", entry.RecognizedBlockCount?.ToString());
+            AppendLifecycleField(builder, "TranslationInputGroups", entry.TranslationInputBlockCount?.ToString());
+            AppendLifecycleField(builder, "TranslatedBlocks", entry.TranslatedBlockCount?.ToString());
+
+            if (entry.TextStability is { } textStability)
+            {
+                AppendLifecycleField(builder, "StabilityRequired", textStability.IsRequired.ToString());
+                AppendLifecycleField(builder, "StabilitySatisfied", textStability.IsStable.ToString());
+                if (textStability.FirstObservedAt is { } firstObservedAt)
+                {
+                    AppendLifecycleField(builder, "StabilityFirstObservedAt", firstObservedAt.ToString("O"));
+                }
+
+                if (textStability.LastObservedAt is { } lastObservedAt)
+                {
+                    AppendLifecycleField(builder, "StabilityLastObservedAt", lastObservedAt.ToString("O"));
+                }
+
+                if (textStability.ObservedDuration is { } observedDuration)
+                {
+                    AppendLifecycleField(builder, "StabilityObservedMs", observedDuration.TotalMilliseconds.ToString("F1"));
+                }
+            }
+
+            AppendLifecycleField(builder, "OverlayTextItems", entry.OverlayTextItemCount?.ToString());
+            AppendLifecycleField(builder, "OverlayMaskItems", entry.OverlayMaskItemCount?.ToString());
+            if (entry.FailureStage is { } failureStage)
+            {
+                AppendLifecycleField(builder, "FailureStage", failureStage.ToString());
+            }
+
+            if (entry.CancellationReason != LiveCandidateCancellationReason.None)
+            {
+                AppendLifecycleField(builder, "CancellationReason", entry.CancellationReason.ToString());
+            }
+
+            builder.AppendLine();
+        }
+    }
+
+    private static void AppendLifecycleField(StringBuilder builder, string label, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            builder.Append($" {label}={value}");
+        }
+    }
+
+    private static string FormatBounds(BoundingBox bounds)
+    {
+        return $"X{bounds.X},Y{bounds.Y},W{bounds.Width},H{bounds.Height}";
     }
 
     private void AppendOverlaySnapshotDebugInfo(StringBuilder builder)

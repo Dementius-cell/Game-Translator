@@ -17,9 +17,16 @@ public sealed class TranslationPipelineResult
         OverlaySnapshot overlaySnapshot,
         TranslationCacheResult? cacheResult = null,
         TranslationPipelineTimings? timings = null,
-        TranslationPipelineOptimizationInfo? optimization = null)
+        TranslationPipelineOptimizationInfo? optimization = null,
+        int translationInputBlockCount = 0,
+        TranslationPipelineTextStability? textStability = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(zoneId);
+        if (translationInputBlockCount < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(translationInputBlockCount));
+        }
+
         ProfileId = profileId?.Trim() ?? string.Empty;
         ZoneId = zoneId;
         CapturedFrame = capturedFrame ?? throw new ArgumentNullException(nameof(capturedFrame));
@@ -29,6 +36,8 @@ public sealed class TranslationPipelineResult
         CacheResult = cacheResult;
         Timings = timings ?? TranslationPipelineTimings.Empty;
         Optimization = optimization ?? TranslationPipelineOptimizationInfo.None;
+        TranslationInputBlockCount = translationInputBlockCount;
+        TextStability = textStability ?? TranslationPipelineTextStability.NotRequired;
     }
 
     public string ProfileId { get; }
@@ -48,6 +57,17 @@ public sealed class TranslationPipelineResult
     public TranslationPipelineTimings Timings { get; }
 
     public TranslationPipelineOptimizationInfo Optimization { get; }
+
+    /// <summary>
+    /// Count of logical OCR groups submitted to the translator. This is a count only and never
+    /// exposes recognized or translated text.
+    /// </summary>
+    public int TranslationInputBlockCount { get; }
+
+    /// <summary>
+    /// Privacy-safe timing outcome of the optional text-stability gate.
+    /// </summary>
+    public TranslationPipelineTextStability TextStability { get; }
 
     public int RecognizedBlockCount => SourceOcrResult.TextBlocks.Count;
 

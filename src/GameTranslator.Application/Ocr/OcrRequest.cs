@@ -15,7 +15,8 @@ public sealed class OcrRequest
         OcrPreprocessingSettings? preprocessingSettings = null,
         string? engineId = null,
         OcrOrientationMode? orientationMode = null,
-        OcrLayoutMode? layoutMode = null)
+        OcrLayoutMode? layoutMode = null,
+        ContentLayoutMode contentLayoutMode = ContentLayoutMode.DialogComic)
     {
         Frame = frame ?? throw new ArgumentNullException(nameof(frame));
         ArgumentException.ThrowIfNullOrWhiteSpace(language);
@@ -23,6 +24,11 @@ public sealed class OcrRequest
         if (zoneId is not null && string.IsNullOrWhiteSpace(zoneId))
         {
             throw new ArgumentException("Zone id must not be empty when provided.", nameof(zoneId));
+        }
+
+        if (!Enum.IsDefined(contentLayoutMode))
+        {
+            throw new ArgumentOutOfRangeException(nameof(contentLayoutMode));
         }
 
         Language = language;
@@ -35,6 +41,7 @@ public sealed class OcrRequest
         LayoutMode = layoutMode is { } requestedLayoutMode && Enum.IsDefined(requestedLayoutMode)
             ? requestedLayoutMode
             : OcrLayoutMode.Auto;
+        ContentLayoutMode = contentLayoutMode;
     }
 
     public CapturedFrame Frame { get; }
@@ -52,4 +59,6 @@ public sealed class OcrRequest
     public OcrOrientationMode OrientationMode { get; }
 
     public OcrLayoutMode LayoutMode { get; }
+
+    public ContentLayoutMode ContentLayoutMode { get; }
 }

@@ -6,14 +6,23 @@ public sealed class LiveTranslationPipelineUpdate
         TranslationPipelineBatchResult batchResult,
         bool overlayChanged,
         IEnumerable<string>? cancelledZoneIds = null,
-        CandidatePipelineReadiness? candidateReadiness = null)
+        CandidatePipelineReadiness? candidateReadiness = null,
+        IEnumerable<LiveCandidateLifecycleEvent>? candidateLifecycleEvents = null,
+        int droppedCandidateLifecycleEventCount = 0)
     {
         BatchResult = batchResult ?? throw new ArgumentNullException(nameof(batchResult));
+        if (droppedCandidateLifecycleEventCount < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(droppedCandidateLifecycleEventCount));
+        }
+
         OverlayChanged = overlayChanged;
         CancelledZoneIds = (cancelledZoneIds ?? Array.Empty<string>())
             .Distinct(StringComparer.Ordinal)
             .ToArray();
         CandidateReadiness = candidateReadiness ?? CandidatePipelineReadiness.Disabled;
+        CandidateLifecycleEvents = (candidateLifecycleEvents ?? Array.Empty<LiveCandidateLifecycleEvent>()).ToArray();
+        DroppedCandidateLifecycleEventCount = droppedCandidateLifecycleEventCount;
     }
 
     public TranslationPipelineBatchResult BatchResult { get; }
@@ -26,4 +35,14 @@ public sealed class LiveTranslationPipelineUpdate
     /// Session-only readiness telemetry for the candidate-region policy.
     /// </summary>
     public CandidatePipelineReadiness CandidateReadiness { get; }
+
+    /// <summary>
+    /// Bounded, privacy-safe candidate/overlay timing trace retained by the live session.
+    /// </summary>
+    public IReadOnlyList<LiveCandidateLifecycleEvent> CandidateLifecycleEvents { get; }
+
+    /// <summary>
+    /// Number of oldest lifecycle events discarded from the bounded session trace.
+    /// </summary>
+    public int DroppedCandidateLifecycleEventCount { get; }
 }

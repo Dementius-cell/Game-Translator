@@ -52,7 +52,8 @@ public sealed class OcrService
                 request.PreprocessingSettings,
                 request.EngineId,
                 request.OrientationMode,
-                request.LayoutMode);
+                request.LayoutMode,
+                request.ContentLayoutMode);
 
         return engine.RecognizeAsync(preprocessedRequest, cancellationToken);
     }

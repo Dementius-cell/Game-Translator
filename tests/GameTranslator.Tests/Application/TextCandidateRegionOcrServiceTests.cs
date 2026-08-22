@@ -112,8 +112,12 @@ public sealed class TextCandidateRegionOcrServiceTests
         Assert.Equal(new[] { "Text 150", "Text 110" }, results.Select(result => result.RecognizedText));
     }
 
-    [Fact]
-    public async Task RecognizeAsync_WhenCjkTargetPostFilterIsEnabled_RejectsNonTargetGeometry()
+    [Theory]
+    [InlineData("ja", "\u65e5\u672c\u8a9e")]
+    [InlineData("zh-CN", "\u4e2d\u6587\u6d4b\u8bd5")]
+    public async Task RecognizeAsync_WhenCjkTargetPostFilterIsEnabled_AppliesVerticalGeometryOnly(
+        string language,
+        string recognizedText)
     {
         var detector = new FakeCandidateDetector(TextCandidateDetectionResult.Available(
             "test-detector",
@@ -124,7 +128,7 @@ public sealed class TextCandidateRegionOcrServiceTests
             }));
         var engine = new FakeOcrEngine(request => Task.FromResult(new OcrResult(
             request,
-            new[] { new OcrTextBlock("\u65e5\u672c", new BoundingBox(0, 0, 10, 10)) },
+            new[] { new OcrTextBlock(recognizedText, new BoundingBox(0, 0, 10, 10)) },
             CapturedAt)));
         var service = new TextCandidateRegionOcrService(
             detector,
@@ -134,10 +138,43 @@ public sealed class TextCandidateRegionOcrServiceTests
                 EnableCjkTargetPostFilter = true,
             });
 
-        var results = await CollectAsync(service.RecognizeAsync(CreateRequest()));
+        var results = await CollectAsync(service.RecognizeAsync(
+            CreateRequest(language: language, orientationMode: OcrOrientationMode.Vertical)));
 
         var result = Assert.Single(results);
         Assert.Equal(new BoundingBox(10, 15, 20, 30), result.Candidate.Bounds);
+    }
+
+    [Theory]
+    [InlineData("ja", "\u65e5\u672c\u8a9e")]
+    [InlineData("zh-CN", "\u4e2d\u6587\u6d4b\u8bd5")]
+    public async Task RecognizeAsync_WhenCjkTargetPostFilterIsEnabled_DoesNotApplyVerticalGeometryToHorizontalCjk(
+        string language,
+        string recognizedText)
+    {
+        var detector = new FakeCandidateDetector(TextCandidateDetectionResult.Available(
+            "test-detector",
+            new[]
+            {
+                new TextCandidate(new BoundingBox(10, 15, 60, 12), 0.90),
+            }));
+        var engine = new FakeOcrEngine(request => Task.FromResult(new OcrResult(
+            request,
+            new[] { new OcrTextBlock(recognizedText, new BoundingBox(0, 0, 10, 10)) },
+            CapturedAt)));
+        var service = new TextCandidateRegionOcrService(
+            detector,
+            new OcrService(engine),
+            new TextCandidateRegionOcrOptions
+            {
+                EnableCjkTargetPostFilter = true,
+            });
+
+        var results = await CollectAsync(service.RecognizeAsync(
+            CreateRequest(language: language, orientationMode: OcrOrientationMode.Horizontal)));
+
+        var result = Assert.Single(results);
+        Assert.Equal(new BoundingBox(10, 15, 60, 12), result.Candidate.Bounds);
     }
 
     [Fact]
@@ -188,7 +225,39 @@ public sealed class TextCandidateRegionOcrServiceTests
             result.Regions[0].Frame.Region);
     }
 
-    private static OcrRequest CreateRequest(int width = 100, int height = 80)
+    [Fact]
+    public async Task DetectAsync_UsesComplexSouthEastAsianProfileForThaiCandidates()
+    {
+        var detector = new FakeCandidateDetector(TextCandidateDetectionResult.Available(
+            "test-detector",
+            Enumerable.Range(0, 8)
+                .Select(index => new TextCandidate(
+                    new BoundingBox(100 + (index % 2) * 4, 100 + index * 22, 50, 16),
+                    0.90))));
+        var service = new TextCandidateRegionOcrService(detector, new OcrService(new FakeOcrEngine()));
+
+        var result = await service.DetectAsync(
+            CreateRequest(width: 400, height: 400, language: "th", orientationMode: OcrOrientationMode.Horizontal));
+
+        var region = Assert.Single(result.Regions);
+        Assert.Equal(new BoundingBox(100, 100, 54, 170), region.Candidate.Bounds);
+        Assert.Equal(8, region.Candidate.SourceCandidateCount);
+        Assert.Equal(
+            region.Candidate.SourceCandidateBounds,
+            new TextCandidateRegionOcrResult(
+                region.Candidate,
+                "Text",
+                CapturedAt,
+                OcrOrientationMode.Horizontal)
+                .CreateSourceGeometry()
+                .MemberBounds);
+    }
+
+    private static OcrRequest CreateRequest(
+        int width = 100,
+        int height = 80,
+        string language = "ja",
+        OcrOrientationMode orientationMode = OcrOrientationMode.Vertical)
     {
         var stride = width * 4;
         return new OcrRequest(
@@ -200,10 +269,10 @@ public sealed class TextCandidateRegionOcrServiceTests
                 "Bgra32",
                 new byte[stride * height],
                 CapturedAt),
-            "ja",
+            language,
             "manual-zone",
             engineId: OcrSettings.WindowsEngineId,
-            orientationMode: OcrOrientationMode.Vertical,
+            orientationMode: orientationMode,
             layoutMode: OcrLayoutMode.Comic);
     }
 

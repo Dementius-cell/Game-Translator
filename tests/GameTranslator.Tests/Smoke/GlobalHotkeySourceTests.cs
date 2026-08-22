@@ -39,6 +39,18 @@ public sealed class GlobalHotkeySourceTests
         Assert.Contains("Collect debug info", source, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ShellView_UsesLiveStatusInsteadOfAStaticReleaseLabel()
+    {
+        var source = ReadSource("src/GameTranslator.UI/Views/ShellView.xaml");
+        var viewModelSource = ReadSource("src/GameTranslator.UI/ViewModels/ShellViewModel.cs");
+
+        Assert.Contains("Text=\"{Binding StatusMessage}\"", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("CurrentStage", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Text=\"Ready\"", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("CurrentStage", viewModelSource, StringComparison.Ordinal);
+    }
+
     private static string ReadSource(string relativePath)
     {
         return File.ReadAllText(Path.Combine(RepositoryRoot.Find(), relativePath));

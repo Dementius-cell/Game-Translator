@@ -26,6 +26,34 @@ namespace GameTranslator.Tests.Smoke;
 public sealed class ProfileManagerViewModelTests
 {
     [Fact]
+    public void WorkspaceTabs_DefaultToZonesAndExposeOneSelectedSection()
+    {
+        var viewModel = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService());
+
+        Assert.Equal(0, GetPropertyValue(viewModel, "SelectedWorkspaceTabIndex"));
+        Assert.True(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsZonesOcrTabSelected")));
+        Assert.False(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsTranslationTabSelected")));
+        Assert.False(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsOverlayTabSelected")));
+        Assert.False(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsLiveDiagnosticsTabSelected")));
+        Assert.False(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsOcrPacksTabSelected")));
+        Assert.False(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsHotkeysSettingsTabSelected")));
+
+        SetPropertyValue(viewModel, "SelectedWorkspaceTabIndex", 3);
+
+        Assert.False(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsZonesOcrTabSelected")));
+        Assert.True(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsLiveDiagnosticsTabSelected")));
+        Assert.True(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsZonesOcrOrLiveDiagnosticsTabSelected")));
+
+        SetPropertyValue(viewModel, "SelectedWorkspaceTabIndex", 4);
+        Assert.True(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsOcrPacksTabSelected")));
+        Assert.False(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsHotkeysSettingsTabSelected")));
+
+        SetPropertyValue(viewModel, "SelectedWorkspaceTabIndex", 5);
+        Assert.False(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsOcrPacksTabSelected")));
+        Assert.True(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsHotkeysSettingsTabSelected")));
+    }
+
+    [Fact]
     public async Task LoadAsync_RestoresSelectedProfileFromSettings()
     {
         var repository = new InMemoryProfileRepository();
@@ -97,6 +125,7 @@ public sealed class ProfileManagerViewModelTests
                 Name = "Draft zone",
                 AbsoluteBounds = new AbsoluteRectangle(10, 20, 300, 80),
                 RelativeBounds = new RelativeRectangle(0.1, 0.2, 0.3, 0.1),
+                ContentLayoutMode = ContentLayoutMode.DialogComic,
                 TranslationGroupingMode = TranslationGroupingMode.NearbyBlocks,
                 TextGrouping = new OcrZoneTextGroupingSettings
                 {
@@ -124,6 +153,7 @@ public sealed class ProfileManagerViewModelTests
         Assert.Equal("zone-a", GetPropertyValue(selectedZone, "Id"));
         Assert.Equal("X 10  Y 20  W 300  H 80", GetPropertyValue(selectedZone, "AbsoluteBoundsSummary"));
         Assert.Equal(3d, GetPropertyValue(selectedZone, "RelativeAreaPercent"));
+        Assert.Equal(ContentLayoutMode.DialogComic, GetPropertyValue(selectedZone, "ContentLayoutMode"));
         Assert.Equal(TranslationGroupingMode.NearbyBlocks, GetPropertyValue(selectedZone, "TranslationGroupingMode"));
         Assert.Equal(6.5d, GetPropertyValue(selectedZone, "TextGroupMergeDistancePercent"));
     }
@@ -175,6 +205,7 @@ public sealed class ProfileManagerViewModelTests
         Assert.True(persistedZone.TextStyle.IsItalic);
         Assert.Equal(OverlayTextLayoutMode.ExpandFromSourceCenter, persistedZone.TextStyle.LayoutMode);
         Assert.Equal("jpn_vert", persistedZone.OcrLanguage);
+        Assert.Equal(ContentLayoutMode.DialogComic, persistedZone.ContentLayoutMode);
         Assert.Equal(TranslationGroupingMode.NearbyBlocks, persistedZone.TranslationGroupingMode);
         Assert.Equal(6.5d, persistedZone.TextGrouping.MergeDistancePercent);
         Assert.Equal(
@@ -273,6 +304,29 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
+    public async Task InlineProfileRename_PersistsOnlyTheSelectedProfileName()
+    {
+        var repository = new InMemoryProfileRepository();
+        var profile = CreateProfile("Original name", "GoogleWeb", "en", "ru");
+        await repository.SaveAsync(profile);
+        var viewModel = CreateMainViewModel(repository, new TestSettingsService());
+        await InvokeTaskMethodAsync(viewModel, "LoadAsync");
+
+        InvokeMethodWithArguments(viewModel, "BeginProfileRename", profile.Id);
+
+        Assert.True(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsProfileRenameActive")));
+        Assert.Equal("Original name", GetPropertyValue(viewModel, "ProfileRenameText"));
+
+        SetPropertyValue(viewModel, "ProfileRenameText", "Renamed profile");
+        await InvokeTaskMethodAsync(viewModel, "CommitProfileRenameAsync");
+
+        var storedProfile = Assert.Single(await repository.ListAsync());
+        Assert.Equal("Renamed profile", storedProfile.Name);
+        Assert.Equal("en", storedProfile.TranslatorSettings.SourceLanguage);
+        Assert.False(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsProfileRenameActive")));
+    }
+
+    [Fact]
     public void TranslatorLanguageFields_NormalizeTesseractModelTagsToGoogleWebTags()
     {
         var viewModel = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService());
@@ -282,6 +336,21 @@ public sealed class ProfileManagerViewModelTests
 
         Assert.Equal("th", GetPropertyValue(viewModel, "SourceLanguage"));
         Assert.Equal("ru", GetPropertyValue(viewModel, "TargetLanguage"));
+
+        SetPropertyValue(viewModel, "SourceLanguage", "zh");
+        Assert.Equal("zh-CN", GetPropertyValue(viewModel, "SourceLanguage"));
+    }
+
+    [Fact]
+    public void TranslatorProvider_ExposesCredentialFieldsOnlyForStoredCredentialProviders()
+    {
+        var viewModel = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService());
+
+        SetPropertyValue(viewModel, "TranslatorProvider", "GoogleWeb");
+        Assert.False(Assert.IsType<bool>(GetPropertyValue(viewModel, "RequiresStoredTranslatorCredentials")));
+
+        SetPropertyValue(viewModel, "TranslatorProvider", "Google");
+        Assert.True(Assert.IsType<bool>(GetPropertyValue(viewModel, "RequiresStoredTranslatorCredentials")));
     }
 
     [Fact]
@@ -484,7 +553,9 @@ public sealed class ProfileManagerViewModelTests
         Assert.Equal(0.1d, GetPropertyValue(zone, "RelativeY"));
         Assert.Equal(0.2d, GetPropertyValue(zone, "RelativeWidth"));
         Assert.Equal(0.2d, GetPropertyValue(zone, "RelativeHeight"));
+        Assert.Equal(ContentLayoutMode.DialogComic, GetPropertyValue(zone, "ContentLayoutMode"));
         Assert.Equal(new AbsoluteRectangle(96, 108, 384, 216), persistedZone.AbsoluteBounds);
+        Assert.Equal(ContentLayoutMode.DialogComic, persistedZone.ContentLayoutMode);
         Assert.Equal("Created zone 'Zone 1' from screen selection.", GetPropertyValue(viewModel, "StatusMessage"));
     }
 
@@ -598,6 +669,7 @@ public sealed class ProfileManagerViewModelTests
         SetPropertyValue(selectedZone, "RelativeWidth", 0.4);
         SetPropertyValue(selectedZone, "RelativeHeight", 0.1);
         SetPropertyValue(selectedZone, "OcrLanguage", "jpn_vert");
+        SetPropertyValue(selectedZone, "ContentLayoutMode", ContentLayoutMode.DialogComic);
         SetPropertyValue(selectedZone, "TranslationGroupingMode", TranslationGroupingMode.NearbyBlocks);
         SetPropertyValue(selectedZone, "TextGroupMergeDistancePercent", 6.5d);
 
@@ -612,6 +684,7 @@ public sealed class ProfileManagerViewModelTests
         Assert.Equal("Subtitles", storedProfile.OcrZones[0].Name);
         Assert.Equal(new AbsoluteRectangle(10, 20, 300, 80), storedProfile.OcrZones[0].AbsoluteBounds);
         Assert.Equal("jpn_vert", storedProfile.OcrZones[0].OcrLanguage);
+        Assert.Equal(ContentLayoutMode.DialogComic, storedProfile.OcrZones[0].ContentLayoutMode);
         Assert.Equal(TranslationGroupingMode.NearbyBlocks, storedProfile.OcrZones[0].TranslationGroupingMode);
         Assert.Equal(6.5d, storedProfile.OcrZones[0].TextGrouping.MergeDistancePercent);
     }
@@ -724,6 +797,25 @@ public sealed class ProfileManagerViewModelTests
         var storedZone = Assert.Single(storedProfile.OcrZones);
 
         Assert.Equal(new AbsoluteRectangle(30, 60, 420, 240), storedZone.AbsoluteBounds);
+    }
+
+    [Fact]
+    public async Task InteractiveZoneMove_UpdatesSelectedZonePositionWithoutChangingItsSize()
+    {
+        var repository = new InMemoryProfileRepository();
+        var viewModel = CreateMainViewModel(repository, new TestSettingsService());
+
+        ConfigureValidDraftProfile(viewModel, "Move zone");
+        InvokeMethodWithArguments(viewModel, "StartZoneSelection", 10d, 20d);
+        InvokeMethodWithArguments(viewModel, "CompleteZoneSelection", 110d, 70d);
+        InvokeMethodWithArguments(viewModel, "StartSelectedZoneMove", 50d, 40d);
+        InvokeMethodWithArguments(viewModel, "UpdateSelectedZoneMove", 150d, 90d);
+        InvokeMethodWithArguments(viewModel, "CompleteSelectedZoneMove", 150d, 90d);
+        await InvokeTaskMethodAsync(viewModel, "SaveAsync");
+
+        var storedProfile = Assert.Single(await repository.ListAsync());
+        var storedZone = Assert.Single(storedProfile.OcrZones);
+        Assert.Equal(new AbsoluteRectangle(330, 210, 300, 150), storedZone.AbsoluteBounds);
     }
 
     [Fact]
@@ -2024,6 +2116,9 @@ public sealed class ProfileManagerViewModelTests
 
             Assert.Contains("Trigger: live-stopped", stoppedReport, StringComparison.Ordinal);
             Assert.Contains("Live candidate pipeline", stoppedReport, StringComparison.Ordinal);
+            Assert.Contains("Candidate grouping geometry", stoppedReport, StringComparison.Ordinal);
+            Assert.Contains("Live candidate lifecycle", stoppedReport, StringComparison.Ordinal);
+            Assert.Contains("OCR and translated text are not recorded here.", stoppedReport, StringComparison.Ordinal);
             Assert.Contains("Privacy: profile free-text fields and credential values are omitted.", stoppedReport, StringComparison.Ordinal);
         }
         finally

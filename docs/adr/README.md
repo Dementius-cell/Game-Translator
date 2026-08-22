@@ -1490,6 +1490,83 @@ Project owner, explicit chat approval on 2026-08-13: «снимем запрет
 
 ---
 
+# ADR-031
+
+## Per-Zone Content Layout Mode Policy
+
+Status:
+ACCEPTED
+
+Date:
+2026-08-22
+
+Related Change Request:
+[#56](https://github.com/Dementius-cell/Game-Translator/issues/56)
+
+### Context
+
+ADR-030 made bounded Paddle candidates, writing-system grouping, Tesseract crop recognition and per-region overlay the normal product path. The saved OCR-zone model still contains historical full-page translation-grouping fields, while live timing and overlay behavior are configured through separate mechanisms. This does not provide one product-level place to describe how a particular zone should group detected blocks, lay out translations and schedule work when future content types such as static menus or books are approved.
+
+Writing-system grouping and content layout are different dimensions. Language and orientation determine whether a zone needs spaced LTR, CJK horizontal, CJK vertical, complex South-East Asian, Brahmic or RTL grouping details. Content layout determines the higher-level behavior expected from the zone, including grouping strategy, overlay policy and live refresh cadence.
+
+### Options
+
+1. Keep independent grouping, overlay and timing controls without a shared content policy.
+2. Add a global profile mode that applies to every OCR zone.
+3. Add an explicit per-zone `ContentLayoutMode` resolved by an Application policy, while keeping writing-system selection automatic inside that policy.
+
+### Decision
+
+Use option 3.
+
+* Every saved OCR zone has a `ContentLayoutMode`. The initial and default value is `DialogComic`.
+* `DialogComic` preserves the accepted ADR-030 behavior: bounded writing-system candidate grouping, Tesseract recognition of accepted crops, centered per-region translation layout and participation in every currently scheduled live refresh.
+* The Application policy for a mode owns three explicit dimensions: candidate grouping strategy, candidate overlay layout policy and minimum per-zone live refresh interval. Compatible mode-specific capabilities may be added to the same policy when an accepted mode needs them.
+* Writing-system grouping remains an automatic nested resolution from OCR language and orientation. It is not exposed as a manual language-by-language selector.
+* The setting belongs to an OCR zone, not the whole profile, so different areas can eventually use different policies without breaking multi-zone independence.
+* `Add zone` and `Pick screen` create `DialogComic` zones. The selected-zone UI exposes the saved content-layout value.
+* Existing profiles that omit the additive field load as `DialogComic`; JSON remains the persistence format and `schemaVersion` remains `1.0` while this defaulting behavior is verified.
+* Historical `TranslationGroupingMode` and `TextGrouping` fields remain readable for compatibility and explicit `LegacyFullPage` diagnostics. They do not select or replace the normal candidate grouping path.
+* A new mode such as `Book` or `StaticMenu`, a non-zero cadence, or a change to the `DialogComic` default requires its own product decision, measurable regressions and applicable performance/overlay gates. This ADR does not authorize hidden book heuristics.
+* This policy cannot select legacy full-page OCR, full-frame retry, another provider, cache fallback or a different provider default. ADR-030 remains binding.
+
+### Reasons
+
+* A zone is the correct ownership boundary for content-specific capture and overlay behavior.
+* One policy prevents future features from scattering coupled grouping, layout and timing switches across unrelated services.
+* Automatic writing-system resolution preserves the tested language cohorts without forcing users to understand OCR geometry rules.
+* Starting with one behavior-preserving mode creates the extension seam without inventing unmeasured Book or StaticMenu values.
+
+### Consequences
+
+Positive:
+
+* Future content types can add coherent policies instead of branching independently in OCR, overlay and live orchestration.
+* Existing profiles and current live behavior remain compatible.
+* Multi-zone profiles can later mix content policies safely.
+
+Negative:
+
+* The profile gains an additive per-zone setting even though only one value is initially available.
+* Pipeline state keys, diagnostics, UI editing and profile tests must include the mode.
+* Future non-zero cadence policies need deterministic clock-aware tests and performance evidence before acceptance.
+
+Compatibility:
+
+* Missing `contentLayoutMode` defaults to `DialogComic`.
+* No OCR engine, translator provider, cache, secret storage or legacy-selection default changes.
+* No automatic fallback is added.
+
+### Requires Migration
+
+No destructive migration. Additive defaulting and import/export compatibility tests are required.
+
+### Approved
+
+Project owner, explicit chat approval on 2026-08-22: «согласен приступай. сделай Content layout mode» with grouping, overlay policy, per-area translation frequency and future mode-specific behavior in scope.
+
+---
+
 # ADR TEMPLATE
 
 Использовать для новых решений.

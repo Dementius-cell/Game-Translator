@@ -5,12 +5,142 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:behaviors="clr-namespace:GameTranslator.UI.Behaviors"
              xmlns:viewModels="clr-namespace:GameTranslator.UI.ViewModels"
-             mc:Ignorable="d"
-             d:DesignHeight="450"
-             d:DesignWidth="800">
+              mc:Ignorable="d"
+              FontFamily="Segoe UI"
+              d:DesignHeight="450"
+              d:DesignWidth="800">
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+
+        <Style x:Key="ModernButtonStyle" TargetType="Button">
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="Background" Value="#FFFFFF" />
+            <Setter Property="BorderBrush" Value="#C9D2DC" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="#17212B" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border
+                            x:Name="Chrome"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="6"
+                            SnapsToDevicePixels="True">
+                            <ContentPresenter
+                                Margin="{TemplateBinding Padding}"
+                                HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                RecognizesAccessKey="True" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#F1F7F8" />
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#6DAAB0" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#E3F0F2" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Chrome" Property="Background" Value="#F3F5F7" />
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#DCE2E8" />
+                                <Setter Property="Foreground" Value="#98A2AD" />
+                                <Setter Property="Cursor" Value="Arrow" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="PrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButtonStyle}">
+            <Setter Property="Background" Value="#087F8C" />
+            <Setter Property="BorderBrush" Value="#087F8C" />
+            <Setter Property="Foreground" Value="#FFFFFF" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="MinHeight" Value="38" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border
+                            x:Name="PrimaryChrome"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="6">
+                            <ContentPresenter
+                                Margin="{TemplateBinding Padding}"
+                                HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="PrimaryChrome" Property="Background" Value="#096F7A" />
+                                <Setter TargetName="PrimaryChrome" Property="BorderBrush" Value="#096F7A" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="PrimaryChrome" Property="Background" Value="#075D67" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="PrimaryChrome" Property="Background" Value="#AABFC2" />
+                                <Setter TargetName="PrimaryChrome" Property="BorderBrush" Value="#AABFC2" />
+                                <Setter Property="Foreground" Value="#F5F7F8" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="DangerButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButtonStyle}">
+            <Setter Property="Foreground" Value="#A33A3A" />
+            <Setter Property="BorderBrush" Value="#E0B8B8" />
+        </Style>
+        <Style x:Key="CompactButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButtonStyle}">
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="Padding" Value="9,5" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+        <Style TargetType="Button" BasedOn="{StaticResource ModernButtonStyle}" />
+
+        <Style x:Key="CardBorderStyle" TargetType="Border">
+            <Setter Property="Background" Value="#FFFFFF" />
+            <Setter Property="BorderBrush" Value="#DCE3E9" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="16" />
+        </Style>
+        <Style x:Key="SubtleCardBorderStyle" TargetType="Border" BasedOn="{StaticResource CardBorderStyle}">
+            <Setter Property="Background" Value="#F8FAFB" />
+            <Setter Property="Padding" Value="12" />
+        </Style>
+        <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="#17212B" />
+        </Style>
+        <Style x:Key="FieldLabelStyle" TargetType="TextBlock">
+            <Setter Property="Margin" Value="0,0,0,6" />
+            <Setter Property="Foreground" Value="#4B5865" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style x:Key="MutedTextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#66727F" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+
         <Style TargetType="TextBox">
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="Background" Value="#FFFFFF" />
+            <Setter Property="BorderBrush" Value="#C9D2DC" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="#17212B" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
             <Style.Triggers>
                 <Trigger Property="Validation.HasError" Value="True">
                     <Setter Property="Background" Value="#FFF8F8" />
@@ -21,6 +151,12 @@
             </Style.Triggers>
         </Style>
         <Style TargetType="ComboBox">
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="Background" Value="#FFFFFF" />
+            <Setter Property="BorderBrush" Value="#C9D2DC" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="#17212B" />
             <Style.Triggers>
                 <Trigger Property="Validation.HasError" Value="True">
                     <Setter Property="BorderBrush" Value="#C84B4B" />
@@ -29,21 +165,116 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
+        <Style TargetType="PasswordBox">
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="Background" Value="#FFFFFF" />
+            <Setter Property="BorderBrush" Value="#C9D2DC" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="#33414E" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style TargetType="ListBox">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+        </Style>
+        <Style TargetType="ListBoxItem">
+            <Setter Property="Margin" Value="0,0,0,10" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border
+                            x:Name="SelectionCard"
+                            Background="#FFFFFF"
+                            BorderBrush="#DCE3E9"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="14">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="SelectionCard" Property="BorderBrush" Value="#79AEB4" />
+                                <Setter TargetName="SelectionCard" Property="Background" Value="#F5FAFB" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="SelectionCard" Property="BorderBrush" Value="#087F8C" />
+                                <Setter TargetName="SelectionCard" Property="BorderThickness" Value="3,1,1,1" />
+                                <Setter TargetName="SelectionCard" Property="Background" Value="#EDF7F8" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="WorkspaceTabControlStyle" TargetType="TabControl">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabControl">
+                        <Border BorderBrush="#DCE3E9" BorderThickness="0,0,0,1">
+                            <TabPanel IsItemsHost="True" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="WorkspaceTabItemStyle" TargetType="TabItem">
+            <Setter Property="Foreground" Value="#33414E" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Padding" Value="14,12" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border
+                            x:Name="TabChrome"
+                            Background="Transparent"
+                            BorderBrush="Transparent"
+                            BorderThickness="0,0,0,3"
+                            Padding="{TemplateBinding Padding}">
+                            <ContentPresenter
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                ContentSource="Header" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="TabChrome" Property="Background" Value="#F3F8F9" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Foreground" Value="#087F8C" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                                <Setter TargetName="TabChrome" Property="BorderBrush" Value="#087F8C" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <DataTemplate DataType="{x:Type viewModels:MainViewModel}">
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="280" />
-                    <ColumnDefinition Width="24" />
+                    <ColumnDefinition Width="344" />
+                    <ColumnDefinition Width="1" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
                 <Border
                     Grid.Column="0"
-                    Background="#FFFFFF"
-                    BorderBrush="#D7DEE8"
-                    BorderThickness="1"
-                    CornerRadius="4"
-                    Padding="16">
+                    Background="#F8FAFB"
+                    BorderBrush="#DCE3E9"
+                    BorderThickness="0,0,1,0"
+                    Padding="24,24,24,18">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -52,76 +283,119 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
-                        <DockPanel Grid.Row="0" LastChildFill="False">
+                        <StackPanel Grid.Row="0">
                             <TextBlock
-                                FontSize="18"
+                                FontSize="24"
                                 FontWeight="SemiBold"
-                                Foreground="#253238"
+                                Foreground="#17212B"
                                 Text="Profiles" />
-                            <Button
-                                DockPanel.Dock="Right"
-                                Margin="8,0,0,0"
-                                Padding="12,6"
-                                Command="{Binding RefreshProfilesCommand}"
-                                Content="Refresh" />
-                            <Button
-                                DockPanel.Dock="Right"
-                                Margin="8,0,0,0"
-                                Padding="12,6"
-                                Command="{Binding ImportProfileCommand}"
-                                Content="Import" />
-                            <Button
-                                DockPanel.Dock="Right"
-                                Margin="8,0,0,0"
-                                Padding="12,6"
-                                Command="{Binding ExportSelectedProfileCommand}"
-                                Content="Export" />
-                            <Button
-                                DockPanel.Dock="Right"
-                                Padding="12,6"
-                                Command="{Binding BeginCreateProfileCommand}"
-                                Content="New" />
-                        </DockPanel>
-
-                        <Border
-                            Grid.Row="1"
-                            Margin="0,12,0,12"
-                            Background="#F6F8FA"
-                            CornerRadius="4"
-                            Padding="12">
-                            <StackPanel>
-                                <TextBlock
-                                    Foreground="#56616F"
-                                    Text="Active profile" />
-                                <TextBlock
-                                    Margin="0,4,0,0"
-                                    FontWeight="SemiBold"
-                                    Foreground="#253238"
-                                    Text="{Binding ActiveProfileName}" />
-                            </StackPanel>
-                        </Border>
+                            <UniformGrid Margin="0,18,0,0" Columns="4">
+                                <Button
+                                    Margin="0,0,6,0"
+                                    Style="{StaticResource CompactButtonStyle}"
+                                    Command="{Binding BeginCreateProfileCommand}"
+                                    Content="New" />
+                                <Button
+                                    Margin="2,0,4,0"
+                                    Style="{StaticResource CompactButtonStyle}"
+                                    Command="{Binding ImportProfileCommand}"
+                                    Content="Import" />
+                                <Button
+                                    Margin="4,0,2,0"
+                                    Style="{StaticResource CompactButtonStyle}"
+                                    Command="{Binding ExportSelectedProfileCommand}"
+                                    Content="Export" />
+                                <Button
+                                    Margin="6,0,0,0"
+                                    Style="{StaticResource CompactButtonStyle}"
+                                    Command="{Binding RefreshProfilesCommand}"
+                                    Content="Refresh" />
+                            </UniformGrid>
+                        </StackPanel>
 
                         <ListBox
                             Grid.Row="2"
-                            Background="#FDFDFD"
-                            BorderBrush="#D7DEE8"
-                            BorderThickness="1"
                             ItemsSource="{Binding Profiles}"
                             SelectedItem="{Binding SelectedProfile, Mode=TwoWay}">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <Border Padding="8">
-                                        <StackPanel>
+                                    <Grid
+                                        Tag="{Binding Id}"
+                                        ToolTip="Double-click the profile name to rename it."
+                                        MouseLeftButtonDown="OnProfileItemMouseLeftButtonDown">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="42" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border
+                                            Width="34"
+                                            Height="34"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="Top"
+                                            Background="#DDEFF1"
+                                            CornerRadius="17">
                                             <TextBlock
-                                                FontWeight="SemiBold"
-                                                Foreground="#253238"
-                                                Text="{Binding Name}" />
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                FontSize="15"
+                                                Foreground="#087F8C"
+                                                Text="GT" />
+                                        </Border>
+                                        <StackPanel Grid.Column="1">
+                                            <Grid>
+                                                <TextBlock
+                                                    FontWeight="SemiBold"
+                                                    FontSize="14"
+                                                    Foreground="#17212B"
+                                                    Text="{Binding Name}"
+                                                    TextTrimming="CharacterEllipsis">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                            <Style.Triggers>
+                                                                <MultiDataTrigger>
+                                                                    <MultiDataTrigger.Conditions>
+                                                                        <Condition Binding="{Binding DataContext.IsProfileRenameActive, RelativeSource={RelativeSource AncestorType=ListBox}}" Value="True" />
+                                                                        <Condition Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True" />
+                                                                    </MultiDataTrigger.Conditions>
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                </MultiDataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                                <TextBox
+                                                    x:Name="ProfileRenameTextBox"
+                                                    MinHeight="28"
+                                                    Padding="5,2"
+                                                    Text="{Binding DataContext.ProfileRenameText, RelativeSource={RelativeSource AncestorType=ListBox}, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                    KeyDown="OnProfileRenameKeyDown"
+                                                    LostKeyboardFocus="OnProfileRenameLostKeyboardFocus">
+                                                    <TextBox.Style>
+                                                        <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                            <Style.Triggers>
+                                                                <MultiDataTrigger>
+                                                                    <MultiDataTrigger.Conditions>
+                                                                        <Condition Binding="{Binding DataContext.IsProfileRenameActive, RelativeSource={RelativeSource AncestorType=ListBox}}" Value="True" />
+                                                                        <Condition Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True" />
+                                                                    </MultiDataTrigger.Conditions>
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                </MultiDataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBox.Style>
+                                                </TextBox>
+                                            </Grid>
                                             <TextBlock
-                                                Margin="0,2,0,0"
-                                                Foreground="#56616F"
-                                                Text="{Binding TranslatorSettings.TargetLanguage}" />
+                                                Margin="0,4,0,0"
+                                                Foreground="#66727F">
+                                                <Run Text="{Binding TranslatorSettings.SourceLanguage}" />
+                                                <Run Text=" to " />
+                                                <Run Text="{Binding TranslatorSettings.TargetLanguage}" />
+                                            </TextBlock>
                                         </StackPanel>
-                                    </Border>
+                                    </Grid>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
@@ -136,38 +410,77 @@
                                 Margin="6,0,0,0"
                                 Padding="12,6"
                                 Command="{Binding DeleteSelectedProfileCommand}"
-                                Content="Delete" />
+                                Content="Delete"
+                                Style="{StaticResource DangerButtonStyle}" />
                         </UniformGrid>
                     </Grid>
                 </Border>
 
                 <Border
                     Grid.Column="2"
-                    Background="#FFFFFF"
-                    BorderBrush="#D7DEE8"
-                    BorderThickness="1"
-                    CornerRadius="4"
+                    Background="#FBFCFD"
+                    BorderThickness="0"
                     Padding="0">
                     <ScrollViewer
-                        HorizontalScrollBarVisibility="Auto"
-                        VerticalScrollBarVisibility="Visible">
-                        <StackPanel Margin="14">
-                            <StackPanel>
+                        x:Name="WorkspaceScrollViewer"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto">
+                        <Border
+                            Width="{Binding ActualWidth, ElementName=WorkspaceScrollViewer}"
+                            Padding="32,24,32,28">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
                                 <TextBlock
-                                    FontSize="20"
+                                    FontSize="30"
                                     FontWeight="SemiBold"
-                                    Foreground="#253238"
-                                    Text="{Binding EditorTitle}" />
-                                <TextBlock
-                                    Margin="0,6,0,0"
-                                    Foreground="#56616F"
-                                    Text="{Binding ProfileSummary}" />
-                            </StackPanel>
+                                    Foreground="#17212B"
+                                    Text="{Binding ApplicationName}" />
+                                    <TextBlock Margin="0,6,0,0" Foreground="#66727F">
+                                        <Run Text="Active profile: " />
+                                        <Run FontWeight="SemiBold" Foreground="#087F8C" Text="{Binding ActiveProfileName, Mode=OneWay}" />
+                                    </TextBlock>
+                                </StackPanel>
+                                <StackPanel
+                                    x:Name="WorkspaceHeaderActions"
+                                    Grid.Column="1"
+                                    Orientation="Horizontal"
+                                    VerticalAlignment="Center">
+                                    <Button
+                                        MinWidth="88"
+                                        Style="{StaticResource PrimaryButtonStyle}"
+                                        Command="{Binding StartLiveTranslationCommand}"
+                                        Content="Start live"
+                                        ToolTip="Start live translation for the active profile." />
+                                    <Button
+                                        MinWidth="84"
+                                        Margin="8,0,0,0"
+                                        Command="{Binding StopLiveTranslationCommand}"
+                                        Content="Stop live"
+                                        ToolTip="Stop live translation and save the automatic stop report." />
+                                    <Button
+                                        MinWidth="76"
+                                        Margin="18,0,0,0"
+                                        Command="{Binding ResetEditorCommand}"
+                                        Content="Reset" />
+                                    <Button
+                                        MinWidth="96"
+                                        Margin="8,0,0,0"
+                                        Style="{StaticResource PrimaryButtonStyle}"
+                                        Command="{Binding SaveProfileCommand}"
+                                        Content="Save profile" />
+                                </StackPanel>
+                            </Grid>
 
                             <TextBlock
-                                Margin="0,16,0,16"
-                                Foreground="#2A5D67"
-                                Text="{Binding StatusMessage}" />
+                                Margin="0,12,0,0"
+                                Style="{StaticResource MutedTextStyle}"
+                                Text="{Binding StatusMessage}"
+                                TextTrimming="CharacterEllipsis" />
 
                             <Border
                                 Margin="0,0,0,16"
@@ -189,12 +502,13 @@
                                 </ItemsControl>
                             </Border>
 
-                            <Border
-                                BorderBrush="#E3E8EE"
-                                BorderThickness="1"
-                                CornerRadius="4"
-                                Padding="16">
-                                <Grid>
+                            <Expander
+                                Margin="0,16,0,0"
+                                HorizontalContentAlignment="Stretch"
+                                Header="Edit profile details"
+                                IsExpanded="False">
+                                <Border Margin="0,10,0,0" Style="{StaticResource SubtleCardBorderStyle}">
+                                    <Grid>
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
@@ -233,15 +547,29 @@
                                         TextWrapping="Wrap"
                                         VerticalScrollBarVisibility="Auto"
                                         Text="{Binding ProfileDescription, UpdateSourceTrigger=PropertyChanged}" />
-                                </Grid>
-                            </Border>
+                                    </Grid>
+                                </Border>
+                            </Expander>
+
+                            <TabControl
+                                Height="46"
+                                Margin="0,14,0,0"
+                                Style="{StaticResource WorkspaceTabControlStyle}"
+                                SelectedIndex="{Binding SelectedWorkspaceTabIndex, Mode=TwoWay}">
+                                <TabItem Header="Zones &amp; OCR" Style="{StaticResource WorkspaceTabItemStyle}" />
+                                <TabItem Header="Translation" Style="{StaticResource WorkspaceTabItemStyle}" />
+                                <TabItem Header="Overlay" Style="{StaticResource WorkspaceTabItemStyle}" />
+                                <TabItem Header="Live &amp; Diagnostics" Style="{StaticResource WorkspaceTabItemStyle}" />
+                                <TabItem Header="OCR Packs" Style="{StaticResource WorkspaceTabItemStyle}" />
+                                <TabItem Header="Hotkeys &amp; Settings" Style="{StaticResource WorkspaceTabItemStyle}" />
+                            </TabControl>
 
                             <Border
-                                Margin="0,16,0,0"
-                                BorderBrush="#E3E8EE"
-                                BorderThickness="1"
-                                CornerRadius="4"
-                                Padding="16">
+                                x:Name="OverlayPreviewCard"
+                                Margin="0,12,0,0"
+                                MaxWidth="1040"
+                                Style="{StaticResource CardBorderStyle}"
+                                Visibility="{Binding IsOverlayTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <Grid>
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
@@ -258,9 +586,7 @@
                                     <TextBlock
                                         Grid.Row="0"
                                         Grid.ColumnSpan="3"
-                                        FontSize="16"
-                                        FontWeight="SemiBold"
-                                        Foreground="#253238"
+                                        Style="{StaticResource SectionTitleStyle}"
                                         Text="Overlay preview" />
                                     <Button
                                         Grid.Row="1"
@@ -268,7 +594,8 @@
                                         Margin="0,12,0,0"
                                         Padding="12,6"
                                         Command="{Binding ShowOverlayPreviewCommand}"
-                                        Content="Show test overlay" />
+                                        Content="Show test overlay"
+                                        Style="{StaticResource PrimaryButtonStyle}" />
                                     <Button
                                         Grid.Row="1"
                                         Grid.Column="1"
@@ -337,13 +664,14 @@
                             </Border>
 
                             <Border
-                                Margin="0,16,0,0"
-                                BorderBrush="#E3E8EE"
-                                BorderThickness="1"
-                                CornerRadius="4"
-                                Padding="16">
+                                x:Name="HotkeysSettingsCard"
+                                Margin="0,12,0,0"
+                                MaxWidth="1040"
+                                Style="{StaticResource CardBorderStyle}"
+                                Visibility="{Binding IsHotkeysSettingsTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <Grid>
                                     <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
@@ -357,9 +685,7 @@
                                     <TextBlock
                                         Grid.Row="0"
                                         Grid.ColumnSpan="3"
-                                        FontSize="16"
-                                        FontWeight="SemiBold"
-                                        Foreground="#253238"
+                                        Style="{StaticResource SectionTitleStyle}"
                                         Text="Global hotkeys" />
                                     <ItemsControl
                                         Grid.Row="1"
@@ -413,17 +739,112 @@
                                         Margin="8,8,0,0"
                                         Padding="12,6"
                                         Command="{Binding ApplyGlobalHotkeysCommand}"
-                                        Content="Apply" />
+                                        Content="Apply"
+                                        Style="{StaticResource PrimaryButtonStyle}" />
+                                    <TextBlock
+                                        Grid.Row="3"
+                                        Grid.Column="0"
+                                        Grid.ColumnSpan="2"
+                                        Margin="0,14,12,0"
+                                        VerticalAlignment="Center"
+                                        Foreground="#56616F"
+                                        Text="{Binding UpdateStatus}"
+                                        TextWrapping="Wrap" />
+                                    <Button
+                                        Grid.Row="3"
+                                        Grid.Column="2"
+                                        Margin="8,14,0,0"
+                                        Padding="12,6"
+                                        Command="{Binding CheckForUpdatesCommand}"
+                                        Content="Check for updates" />
                                 </Grid>
                             </Border>
+
                             <Border
-                                Margin="0,16,0,0"
-                                BorderBrush="#E3E8EE"
-                                BorderThickness="1"
-                                CornerRadius="4"
-                                Padding="16">
+                                x:Name="OcrPacksCard"
+                                Margin="0,12,0,0"
+                                MaxWidth="1180"
+                                HorizontalAlignment="Left"
+                                Style="{StaticResource CardBorderStyle}"
+                                Visibility="{Binding IsOcrPacksTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel>
+                                    <DockPanel LastChildFill="False">
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            Style="{StaticResource SectionTitleStyle}"
+                                            Text="OCR language packs" />
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                            <Button
+                                                Margin="8,0,0,0"
+                                                Style="{StaticResource CompactButtonStyle}"
+                                                Command="{Binding CheckOcrLanguagePackChecklistCommand}"
+                                                Content="Check common" />
+                                            <Button
+                                                Margin="8,0,0,0"
+                                                Style="{StaticResource CompactButtonStyle}"
+                                                Command="{Binding InstallTesseractLanguagePackChecklistCommand}"
+                                                Content="Install Tesseract" />
+                                            <Button
+                                                Margin="8,0,0,0"
+                                                Style="{StaticResource CompactButtonStyle}"
+                                                Command="{Binding ShowWindowsOcrLanguagePackHelpCommand}"
+                                                Content="Windows OCR help" />
+                                        </StackPanel>
+                                    </DockPanel>
+                                    <Grid Margin="0,12,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="110" />
+                                            <ColumnDefinition Width="240" />
+                                            <ColumnDefinition Width="100" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Style="{StaticResource FieldLabelStyle}" Text="Engine" />
+                                        <TextBlock Grid.Column="1" Style="{StaticResource FieldLabelStyle}" Text="Language" />
+                                        <TextBlock Grid.Column="2" Style="{StaticResource FieldLabelStyle}" Text="State" />
+                                        <TextBlock Grid.Column="3" Style="{StaticResource FieldLabelStyle}" Text="Details" />
+                                    </Grid>
+                                    <ScrollViewer Height="430" VerticalScrollBarVisibility="Auto">
+                                        <ItemsControl ItemsSource="{Binding OcrLanguagePackChecklistItems}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border
+                                                        Margin="0,0,0,4"
+                                                        Background="#FFFFFF"
+                                                        BorderBrush="#E2E8ED"
+                                                        BorderThickness="0,0,0,1"
+                                                        Padding="0,6">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="110" />
+                                                                <ColumnDefinition Width="240" />
+                                                                <ColumnDefinition Width="100" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock VerticalAlignment="Top" Foreground="#33414E" Text="{Binding EngineId}" />
+                                                            <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                                                                <TextBlock Foreground="#17212B" Text="{Binding DisplayName}" TextWrapping="Wrap" />
+                                                                <TextBlock Margin="0,2,0,0" Style="{StaticResource MutedTextStyle}" Text="{Binding Purpose}" />
+                                                            </StackPanel>
+                                                            <TextBlock Grid.Column="2" VerticalAlignment="Top" Foreground="#087F55" FontWeight="SemiBold" Text="{Binding State}" />
+                                                            <TextBlock Grid.Column="3" Style="{StaticResource MutedTextStyle}" Text="{Binding Status}" />
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </StackPanel>
+                            </Border>
+                            <Border
+                                x:Name="TranslationSettingsCard"
+                                Margin="0,12,0,0"
+                                MaxWidth="760"
+                                HorizontalAlignment="Left"
+                                Style="{StaticResource CardBorderStyle}"
+                                Visibility="{Binding IsTranslationTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <Grid>
                                     <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
@@ -445,9 +866,7 @@
                                     <TextBlock
                                         Grid.Row="0"
                                         Grid.ColumnSpan="2"
-                                        FontSize="16"
-                                        FontWeight="SemiBold"
-                                        Foreground="#253238"
+                                        Style="{StaticResource SectionTitleStyle}"
                                         Text="Translator settings" />
                                     <TextBlock
                                         Grid.Row="0"
@@ -518,13 +937,15 @@
                                         Margin="0,12,0,0"
                                         VerticalAlignment="Center"
                                         Foreground="#253238"
-                                        Text="Endpoint" />
+                                        Text="Endpoint"
+                                        Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                     <TextBox
                                         Grid.Row="4"
                                         Grid.Column="1"
                                         Margin="0,12,0,0"
                                         Padding="6,4"
-                                        Text="{Binding TranslatorCredentialEndpoint, UpdateSourceTrigger=PropertyChanged}" />
+                                        Text="{Binding TranslatorCredentialEndpoint, UpdateSourceTrigger=PropertyChanged}"
+                                        Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
                                     <TextBlock
                                         Grid.Row="5"
@@ -532,13 +953,15 @@
                                         Margin="0,12,0,0"
                                         VerticalAlignment="Center"
                                         Foreground="#253238"
-                                        Text="Project / folder id" />
+                                        Text="Project / folder id"
+                                        Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                     <TextBox
                                         Grid.Row="5"
                                         Grid.Column="1"
                                         Margin="0,12,0,0"
                                         Padding="6,4"
-                                        Text="{Binding TranslatorCredentialProjectId, UpdateSourceTrigger=PropertyChanged}" />
+                                        Text="{Binding TranslatorCredentialProjectId, UpdateSourceTrigger=PropertyChanged}"
+                                        Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
                                     <TextBlock
                                         Grid.Row="6"
@@ -546,13 +969,15 @@
                                         Margin="0,12,0,0"
                                         VerticalAlignment="Center"
                                         Foreground="#253238"
-                                        Text="Region / location" />
+                                        Text="Region / location"
+                                        Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                     <TextBox
                                         Grid.Row="6"
                                         Grid.Column="1"
                                         Margin="0,12,0,0"
                                         Padding="6,4"
-                                        Text="{Binding TranslatorCredentialLocation, UpdateSourceTrigger=PropertyChanged}" />
+                                        Text="{Binding TranslatorCredentialLocation, UpdateSourceTrigger=PropertyChanged}"
+                                        Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
                                     <TextBlock
                                         Grid.Row="7"
@@ -560,20 +985,23 @@
                                         Margin="0,12,0,0"
                                         VerticalAlignment="Center"
                                         Foreground="#253238"
-                                        Text="API key / token" />
+                                        Text="API key / token"
+                                        Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                     <PasswordBox
                                         Grid.Row="7"
                                         Grid.Column="1"
                                         Margin="0,12,0,0"
                                         Padding="6,4"
                                         behaviors:PasswordBoxBinding.IsEnabled="True"
-                                        behaviors:PasswordBoxBinding.BoundPassword="{Binding TranslatorCredentialSecret, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        behaviors:PasswordBoxBinding.BoundPassword="{Binding TranslatorCredentialSecret, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
                                     <StackPanel
                                         Grid.Row="8"
                                         Grid.Column="1"
                                         Margin="0,12,0,0"
-                                        Orientation="Horizontal">
+                                        Orientation="Horizontal"
+                                        Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}">
                                         <Button
                                             MinWidth="120"
                                             Command="{Binding SaveTranslatorCredentialsCommand}"
@@ -607,13 +1035,14 @@
                             </Border>
 
                             <Border
-                                Margin="0,16,0,0"
-                                BorderBrush="#E3E8EE"
-                                BorderThickness="1"
-                                CornerRadius="4"
-                                Padding="16">
+                                x:Name="OverlaySettingsCard"
+                                Margin="0,12,0,0"
+                                MaxWidth="1040"
+                                Style="{StaticResource CardBorderStyle}"
+                                Visibility="{Binding IsOverlayTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <Grid>
                                     <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
@@ -628,9 +1057,7 @@
                                     <TextBlock
                                         Grid.Row="0"
                                         Grid.ColumnSpan="2"
-                                        FontSize="16"
-                                        FontWeight="SemiBold"
-                                        Foreground="#253238"
+                                        Style="{StaticResource SectionTitleStyle}"
                                         Text="Overlay settings" />
 
                                     <TextBlock
@@ -719,28 +1146,30 @@
                                         Grid.ColumnSpan="2"
                                         Margin="0,12,0,0"
                                         Foreground="#56616F"
-                                        Text="Use #RRGGBB or #AARRGGBB for mask color. Sliders are for quick tuning, inputs stay available for exact values." />
+                                        Text="Use #RRGGBB or #AARRGGBB for mask color. Sliders are for quick tuning; inputs stay available for exact values."
+                                        TextWrapping="Wrap" />
                                 </Grid>
                             </Border>
 
                             <Border
-                                Margin="0,16,0,0"
-                                BorderBrush="#E3E8EE"
-                                BorderThickness="1"
-                                CornerRadius="4"
-                                Padding="16">
+                                x:Name="ZoneLiveWorkspaceCard"
+                                Margin="0,12,0,0"
+                                MaxWidth="1180"
+                                Style="{StaticResource CardBorderStyle}"
+                                Visibility="{Binding IsZonesOcrOrLiveDiagnosticsTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <Grid>
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="*" />
                                     </Grid.RowDefinitions>
 
-                                    <DockPanel Grid.Row="0" LastChildFill="False">
+                                    <DockPanel
+                                        Grid.Row="0"
+                                        LastChildFill="False"
+                                        Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
                                         <TextBlock
                                             VerticalAlignment="Center"
-                                            FontSize="16"
-                                            FontWeight="SemiBold"
-                                            Foreground="#253238"
+                                            Style="{StaticResource SectionTitleStyle}"
                                             Text="OCR zones" />
                                         <TextBlock
                                             Margin="12,0,0,0"
@@ -750,15 +1179,17 @@
                                         <Button
                                             DockPanel.Dock="Right"
                                             Margin="8,0,0,0"
-                                            Padding="12,6"
                                             Command="{Binding MoveSelectedZoneDownCommand}"
-                                            Content="Down" />
+                                            Content="Later"
+                                            Style="{StaticResource CompactButtonStyle}"
+                                            ToolTip="Move the selected zone later in OCR processing order." />
                                         <Button
                                             DockPanel.Dock="Right"
                                             Margin="8,0,0,0"
-                                            Padding="12,6"
                                             Command="{Binding MoveSelectedZoneUpCommand}"
-                                            Content="Up" />
+                                            Content="Earlier"
+                                            Style="{StaticResource CompactButtonStyle}"
+                                            ToolTip="Move the selected zone earlier in OCR processing order." />
                                         <Button
                                             DockPanel.Dock="Right"
                                             Margin="8,0,0,0"
@@ -787,19 +1218,22 @@
                                     <Grid Grid.Row="1" Margin="0,16,0,0">
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="16" />
+                                            <RowDefinition Height="12" />
                                             <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="16" />
-                                            <RowDefinition Height="*" />
                                         </Grid.RowDefinitions>
 
-                                        <Border
+                                        <WrapPanel
+                                            x:Name="ZoneResponsivePanels"
                                             Grid.Row="0"
-                                            Background="#F9FBFD"
-                                            BorderBrush="#D7DEE8"
-                                            BorderThickness="1"
-                                            CornerRadius="4"
-                                            Padding="10">
+                                            HorizontalAlignment="Left">
+                                        <Border
+                                            x:Name="OcrPreprocessingCard"
+                                            Width="530"
+                                            Margin="12,0,0,0"
+                                            HorizontalAlignment="Left"
+                                            FlowDirection="LeftToRight"
+                                            Style="{StaticResource SubtleCardBorderStyle}"
+                                            Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
                                             <Grid>
                                                 <Grid.RowDefinitions>
                                                     <RowDefinition Height="Auto" />
@@ -927,98 +1361,17 @@
                                                         <TextBox Padding="6,4" Text="{Binding OcrPreprocessingScale, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                                     </StackPanel>
                                                 </UniformGrid>
-                                                <StackPanel
-                                                    Grid.Row="5"
-                                                    Grid.ColumnSpan="3"
-                                                    Margin="0,12,0,0">
-                                                    <DockPanel LastChildFill="False">
-                                                        <TextBlock
-                                                            VerticalAlignment="Center"
-                                                            Foreground="#253238"
-                                                            FontWeight="SemiBold"
-                                                            Text="OCR language packs" />
-                                                        <StackPanel
-                                                            DockPanel.Dock="Right"
-                                                            Orientation="Horizontal">
-                                                            <Button
-                                                                Margin="8,0,0,0"
-                                                                Padding="8,4"
-                                                                Command="{Binding CheckOcrLanguagePackChecklistCommand}"
-                                                                Content="Check common" />
-                                                            <Button
-                                                                Margin="8,0,0,0"
-                                                                Padding="8,4"
-                                                                Command="{Binding InstallTesseractLanguagePackChecklistCommand}"
-                                                                Content="Install Tesseract" />
-                                                            <Button
-                                                                Margin="8,0,0,0"
-                                                                Padding="8,4"
-                                                                Command="{Binding ShowWindowsOcrLanguagePackHelpCommand}"
-                                                                Content="Windows OCR help" />
-                                                        </StackPanel>
-                                                    </DockPanel>
-                                                    <Grid Margin="0,8,0,4">
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="100" />
-                                                            <ColumnDefinition Width="220" />
-                                                            <ColumnDefinition Width="90" />
-                                                            <ColumnDefinition Width="*" />
-                                                        </Grid.ColumnDefinitions>
-                                                        <TextBlock Foreground="#56616F" FontWeight="SemiBold" Text="Engine" />
-                                                        <TextBlock Grid.Column="1" Foreground="#56616F" FontWeight="SemiBold" Text="Language" />
-                                                        <TextBlock Grid.Column="2" Foreground="#56616F" FontWeight="SemiBold" Text="State" />
-                                                        <TextBlock Grid.Column="3" Foreground="#56616F" FontWeight="SemiBold" Text="Details" />
-                                                    </Grid>
-                                                    <ItemsControl ItemsSource="{Binding OcrLanguagePackChecklistItems}">
-                                                        <ItemsControl.ItemTemplate>
-                                                            <DataTemplate>
-                                                                <Grid Margin="0,2,0,0">
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="100" />
-                                                                        <ColumnDefinition Width="220" />
-                                                                        <ColumnDefinition Width="90" />
-                                                                        <ColumnDefinition Width="*" />
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <TextBlock
-                                                                        VerticalAlignment="Top"
-                                                                        Foreground="#253238"
-                                                                        Text="{Binding EngineId}" />
-                                                                    <StackPanel Grid.Column="1" Margin="0,0,8,0">
-                                                                        <TextBlock
-                                                                            Foreground="#253238"
-                                                                            Text="{Binding DisplayName}"
-                                                                            TextWrapping="Wrap" />
-                                                                        <TextBlock
-                                                                            Foreground="#56616F"
-                                                                            Text="{Binding Purpose}"
-                                                                            TextWrapping="Wrap" />
-                                                                    </StackPanel>
-                                                                    <TextBlock
-                                                                        Grid.Column="2"
-                                                                        VerticalAlignment="Top"
-                                                                        Foreground="#253238"
-                                                                        Text="{Binding State}" />
-                                                                    <TextBlock
-                                                                        Grid.Column="3"
-                                                                        Foreground="#56616F"
-                                                                        Text="{Binding Status}"
-                                                                        TextWrapping="Wrap" />
-                                                                </Grid>
-                                                            </DataTemplate>
-                                                        </ItemsControl.ItemTemplate>
-                                                    </ItemsControl>
-                                                </StackPanel>
                                             </Grid>
                                         </Border>
 
 
                                         <Border
-                                            Grid.Row="2"
-                                            Background="#F9FBFD"
-                                            BorderBrush="#D7DEE8"
-                                            BorderThickness="1"
-                                            CornerRadius="4"
-                                            Padding="12">
+                                            x:Name="ZoneSurfaceCard"
+                                            Width="570"
+                                            HorizontalAlignment="Left"
+                                            FlowDirection="LeftToRight"
+                                            Style="{StaticResource SubtleCardBorderStyle}"
+                                            Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
                                             <StackPanel>
                                                 <TextBlock
                                                     Foreground="#253238"
@@ -1031,18 +1384,24 @@
                                                 <TextBlock
                                                     Margin="0,4,0,12"
                                                     Foreground="#56616F"
-                                                    Text="Drag on the surface to create a zone. Click a zone to select it. Drag the lower-right handle to resize the selected zone." />
+                                                    Text="Drag empty space to create a zone. Drag a zone to move it. Drag its lower-right handle to resize it."
+                                                    TextWrapping="Wrap" />
 
-                                                <Border
-                                                    Width="{Binding ZoneSurfaceWidth}"
-                                                    Height="{Binding ZoneSurfaceHeight}"
-                                                    Background="#FFFFFF"
-                                                    BorderBrush="#CBD5E1"
-                                                    BorderThickness="1"
-                                                    CornerRadius="4"
+                                                <Viewbox
+                                                    Width="520"
+                                                    Height="292.5"
                                                     HorizontalAlignment="Left"
-                                                    SnapsToDevicePixels="True">
-                                                    <Canvas
+                                                    Stretch="Uniform">
+                                                    <Border
+                                                        Width="{Binding ZoneSurfaceWidth}"
+                                                        Height="{Binding ZoneSurfaceHeight}"
+                                                        Background="#FFFFFF"
+                                                        BorderBrush="#CBD5E1"
+                                                        BorderThickness="1"
+                                                        CornerRadius="4"
+                                                        HorizontalAlignment="Left"
+                                                        SnapsToDevicePixels="True">
+                                                        <Canvas
                                                         Background="#F8FAFC"
                                                         ClipToBounds="True"
                                                         MouseLeftButtonDown="OnZoneSurfaceMouseLeftButtonDown"
@@ -1071,12 +1430,13 @@
                                                                 <DataTemplate>
                                                                     <Grid
                                                                         Width="{Binding SurfaceWidth}"
-                                                                        Height="{Binding SurfaceHeight}">
+                                                                        Height="{Binding SurfaceHeight}"
+                                                                        Cursor="SizeAll"
+                                                                        MouseLeftButtonDown="OnZoneSurfaceZoneMouseLeftButtonDown"
+                                                                        Tag="{Binding Id}">
                                                                         <Border
                                                                             Background="#3390CDF4"
-                                                                            BorderThickness="2"
-                                                                            MouseLeftButtonDown="OnZoneSurfaceZoneMouseLeftButtonDown"
-                                                                            Tag="{Binding Id}">
+                                                                            BorderThickness="2">
                                                                             <Border.Style>
                                                                                 <Style TargetType="Border">
                                                                                     <Setter Property="BorderBrush" Value="#2563EB" />
@@ -1136,59 +1496,42 @@
                                                             BorderBrush="#0F766E"
                                                             BorderThickness="2"
                                                             Visibility="{Binding HasZoneSelectionPreview, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                                    </Canvas>
-                                                </Border>
+                                                        </Canvas>
+                                                    </Border>
+                                                </Viewbox>
                                             </StackPanel>
                                         </Border>
+                                        </WrapPanel>
 
-                                        <Grid Grid.Row="4">
+                                        <Grid
+                                            x:Name="SelectedZoneParametersPanel"
+                                            Grid.Row="2"
+                                            MaxWidth="1112"
+                                            HorizontalAlignment="Left">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="220" />
-                                                <ColumnDefinition Width="16" />
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
 
-                                            <ListBox
-                                                Grid.Column="0"
-                                                Height="240"
-                                                Background="#FDFDFD"
-                                                BorderBrush="#D7DEE8"
-                                                BorderThickness="1"
-                                                ItemsSource="{Binding OcrZones}"
-                                                SelectedItem="{Binding SelectedZone, Mode=TwoWay}">
-                                                <ListBox.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <Border Padding="8">
-                                                            <StackPanel>
-                                                                <TextBlock
-                                                                    Foreground="#253238"
-                                                                    FontWeight="SemiBold"
-                                                                    Text="{Binding DisplayName}" />
-                                                                <TextBlock
-                                                                    Margin="0,4,0,0"
-                                                                    Foreground="#56616F"
-                                                                    FontSize="11"
-                                                                    Text="{Binding AbsoluteBoundsSummary}" />
-                                                                <TextBlock
-                                                                    Margin="0,2,0,0"
-                                                                    Foreground="#2A5D67"
-                                                                    FontSize="11"
-                                                                    Text="{Binding OverlayTextStyleSummary}"
-                                                                    TextTrimming="CharacterEllipsis" />
-                                                            </StackPanel>
-                                                        </Border>
-                                                    </DataTemplate>
-                                                </ListBox.ItemTemplate>
-                                            </ListBox>
-
                                             <Border
-                                                Grid.Column="2"
                                                 Background="#F9FBFD"
                                                 BorderBrush="#D7DEE8"
                                                 BorderThickness="1"
                                                 CornerRadius="4"
-                                                IsEnabled="{Binding HasSelectedZone}"
                                                 Padding="12">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Grid.Column" Value="0" />
+                                                        <Setter Property="Grid.ColumnSpan" Value="1" />
+                                                        <Setter Property="IsEnabled" Value="{Binding HasSelectedZone}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsLiveDiagnosticsTabSelected}" Value="True">
+                                                                <Setter Property="Grid.Column" Value="0" />
+                                                                <Setter Property="Grid.ColumnSpan" Value="1" />
+                                                                <Setter Property="IsEnabled" Value="True" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
                                                 <Grid>
                                                     <Grid.RowDefinitions>
                                                         <RowDefinition Height="Auto" />
@@ -1209,12 +1552,14 @@
                                                     Grid.Column="0"
                                                     VerticalAlignment="Center"
                                                     Foreground="#253238"
-                                                    Text="Zone name" />
+                                                    Text="Zone name"
+                                                    Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                                 <TextBox
                                                     Grid.Row="0"
                                                     Grid.Column="1"
                                                     Padding="8,6"
-                                                    Text="{Binding SelectedZone.Name, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+                                                    Text="{Binding SelectedZone.Name, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}"
+                                                    Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
                                                 <Border
                                                     Grid.Row="1"
@@ -1224,7 +1569,8 @@
                                                     BorderBrush="#D7DEE8"
                                                     BorderThickness="1"
                                                     CornerRadius="4"
-                                                    Padding="10">
+                                                    Padding="10"
+                                                    Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                     <StackPanel>
                                                         <TextBlock
                                                             Foreground="#253238"
@@ -1290,12 +1636,14 @@
                                                     Margin="0,12,0,0"
                                                     VerticalAlignment="Top"
                                                     Foreground="#253238"
-                                                    Text="Absolute bounds" />
+                                                    Text="Absolute bounds"
+                                                    Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                                 <UniformGrid
                                                     Grid.Row="2"
                                                     Grid.Column="1"
                                                     Margin="0,12,0,0"
-                                                    Columns="4">
+                                                    Columns="4"
+                                                    Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                     <StackPanel Margin="0,0,6,0">
                                                         <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="X" />
                                                         <TextBox Padding="8,6" Text="{Binding SelectedZone.AbsoluteX, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
@@ -1320,12 +1668,14 @@
                                                     Margin="0,12,0,0"
                                                     VerticalAlignment="Top"
                                                     Foreground="#253238"
-                                                    Text="Relative bounds" />
+                                                    Text="Relative bounds"
+                                                    Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                                 <UniformGrid
                                                     Grid.Row="3"
                                                     Grid.Column="1"
                                                     Margin="0,12,0,0"
-                                                    Columns="4">
+                                                    Columns="4"
+                                                    Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                     <StackPanel Margin="0,0,6,0">
                                                         <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="X" />
                                                         <TextBox Padding="8,6" Text="{Binding SelectedZone.RelativeX, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
@@ -1352,7 +1702,8 @@
                                                     BorderBrush="#D7DEE8"
                                                     BorderThickness="1"
                                                     CornerRadius="4"
-                                                    Padding="10">
+                                                    Padding="10"
+                                                    Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                     <Grid>
                                                         <Grid.RowDefinitions>
                                                             <RowDefinition Height="Auto" />
@@ -1372,9 +1723,9 @@
                                                             Grid.ColumnSpan="4"
                                                             Foreground="#253238"
                                                             FontWeight="SemiBold"
-                                                            Text="Translation text style" />
+                                                            Text="Content layout &amp; overlay" />
                                                         <StackPanel
-                                                            Grid.Row="1"
+                                                            Grid.Row="3"
                                                             Grid.Column="0"
                                                             Margin="0,10,8,0">
                                                             <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="Font" />
@@ -1384,7 +1735,7 @@
                                                                 SelectedItem="{Binding SelectedZone.OverlayFontFamily, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
                                                         </StackPanel>
                                                         <StackPanel
-                                                            Grid.Row="1"
+                                                            Grid.Row="3"
                                                             Grid.Column="1"
                                                             Margin="0,10,8,0">
                                                             <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="Size" />
@@ -1393,39 +1744,45 @@
                                                                 Text="{Binding SelectedZone.OverlayFontSize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                                         </StackPanel>
                                                         <CheckBox
-                                                            Grid.Row="1"
+                                                            Grid.Row="3"
                                                             Grid.Column="2"
                                                             Margin="8,32,8,0"
                                                             VerticalAlignment="Top"
                                                             Content="Bold"
                                                             IsChecked="{Binding SelectedZone.OverlayIsBold, Mode=TwoWay}" />
                                                         <CheckBox
-                                                            Grid.Row="1"
+                                                            Grid.Row="3"
                                                             Grid.Column="3"
                                                             Margin="8,32,0,0"
                                                             VerticalAlignment="Top"
                                                             Content="Italic"
                                                             IsChecked="{Binding SelectedZone.OverlayIsItalic, Mode=TwoWay}" />
-                                                        <CheckBox
-                                                            Grid.Row="2"
+                                                        <StackPanel
+                                                            Grid.Row="1"
                                                             Grid.ColumnSpan="4"
-                                                            Margin="0,10,0,0"
-                                                            Content="Expand translated text from source center"
-                                                            IsChecked="{Binding SelectedZone.OverlayCanExpandBeyondSource, Mode=TwoWay}" />
+                                                            Margin="0,10,0,0">
+                                                            <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="Content layout mode" />
+                                                            <ComboBox
+                                                                Padding="8,6"
+                                                                DisplayMemberPath="DisplayName"
+                                                                ItemsSource="{Binding ContentLayoutModeOptions}"
+                                                                SelectedValue="{Binding SelectedZone.ContentLayoutMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}"
+                                                                SelectedValuePath="Mode" />
+                                                        </StackPanel>
                                                         <TextBlock
-                                                            Grid.Row="3"
+                                                            Grid.Row="2"
                                                             Grid.Column="0"
                                                             Margin="0,12,8,0"
                                                             VerticalAlignment="Center"
                                                             Foreground="#56616F"
-                                                            Text="Candidate grouping" />
+                                                            Text="Mode policy" />
                                                         <TextBlock
-                                                            Grid.Row="3"
+                                                            Grid.Row="2"
                                                             Grid.Column="1"
                                                             Grid.ColumnSpan="3"
                                                             Margin="0,10,0,0"
                                                             Foreground="#56616F"
-                                                            Text="Automatic bounded Paddle grouping. Legacy full-page grouping is diagnostic-only and is not used by live translation."
+                                                            Text="{Binding SelectedZone.ContentLayoutPolicySummary}"
                                                             TextWrapping="Wrap" />
                                                     </Grid>
                                                 </Border>
@@ -1435,19 +1792,20 @@
                                                     Grid.ColumnSpan="2"
                                                     Margin="0,12,0,0"
                                                     Foreground="#56616F"
-                                                    Text="Absolute values are pixel-based. Relative values stay within 0..1 and are useful for future resolution-aware workflows." />
+                                                    Text="Absolute values are pixel-based. Relative values stay within 0..1 and are useful for future resolution-aware workflows."
+                                                    Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
                                                 <Border
                                                     Grid.Row="6"
                                                     Grid.ColumnSpan="2"
                                                     Margin="0,12,0,0"
-                                                    Background="#FFFFFF"
-                                                    BorderBrush="#D7DEE8"
-                                                    BorderThickness="1"
-                                                    CornerRadius="4"
-                                                    Padding="10">
+                                                    Style="{StaticResource SubtleCardBorderStyle}"
+                                                    Visibility="{Binding IsLiveDiagnosticsTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                     <Grid>
                                                         <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto" />
+                                                            <RowDefinition Height="Auto" />
+                                                            <RowDefinition Height="Auto" />
                                                             <RowDefinition Height="Auto" />
                                                             <RowDefinition Height="Auto" />
                                                             <RowDefinition Height="Auto" />
@@ -1464,55 +1822,61 @@
                                                             <ColumnDefinition Width="*" />
                                                         </Grid.ColumnDefinitions>
 
-                                                        <Button
+                                                        <TextBlock
                                                             Grid.Row="0"
+                                                            Grid.ColumnSpan="4"
+                                                            Style="{StaticResource SectionTitleStyle}"
+                                                            Text="Live translation" />
+                                                        <Button
+                                                            Grid.Row="5"
                                                             Grid.Column="0"
+                                                            Margin="0,10,0,0"
                                                             Padding="12,6"
                                                             Command="{Binding RefreshCapturePreviewCommand}"
                                                             Content="Refresh preview" />
                                                         <Button
-                                                            Grid.Row="0"
+                                                            Grid.Row="5"
                                                             Grid.Column="1"
-                                                            Margin="8,0,0,0"
+                                                            Margin="8,10,0,0"
                                                             Padding="12,6"
                                                             Command="{Binding MeasureCaptureRefreshCommand}"
                                                             Content="Measure FPS" />
                                                         <TextBlock
-                                                            Grid.Row="0"
+                                                            Grid.Row="5"
                                                             Grid.Column="3"
-                                                            Margin="12,0,0,0"
+                                                            Margin="12,10,0,0"
                                                             VerticalAlignment="Center"
                                                             Foreground="#56616F"
                                                             Text="{Binding CapturePreviewStatus}" />
                                                         <TextBlock
-                                                            Grid.Row="1"
+                                                            Grid.Row="6"
                                                             Grid.ColumnSpan="4"
                                                             Margin="0,8,0,0"
                                                             Foreground="#2A5D67"
                                                             Text="{Binding CaptureRefreshMetricsSummary}" />
                                                         <Button
-                                                            Grid.Row="2"
+                                                            Grid.Row="7"
                                                             Grid.Column="0"
                                                             Margin="0,10,0,0"
                                                             Padding="12,6"
                                                             Command="{Binding RecognizeOcrPreviewCommand}"
                                                             Content="Recognize OCR" />
                                                         <Button
-                                                            Grid.Row="2"
+                                                            Grid.Row="7"
                                                             Grid.Column="1"
                                                             Margin="8,10,0,0"
                                                             Padding="12,6"
                                                             Command="{Binding RunTranslationPipelineCommand}"
                                                             Content="Run all zones" />
                                                         <Button
-                                                            Grid.Row="2"
+                                                            Grid.Row="7"
                                                             Grid.Column="2"
                                                             Margin="8,10,0,0"
                                                             Padding="12,6"
                                                             Command="{Binding CollectDebugInfoCommand}"
                                                             Content="Collect debug info" />
                                                         <TextBlock
-                                                            Grid.Row="2"
+                                                            Grid.Row="7"
                                                             Grid.Column="3"
                                                             Margin="12,10,0,0"
                                                             VerticalAlignment="Center"
@@ -1542,44 +1906,55 @@
                                                             Text="{Binding LiveTranslationTimingSummary}"
                                                             TextWrapping="Wrap" />
                                                         <Button
-                                                            Grid.Row="4"
+                                                            Grid.Row="1"
                                                             Grid.Column="0"
-                                                            Margin="0,10,0,0"
+                                                            MinWidth="180"
+                                                            Margin="0,18,0,0"
                                                             Padding="12,6"
+                                                            Style="{StaticResource PrimaryButtonStyle}"
                                                             Command="{Binding StartLiveTranslationCommand}"
                                                             Content="Start live" />
                                                         <Button
-                                                            Grid.Row="4"
+                                                            Grid.Row="1"
                                                             Grid.Column="1"
-                                                            Margin="8,10,0,0"
+                                                            MinWidth="160"
+                                                            Margin="10,18,0,0"
                                                             Padding="12,6"
                                                             Command="{Binding StopLiveTranslationCommand}"
                                                             Content="Stop live" />
                                                         <Button
-                                                            Grid.Row="4"
+                                                            Grid.Row="1"
                                                             Grid.Column="2"
-                                                            Margin="8,10,0,0"
+                                                            MinWidth="180"
+                                                            Margin="10,18,0,0"
                                                             Padding="12,6"
                                                             Command="{Binding OpenLiveDiagnosticsFolderCommand}"
                                                             Content="Open live reports"
                                                             ToolTip="Open the folder with automatically saved live-session reports." />
                                                         <TextBlock
-                                                            Grid.Row="4"
-                                                            Grid.Column="3"
-                                                            Margin="12,10,0,0"
+                                                            Grid.Row="2"
+                                                            Grid.ColumnSpan="4"
+                                                            Margin="0,14,0,0"
                                                             VerticalAlignment="Center"
-                                                            Foreground="#2A5D67"
+                                                            Foreground="#087F55"
+                                                            FontWeight="SemiBold"
                                                             Text="{Binding PipelineStatus}"
                                                             TextWrapping="Wrap" />
+                                                        <TextBlock
+                                                            Grid.Row="4"
+                                                            Grid.ColumnSpan="4"
+                                                            Margin="0,24,0,0"
+                                                            Style="{StaticResource SectionTitleStyle}"
+                                                            Text="Diagnostics" />
                                                         <Button
-                                                            Grid.Row="5"
+                                                            Grid.Row="8"
                                                             Grid.Column="0"
                                                             Margin="0,10,0,0"
                                                             Padding="12,6"
                                                             Command="{Binding CleanupTranslationCacheCommand}"
                                                             Content="Clean cache" />
                                                         <TextBlock
-                                                            Grid.Row="5"
+                                                            Grid.Row="8"
                                                             Grid.Column="1"
                                                             Grid.ColumnSpan="3"
                                                             Margin="12,10,0,0"
@@ -1587,7 +1962,7 @@
                                                             Foreground="#56616F"
                                                             Text="{Binding TranslationCacheStatus}" />
                                                         <ItemsControl
-                                                            Grid.Row="6"
+                                                            Grid.Row="9"
                                                             Grid.ColumnSpan="4"
                                                             Margin="0,10,0,0"
                                                             ItemsSource="{Binding OcrDebugTextBlocks}"
@@ -1617,7 +1992,7 @@
                                                             </ItemsControl.ItemTemplate>
                                                         </ItemsControl>
                                                         <Border
-                                                            Grid.Row="7"
+                                                            Grid.Row="10"
                                                             Grid.ColumnSpan="4"
                                                             Margin="0,10,0,0"
                                                             Background="#F8FAFC"
@@ -1685,20 +2060,8 @@
                                 </Grid>
                             </Border>
 
-                            <DockPanel Margin="0,20,0,0" LastChildFill="False">
-                                <Button
-                                    DockPanel.Dock="Right"
-                                    Margin="8,0,0,0"
-                                    Padding="14,8"
-                                    Command="{Binding SaveProfileCommand}"
-                                    Content="Save" />
-                                <Button
-                                    DockPanel.Dock="Right"
-                                    Padding="14,8"
-                                    Command="{Binding ResetEditorCommand}"
-                                    Content="Reset" />
-                            </DockPanel>
                         </StackPanel>
+                        </Border>
                     </ScrollViewer>
                 </Border>
             </Grid>
@@ -1707,34 +2070,50 @@
 
     <Grid Background="#F7F8FA">
         <Grid.RowDefinitions>
-            <RowDefinition Height="56" />
+            <RowDefinition Height="64" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="32" />
+            <RowDefinition Height="40" />
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0" Background="#253238">
-            <DockPanel LastChildFill="False" Margin="20,0">
+        <Border Grid.Row="0" Background="#10242C">
+            <DockPanel LastChildFill="False" Margin="24,0">
+                <Border
+                    Width="34"
+                    Height="34"
+                    Margin="0,0,12,0"
+                    VerticalAlignment="Center"
+                    BorderBrush="#B9D8D4"
+                    BorderThickness="1"
+                    CornerRadius="7">
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        FontSize="12"
+                        FontWeight="Bold"
+                        Foreground="#FFFFFF"
+                        Text="GT" />
+                </Border>
                 <TextBlock
                     VerticalAlignment="Center"
-                    FontSize="18"
+                    FontSize="20"
                     FontWeight="SemiBold"
                     Foreground="#FFFFFF"
                     Text="{Binding ApplicationName}" />
-                <TextBlock
-                    DockPanel.Dock="Right"
-                    VerticalAlignment="Center"
-                    Foreground="#B9D8D4"
-                    Text="{Binding CurrentStage}" />
             </DockPanel>
         </Border>
 
         <ContentControl
             Grid.Row="1"
-            Margin="24"
+            Margin="0"
             Content="{Binding Navigation.CurrentViewModel}" />
 
-        <StatusBar Grid.Row="2" Background="#EEF2F6">
-            <TextBlock Text="Ready" />
+        <StatusBar
+            Grid.Row="2"
+            Padding="24,0"
+            Background="#F8FAFB"
+            BorderBrush="#DCE3E9"
+            BorderThickness="0,1,0,0">
+            <TextBlock Foreground="#66727F" Text="{Binding StatusMessage}" TextTrimming="CharacterEllipsis" />
         </StatusBar>
     </Grid>
 </UserControl>

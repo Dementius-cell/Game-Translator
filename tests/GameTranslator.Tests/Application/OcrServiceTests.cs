@@ -210,6 +210,29 @@ public sealed class OcrServiceTests
         var engineRequest = Assert.Single(engine.Requests);
         Assert.Equal(OcrLayoutMode.Comic, engineRequest.LayoutMode);
     }
+
+    [Fact]
+    public async Task RecognizeAsync_WithPreprocessingSettings_PreservesContentLayoutModeForTheEngine()
+    {
+        var engine = new FakeOcrEngine();
+        var service = new OcrService(engine, new OcrPreprocessor());
+        var request = new OcrRequest(
+            CreateFrame(FirstRegion),
+            "en",
+            "zone-a",
+            new OcrPreprocessingSettings
+            {
+                IsEnabled = true,
+                Scale = 2,
+            },
+            contentLayoutMode: ContentLayoutMode.DialogComic);
+
+        await service.RecognizeAsync(request);
+
+        var engineRequest = Assert.Single(engine.Requests);
+        Assert.Equal(ContentLayoutMode.DialogComic, engineRequest.ContentLayoutMode);
+    }
+
     [Fact]
     public void OcrResult_WhenTextBlockExceedsFrame_ThrowsArgumentException()
     {

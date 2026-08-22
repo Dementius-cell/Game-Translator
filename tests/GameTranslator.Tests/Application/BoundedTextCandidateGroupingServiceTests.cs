@@ -113,6 +113,95 @@ public sealed class BoundedTextCandidateGroupingServiceTests
             result.Select(candidate => candidate.Bounds));
     }
 
+    [Fact]
+    public void Group_ComplexSouthEastAsian_MergesBoundedRaggedDialogLines()
+    {
+        var service = new BoundedTextCandidateGroupingService();
+
+        var result = service.Group(
+            new[]
+            {
+                Candidate(100, 100, 90, 20),
+                Candidate(150, 127, 90, 20),
+                Candidate(110, 220, 90, 20),
+            },
+            zoneHeight: 400,
+            WritingSystemGroupingProfile.ComplexSouthEastAsian);
+
+        Assert.Equal(
+            new[]
+            {
+                new BoundingBox(100, 100, 140, 47),
+                new BoundingBox(110, 220, 90, 20),
+            },
+            result.Select(candidate => candidate.Bounds));
+    }
+
+    [Fact]
+    public void Group_SpacedProfile_DoesNotMergeTheSameRaggedDialogLines()
+    {
+        var service = new BoundedTextCandidateGroupingService();
+
+        var result = service.Group(
+            new[]
+            {
+                Candidate(100, 100, 90, 20),
+                Candidate(150, 127, 90, 20),
+            },
+            zoneHeight: 400,
+            WritingSystemGroupingProfile.SpacedLeftToRight);
+
+        Assert.Equal(
+            new[]
+            {
+                new BoundingBox(100, 100, 90, 20),
+                new BoundingBox(150, 127, 90, 20),
+            },
+            result.Select(candidate => candidate.Bounds));
+    }
+
+    [Fact]
+    public void Group_ComplexSouthEastAsian_AllowsEightBoundedDialogLinesButNotANinth()
+    {
+        var service = new BoundedTextCandidateGroupingService();
+        var candidates = Enumerable.Range(0, 9)
+            .Select(index => Candidate(100 + (index % 2) * 4, 100 + index * 22, 50, 16));
+
+        var result = service.Group(
+            candidates,
+            zoneHeight: 400,
+            WritingSystemGroupingProfile.ComplexSouthEastAsian);
+
+        Assert.Equal(
+            new[]
+            {
+                new BoundingBox(100, 100, 54, 170),
+                new BoundingBox(100, 276, 50, 16),
+            },
+            result.Select(candidate => candidate.Bounds));
+    }
+
+    [Fact]
+    public void Group_SpacedProfile_RetainsTheGlobalSixLineCap()
+    {
+        var service = new BoundedTextCandidateGroupingService();
+        var candidates = Enumerable.Range(0, 9)
+            .Select(index => Candidate(100 + (index % 2) * 4, 100 + index * 22, 50, 16));
+
+        var result = service.Group(
+            candidates,
+            zoneHeight: 400,
+            WritingSystemGroupingProfile.SpacedLeftToRight);
+
+        Assert.Equal(
+            new[]
+            {
+                new BoundingBox(100, 100, 54, 126),
+                new BoundingBox(100, 232, 54, 60),
+            },
+            result.Select(candidate => candidate.Bounds));
+    }
+
     private static TextCandidate Candidate(int x, int y, int width, int height)
     {
         return new TextCandidate(new BoundingBox(x, y, width, height), 0.9d);

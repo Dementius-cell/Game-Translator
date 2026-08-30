@@ -33,6 +33,12 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$runtimeLockPath = Join-Path $PSScriptRoot "paddle-runtime\paddle-runtime-win-x64.lock.json"
+$runtimeLock = Get-Content -LiteralPath $runtimeLockPath -Raw | ConvertFrom-Json
+$requiredTesseractLanguagePacks = @(
+    $runtimeLock.tesseractLanguagePacks |
+        ForEach-Object { ([string]$_.code).Trim().ToLowerInvariant() }
+)
 $bootstrapRuntimeManifest = $null
 $usesBootstrapRuntime = -not [string]::IsNullOrWhiteSpace($BootstrapRuntimeRoot)
 $explicitRuntimeInputs = @($PythonRuntimeRoot, $PaddleVenvRoot, $ModelCacheRoot)
@@ -203,6 +209,30 @@ $normalizedTesseractLanguagePacks = @(
         Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
         Select-Object -Unique
 )
+$missingTesseractLanguagePacks = @(
+    $requiredTesseractLanguagePacks |
+        Where-Object { $normalizedTesseractLanguagePacks -notcontains $_ }
+)
+$unexpectedTesseractLanguagePacks = @(
+    $normalizedTesseractLanguagePacks |
+        Where-Object { $requiredTesseractLanguagePacks -notcontains $_ }
+)
+if ($missingTesseractLanguagePacks.Count -gt 0 -or $unexpectedTesseractLanguagePacks.Count -gt 0) {
+    $missingDescription = if ($missingTesseractLanguagePacks.Count -gt 0) {
+        $missingTesseractLanguagePacks -join ", "
+    }
+    else {
+        "none"
+    }
+    $unexpectedDescription = if ($unexpectedTesseractLanguagePacks.Count -gt 0) {
+        $unexpectedTesseractLanguagePacks -join ", "
+    }
+    else {
+        "none"
+    }
+
+    throw "Portable release requires the complete Tesseract language pack set from the checked-in runtime lock. Missing: $missingDescription. Unexpected: $unexpectedDescription."
+}
 
 if (Test-Path -LiteralPath $releaseDirectory) {
     throw "Release directory already exists and will not be overwritten: $releaseDirectory"
@@ -222,6 +252,14 @@ foreach ($language in $normalizedTesseractLanguagePacks) {
     $sourcePath = Join-Path $tessdataSourceDirectory "$language.traineddata"
     if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
         throw "Requested Tesseract language pack is missing: $sourcePath"
+    }
+
+    $lockedPack = $runtimeLock.tesseractLanguagePacks |
+        Where-Object { $_.code -eq $language } |
+        Select-Object -First 1
+    $actualHash = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if (-not [string]::Equals($actualHash, [string]$lockedPack.sha256, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Requested Tesseract language pack '$language' does not match the checked-in runtime lock. Expected $($lockedPack.sha256), received ${actualHash}: $sourcePath"
     }
 }
 

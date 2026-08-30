@@ -8,6 +8,13 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+$repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$runtimeLockPath = Join-Path $PSScriptRoot "paddle-runtime\paddle-runtime-win-x64.lock.json"
+$runtimeLock = Get-Content -LiteralPath $runtimeLockPath -Raw | ConvertFrom-Json
+$requiredTesseractLanguagePacks = @(
+    $runtimeLock.tesseractLanguagePacks |
+        ForEach-Object { ([string]$_.code).Trim().ToLowerInvariant() }
+)
 $releasePath = (Resolve-Path $ReleaseDirectory).Path
 $detectorDirectory = Join-Path $releasePath "app\candidate-detector"
 $sitePackages = Join-Path $detectorDirectory "Lib\site-packages"
@@ -70,6 +77,27 @@ $bundledTesseractLanguagePacks = if (Test-Path -LiteralPath $tessdataPath -PathT
 }
 else {
     @()
+}
+$bundledTesseractLanguagePackCodes = @($bundledTesseractLanguagePacks.code)
+$missingTesseractLanguagePacks = @(
+    $requiredTesseractLanguagePacks |
+        Where-Object { $bundledTesseractLanguagePackCodes -notcontains $_ }
+)
+$unexpectedTesseractLanguagePacks = @(
+    $bundledTesseractLanguagePackCodes |
+        Where-Object { $requiredTesseractLanguagePacks -notcontains $_ }
+)
+if ($missingTesseractLanguagePacks.Count -gt 0 -or $unexpectedTesseractLanguagePacks.Count -gt 0) {
+    throw "Portable release requires the complete Tesseract language pack set from the checked-in runtime lock. Missing: $($missingTesseractLanguagePacks -join ', '). Unexpected: $($unexpectedTesseractLanguagePacks -join ', ')."
+}
+
+foreach ($pack in $bundledTesseractLanguagePacks) {
+    $lockedPack = $runtimeLock.tesseractLanguagePacks |
+        Where-Object { $_.code -eq $pack.code } |
+        Select-Object -First 1
+    if (-not [string]::Equals([string]$pack.sha256, [string]$lockedPack.sha256, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Bundled Tesseract language pack '$($pack.code)' does not match the checked-in runtime lock. Expected $($lockedPack.sha256), received $($pack.sha256)."
+    }
 }
 
 $verification = if (Test-Path -LiteralPath $verificationPath) {

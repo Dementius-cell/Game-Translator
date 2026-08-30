@@ -1,5 +1,6 @@
 using System.IO;
 using System.Reflection;
+using System.Text.Json;
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Ocr;
 using GameTranslator.Domain.Profiles;
@@ -145,6 +146,70 @@ public sealed class TesseractOcrEngineTests
         Assert.Contains("portable-tesseract-ocr-smoke.json", buildScript, StringComparison.Ordinal);
         Assert.Contains("portable-tesseract-ocr-smoke.json", finalizeScript, StringComparison.Ordinal);
         Assert.Contains("portableTesseractOcrSmoke", finalizeScript, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PortableReleasePackaging_PinsAndRequiresCompleteOfflineCjkLanguagePackSet()
+    {
+        var repositoryRoot = RepositoryRoot.Find();
+        using var lockDocument = JsonDocument.Parse(File.ReadAllText(Path.Combine(
+            repositoryRoot,
+            "tools",
+            "paddle-runtime",
+            "paddle-runtime-win-x64.lock.json")));
+        var languagePacks = lockDocument.RootElement
+            .GetProperty("tesseractLanguagePacks")
+            .EnumerateArray()
+            .ToDictionary(
+                element => element.GetProperty("code").GetString()!,
+                element => element.GetProperty("sha256").GetString()!,
+                StringComparer.Ordinal);
+
+        Assert.Equal(
+            ["chi_sim", "chi_sim_vert", "eng", "jpn", "jpn_vert", "tha"],
+            languagePacks.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(
+            "bf1e2640954691797e2dc14f38533e601b59ee37958698ae0f0b81dc6f09c71b",
+            languagePacks["jpn_vert"]);
+        Assert.Equal(
+            "20590de84725bab69cde93bd6e8ed360a13cc5421a7e7364ddeb93e9af53d6da",
+            languagePacks["chi_sim_vert"]);
+
+        var readme = File.ReadAllText(Path.Combine(repositoryRoot, "README.md"));
+        Assert.Contains(
+            "-TesseractLanguagePacks eng,jpn,jpn_vert,chi_sim,chi_sim_vert,tha",
+            readme,
+            StringComparison.Ordinal);
+        Assert.Contains("-SelfContained", readme, StringComparison.Ordinal);
+
+        var buildScript = File.ReadAllText(Path.Combine(
+            repositoryRoot,
+            "tools",
+            "build-track-d-opt-in-release.ps1"));
+        var bootstrapScript = File.ReadAllText(Path.Combine(
+            repositoryRoot,
+            "tools",
+            "bootstrap-paddle-runtime.ps1"));
+        var finalizeScript = File.ReadAllText(Path.Combine(
+            repositoryRoot,
+            "tools",
+            "finalize-track-d-opt-in-release.ps1"));
+        Assert.Contains("$requiredTesseractLanguagePacks", buildScript, StringComparison.Ordinal);
+        Assert.Contains("$missingTesseractLanguagePacks", buildScript, StringComparison.Ordinal);
+        Assert.Contains(
+            "Portable release requires the complete Tesseract language pack set",
+            buildScript,
+            StringComparison.Ordinal);
+        Assert.Contains("$requiredTesseractLanguagePacks", finalizeScript, StringComparison.Ordinal);
+        Assert.Contains("$missingTesseractLanguagePacks", finalizeScript, StringComparison.Ordinal);
+        Assert.Contains(
+            "Portable release requires the complete Tesseract language pack set",
+            finalizeScript,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "-TesseractLanguagePacks eng,jpn,jpn_vert,chi_sim,chi_sim_vert,tha",
+            bootstrapScript,
+            StringComparison.Ordinal);
     }
 
     [Theory]

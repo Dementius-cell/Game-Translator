@@ -32,11 +32,12 @@ dotnet test GameTranslator.sln -c Release --no-build --no-restore
 
 .\tools\build-track-d-opt-in-release.ps1 `
   -BootstrapRuntimeRoot .\work\paddle-runtime-win-x64 `
-  -TesseractLanguagePacks eng,jpn,chi_sim,tha `
+  -TesseractLanguagePacks eng,jpn,jpn_vert,chi_sim,chi_sim_vert,tha `
+  -SelfContained `
   -ReleaseName v0.1.0-local-paddle
 ```
 
-The bootstrap pins CPython/Paddle package versions (including the official Paddle CUDA 12.9 wheel index) and verifies the PP-OCRv6 detector and four Tesseract packs by SHA-256. The first run downloads only their official distributions. The package build verifies the bootstrap before copying it; if the GPU runtime is unavailable, the script fails rather than silently producing a non-live package.
+The bootstrap pins CPython/Paddle package versions (including the official Paddle CUDA 12.9 wheel index) and verifies the PP-OCRv6 detector and six Tesseract packs by SHA-256. The first run downloads only their official distributions. The package build requires the exact locked language-pack set and verifies every pack before copying it; if the GPU runtime is unavailable or a language pack is missing, unexpected or changed, the script fails rather than silently producing an incomplete package.
 
 ## Documentation
 

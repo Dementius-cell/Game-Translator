@@ -140,7 +140,7 @@ Tracked UI changes (`5`): `App.xaml.cs`, `GameTranslator.UI.csproj`, `MainViewMo
 
 Tracked tests (`19`) cover Application grouping/OCR/cache/pipeline/provider behavior, profile validation/storage, Infrastructure providers/Paddle/Tesseract, calibration, zone layout, profile view models and workspace XAML.
 
-Tracked release tooling changes (`3`): `build-track-d-opt-in-release.ps1`, `finalize-track-d-opt-in-release.ps1`, `verify-track-d-opt-in-release.ps1`.
+Tracked release tooling changes (`3`): `tools/build-track-d-opt-in-release.ps1`, `tools/finalize-track-d-opt-in-release.ps1`, `tools/verify-track-d-opt-in-release.ps1`.
 
 Untracked source/document files (`8`, including this inventory):
 

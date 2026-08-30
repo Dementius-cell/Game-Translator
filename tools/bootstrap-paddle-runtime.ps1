@@ -291,5 +291,5 @@ $runtimeManifest = [ordered]@{
 $runtimeManifest | ConvertTo-Json -Depth 7 | Set-Content -LiteralPath $runtimeManifestPath -Encoding utf8
 
 Write-Host "Pinned Paddle runtime bootstrap completed: $runtimePath"
-Write-Host "Package with: .\tools\build-track-d-opt-in-release.ps1 -BootstrapRuntimeRoot '$runtimePath' -TesseractLanguagePacks eng,jpn,chi_sim,tha"
+Write-Host "Package with: .\tools\build-track-d-opt-in-release.ps1 -BootstrapRuntimeRoot '$runtimePath' -TesseractLanguagePacks eng,jpn,jpn_vert,chi_sim,chi_sim_vert,tha -SelfContained"
 $global:LASTEXITCODE = 0

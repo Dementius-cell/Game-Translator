@@ -1,24 +1,22 @@
 using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
+using GameTranslator.Application.Ocr;
 using GameTranslator.Application.Translation;
 
 namespace GameTranslator.Infrastructure.Translation;
 
+/// <summary>
+/// Direct Yandex Translate mode compatible with ScreTran's GTranslate 2.2.8 YandexTranslator.
+/// </summary>
 public sealed class YandexWebTranslatorProvider : ITranslatorProvider
 {
+    private const string YandexAndroidUserAgent = "ru.yandex.translate/3.20.2024";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private static readonly Uri TranslateApiUri = new("https://translate.yandex.net/api/v1/tr.json/translate");
-    private static readonly Uri[] SessionPageUris =
-    {
-        new("https://translate.yandex.ru/"),
-        new("https://translate.yandex.com/"),
-    };
-
     private readonly HttpClient httpClient;
-    private readonly SemaphoreSlim sessionLock = new(1, 1);
-    private YandexWebSession? session;
+    private readonly object ucidLock = new();
+    private Guid ucid;
+    private DateTimeOffset ucidExpiresAt;
 
     public YandexWebTranslatorProvider(HttpClient httpClient)
     {
@@ -36,55 +34,31 @@ public sealed class YandexWebTranslatorProvider : ITranslatorProvider
         var translatedTexts = new List<string>(request.Texts.Count);
         foreach (var text in request.Texts)
         {
-            translatedTexts.Add(await TranslateTextWithFreshSessionAsync(request, text, cancellationToken));
+            translatedTexts.Add(await TranslateTextAsync(request, text, cancellationToken));
         }
 
         return new TranslateResponse(translatedTexts, DateTimeOffset.UtcNow, ProviderId);
     }
 
-    private async Task<string> TranslateTextWithFreshSessionAsync(
-        TranslateRequest request,
-        string text,
-        CancellationToken cancellationToken)
-    {
-        var sessionSnapshot = await GetSessionAsync(forceRefresh: true, cancellationToken);
-
-        try
-        {
-            return await TranslateTextAsync(request, sessionSnapshot, text, cancellationToken);
-        }
-        catch (TranslatorProviderException) when (!cancellationToken.IsCancellationRequested)
-        {
-            InvalidateSession();
-            sessionSnapshot = await GetSessionAsync(forceRefresh: true, cancellationToken);
-
-            return await TranslateTextAsync(request, sessionSnapshot, text, cancellationToken);
-        }
-    }
-
     private async Task<string> TranslateTextAsync(
         TranslateRequest request,
-        YandexWebSession sessionSnapshot,
         string text,
         CancellationToken cancellationToken)
     {
         using var httpRequest = new HttpRequestMessage(
             HttpMethod.Post,
-            CreateTranslateUri(sessionSnapshot));
-        AddBrowserHeaders(httpRequest);
-        httpRequest.Headers.Referrer = sessionSnapshot.Referrer;
+            CreateTranslateUri(request.Credentials.Endpoint));
+        httpRequest.Headers.UserAgent.ParseAdd(YandexAndroidUserAgent);
         httpRequest.Content = new FormUrlEncodedContent(
             new Dictionary<string, string>
             {
-                ["lang"] = CreateLanguagePair(request),
-                ["reason"] = "auto",
-                ["format"] = "text",
                 ["text"] = text,
+                // ScreTran calls GTranslate without a source language, so Yandex detects it.
+                ["lang"] = YandexHotPatch(NormalizeLanguageTag(request.TargetLanguage)),
             });
 
         using var response = await httpClient.SendAsync(httpRequest, cancellationToken);
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-
         if (!response.IsSuccessStatusCode)
         {
             throw CreateProviderException(response.StatusCode, responseBody);
@@ -104,15 +78,28 @@ public sealed class YandexWebTranslatorProvider : ITranslatorProvider
                 exception);
         }
 
-        if (payload?.Code is not null && payload.Code != 200)
+        if (payload is null)
         {
             throw new TranslatorProviderException(
                 ProviderId,
-                TranslatorProviderFailureKind.ProviderCode,
-                $"YandexWeb translation request failed with provider code {payload.Code}: {payload.Message ?? "The provider did not return a message."}");
+                TranslatorProviderFailureKind.Parse,
+                "YandexWeb translation response was empty.");
         }
 
-        var translation = payload?.Text?.FirstOrDefault();
+        if (payload.Code != 200)
+        {
+            throw CreateProviderException(payload.Code, payload.Message);
+        }
+
+        if (string.IsNullOrWhiteSpace(payload.Lang) || !payload.Lang.Contains('-', StringComparison.Ordinal))
+        {
+            throw new TranslatorProviderException(
+                ProviderId,
+                TranslatorProviderFailureKind.UnsupportedResponse,
+                "YandexWeb translation response did not identify a source and target language.");
+        }
+
+        var translation = payload.Text?.FirstOrDefault();
         if (string.IsNullOrWhiteSpace(translation))
         {
             throw new TranslatorProviderException(
@@ -124,128 +111,25 @@ public sealed class YandexWebTranslatorProvider : ITranslatorProvider
         return translation;
     }
 
-    private async Task<YandexWebSession> GetSessionAsync(
-        bool forceRefresh,
-        CancellationToken cancellationToken)
+    private Uri CreateTranslateUri(Uri endpoint)
     {
-        if (!forceRefresh && session is { ExpiresAt: var expiresAt } cached && expiresAt > DateTimeOffset.UtcNow)
-        {
-            return cached;
-        }
-
-        await sessionLock.WaitAsync(cancellationToken);
-        try
-        {
-            if (!forceRefresh
-                && session is { ExpiresAt: var expiresAtAfterLock } cachedAfterLock
-                && expiresAtAfterLock > DateTimeOffset.UtcNow)
-            {
-                return cachedAfterLock;
-            }
-
-            var failures = new List<string>();
-            foreach (var pageUri in SessionPageUris)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                try
-                {
-                    using var httpRequest = new HttpRequestMessage(HttpMethod.Get, pageUri);
-                    AddBrowserHeaders(httpRequest);
-
-                    using var response = await httpClient.SendAsync(httpRequest, cancellationToken);
-                    var html = await response.Content.ReadAsStringAsync(cancellationToken);
-                    if (!response.IsSuccessStatusCode)
-                    {
-                        failures.Add($"{pageUri.Host}: HTTP {(int)response.StatusCode}");
-                        continue;
-                    }
-
-                    if (IsCaptchaPage(response.RequestMessage?.RequestUri, html))
-                    {
-                        failures.Add($"{pageUri.Host}: captcha page returned");
-                        continue;
-                    }
-
-                    session = ParseSession(pageUri, html);
-                    return session;
-                }
-                catch (TranslatorProviderException exception)
-                {
-                    failures.Add($"{pageUri.Host}: {exception.Message}");
-                }
-            }
-
-            throw new TranslatorProviderException(
-                ProviderId,
-                failures.Any(failure => failure.Contains("captcha", StringComparison.OrdinalIgnoreCase))
-                    ? TranslatorProviderFailureKind.Throttled
-                    : TranslatorProviderFailureKind.UnsupportedResponse,
-                $"YandexWeb session could not be created. {string.Join(" ", failures)}");
-        }
-        finally
-        {
-            sessionLock.Release();
-        }
-    }
-
-    private static Uri CreateTranslateUri(YandexWebSession sessionSnapshot)
-    {
+        var root = endpoint.ToString().TrimEnd('/');
         return new Uri(
-            $"{TranslateApiUri}?id={Uri.EscapeDataString(sessionSnapshot.RequestId)}&srv=tr-text");
+            $"{root}/api/v1/tr.json/translate?ucid={GetOrCreateUcid():N}&srv=android&format=text");
     }
 
-    private static string CreateLanguagePair(TranslateRequest request)
+    private Guid GetOrCreateUcid()
     {
-        return string.Equals(request.SourceLanguage, "auto", StringComparison.OrdinalIgnoreCase)
-            ? request.TargetLanguage
-            : $"{request.SourceLanguage}-{request.TargetLanguage}";
-    }
-
-    private static YandexWebSession ParseSession(Uri referrer, string html)
-    {
-        var sid = MatchFirstGroup(
-            html,
-            @"""SID"":\s*""(?<value>[^""]+)""",
-            @"Ya\.i18n\.phrases\.SID\s*=\s*[""'](?<value>[^""']+)[""']");
-        if (string.IsNullOrWhiteSpace(sid))
+        lock (ucidLock)
         {
-            throw new TranslatorProviderException(
-                "YandexWeb",
-                TranslatorProviderFailureKind.UnsupportedResponse,
-                "YandexWeb SID could not be found in the translator page.");
-        }
-
-        return new YandexWebSession(
-            $"{sid}-0-0",
-            referrer,
-            DateTimeOffset.UtcNow.AddMinutes(5));
-    }
-
-    private static bool IsCaptchaPage(Uri? responseUri, string html)
-    {
-        return responseUri?.AbsoluteUri.Contains("showcaptcha", StringComparison.OrdinalIgnoreCase) == true
-            || html.Contains("showcaptcha", StringComparison.OrdinalIgnoreCase)
-            || html.Contains("SmartCaptcha", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string? MatchFirstGroup(string input, params string[] patterns)
-    {
-        foreach (var pattern in patterns)
-        {
-            var match = Regex.Match(input, pattern, RegexOptions.IgnoreCase);
-            if (match.Success)
+            if (ucid == Guid.Empty || ucidExpiresAt <= DateTimeOffset.UtcNow)
             {
-                return match.Groups["value"].Value;
+                ucid = Guid.NewGuid();
+                ucidExpiresAt = DateTimeOffset.UtcNow.AddSeconds(360);
             }
+
+            return ucid;
         }
-
-        return null;
-    }
-
-    private void InvalidateSession()
-    {
-        session = null;
     }
 
     private TranslatorProviderException CreateProviderException(HttpStatusCode statusCode, string responseBody)
@@ -256,7 +140,43 @@ public sealed class YandexWebTranslatorProvider : ITranslatorProvider
             $"YandexWeb translation request failed with HTTP {(int)statusCode}: {CreateSafeErrorMessage(responseBody)}");
     }
 
-    private static string CreateSafeErrorMessage(string responseBody)
+    private TranslatorProviderException CreateProviderException(int? providerCode, string? message)
+    {
+        var safeMessage = CreateSafeErrorMessage(message);
+        if (providerCode is >= 100 and <= 599)
+        {
+            var statusCode = (HttpStatusCode)providerCode.Value;
+            return new TranslatorProviderException(
+                ProviderId,
+                statusCode,
+                $"YandexWeb translation request failed with provider code {providerCode}: {safeMessage}");
+        }
+
+        return new TranslatorProviderException(
+            ProviderId,
+            TranslatorProviderFailureKind.ProviderCode,
+            $"YandexWeb translation request failed with provider code {providerCode?.ToString() ?? "(missing)"}: {safeMessage}");
+    }
+
+    private static string NormalizeLanguageTag(string languageTag)
+    {
+        return TesseractLanguageCatalog.TryMapTrainedDataCodeToPreferredLanguageTag(languageTag, out var preferredLanguageTag)
+            ? preferredLanguageTag
+            : languageTag.Trim();
+    }
+
+    private static string YandexHotPatch(string languageCode)
+    {
+        return languageCode switch
+        {
+            "pt-PT" => "pt",
+            "pt" => "pt-BR",
+            "zh-CN" => "zh",
+            _ => languageCode,
+        };
+    }
+
+    private static string CreateSafeErrorMessage(string? responseBody)
     {
         if (string.IsNullOrWhiteSpace(responseBody))
         {
@@ -268,18 +188,6 @@ public sealed class YandexWebTranslatorProvider : ITranslatorProvider
             : responseBody;
     }
 
-    private static void AddBrowserHeaders(HttpRequestMessage request)
-    {
-        request.Headers.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-        request.Headers.Accept.ParseAdd("application/json, text/plain, */*");
-        request.Headers.AcceptLanguage.ParseAdd("ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7");
-    }
-
-    private sealed record YandexWebSession(
-        string RequestId,
-        Uri Referrer,
-        DateTimeOffset ExpiresAt);
-
     private sealed class YandexWebResponse
     {
         [JsonPropertyName("code")]
@@ -287,6 +195,9 @@ public sealed class YandexWebTranslatorProvider : ITranslatorProvider
 
         [JsonPropertyName("message")]
         public string? Message { get; init; }
+
+        [JsonPropertyName("lang")]
+        public string? Lang { get; init; }
 
         [JsonPropertyName("text")]
         public string[]? Text { get; init; }

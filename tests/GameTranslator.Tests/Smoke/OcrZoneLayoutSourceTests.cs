@@ -25,17 +25,17 @@ public sealed class OcrZoneLayoutSourceTests
 
         Assert.Equal("0", (string?)responsivePanel.Attribute("Grid.Row"));
         Assert.Equal("ZoneResponsivePanels", GetName(responsivePanel));
-        Assert.Equal("570", (string?)surfacePanel.Attribute("Width"));
+        Assert.Equal("540", (string?)surfacePanel.Attribute("Width"));
         Assert.Contains(
             responsivePanel.Elements(wpf + "Border"),
             element => GetName(element) == "OcrPreprocessingCard"
-                && (string?)element.Attribute("Width") == "530");
+                && (string?)element.Attribute("Width") == "500");
 
         var surfaceViewbox = surfacePanel
             .Descendants(wpf + "Viewbox")
             .Single();
-        Assert.Equal("520", (string?)surfaceViewbox.Attribute("Width"));
-        Assert.Equal("292.5", (string?)surfaceViewbox.Attribute("Height"));
+        Assert.Equal("490", (string?)surfaceViewbox.Attribute("Width"));
+        Assert.Equal("275.625", (string?)surfaceViewbox.Attribute("Height"));
 
         var zoneDetailsPanel = document
             .Descendants(wpf + "Grid")
@@ -70,7 +70,7 @@ public sealed class OcrZoneLayoutSourceTests
             (string?)settingsSection.Attribute("Visibility"));
         Assert.Contains(
             languagePackChecklist.Ancestors(wpf + "ScrollViewer"),
-            scrollViewer => (string?)scrollViewer.Attribute("Height") == "430");
+            scrollViewer => (string?)scrollViewer.Attribute("Height") == "360");
     }
 
     [Fact]
@@ -98,6 +98,60 @@ public sealed class OcrZoneLayoutSourceTests
         Assert.DoesNotContain(
             document.Descendants(wpf + "CheckBox"),
             element => (string?)element.Attribute("Content") == "Expand translated text from source center");
+    }
+
+    [Fact]
+    public void ShellView_ExposesACompactPerZoneDetectorPresetSelector()
+    {
+        var document = XDocument.Load(
+            Path.Combine(
+                RepositoryRoot.Find(),
+                "src",
+                "GameTranslator.UI",
+                "Views",
+                "ShellView.xaml"));
+        XNamespace wpf = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+
+        var selector = document
+            .Descendants(wpf + "ComboBox")
+            .Single(element => (string?)element.Attribute("ItemsSource") == "{Binding CandidateDetectorPresetOptions}");
+
+        Assert.Equal(
+            "{Binding SelectedZone.DetectorPreset, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}",
+            (string?)selector.Attribute("SelectedValue"));
+        Assert.Contains(
+            document.Descendants(wpf + "TextBlock"),
+            element => (string?)element.Attribute("Text") == "Detector preset");
+    }
+
+    [Fact]
+    public void ShellView_ExposesOrientationSpecificCandidateGroupingLimits()
+    {
+        var document = XDocument.Load(
+            Path.Combine(
+                RepositoryRoot.Find(),
+                "src",
+                "GameTranslator.UI",
+                "Views",
+                "ShellView.xaml"));
+        XNamespace wpf = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+
+        Assert.Contains(
+            document.Descendants(wpf + "TextBlock"),
+            element => (string?)element.Attribute("Text") == "Candidate grouping - maximum horizontal lines");
+        Assert.Contains(
+            document.Descendants(wpf + "TextBlock"),
+            element => (string?)element.Attribute("Text") == "Candidate grouping - maximum vertical columns");
+        Assert.Contains(
+            document.Descendants(wpf + "TextBlock"),
+            element => (string?)element.Attribute("Text")
+                == "Auto follows vertical CJK geometry without a fixed column count; a numeric value is a hard limit.");
+        Assert.Contains(
+            document.Descendants(wpf + "TextBox"),
+            element => ((string?)element.Attribute("Text"))?.Contains("MaximumHorizontalCandidateLines", StringComparison.Ordinal) == true);
+        Assert.Contains(
+            document.Descendants(wpf + "TextBox"),
+            element => ((string?)element.Attribute("Text"))?.Contains("MaximumVerticalCandidateColumns", StringComparison.Ordinal) == true);
     }
 
     [Fact]

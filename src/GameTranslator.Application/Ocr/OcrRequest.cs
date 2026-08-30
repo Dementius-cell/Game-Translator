@@ -16,7 +16,8 @@ public sealed class OcrRequest
         string? engineId = null,
         OcrOrientationMode? orientationMode = null,
         OcrLayoutMode? layoutMode = null,
-        ContentLayoutMode contentLayoutMode = ContentLayoutMode.DialogComic)
+        ContentLayoutMode contentLayoutMode = ContentLayoutMode.DialogComic,
+        OcrCandidateGroupingSettings? candidateGroupingSettings = null)
     {
         Frame = frame ?? throw new ArgumentNullException(nameof(frame));
         ArgumentException.ThrowIfNullOrWhiteSpace(language);
@@ -42,6 +43,7 @@ public sealed class OcrRequest
             ? requestedLayoutMode
             : OcrLayoutMode.Auto;
         ContentLayoutMode = contentLayoutMode;
+        CandidateGroupingSettings = candidateGroupingSettings ?? OcrCandidateGroupingSettings.Default;
     }
 
     public CapturedFrame Frame { get; }
@@ -61,4 +63,22 @@ public sealed class OcrRequest
     public OcrLayoutMode LayoutMode { get; }
 
     public ContentLayoutMode ContentLayoutMode { get; }
+
+    public OcrCandidateGroupingSettings CandidateGroupingSettings { get; }
+
+    private TextCandidateDetectorPreset detectorPreset = TextCandidateDetectorPreset.Standard;
+
+    public TextCandidateDetectorPreset DetectorPreset
+    {
+        get => detectorPreset;
+        init
+        {
+            if (!Enum.IsDefined(value))
+            {
+                throw new ArgumentOutOfRangeException(nameof(value));
+            }
+
+            detectorPreset = value;
+        }
+    }
 }

@@ -78,10 +78,6 @@ public sealed class ProfileStorageCompositionTests : IDisposable
         Assert.Contains(
             services,
             descriptor => descriptor.ServiceType == typeof(ITranslatorProvider)
-                && descriptor.ImplementationType == typeof(WebAutoTranslatorProvider));
-        Assert.Contains(
-            services,
-            descriptor => descriptor.ServiceType == typeof(ITranslatorProvider)
                 && descriptor.ImplementationType == typeof(GoogleWebTranslatorProvider));
         Assert.Contains(
             services,
@@ -91,6 +87,10 @@ public sealed class ProfileStorageCompositionTests : IDisposable
             services,
             descriptor => descriptor.ServiceType == typeof(ITranslatorProvider)
                 && descriptor.ImplementationType == typeof(YandexWebTranslatorProvider));
+        Assert.DoesNotContain(
+            services,
+            descriptor => descriptor.ServiceType == typeof(ITranslatorProvider)
+                && descriptor.ImplementationType?.Name is "WebAutoTranslatorProvider" or "GlhfTranslatorProvider");
     }
 
     [Fact]

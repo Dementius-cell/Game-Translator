@@ -87,7 +87,17 @@ class DirectPaddleTextDetector:
             box_type="quad",
         )
 
-    def detect(self, source_path):
+    def detect(self, source_path, threshold, box_threshold, unclip_ratio):
+        threshold = float(threshold)
+        box_threshold = float(box_threshold)
+        unclip_ratio = float(unclip_ratio)
+        if not math.isfinite(threshold) or not 0.0 < threshold <= 1.0:
+            raise ValueError("Detector threshold must be within (0, 1].")
+        if not math.isfinite(box_threshold) or not 0.0 < box_threshold <= 1.0:
+            raise ValueError("Detector box threshold must be within (0, 1].")
+        if not math.isfinite(unclip_ratio) or not 0.0 < unclip_ratio <= 10.0:
+            raise ValueError("Detector unclip ratio must be within (0, 10].")
+
         image = self.cv2.imread(str(source_path), self.cv2.IMREAD_COLOR)
         if image is None:
             raise RuntimeError("PaddleOCR could not decode the candidate frame.")
@@ -100,7 +110,7 @@ class DirectPaddleTextDetector:
         self.input_handle.copy_from_cpu(tensor)
         self.predictor.run()
         output = self.output_handle.copy_to_cpu()
-        polygons, scores = self.postprocess([output], image_shapes, 0.3, 0.6, 1.2)
+        polygons, scores = self.postprocess([output], image_shapes, threshold, box_threshold, unclip_ratio)
 
         candidates = []
         for polygon, score in zip(polygons[0], scores[0]):
@@ -117,12 +127,21 @@ def run_worker():
     write_message({"status": "ready"})
     for line in sys.stdin:
         try:
-            request = json.loads(line)
+            # The managed host explicitly writes UTF-8 without a BOM. Tolerate
+            # known BOM spellings from legacy Windows host encodings as well;
+            # JSON does not permit any of them ahead of the opening brace.
+            request = json.loads(line.lstrip("\ufeffï»¿п»ї"))
             input_path = Path(request["inputPath"])
-            candidates = detector.detect(input_path)
+            candidates = detector.detect(input_path, request["threshold"], request["boxThreshold"], request["unclipRatio"])
             write_message({"status": "ok", "candidates": candidates})
-        except Exception:
-            write_message({"status": "error", "error": "PaddleOCR detection failed.", "candidates": []})
+        except Exception as error:
+            write_message(
+                {
+                    "status": "error",
+                    "error": f"{type(error).__name__}: {error}",
+                    "candidates": [],
+                }
+            )
 
 
 def main():

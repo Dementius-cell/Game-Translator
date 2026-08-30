@@ -47,18 +47,23 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDi
                 $"PaddleOCR candidate detection requires {SupportedPixelFormat} captured frames.");
         }
 
+        var preset = PaddleTextDetectionPresetResolver.Resolve(
+            request.DetectorPreset,
+            request.Language,
+            request.OrientationMode);
+
         await workerLock.WaitAsync(cancellationToken);
         try
         {
             if (worker is { HasExited: true })
             {
                 // Do not hide a persistent-worker loss by charging the next live frame for a
-                // replacement startup. The application readiness coordinator owns recovery and
-                // will issue the following prewarm call after it has invalidated the old epoch.
+                // replacement startup. Report it for this frame; the next scheduled capture
+                // can start a replacement worker and continue normal candidate processing.
                 TerminateWorker();
                 return TextCandidateDetectionResult.Unavailable(
                     DetectorId,
-                    "PaddleOCR candidate detector worker exited; readiness recovery is required.");
+                    "PaddleOCR candidate detector worker exited; it will restart on the next capture.");
             }
 
             var process = await EnsureWorkerAsync(cancellationToken);
@@ -71,7 +76,11 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDi
             try
             {
                 await process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(
-                    new PaddleWorkerRequest(inputPath),
+                    new PaddleWorkerRequest(
+                        inputPath,
+                        preset.Threshold,
+                        preset.BoxThreshold,
+                        preset.UnclipRatio),
                     serializerOptions));
                 await process.StandardInput.FlushAsync(cancellationToken);
 
@@ -83,15 +92,18 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDi
                         DetectorId,
                         string.IsNullOrWhiteSpace(response?.Error)
                             ? GetWorkerFailureReason()
-                            : "PaddleOCR candidate detector did not return a usable response.");
+                            : $"PaddleOCR candidate detector failed: {response.Error}");
                 }
 
+                var candidates = response.Candidates
+                    .Select(CreateCandidate)
+                    .Where(candidate => candidate is not null)
+                    .Cast<TextCandidate>()
+                    .ToArray();
                 return TextCandidateDetectionResult.Available(
                     DetectorId,
-                    response.Candidates
-                        .Select(CreateCandidate)
-                        .Where(candidate => candidate is not null)
-                        .Cast<TextCandidate>());
+                    candidates,
+                    preset.CreateDiagnostics(candidates));
             }
             finally
             {
@@ -170,6 +182,9 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDi
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            StandardInputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+            StandardOutputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+            StandardErrorEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
             WorkingDirectory = Path.GetDirectoryName(options.WorkerScriptPath)!,
         };
         startInfo.ArgumentList.Add(options.WorkerScriptPath);
@@ -354,7 +369,11 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDi
         }
     }
 
-    private sealed record PaddleWorkerRequest(string InputPath);
+    private sealed record PaddleWorkerRequest(
+        string InputPath,
+        double Threshold,
+        double BoxThreshold,
+        double UnclipRatio);
 
     private sealed class PaddleWorkerResponse
     {

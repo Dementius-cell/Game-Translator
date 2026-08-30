@@ -113,7 +113,7 @@ public sealed class WritingSystemGroupingProfileSmokeTests
 
     [Theory]
     [MemberData(nameof(RepresentativeLanguageCases))]
-    public void Group_SyntheticNineLineDialog_EnforcesTheProfileSpecificBound(
+    public void Group_SyntheticNineLineDialog_AutoStrictContinuationKeepsAlignedBubbleTogether(
         string scenario,
         string language,
         OcrOrientationMode orientationMode,
@@ -128,12 +128,8 @@ public sealed class WritingSystemGroupingProfileSmokeTests
         var result = service.Group(candidates, zoneHeight: 400, groupingProfile);
 
         Assert.Equal(expectedProfile, groupingProfile);
-        Assert.Equal(2, result.Count);
-        Assert.Equal(
-            expectedProfile is WritingSystemGroupingProfile.ComplexSouthEastAsian
-                ? new[] { 8, 1 }
-                : new[] { 6, 3 },
-            result.Select(candidate => candidate.SourceCandidateCount));
+        var grouped = Assert.Single(result);
+        Assert.Equal(9, grouped.SourceCandidateCount);
     }
 
     private static TextCandidate Candidate(int x, int y, int width, int height)

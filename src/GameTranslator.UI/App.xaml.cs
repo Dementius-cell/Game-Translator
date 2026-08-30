@@ -1,6 +1,8 @@
 using System.Windows;
 using GameTranslator.Application.DependencyInjection;
+using GameTranslator.Application.Ocr;
 using GameTranslator.UI.DependencyInjection;
+using GameTranslator.UI.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
@@ -45,6 +47,25 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        if (PortableOcrSmokeRunner.TryGetReportPath(e.Args, out var portableOcrSmokeReportPath))
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            var exitCode = 1;
+            try
+            {
+                host.StartAsync().GetAwaiter().GetResult();
+                var ocrService = host.Services.GetRequiredService<OcrService>();
+                exitCode = PortableOcrSmokeRunner.Run(ocrService, portableOcrSmokeReportPath);
+            }
+            catch (Exception exception)
+            {
+                exitCode = PortableOcrSmokeRunner.WriteStartupFailure(portableOcrSmokeReportPath, exception);
+            }
+
+            Shutdown(exitCode);
+            return;
+        }
 
         host.StartAsync().GetAwaiter().GetResult();
         Log.Information("GameTranslator application started.");

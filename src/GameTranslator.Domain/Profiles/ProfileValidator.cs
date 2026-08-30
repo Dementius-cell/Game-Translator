@@ -48,6 +48,8 @@ public sealed class ProfileValidator
             }
 
             ValidateOcrZoneContentLayoutMode(zones[index], errors);
+            ValidateOcrZoneDetectorPreset(zones[index], errors);
+            ValidateOcrZoneCandidateGrouping(zones[index], errors);
             ValidateOcrZoneTextStyle(zones[index], errors);
             ValidateOcrZoneTranslationGroupingMode(zones[index], errors);
             ValidateOcrZoneTextGrouping(zones[index], errors);
@@ -67,6 +69,26 @@ public sealed class ProfileValidator
         }
     }
 
+    private static void ValidateOcrZoneCandidateGrouping(OcrZone zone, List<ProfileValidationError> errors)
+    {
+        var settings = zone.CandidateGrouping ?? OcrCandidateGroupingSettings.Default;
+        if (IsValidCandidateGroupingLimit(settings.MaximumHorizontalLines)
+            && IsValidCandidateGroupingLimit(settings.MaximumVerticalColumns))
+        {
+            return;
+        }
+
+        errors.Add(new ProfileValidationError(
+            ProfileValidationErrorCodes.InvalidOcrZoneCandidateGrouping,
+            $"OCR zone '{zone.Name}' candidate grouping limits must be between {OcrCandidateGroupingSettings.MinimumLimit} and {OcrCandidateGroupingSettings.MaximumLimit}, or Auto."));
+    }
+
+    private static bool IsValidCandidateGroupingLimit(int? value)
+    {
+        return value is null
+            or >= OcrCandidateGroupingSettings.MinimumLimit and <= OcrCandidateGroupingSettings.MaximumLimit;
+    }
+
     private static void ValidateOcrZoneContentLayoutMode(OcrZone zone, List<ProfileValidationError> errors)
     {
         if (Enum.IsDefined(zone.ContentLayoutMode))
@@ -77,6 +99,18 @@ public sealed class ProfileValidator
         errors.Add(new ProfileValidationError(
             ProfileValidationErrorCodes.InvalidOcrZoneContentLayoutMode,
             $"OCR zone '{zone.Name}' content layout mode is not supported."));
+    }
+
+    private static void ValidateOcrZoneDetectorPreset(OcrZone zone, List<ProfileValidationError> errors)
+    {
+        if (Enum.IsDefined(zone.DetectorPreset))
+        {
+            return;
+        }
+
+        errors.Add(new ProfileValidationError(
+            ProfileValidationErrorCodes.InvalidOcrZoneDetectorPreset,
+            $"OCR zone '{zone.Name}' detector preset is not supported."));
     }
 
     private static void ValidateOcrZoneTextStyle(OcrZone zone, List<ProfileValidationError> errors)

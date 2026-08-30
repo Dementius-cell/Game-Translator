@@ -25,6 +25,11 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
     private double relativeHeight = 0.05;
     private string ocrLanguage = string.Empty;
     private ContentLayoutMode contentLayoutMode = ContentLayoutMode.DialogComic;
+    private TextCandidateDetectorPreset detectorPreset = TextCandidateDetectorPreset.Standard;
+    private bool useAutomaticHorizontalCandidateGroupingLimit = true;
+    private int maximumHorizontalCandidateLines = 6;
+    private bool useAutomaticVerticalCandidateGroupingLimit = true;
+    private int maximumVerticalCandidateColumns = 4;
     private string overlayFontFamily = OcrZoneTextStyle.DefaultFontFamily;
     private double overlayFontSize = OcrZoneTextStyle.DefaultFontSize;
     private bool overlayIsBold = true;
@@ -188,6 +193,77 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         }
     }
 
+    public TextCandidateDetectorPreset DetectorPreset
+    {
+        get => detectorPreset;
+        set
+        {
+            if (SetProperty(ref detectorPreset, value))
+            {
+                NotifyDerivedPropertiesChanged();
+                Validate();
+            }
+        }
+    }
+
+    public bool UseAutomaticHorizontalCandidateGroupingLimit
+    {
+        get => useAutomaticHorizontalCandidateGroupingLimit;
+        set
+        {
+            if (SetProperty(ref useAutomaticHorizontalCandidateGroupingLimit, value))
+            {
+                OnPropertyChanged(nameof(IsCustomHorizontalCandidateGroupingLimit));
+                NotifyDerivedPropertiesChanged();
+                Validate();
+            }
+        }
+    }
+
+    public bool IsCustomHorizontalCandidateGroupingLimit => !UseAutomaticHorizontalCandidateGroupingLimit;
+
+    public int MaximumHorizontalCandidateLines
+    {
+        get => maximumHorizontalCandidateLines;
+        set
+        {
+            if (SetProperty(ref maximumHorizontalCandidateLines, value))
+            {
+                NotifyDerivedPropertiesChanged();
+                Validate();
+            }
+        }
+    }
+
+    public bool UseAutomaticVerticalCandidateGroupingLimit
+    {
+        get => useAutomaticVerticalCandidateGroupingLimit;
+        set
+        {
+            if (SetProperty(ref useAutomaticVerticalCandidateGroupingLimit, value))
+            {
+                OnPropertyChanged(nameof(IsCustomVerticalCandidateGroupingLimit));
+                NotifyDerivedPropertiesChanged();
+                Validate();
+            }
+        }
+    }
+
+    public bool IsCustomVerticalCandidateGroupingLimit => !UseAutomaticVerticalCandidateGroupingLimit;
+
+    public int MaximumVerticalCandidateColumns
+    {
+        get => maximumVerticalCandidateColumns;
+        set
+        {
+            if (SetProperty(ref maximumVerticalCandidateColumns, value))
+            {
+                NotifyDerivedPropertiesChanged();
+                Validate();
+            }
+        }
+    }
+
     public string OverlayFontFamily
     {
         get => overlayFontFamily;
@@ -307,6 +383,18 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         _ => "No policy is available for this content layout mode.",
     };
 
+    public string DetectorPresetSummary => DetectorPreset switch
+    {
+        TextCandidateDetectorPreset.Standard => "Standard detector post-processing (box threshold 0.60).",
+        TextCandidateDetectorPreset.ChineseExperimental => "Chinese-only test preset (box threshold 0.65); other languages use Standard.",
+        TextCandidateDetectorPreset.ChineseStrictExperimental => "Chinese-only strict test preset (box threshold 0.70); other languages use Standard.",
+        _ => "Unsupported detector preset.",
+    };
+
+    public string CandidateGroupingSummary =>
+        $"Horizontal lines: {(UseAutomaticHorizontalCandidateGroupingLimit ? "Auto" : MaximumHorizontalCandidateLines)}"
+        + $" | Vertical columns: {(UseAutomaticVerticalCandidateGroupingLimit ? "Auto" : MaximumVerticalCandidateColumns)}";
+
     public double SurfaceX => Math.Round(AbsoluteX * PreviewSurfaceWidth / ReferenceSurfaceWidth, 2);
 
     public double SurfaceY => Math.Round(AbsoluteY * PreviewSurfaceHeight / ReferenceSurfaceHeight, 2);
@@ -359,6 +447,11 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
                 ? string.Empty
                 : zone.OcrLanguage.Trim(),
             ContentLayoutMode = zone.ContentLayoutMode,
+            DetectorPreset = zone.DetectorPreset,
+            UseAutomaticHorizontalCandidateGroupingLimit = zone.CandidateGrouping?.MaximumHorizontalLines is null,
+            MaximumHorizontalCandidateLines = zone.CandidateGrouping?.MaximumHorizontalLines ?? 6,
+            UseAutomaticVerticalCandidateGroupingLimit = zone.CandidateGrouping?.MaximumVerticalColumns is null,
+            MaximumVerticalCandidateColumns = zone.CandidateGrouping?.MaximumVerticalColumns ?? 4,
             OverlayFontFamily = string.IsNullOrWhiteSpace(zone.TextStyle?.FontFamily)
                 ? OcrZoneTextStyle.DefaultFontFamily
                 : zone.TextStyle.FontFamily,
@@ -396,6 +489,16 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
             RelativeBounds = new RelativeRectangle(RelativeX, RelativeY, RelativeWidth, RelativeHeight),
             OcrLanguage = string.IsNullOrWhiteSpace(OcrLanguage) ? string.Empty : OcrLanguage.Trim(),
             ContentLayoutMode = ContentLayoutMode,
+            DetectorPreset = DetectorPreset,
+            CandidateGrouping = new OcrCandidateGroupingSettings
+            {
+                MaximumHorizontalLines = UseAutomaticHorizontalCandidateGroupingLimit
+                    ? null
+                    : MaximumHorizontalCandidateLines,
+                MaximumVerticalColumns = UseAutomaticVerticalCandidateGroupingLimit
+                    ? null
+                    : MaximumVerticalCandidateColumns,
+            },
             TextStyle = new OcrZoneTextStyle
             {
                 FontFamily = string.IsNullOrWhiteSpace(OverlayFontFamily)
@@ -431,6 +534,11 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
             RelativeHeight = RelativeHeight,
             OcrLanguage = OcrLanguage,
             ContentLayoutMode = ContentLayoutMode,
+            DetectorPreset = DetectorPreset,
+            UseAutomaticHorizontalCandidateGroupingLimit = UseAutomaticHorizontalCandidateGroupingLimit,
+            MaximumHorizontalCandidateLines = MaximumHorizontalCandidateLines,
+            UseAutomaticVerticalCandidateGroupingLimit = UseAutomaticVerticalCandidateGroupingLimit,
+            MaximumVerticalCandidateColumns = MaximumVerticalCandidateColumns,
             OverlayFontFamily = OverlayFontFamily,
             OverlayFontSize = OverlayFontSize,
             OverlayIsBold = OverlayIsBold,
@@ -452,6 +560,23 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
             nameof(ContentLayoutMode),
             !Enum.IsDefined(ContentLayoutMode)
                 ? new[] { "Content layout mode is not supported." }
+                : Array.Empty<string>());
+        SetErrors(
+            nameof(DetectorPreset),
+            !Enum.IsDefined(DetectorPreset)
+                ? new[] { "Detector preset is not supported." }
+                : Array.Empty<string>());
+        SetErrors(
+            nameof(MaximumHorizontalCandidateLines),
+            IsCustomHorizontalCandidateGroupingLimit
+                && MaximumHorizontalCandidateLines is < OcrCandidateGroupingSettings.MinimumLimit or > OcrCandidateGroupingSettings.MaximumLimit
+                ? new[] { $"Maximum horizontal lines must be between {OcrCandidateGroupingSettings.MinimumLimit} and {OcrCandidateGroupingSettings.MaximumLimit}." }
+                : Array.Empty<string>());
+        SetErrors(
+            nameof(MaximumVerticalCandidateColumns),
+            IsCustomVerticalCandidateGroupingLimit
+                && MaximumVerticalCandidateColumns is < OcrCandidateGroupingSettings.MinimumLimit or > OcrCandidateGroupingSettings.MaximumLimit
+                ? new[] { $"Maximum vertical columns must be between {OcrCandidateGroupingSettings.MinimumLimit} and {OcrCandidateGroupingSettings.MaximumLimit}." }
                 : Array.Empty<string>());
         SetErrors(
             nameof(OverlayFontFamily),
@@ -518,6 +643,8 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         OnPropertyChanged(nameof(OcrLanguageSummary));
         OnPropertyChanged(nameof(ContentLayoutModeSummary));
         OnPropertyChanged(nameof(ContentLayoutPolicySummary));
+        OnPropertyChanged(nameof(DetectorPresetSummary));
+        OnPropertyChanged(nameof(CandidateGroupingSummary));
         OnPropertyChanged(nameof(SurfaceX));
         OnPropertyChanged(nameof(SurfaceY));
         OnPropertyChanged(nameof(SurfaceWidth));

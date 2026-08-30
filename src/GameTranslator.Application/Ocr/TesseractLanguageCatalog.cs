@@ -264,4 +264,20 @@ public static class TesseractLanguageCatalog
         languageTag = mappedLanguageTag;
         return true;
     }
+
+    /// <summary>
+    /// Returns whether the selected profile language has a supported vertical Tesseract layout.
+    /// Korean is intentionally excluded: the bundled catalog has no vertical Korean traineddata.
+    /// </summary>
+    public static bool SupportsVerticalTextLayout(string language)
+    {
+        if (!TryMapLanguageTagToTrainedDataCode(language, out var trainedDataCode))
+        {
+            return false;
+        }
+
+        return trainedDataCode is "jpn" or "jpn_vert"
+            or "chi_sim" or "chi_sim_vert"
+            or "chi_tra" or "chi_tra_vert";
+    }
 }

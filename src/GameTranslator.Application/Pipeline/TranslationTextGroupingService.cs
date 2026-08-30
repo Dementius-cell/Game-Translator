@@ -37,6 +37,20 @@ public static class TranslationTextGroupingService
             sourceResult);
     }
 
+    /// <summary>
+    /// Resolves geometry-only member order through the same writing-system path used before
+    /// translation. No OCR text is returned or retained by this diagnostic projection.
+    /// </summary>
+    public static IReadOnlyList<BoundingBox> ResolveOrderedMemberBoundsForDiagnostics(OcrResult sourceResult)
+    {
+        ArgumentNullException.ThrowIfNull(sourceResult);
+
+        return OrderBlocksByReadingPosition(sourceResult, sourceResult.TextBlocks)
+            .Select(block => GetSourceForBlock(sourceResult, block))
+            .SelectMany(source => source.MemberBounds)
+            .ToArray();
+    }
+
     private static OcrResult CreateWholeZoneResult(OcrResult sourceResult)
     {
         if (sourceResult.TextBlocks.Count <= 1)
@@ -44,7 +58,7 @@ public static class TranslationTextGroupingService
             return sourceResult;
         }
 
-        var orderedBlocks = OrderBlocksByReadingPosition(sourceResult.TextBlocks);
+        var orderedBlocks = OrderBlocksByReadingPosition(sourceResult, sourceResult.TextBlocks);
         var source = CreateSourceFromGroup(sourceResult, orderedBlocks);
         var joinedText = string.Join(
             ' ',
@@ -84,7 +98,7 @@ public static class TranslationTextGroupingService
             CalculateAdaptiveMergeThreshold(sourceResult.TextBlocks));
         var groups = OrderGroupsByReadingPosition(
             ClusterNearbyBlocks(sourceResult.TextBlocks, thresholdPixels)
-                .Select(OrderBlocksByReadingPosition)
+                .Select(group => OrderBlocksByReadingPosition(sourceResult, group))
                 .ToArray());
         var groupedBlocks = groups
             .Select(group => CreateTextBlockFromGroup(sourceResult, group))
@@ -138,12 +152,27 @@ public static class TranslationTextGroupingService
         return groups;
     }
 
-    private static IReadOnlyList<OcrTextBlock> OrderBlocksByReadingPosition(IReadOnlyList<OcrTextBlock> blocks)
+    private static IReadOnlyList<OcrTextBlock> OrderBlocksByReadingPosition(
+        OcrResult sourceResult,
+        IReadOnlyList<OcrTextBlock> blocks)
     {
+        ArgumentNullException.ThrowIfNull(sourceResult);
         if (blocks.Count <= 1)
         {
             return blocks;
         }
+
+        return WritingSystemGroupingProfileResolver.Resolve(
+                sourceResult.Request.Language,
+                sourceResult.Request.OrientationMode)
+            is WritingSystemGroupingProfile.CjkVertical
+            ? OrderVerticalCjkBlocksByReadingPosition(blocks)
+            : OrderHorizontalBlocksByReadingPosition(blocks);
+    }
+
+    private static IReadOnlyList<OcrTextBlock> OrderHorizontalBlocksByReadingPosition(
+        IReadOnlyList<OcrTextBlock> blocks)
+    {
 
         var rows = new List<List<OcrTextBlock>>();
         foreach (var block in blocks.OrderBy(block => GetCenterY(block.Bounds)).ThenBy(block => block.Bounds.X))
@@ -162,6 +191,33 @@ public static class TranslationTextGroupingService
             .OrderBy(row => row.Min(block => block.Bounds.Y))
             .ThenBy(row => row.Min(block => block.Bounds.X))
             .SelectMany(row => row.OrderBy(block => block.Bounds.X).ThenBy(block => block.Bounds.Y))
+            .ToArray();
+    }
+
+    private static IReadOnlyList<OcrTextBlock> OrderVerticalCjkBlocksByReadingPosition(
+        IReadOnlyList<OcrTextBlock> blocks)
+    {
+        var columns = new List<List<OcrTextBlock>>();
+        foreach (var block in blocks
+                     .OrderByDescending(block => GetCenterX(block.Bounds))
+                     .ThenBy(block => block.Bounds.Y))
+        {
+            var column = columns.FirstOrDefault(existingColumn => IsSameReadingColumn(existingColumn, block));
+            if (column is null)
+            {
+                columns.Add(new List<OcrTextBlock> { block });
+                continue;
+            }
+
+            column.Add(block);
+        }
+
+        return columns
+            .OrderByDescending(column => column.Average(block => GetCenterX(block.Bounds)))
+            .ThenBy(column => column.Min(block => block.Bounds.Y))
+            .SelectMany(column => column
+                .OrderBy(block => block.Bounds.Y)
+                .ThenByDescending(block => block.Bounds.X))
             .ToArray();
     }
 
@@ -241,6 +297,31 @@ public static class TranslationTextGroupingService
             Math.Max(rowAverageHeight, block.Bounds.Height) * SameReadingLineCenterToleranceFactor);
 
         return Math.Abs(rowCenterY - GetCenterY(block.Bounds)) <= tolerance;
+    }
+
+    private static bool IsSameReadingColumn(
+        IReadOnlyList<OcrTextBlock> column,
+        OcrTextBlock block)
+    {
+        var columnLeft = column.Min(item => item.Bounds.X);
+        var columnRight = column.Max(item => item.Bounds.Right);
+        var columnAverageWidth = column.Average(item => item.Bounds.Width);
+        var overlap = Math.Min(columnRight, block.Bounds.Right) - Math.Max(columnLeft, block.Bounds.X);
+        if (overlap > 0)
+        {
+            var minimumWidth = Math.Min(columnAverageWidth, block.Bounds.Width);
+            if (overlap >= minimumWidth * SameReadingLineOverlapRatio)
+            {
+                return true;
+            }
+        }
+
+        var columnCenterX = column.Average(item => GetCenterX(item.Bounds));
+        var tolerance = Math.Max(
+            2d,
+            Math.Max(columnAverageWidth, block.Bounds.Width) * SameReadingLineCenterToleranceFactor);
+
+        return Math.Abs(columnCenterX - GetCenterX(block.Bounds)) <= tolerance;
     }
 
     private static TranslationTextGroup? CreateTextBlockFromGroup(
@@ -347,6 +428,11 @@ public static class TranslationTextGroupingService
     private static double GetCenterY(BoundingBox bounds)
     {
         return bounds.Y + bounds.Height / 2d;
+    }
+
+    private static double GetCenterX(BoundingBox bounds)
+    {
+        return bounds.X + bounds.Width / 2d;
     }
 
     private static BoundingBox CreateCombinedBounds(IReadOnlyList<OcrTextBlock> blocks)

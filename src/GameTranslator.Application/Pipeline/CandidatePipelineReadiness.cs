@@ -12,6 +12,16 @@ public sealed class CandidatePipelineReadiness
         restartCount: 0,
         unavailableReason: null);
 
+    /// <summary>
+    /// Candidate work starts immediately for the session; this is diagnostics-only state,
+    /// not a provider or detector preflight barrier.
+    /// </summary>
+    public static CandidatePipelineReadiness Active { get; } = new(
+        CandidatePipelineReadinessStatus.Ready,
+        generation: 1,
+        restartCount: 0,
+        unavailableReason: null);
+
     public CandidatePipelineReadiness(
         CandidatePipelineReadinessStatus status,
         long generation,
@@ -46,8 +56,7 @@ public sealed class CandidatePipelineReadiness
     public CandidatePipelineReadinessStatus Status { get; }
 
     /// <summary>
-    /// Increments only after a successful detector/provider prewarm.
-    /// Results from an invalidated generation must not be published.
+    /// Identifies an active candidate session for diagnostics.
     /// </summary>
     public long Generation { get; }
 
@@ -56,7 +65,7 @@ public sealed class CandidatePipelineReadiness
     public string? UnavailableReason { get; }
 
     /// <summary>
-    /// Next bounded re-prewarm attempt, or <see langword="null"/> when ready or exhausted.
+    /// Reserved for non-blocking diagnostics. Candidate work has no retry barrier.
     /// </summary>
     public DateTimeOffset? NextRetryAt { get; }
 
@@ -66,7 +75,5 @@ public sealed class CandidatePipelineReadiness
 public enum CandidatePipelineReadinessStatus
 {
     Disabled,
-    Prewarming,
     Ready,
-    Degraded,
 }

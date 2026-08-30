@@ -6,6 +6,7 @@ public enum TranslatorProviderFailureKind
     Configuration,
     Http,
     Throttled,
+    Timeout,
     EmptyResponse,
     Parse,
     UnsupportedResponse,

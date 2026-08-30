@@ -6,7 +6,6 @@ public sealed class TranslatorCredentialService
 {
     private static readonly string[] CredentiallessProviders =
     {
-        "WebAuto",
         "GoogleWeb",
         "BingWeb",
         "YandexWeb",
@@ -27,6 +26,7 @@ public sealed class TranslatorCredentialService
         string endpoint,
         CancellationToken cancellationToken = default)
     {
+        ThrowIfRemovedProvider(provider);
         var record = CreateRecord(provider, accessToken, projectId, location, endpoint);
 
         try
@@ -48,6 +48,7 @@ public sealed class TranslatorCredentialService
         string provider,
         CancellationToken cancellationToken = default)
     {
+        ThrowIfRemovedProvider(provider);
         var normalizedProvider = NormalizeProvider(provider);
 
         try
@@ -136,11 +137,12 @@ public sealed class TranslatorCredentialService
 
     public static string GetDefaultEndpoint(string provider)
     {
+        ThrowIfRemovedProvider(provider);
+
         return NormalizeProvider(provider) switch
         {
             "Azure" => "https://api.cognitive.microsofttranslator.com",
             "Yandex" => "https://translate.api.cloud.yandex.net",
-            "WebAuto" => "https://translate.googleapis.com",
             "GoogleWeb" => "https://translate.googleapis.com",
             "BingWeb" => "https://www.bing.com",
             "YandexWeb" => "https://translate.yandex.net",
@@ -150,7 +152,16 @@ public sealed class TranslatorCredentialService
 
     public static bool RequiresStoredCredentials(string provider)
     {
+        ThrowIfRemovedProvider(provider);
         return !CredentiallessProviders.Contains(NormalizeProvider(provider), StringComparer.OrdinalIgnoreCase);
+    }
+
+    public static bool IsRemovedProvider(string provider)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(provider);
+
+        var normalized = provider.Trim().ToLowerInvariant();
+        return normalized is "webauto" or "web-auto" or "web auto" or "glhf";
     }
 
     public static string NormalizeProvider(string provider)
@@ -164,7 +175,6 @@ public sealed class TranslatorCredentialService
             "google" => "Google",
             "azure" => "Azure",
             "yandex" => "Yandex",
-            "webauto" or "web-auto" or "web auto" => "WebAuto",
             "googleweb" or "google-web" or "google web" => "GoogleWeb",
             "bingweb" or "bing-web" or "bing web" => "BingWeb",
             "yandexweb" or "yandex-web" or "yandex web" => "YandexWeb",
@@ -179,6 +189,7 @@ public sealed class TranslatorCredentialService
         string location,
         string endpoint)
     {
+        ThrowIfRemovedProvider(provider);
         var normalizedProvider = NormalizeProvider(provider);
         ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
         ArgumentException.ThrowIfNullOrWhiteSpace(projectId);
@@ -220,5 +231,19 @@ public sealed class TranslatorCredentialService
         }
 
         return value.Replace(secret.Trim(), "<redacted>", StringComparison.Ordinal);
+    }
+
+    private static void ThrowIfRemovedProvider(string provider)
+    {
+        if (!IsRemovedProvider(provider))
+        {
+            return;
+        }
+
+        var removedProvider = string.Equals(provider.Trim(), "glhf", StringComparison.OrdinalIgnoreCase)
+            ? "glhf"
+            : "WebAuto";
+        throw new NotSupportedException(
+            $"Translator provider '{removedProvider}' is no longer supported. Choose another translator provider.");
     }
 }

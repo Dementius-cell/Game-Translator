@@ -32,7 +32,7 @@
 
 Перед изменением OCR, live pipeline, packaging или release agent читает ADR-030 и `docs/agents/ocr-overlay-work-status.md`. Нормальный маршрут — GPU Paddle detector → bounded grouping → существующий Tesseract crop recognition → configured translator → per-region overlay. Python допустим только как зафиксированный packaged detector worker; UI, профили, orchestration, provider selection и overlay остаются в .NET.
 
-Legacy full-page OCR/grouping не выбирается автоматически и доступен только через явный diagnostic/compatibility option. Недоступность detector/runtime должна оставлять контролируемое degraded-состояние: агент не добавляет full-frame retry, WebAuto/cache/provider fallback и не меняет provider default без нового решения владельца. Windows OCR и Tesseract остаются обязательными продуктными возможностями.
+Legacy full-page OCR/grouping не выбирается автоматически и доступен только через явный diagnostic/compatibility option. Недоступность detector/runtime должна оставлять контролируемое degraded-состояние: агент не добавляет full-frame retry, cache/provider fallback и не меняет provider default без нового решения владельца. Windows OCR и Tesseract остаются обязательными продуктными возможностями.
 
 Для внешней публикации агент не добавляет в Git screenshots, game/manga OCR-тексты, calibration evidence, release candidates, модели или Tesseract data, если владелец отдельно не одобрил именно эти материалы.
 
@@ -78,7 +78,7 @@ Legacy full-page OCR/grouping не выбирается автоматическ
 
 Каждый экранный OCR-движок реализует `IOcrEngine`; Windows OCR и Tesseract сохраняются как обязательные возможности. Для вертикального текста Tesseract используется по умолчанию. Новый экранный движок допускается после бенчмарка на утверждённых скриншотах и ADR, не вместо существующих движков.
 
-Каждый официальный переводчик реализует `ITranslatorProvider`. Смена набора обязательных провайдеров или их автоматическая политика требует решения. `WebAuto` остаётся диагностическим экспериментом и не является тихим production fallback.
+Каждый официальный переводчик реализует `ITranslatorProvider`. Смена набора обязательных провайдеров или их автоматическая политика требует решения. Credentialless `GoogleWeb`, `BingWeb` и `YandexWeb` остаются отдельно выбираемыми диагностическими экспериментами; агрегирующий web-provider и автоматический fallback между ними отсутствуют.
 
 ------------------------------------------------------------------------
 

@@ -83,7 +83,8 @@ public sealed class TextCandidateRegionOcrService
                 zoneRequest.Frame,
                 zoneRequest.Language,
                 zoneRequest.OrientationMode,
-                zoneRequest.LayoutMode),
+                zoneRequest.LayoutMode,
+                zoneRequest.DetectorPreset),
             cancellationToken);
         if (detection.Availability != TextCandidateDetectorAvailability.Available)
         {
@@ -91,7 +92,8 @@ public sealed class TextCandidateRegionOcrService
                 detection.Availability,
                 detection.DetectorId,
                 detection.UnavailableReason,
-                Array.Empty<TextCandidateRegion>());
+                Array.Empty<TextCandidateRegion>(),
+                detection.Diagnostics);
         }
 
         var contentPolicy = ContentLayoutPolicyResolver.Resolve(zoneRequest.ContentLayoutMode);
@@ -100,7 +102,8 @@ public sealed class TextCandidateRegionOcrService
                 groupingService.Group(
                     candidates,
                     zoneRequest.Frame.Height,
-                    ResolveWritingSystemGroupingProfile(zoneRequest, contentPolicy)),
+                    ResolveWritingSystemGroupingProfile(zoneRequest, contentPolicy),
+                    zoneRequest.CandidateGroupingSettings),
                 zoneRequest.Frame)
             .Select(candidate => new TextCandidateRegion(candidate, CreateCroppedFrame(zoneRequest.Frame, candidate.Bounds)))
             .ToArray();
@@ -108,7 +111,8 @@ public sealed class TextCandidateRegionOcrService
             detection.Availability,
             detection.DetectorId,
             detection.UnavailableReason,
-            regions);
+            regions,
+            detection.Diagnostics);
     }
 
     private static WritingSystemGroupingProfile ResolveWritingSystemGroupingProfile(
@@ -132,18 +136,12 @@ public sealed class TextCandidateRegionOcrService
     {
         var candidateRequest = region.CreateOcrRequest(zoneRequest);
         var candidateResult = await ocrService.RecognizeAsync(candidateRequest, cancellationToken);
-        var recognizedText = string.Join(
-            Environment.NewLine,
-            candidateResult.TextBlocks
-                .Select(block => block.Text.Trim())
-                .Where(text => !string.IsNullOrWhiteSpace(text)));
-        if (string.IsNullOrWhiteSpace(recognizedText))
-        {
-            return null;
-        }
-
-        if (ShouldApplyCjkTargetPostFilter(zoneRequest.Language, zoneRequest.OrientationMode)
-            && !IsCjkTargetCandidate(region.Candidate, zoneRequest.Frame.Height, recognizedText))
+        var recognizedText = CreateRecognizedText(candidateResult);
+        if (!IsRecognizedCandidateAccepted(
+                zoneRequest,
+                region.Candidate,
+                zoneRequest.Frame.Height,
+                recognizedText))
         {
             return null;
         }
@@ -153,6 +151,53 @@ public sealed class TextCandidateRegionOcrService
             recognizedText,
             candidateResult.RecognizedAt,
             zoneRequest.OrientationMode);
+    }
+
+    internal bool IsRecognizedCandidateAccepted(
+        OcrRequest request,
+        TextCandidate candidate,
+        int sourceZoneHeight,
+        OcrResult candidateResult)
+    {
+        ArgumentNullException.ThrowIfNull(candidateResult);
+        return IsRecognizedCandidateAccepted(
+            request,
+            candidate,
+            sourceZoneHeight,
+            CreateRecognizedText(candidateResult));
+    }
+
+    private bool IsRecognizedCandidateAccepted(
+        OcrRequest request,
+        TextCandidate candidate,
+        int sourceZoneHeight,
+        string recognizedText)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(candidate);
+        if (sourceZoneHeight <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(sourceZoneHeight),
+                "Source zone height must be positive.");
+        }
+
+        if (string.IsNullOrWhiteSpace(recognizedText))
+        {
+            return false;
+        }
+
+        return !ShouldApplyCjkTargetPostFilter(request.Language, request.OrientationMode)
+            || IsCjkTargetCandidate(candidate, sourceZoneHeight, recognizedText);
+    }
+
+    private static string CreateRecognizedText(OcrResult candidateResult)
+    {
+        return string.Join(
+            Environment.NewLine,
+            candidateResult.TextBlocks
+                .Select(block => block.Text.Trim())
+                .Where(text => !string.IsNullOrWhiteSpace(text)));
     }
 
     private IReadOnlyList<TextCandidate> SelectCandidates(
@@ -318,8 +363,38 @@ public sealed class TextCandidateRegionOcrService
         var minimumHeight = (int)Math.Ceiling(
             zoneHeight * options.CjkTargetMinimumCandidateHeightZoneFraction);
         return candidate.Bounds.Height >= minimumHeight
-            && candidate.Bounds.Height >= candidate.Bounds.Width * options.CjkTargetMinimumHeightToWidthRatio
+            && HasCjkTargetVerticalGeometry(candidate)
             && CountCjkFamilyCharacters(recognizedText) >= options.CjkTargetMinimumCharacterCount;
+    }
+
+    private bool HasCjkTargetVerticalGeometry(TextCandidate candidate)
+    {
+        if (MeetsCjkTargetHeightToWidthRatio(candidate.Bounds))
+        {
+            return true;
+        }
+
+        // Bounded CjkVertical grouping owns bubble separation. Its aggregate can be wider
+        // than tall even when every represented detector column is strongly vertical.
+        // Keep the former aggregate rule for raw/single candidates and broaden only a
+        // well-formed multi-member group whose complete source geometry remains vertical.
+        return candidate.SourceCandidateBounds.Count > 1
+            && candidate.SourceCandidateBounds.All(sourceBounds =>
+                IsContainedBy(candidate.Bounds, sourceBounds)
+                && MeetsCjkTargetHeightToWidthRatio(sourceBounds));
+    }
+
+    private bool MeetsCjkTargetHeightToWidthRatio(BoundingBox bounds)
+    {
+        return bounds.Height >= bounds.Width * options.CjkTargetMinimumHeightToWidthRatio;
+    }
+
+    private static bool IsContainedBy(BoundingBox outer, BoundingBox inner)
+    {
+        return inner.X >= outer.X
+            && inner.Y >= outer.Y
+            && inner.Right <= outer.Right
+            && inner.Bottom <= outer.Bottom;
     }
 
     private static int CountCjkFamilyCharacters(string text)
@@ -362,7 +437,11 @@ public sealed class TextCandidateRegion
             OcrSettings.TesseractEngineId,
             zoneRequest.OrientationMode,
             OcrLayoutMode.Dialog,
-            zoneRequest.ContentLayoutMode);
+            zoneRequest.ContentLayoutMode,
+            zoneRequest.CandidateGroupingSettings)
+        {
+            DetectorPreset = zoneRequest.DetectorPreset,
+        };
     }
 }
 
@@ -373,6 +452,16 @@ public sealed class TextCandidateRegionDetectionResult
         string detectorId,
         string? unavailableReason,
         IReadOnlyList<TextCandidateRegion> regions)
+        : this(availability, detectorId, unavailableReason, regions, diagnostics: null)
+    {
+    }
+
+    public TextCandidateRegionDetectionResult(
+        TextCandidateDetectorAvailability availability,
+        string detectorId,
+        string? unavailableReason,
+        IReadOnlyList<TextCandidateRegion> regions,
+        TextCandidateDetectionDiagnostics? diagnostics)
     {
         if (!Enum.IsDefined(availability))
         {
@@ -386,6 +475,7 @@ public sealed class TextCandidateRegionDetectionResult
         DetectorId = detectorId.Trim();
         UnavailableReason = unavailableReason;
         Regions = regions.ToArray();
+        Diagnostics = diagnostics;
     }
 
     public TextCandidateDetectorAvailability Availability { get; }
@@ -395,6 +485,8 @@ public sealed class TextCandidateRegionDetectionResult
     public string? UnavailableReason { get; }
 
     public IReadOnlyList<TextCandidateRegion> Regions { get; }
+
+    public TextCandidateDetectionDiagnostics? Diagnostics { get; }
 }
 
 public sealed record TextCandidateRegionOcrOptions

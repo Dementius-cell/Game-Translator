@@ -13,7 +13,14 @@ $detectorDirectory = Join-Path $releasePath "app\candidate-detector"
 $sitePackages = Join-Path $detectorDirectory "Lib\site-packages"
 $modelPath = Join-Path $detectorDirectory "paddlex-cache\official_models\PP-OCRv6_medium_det"
 $verificationPath = Join-Path $releasePath "candidate-detector-headless-verification.json"
+$portableOcrSmokePath = Join-Path $releasePath "portable-tesseract-ocr-smoke.json"
 $tessdataPath = Join-Path $releasePath "app\tessdata"
+$runtimeTarget = if (Test-Path -LiteralPath (Join-Path $releasePath "app\hostfxr.dll") -PathType Leaf) {
+    "win-x64 self-contained .NET 9 desktop release candidate"
+}
+else {
+    "win-x64 framework-dependent .NET 9 desktop release candidate"
+}
 
 foreach ($requiredPath in @($sitePackages, $modelPath, (Join-Path $detectorDirectory "python.exe"))) {
     if (-not (Test-Path -LiteralPath $requiredPath)) {
@@ -68,6 +75,14 @@ else {
 $verification = if (Test-Path -LiteralPath $verificationPath) {
     Get-Content -LiteralPath $verificationPath -Raw | ConvertFrom-Json
 }
+
+if (-not (Test-Path -LiteralPath $portableOcrSmokePath -PathType Leaf)) {
+    throw "Cannot finalize release candidate without packaged Tesseract OCR smoke evidence: $portableOcrSmokePath"
+}
+$portableOcrSmoke = Get-Content -LiteralPath $portableOcrSmokePath -Raw | ConvertFrom-Json
+if ($portableOcrSmoke.status -ne "passed") {
+    throw "Cannot finalize release candidate because packaged Tesseract OCR smoke did not pass."
+}
 else {
     $null
 }
@@ -75,9 +90,10 @@ else {
 $manifest = [ordered]@{
     releaseName = Split-Path -Leaf $releasePath
     generatedAtUtc = [DateTimeOffset]::UtcNow.ToString("O")
-    target = "win-x64 framework-dependent .NET 9 desktop release candidate"
+    target = $runtimeTarget
     candidatePipeline = "ADR-030 default detector-to-Tesseract pipeline; legacy full-page orchestration is not an automatic fallback"
     headlessVerification = $verification
+    portableTesseractOcrSmoke = $portableOcrSmoke
     model = [ordered]@{
         name = "PP-OCRv6_medium_det"
         relativePath = "candidate-detector/paddlex-cache/official_models/PP-OCRv6_medium_det"
@@ -120,7 +136,7 @@ $notices | Set-Content -LiteralPath (Join-Path $releasePath "THIRD-PARTY-NOTICES
     "",
     "This artifact was assembled from a dirty local worktree. It is not a signed production release, but its default path is the ADR-030 detector-to-Tesseract pipeline.",
     "",
-    "It contains the bundled GPU detector runtime required by the default candidate pipeline. Record package integrity, offline-install, rollback and release-approval evidence before distribution."
+    "It contains the bundled GPU detector runtime required by the default candidate pipeline and $($runtimeTarget.ToLowerInvariant()). Record package integrity, offline-install, rollback and release-approval evidence before distribution."
 ) | Set-Content -LiteralPath (Join-Path $releasePath "RELEASE-CANDIDATE-NOTICE.md") -Encoding utf8
 
 $hashes = Get-ChildItem -LiteralPath $releasePath -Recurse -File |

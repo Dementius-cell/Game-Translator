@@ -24,6 +24,8 @@ param(
 
     [switch]$ValidateRuntimeOnly,
 
+    [switch]$SelfContained,
+
     [switch]$PruneRuntimePayload
 )
 
@@ -69,11 +71,18 @@ $uiProject = Join-Path $repositoryRoot "src\GameTranslator.UI\GameTranslator.UI.
 $releaseRootPath = [System.IO.Path]::GetFullPath($ReleaseRoot)
 $releaseDirectory = Join-Path $releaseRootPath $ReleaseName
 $appDirectory = Join-Path $releaseDirectory "app"
+$runtimeTarget = if ($SelfContained) {
+    "win-x64 self-contained .NET 9 desktop release candidate"
+}
+else {
+    "win-x64 framework-dependent .NET 9 desktop release candidate"
+}
 $detectorDirectory = Join-Path $appDirectory "candidate-detector"
 $venvSitePackages = Join-Path $PaddleVenvRoot "Lib\site-packages"
 $detectorSitePackages = Join-Path $detectorDirectory "Lib\site-packages"
 $tessdataSourceDirectory = Join-Path $repositoryRoot "tessdata"
 $packagedTessdataDirectory = Join-Path $appDirectory "tessdata"
+$portableOcrSmokeReportPath = Join-Path $releaseDirectory "portable-tesseract-ocr-smoke.json"
 $modelDirectoryName = "PP-OCRv6_medium_det"
 $modelSourceDirectory = Join-Path $ModelCacheRoot "official_models\$modelDirectoryName"
 $runtimePruning = [ordered]@{
@@ -116,6 +125,78 @@ function Get-MetadataValue {
     return $line.Substring($prefix.Length).Trim()
 }
 
+function Assert-SelfContainedWindowsDesktopRuntime {
+    param(
+        [Parameter(Mandatory)] [string]$ApplicationDirectory
+    )
+
+    $runtimeConfigPath = Join-Path $ApplicationDirectory "GameTranslator.UI.runtimeconfig.json"
+    if (-not (Test-Path -LiteralPath $runtimeConfigPath -PathType Leaf)) {
+        throw "Self-contained publish is missing its runtime configuration: $runtimeConfigPath"
+    }
+
+    $runtimeConfig = Get-Content -LiteralPath $runtimeConfigPath -Raw | ConvertFrom-Json
+    $windowsDesktopFramework = @($runtimeConfig.runtimeOptions.includedFrameworks | Where-Object { $_.name -eq "Microsoft.WindowsDesktop.App" }) | Select-Object -First 1
+    if ($null -eq $windowsDesktopFramework) {
+        throw "Self-contained publish does not declare Microsoft.WindowsDesktop.App."
+    }
+
+    $expectedMajorVersion = ([version]$windowsDesktopFramework.version).Major
+    foreach ($assemblyFileName in @("WindowsBase.dll", "PresentationCore.dll", "PresentationFramework.dll", "System.Xaml.dll")) {
+        $assemblyPath = Join-Path $ApplicationDirectory $assemblyFileName
+        if (-not (Test-Path -LiteralPath $assemblyPath -PathType Leaf)) {
+            throw "Self-contained publish is missing WindowsDesktop runtime assembly: $assemblyPath"
+        }
+
+        $assemblyName = [System.Reflection.AssemblyName]::GetAssemblyName($assemblyPath)
+        if ($assemblyName.Version.Major -ne $expectedMajorVersion) {
+            throw "Self-contained publish contains an incompatible $assemblyFileName identity '$assemblyName' instead of WindowsDesktop major version $expectedMajorVersion."
+        }
+    }
+}
+
+function Assert-SelfContainedExternalModuleReferenceClosure {
+    param(
+        [Parameter(Mandatory)] [string]$ApplicationDirectory
+    )
+
+    $modulePath = Join-Path $ApplicationDirectory "GameTranslator.Infrastructure.dll"
+    if (-not (Test-Path -LiteralPath $modulePath -PathType Leaf)) {
+        throw "Self-contained publish is missing the external Infrastructure composition module: $modulePath"
+    }
+
+    $moduleAssembly = [System.Reflection.Assembly]::ReflectionOnlyLoadFrom($modulePath)
+    foreach ($requiredAssembly in $moduleAssembly.GetReferencedAssemblies()) {
+        $dependencyPath = Join-Path $ApplicationDirectory "$($requiredAssembly.Name).dll"
+        if (-not (Test-Path -LiteralPath $dependencyPath -PathType Leaf)) {
+            throw "Self-contained publish is missing Infrastructure dependency '$requiredAssembly': $dependencyPath"
+        }
+
+        $actualAssembly = [System.Reflection.AssemblyName]::GetAssemblyName($dependencyPath)
+        if ($actualAssembly.FullName -ne $requiredAssembly.FullName) {
+            throw "Self-contained publish has incompatible Infrastructure dependency '$actualAssembly' at '$dependencyPath'; expected '$requiredAssembly'."
+        }
+    }
+}
+
+function Assert-PackagedTesseractNativeLayout {
+    param(
+        [Parameter(Mandatory)] [string]$ApplicationDirectory
+    )
+
+    foreach ($libraryName in @("leptonica-1.85.0.dll", "tesseract55.dll")) {
+        $expectedPath = Join-Path $ApplicationDirectory "x64\$libraryName"
+        if (-not (Test-Path -LiteralPath $expectedPath -PathType Leaf)) {
+            throw "Published app is missing the Tesseract x64 native library at its architecture-specific path: $expectedPath"
+        }
+
+        $flattenedPath = Join-Path $ApplicationDirectory $libraryName
+        if (Test-Path -LiteralPath $flattenedPath -PathType Leaf) {
+            throw "Published app contains a flattened Tesseract native library instead of the required x64 layout: $flattenedPath"
+        }
+    }
+}
+
 $normalizedTesseractLanguagePacks = @(
     $TesseractLanguagePacks |
         ForEach-Object { $_.Trim().ToLowerInvariant() } |
@@ -153,10 +234,21 @@ try {
         throw "RID-specific dotnet restore failed with exit code $LASTEXITCODE."
     }
 
-    & dotnet publish $uiProject -c Release -r win-x64 --self-contained false --no-restore -o $appDirectory
+    if ($SelfContained) {
+        & dotnet publish $uiProject -c Release -r win-x64 --self-contained --no-restore -o $appDirectory
+    }
+    else {
+        & dotnet publish $uiProject -c Release -r win-x64 --self-contained false --no-restore -o $appDirectory
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "dotnet publish failed with exit code $LASTEXITCODE."
     }
+
+    if ($SelfContained) {
+        Assert-SelfContainedWindowsDesktopRuntime -ApplicationDirectory $appDirectory
+        Assert-SelfContainedExternalModuleReferenceClosure -ApplicationDirectory $appDirectory
+    }
+    Assert-PackagedTesseractNativeLayout -ApplicationDirectory $appDirectory
 }
 finally {
     Pop-Location
@@ -183,11 +275,62 @@ if ($normalizedTesseractLanguagePacks.Count -gt 0) {
     }
 }
 
+if (-not ($normalizedTesseractLanguagePacks -contains "eng")) {
+    throw "The mandatory packaged Tesseract OCR smoke requires the eng language pack."
+}
+
+$packagedExecutable = Join-Path $appDirectory "GameTranslator.UI.exe"
+$smokeArguments = @(
+    "--portable-ocr-smoke",
+    "`"$portableOcrSmokeReportPath`""
+)
+$smokeProcess = Start-Process `
+    -FilePath $packagedExecutable `
+    -ArgumentList $smokeArguments `
+    -WorkingDirectory $appDirectory `
+    -WindowStyle Hidden `
+    -Wait `
+    -PassThru
+if ($smokeProcess.ExitCode -ne 0) {
+    $smokeFailure = if (Test-Path -LiteralPath $portableOcrSmokeReportPath -PathType Leaf) {
+        Get-Content -LiteralPath $portableOcrSmokeReportPath -Raw
+    }
+    else {
+        "The packaged executable did not write its smoke report."
+    }
+    throw "Packaged Tesseract OCR smoke failed with exit code $($smokeProcess.ExitCode): $smokeFailure"
+}
+
+if (-not (Test-Path -LiteralPath $portableOcrSmokeReportPath -PathType Leaf)) {
+    throw "The packaged Tesseract OCR smoke did not write its report: $portableOcrSmokeReportPath"
+}
+$portableOcrSmokeResult = Get-Content -LiteralPath $portableOcrSmokeReportPath -Raw | ConvertFrom-Json
+if ($portableOcrSmokeResult.status -ne "passed") {
+    throw "The packaged Tesseract OCR smoke report does not declare a passed result."
+}
+$expectedSmokeBaseDirectory = [System.IO.Path]::GetFullPath($appDirectory).TrimEnd('\')
+$actualSmokeBaseDirectory = [System.IO.Path]::GetFullPath([string]$portableOcrSmokeResult.baseDirectory).TrimEnd('\')
+if (-not $actualSmokeBaseDirectory.Equals($expectedSmokeBaseDirectory, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "The packaged Tesseract OCR smoke ran from '$actualSmokeBaseDirectory' instead of '$expectedSmokeBaseDirectory'."
+}
+
+# Serilog creates this directory because the packaged executable itself is the smoke host.
+# It contains only synthetic-smoke startup lines and is not part of the candidate payload.
+$packagedLogDirectory = [System.IO.Path]::GetFullPath((Join-Path $appDirectory "logs"))
+if (-not $packagedLogDirectory.StartsWith(
+        ([System.IO.Path]::GetFullPath($appDirectory).TrimEnd('\') + '\'),
+        [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing to clean an unexpected packaged smoke log directory: $packagedLogDirectory"
+}
+if (Test-Path -LiteralPath $packagedLogDirectory -PathType Container) {
+    Remove-Item -LiteralPath $packagedLogDirectory -Recurse -Force
+}
+
 $workerScript = Join-Path $detectorDirectory "paddle_text_detector_worker.py"
 if (-not (Test-Path -LiteralPath $workerScript)) {
     throw "Published app output does not contain the candidate detector worker: $workerScript"
 }
-$workerContent = Get-Content -LiteralPath $workerScript -Raw
+$workerContent = Get-Content -LiteralPath $workerScript -Raw -Encoding utf8
 
 # Publish can bring a stale candidate-detector payload from the Infrastructure output.
 # Recreate this generated directory so the selected runtime inventory is authoritative.
@@ -299,7 +442,7 @@ $distributions = foreach ($metadata in Get-ChildItem -LiteralPath $detectorSiteP
 $manifest = [ordered]@{
     releaseName = $ReleaseName
     generatedAtUtc = [DateTimeOffset]::UtcNow.ToString("O")
-    target = "win-x64 framework-dependent .NET 9 desktop release candidate"
+    target = $runtimeTarget
     candidatePipeline = "ADR-030 default detector-to-Tesseract pipeline; legacy full-page orchestration is not an automatic fallback"
     packagedPython = $probeResult
     model = [ordered]@{
@@ -316,6 +459,7 @@ $manifest = [ordered]@{
         }
     }
     tesseractLanguagePacks = $packagedTesseractLanguagePackRecords
+    portableTesseractOcrSmoke = $portableOcrSmokeResult
     runtimePruning = $runtimePruning
     distributions = $distributions | Sort-Object Name
 }
@@ -355,7 +499,7 @@ $notice = @(
     "",
     "This artifact was assembled from a dirty local worktree. It is not a signed production release, but its default path is the ADR-030 detector-to-Tesseract pipeline.",
     "",
-    "It contains the bundled GPU detector runtime required by the default candidate pipeline. Record package integrity, offline-install, rollback and release-approval evidence before distribution."
+    "It contains the bundled GPU detector runtime required by the default candidate pipeline and $($runtimeTarget.ToLowerInvariant()). Record package integrity, offline-install, rollback and release-approval evidence before distribution."
 )
 $notice | Set-Content -LiteralPath (Join-Path $releaseDirectory "RELEASE-CANDIDATE-NOTICE.md") -Encoding utf8
 

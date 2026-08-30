@@ -98,7 +98,54 @@ public sealed class TranslationTextGroupingServiceTests
         Assert.Equal(new[] { "Right", "Left" }, result.MaskSourceResult.TextBlocks.Select(block => block.Text));
     }
 
+    [Fact]
+    public void CreateTranslationSourceResult_WhenVerticalCjkUsesWholeZone_OrdersColumnsRightToLeftAndTopToBottom()
+    {
+        var leftBottom = new OcrTextBlock("Left bottom", new BoundingBox(42, 70, 20, 30));
+        var rightBottom = new OcrTextBlock("Right bottom", new BoundingBox(100, 70, 22, 30));
+        var leftTop = new OcrTextBlock("Left top", new BoundingBox(40, 10, 22, 30));
+        var rightTop = new OcrTextBlock("Right top", new BoundingBox(102, 10, 20, 30));
+        var result = CreateResult(
+            inputWidth: 180,
+            inputHeight: 140,
+            OcrOrientationMode.Vertical,
+            "ja",
+            leftBottom,
+            rightBottom,
+            leftTop,
+            rightTop);
+        var zone = new OcrZone
+        {
+            Id = "vertical-comic-page",
+            Name = "Vertical comic page",
+            TranslationGroupingMode = TranslationGroupingMode.WholeZone,
+        };
+
+        var grouped = TranslationTextGroupingService.CreateTranslationSourceResult(result, zone);
+
+        var groupedBlock = Assert.Single(grouped.TextBlocks);
+        Assert.Equal("Right top Right bottom Left top Left bottom", groupedBlock.Text);
+        Assert.Equal(
+            new[] { rightTop.Bounds, rightBottom.Bounds, leftTop.Bounds, leftBottom.Bounds },
+            Assert.Single(grouped.TextBlockSources).MemberBounds);
+    }
+
     private static OcrResult CreateResult(int inputWidth, int inputHeight, params OcrTextBlock[] blocks)
+    {
+        return CreateResult(
+            inputWidth,
+            inputHeight,
+            OcrOrientationMode.Horizontal,
+            "en",
+            blocks);
+    }
+
+    private static OcrResult CreateResult(
+        int inputWidth,
+        int inputHeight,
+        OcrOrientationMode orientationMode,
+        string language,
+        params OcrTextBlock[] blocks)
     {
         var region = new CaptureRegion(0, 0, inputWidth, inputHeight);
         var stride = checked(inputWidth * 4);
@@ -112,7 +159,7 @@ public sealed class TranslationTextGroupingServiceTests
             FrameTime);
 
         return new OcrResult(
-            new OcrRequest(frame, "en", "comic-page", orientationMode: OcrOrientationMode.Horizontal),
+            new OcrRequest(frame, language, "comic-page", orientationMode: orientationMode),
             blocks,
             FrameTime);
     }

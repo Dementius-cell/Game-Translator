@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows;
@@ -64,6 +65,21 @@ public sealed record ContentLayoutModeOption(ContentLayoutMode Mode, string Disp
     }
 }
 
+public sealed record CandidateDetectorPresetOption(TextCandidateDetectorPreset Preset, string DisplayName)
+{
+    public override string ToString()
+    {
+        return DisplayName;
+    }
+}
+
+public enum PipelineStatusSeverity
+{
+    Normal,
+    Warning,
+    Error,
+}
+
 public sealed class MainViewModel : ValidatableObservableObject
 {
     private const int ZonesOcrWorkspaceTabIndex = 0;
@@ -76,6 +92,8 @@ public sealed class MainViewModel : ValidatableObservableObject
     private const string ProfileFileDialogFilter = "Game Translator profile (*.json)|*.json|JSON files (*.json)|*.json|All files (*.*)|*.*";
     private const string DebugInfoFileDialogFilter = "Text files (*.txt)|*.txt|All files (*.*)|*.*";
     private const string LiveDiagnosticsDirectorySettingKey = "diagnostics.live.directory";
+    private const int MaximumLiveDiagnosticsReportUtf8Bytes = 99_000_000;
+    private const int LiveDiagnosticsReportPrefixUtf8Bytes = 8_192;
     private const string DraftProfileNameSettingKey = "shell.draft.profile.name";
     private const string DraftProfileDescriptionSettingKey = "shell.draft.profile.description";
     private const string DraftTranslatorProviderSettingKey = "shell.draft.translator.provider";
@@ -111,7 +129,6 @@ public sealed class MainViewModel : ValidatableObservableObject
         "Google",
         "Azure",
         "Yandex",
-        "WebAuto",
         "GoogleWeb",
         "BingWeb",
         "YandexWeb",
@@ -144,7 +161,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         new("off", "Off", "No OCR preprocessing.", OcrPreprocessingSettings.Default),
         new(
             "fast",
-            "Fast",
+            "Light (1.25x)",
             "Light contrast and scaling for readable UI text.",
             new OcrPreprocessingSettings
             {
@@ -159,7 +176,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             }),
         new(
             "balanced",
-            "Balanced",
+            "Standard (1.5x)",
             "Moderate cleanup for subtitles, dialogue, and mixed UI.",
             new OcrPreprocessingSettings
             {
@@ -174,7 +191,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             }),
         new(
             "aggressive",
-            "Aggressive",
+            "Strong (2x)",
             "Strong cleanup for small, low-contrast, or noisy text.",
             new OcrPreprocessingSettings
             {
@@ -185,6 +202,21 @@ public sealed class MainViewModel : ValidatableObservableObject
                 ThresholdingEnabled = true,
                 Threshold = 150,
                 Scale = 2,
+                NoiseReductionEnabled = true,
+            }),
+        new(
+            "small-source-heavy",
+            "Tiny source - heavy (3x)",
+            "Explicit 3x upscale and strong cleanup for tiny source text; slower and not automatic.",
+            new OcrPreprocessingSettings
+            {
+                IsEnabled = true,
+                Contrast = 1.9,
+                Brightness = 8,
+                Sharpness = 1.4,
+                ThresholdingEnabled = true,
+                Threshold = 152,
+                Scale = 3,
                 NoiseReductionEnabled = true,
             }),
     };
@@ -213,6 +245,13 @@ public sealed class MainViewModel : ValidatableObservableObject
     private static readonly ContentLayoutModeOption[] SupportedContentLayoutModeOptions =
     {
         new(ContentLayoutMode.DialogComic, "Dialog / Comic"),
+    };
+
+    private static readonly CandidateDetectorPresetOption[] SupportedCandidateDetectorPresetOptions =
+    {
+        new(TextCandidateDetectorPreset.Standard, "Standard — box 0.60"),
+        new(TextCandidateDetectorPreset.ChineseExperimental, "Chinese test — box 0.65"),
+        new(TextCandidateDetectorPreset.ChineseStrictExperimental, "Chinese strict test — box 0.70"),
     };
 
     private static LanguageOption[] BuildSupportedLanguageOptions()
@@ -433,8 +472,14 @@ public sealed class MainViewModel : ValidatableObservableObject
     private OcrZoneEditorViewModel? selectedZone;
     private OcrResult? latestOcrPreviewResult;
     private IReadOnlyList<CandidateGroupingDebugEntry> latestCandidateGroupingEntries = Array.Empty<CandidateGroupingDebugEntry>();
-    private IReadOnlyList<LiveCandidateLifecycleEvent> latestCandidateLifecycleEvents = Array.Empty<LiveCandidateLifecycleEvent>();
+    private readonly List<LiveCandidateLifecycleEvent> latestCandidateLifecycleEvents = new();
     private int droppedCandidateLifecycleEventCount;
+    private LiveTranslationTiming? lastLiveTranslationTiming;
+    private LiveTranslationTimingPreset? lastLiveTranslationTimingPreset;
+    private string lastLiveOcrPreprocessingPreset = "(not started)";
+    private string lastLiveTranslatorProvider = "(not started)";
+    private string lastLiveSourceLanguage = "(not started)";
+    private string lastLiveTargetLanguage = "(not started)";
     private CaptureRefreshMetrics? latestCaptureRefreshMetrics;
     private ImageSource? capturePreviewImage;
     private string capturePreviewStatus = "No capture preview yet.";
@@ -443,6 +488,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private string ocrLanguagePackStatus = "OCR language pack status not checked.";
     private string overlayPreviewStatus = "Overlay preview hidden.";
     private string pipelineStatus = "Full translation pipeline not run yet.";
+    private PipelineStatusSeverity pipelineStatusSeverity;
     private string translationCacheStatus = "Translation cache not cleaned yet.";
     private string updateStatus = "Update check not run yet.";
     private string globalHotkeyStatus = "Global hotkeys not registered yet.";
@@ -477,7 +523,6 @@ public sealed class MainViewModel : ValidatableObservableObject
     private CancellationTokenSource? liveTranslationCancellation;
     private CandidatePipelineReadiness? lastCandidatePipelineReadiness;
     private string? lastLiveTranslationFailureKind;
-    private string? lastCandidateDegradedDiagnosticsFingerprint;
     private int liveDiagnosticsSequence;
 
     public MainViewModel(
@@ -782,8 +827,11 @@ public sealed class MainViewModel : ValidatableObservableObject
             value = NormalizeTranslatorLanguageTag(value);
             if (SetProperty(ref sourceLanguage, value))
             {
+                EnsureOcrOrientationMatchesConfiguredLanguages();
                 OnPropertyChanged(nameof(TranslatorSettingsSummary));
                 OnPropertyChanged(nameof(ProfileSummary));
+                OnPropertyChanged(nameof(IsOcrOrientationSelectionEnabled));
+                OnPropertyChanged(nameof(OcrOrientationSelectionToolTip));
                 ResetOcrLanguagePackStatus();
                 PersistDraftShellStateIfNeeded();
                 RefreshValidationState();
@@ -818,6 +866,16 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public IReadOnlyList<OcrOrientationMode> OcrOrientations => SupportedOcrOrientations;
 
+    public bool IsOcrOrientationSelectionEnabled => SupportsVerticalOcrLayout();
+
+    public bool IsVerticalOcrOrientation => OcrOrientationMode == OcrOrientationMode.Vertical;
+
+    public bool IsHorizontalOcrOrientation => !IsVerticalOcrOrientation;
+
+    public string OcrOrientationSelectionToolTip => IsOcrOrientationSelectionEnabled
+        ? "Vertical OCR is available for Japanese and Chinese zones."
+        : "The configured OCR language has no supported vertical layout; horizontal OCR is selected automatically.";
+
     public IReadOnlyList<OcrPreprocessingPresetOption> OcrPreprocessingPresets => SupportedOcrPreprocessingPresetOptions;
 
     public IReadOnlyList<string> InstalledFontFamilies => installedFontFamilies;
@@ -827,6 +885,8 @@ public sealed class MainViewModel : ValidatableObservableObject
     public IReadOnlyList<TranslationGroupingModeOption> TranslationGroupingModeOptions => SupportedTranslationGroupingModeOptions;
 
     public IReadOnlyList<ContentLayoutModeOption> ContentLayoutModeOptions => SupportedContentLayoutModeOptions;
+
+    public IReadOnlyList<CandidateDetectorPresetOption> CandidateDetectorPresetOptions => SupportedCandidateDetectorPresetOptions;
 
     public int SelectedWorkspaceTabIndex
     {
@@ -892,9 +952,9 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public string LiveTranslationTimingSummary => LiveTranslationTimingPreset switch
     {
-        LiveTranslationTimingPreset.Fast => "Fast: poll every 100 ms, translate after 200 ms stable OCR text.",
-        LiveTranslationTimingPreset.Conservative => "Conservative: poll every 160 ms, translate after 320 ms stable OCR text.",
-        _ => "Balanced: poll every 125 ms, translate after 250 ms stable OCR text.",
+        LiveTranslationTimingPreset.Fast => "Fast: poll every 100 ms; require 2 matching grouping and OCR observations, each held for at least 200 ms.",
+        LiveTranslationTimingPreset.Conservative => "Conservative: poll every 160 ms; require 4 matching grouping and OCR observations, each held for at least 320 ms.",
+        _ => "Balanced: poll every 125 ms; require 3 matching grouping and OCR observations, each held for at least 250 ms.",
     };
 
     public string OcrEngine
@@ -919,8 +979,11 @@ public sealed class MainViewModel : ValidatableObservableObject
         get => ocrOrientationMode;
         set
         {
-            if (SetProperty(ref ocrOrientationMode, value))
+            var normalizedValue = NormalizeOcrOrientationMode(value);
+            if (SetProperty(ref ocrOrientationMode, normalizedValue))
             {
+                OnPropertyChanged(nameof(IsVerticalOcrOrientation));
+                OnPropertyChanged(nameof(IsHorizontalOcrOrientation));
                 OnPropertyChanged(nameof(ProfileSummary));
                 ResetOcrLanguagePackStatus();
                 PersistDraftShellStateIfNeeded();
@@ -1363,6 +1426,12 @@ public sealed class MainViewModel : ValidatableObservableObject
         private set => SetProperty(ref pipelineStatus, value);
     }
 
+    public PipelineStatusSeverity PipelineStatusSeverity
+    {
+        get => pipelineStatusSeverity;
+        private set => SetProperty(ref pipelineStatusSeverity, value);
+    }
+
     public string TranslationCacheStatus
     {
         get => translationCacheStatus;
@@ -1398,6 +1467,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public bool RequiresStoredTranslatorCredentials =>
         !string.IsNullOrWhiteSpace(TranslatorProvider)
+        && !TranslatorCredentialService.IsRemovedProvider(TranslatorProvider)
         && TranslatorCredentialService.RequiresStoredCredentials(TranslatorProvider);
 
     public double DebugVerticalSourceWidthMultiplier
@@ -1501,6 +1571,13 @@ public sealed class MainViewModel : ValidatableObservableObject
             return;
         }
 
+        if (TranslatorCredentialService.IsRemovedProvider(TranslatorProvider))
+        {
+            TranslatorCredentialStatus = CreateRemovedTranslatorProviderStatus(TranslatorProvider);
+            StatusMessage = TranslatorCredentialStatus;
+            return;
+        }
+
         if (!TranslatorCredentialService.RequiresStoredCredentials(TranslatorProvider))
         {
             TranslatorCredentialStatus = $"{TranslatorCredentialService.NormalizeProvider(TranslatorProvider)} is experimental and does not use stored credentials.";
@@ -1562,6 +1639,13 @@ public sealed class MainViewModel : ValidatableObservableObject
             return;
         }
 
+        if (TranslatorCredentialService.IsRemovedProvider(TranslatorProvider))
+        {
+            HasStoredTranslatorCredentials = false;
+            TranslatorCredentialStatus = CreateRemovedTranslatorProviderStatus(TranslatorProvider);
+            return;
+        }
+
         try
         {
             if (!TranslatorCredentialService.RequiresStoredCredentials(TranslatorProvider))
@@ -1612,6 +1696,15 @@ public sealed class MainViewModel : ValidatableObservableObject
         if (!CanSelectTranslatorProvider())
         {
             TranslatorCredentialStatus = "Select a translator provider to delete credentials.";
+            return;
+        }
+
+        if (TranslatorCredentialService.IsRemovedProvider(TranslatorProvider))
+        {
+            TranslatorCredentialSecret = string.Empty;
+            HasStoredTranslatorCredentials = false;
+            TranslatorCredentialStatus = CreateRemovedTranslatorProviderStatus(TranslatorProvider);
+            StatusMessage = TranslatorCredentialStatus;
             return;
         }
 
@@ -2207,6 +2300,9 @@ public sealed class MainViewModel : ValidatableObservableObject
         SelectedZone = OcrZones.Count == 0
             ? null
             : OcrZones[Math.Clamp(index, 0, OcrZones.Count - 1)];
+        EnsureOcrOrientationMatchesConfiguredLanguages();
+        OnPropertyChanged(nameof(IsOcrOrientationSelectionEnabled));
+        OnPropertyChanged(nameof(OcrOrientationSelectionToolTip));
         PersistDraftShellStateIfNeeded();
         OnPropertyChanged(nameof(ZoneSummary));
         OnPropertyChanged(nameof(ProfileSummary));
@@ -2569,7 +2665,16 @@ public sealed class MainViewModel : ValidatableObservableObject
             CapturePreviewStatus = $"Captured {frame.Width}x{frame.Height} at {frame.CapturedAt:HH:mm:ss}.";
 
             var result = await ocrService.RecognizeAsync(
-                new OcrRequest(frame, ocrLanguage, zone.Id, BuildOcrPreprocessingSettings(), OcrEngine, OcrOrientationMode));
+                new OcrRequest(
+                    frame,
+                    ocrLanguage,
+                    zone.Id,
+                    BuildOcrPreprocessingSettings(),
+                    OcrEngine,
+                    OcrOrientationMode)
+                {
+                    DetectorPreset = zone.DetectorPreset,
+                });
             latestOcrPreviewResult = result;
             ReplaceOcrPreviewTextBlocks(result.TextBlocks);
             UpdateVisibleOverlayPreview(result, overlayWasVisibleBeforeCapture);
@@ -2690,6 +2795,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public async Task RunTranslationPipelineAsync()
     {
+        PipelineStatusSeverity = PipelineStatusSeverity.Normal;
         RefreshValidationState();
         if (OcrZones.Count == 0)
         {
@@ -2731,6 +2837,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             RestoreOverlayPreviewAfterFailedCapture(overlayWasVisibleBeforeCapture, overlaySnapshotBeforeCapture);
             logger.Error(exception, "Full translation pipeline failed.");
             PipelineStatus = exception.Message;
+            PipelineStatusSeverity = PipelineStatusSeverity.Error;
             StatusMessage = PipelineStatus;
             latestOcrPreviewResult = null;
             ReplaceOcrPreviewTextBlocks(Array.Empty<OcrTextBlock>());
@@ -2739,6 +2846,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         {
             RestoreOverlayPreviewAfterFailedCapture(overlayWasVisibleBeforeCapture, overlaySnapshotBeforeCapture);
             PipelineStatus = "Full translation pipeline canceled.";
+            PipelineStatusSeverity = PipelineStatusSeverity.Normal;
             StatusMessage = PipelineStatus;
         }
         catch (Exception exception)
@@ -2746,6 +2854,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             RestoreOverlayPreviewAfterFailedCapture(overlayWasVisibleBeforeCapture, overlaySnapshotBeforeCapture);
             logger.Error(exception, "Unexpected full translation pipeline failure.");
             PipelineStatus = "Full translation pipeline failed. Check logs for details.";
+            PipelineStatusSeverity = PipelineStatusSeverity.Error;
             StatusMessage = PipelineStatus;
             latestOcrPreviewResult = null;
             ReplaceOcrPreviewTextBlocks(Array.Empty<OcrTextBlock>());
@@ -2758,6 +2867,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public async Task StartLiveTranslationAsync()
     {
+        PipelineStatusSeverity = PipelineStatusSeverity.Normal;
         RefreshValidationState();
         if (IsLiveTranslationRunning)
         {
@@ -2782,12 +2892,17 @@ public sealed class MainViewModel : ValidatableObservableObject
 
         var profile = BuildProfileFromEditor();
         var liveTiming = CreateLiveTranslationTiming(LiveTranslationTimingPreset);
+        lastLiveTranslationTiming = liveTiming;
+        lastLiveTranslationTimingPreset = LiveTranslationTimingPreset;
+        lastLiveOcrPreprocessingPreset = SelectedOcrPreprocessingPreset.DisplayName;
+        lastLiveTranslatorProvider = profile.TranslatorSettings.Provider;
+        lastLiveSourceLanguage = profile.TranslatorSettings.SourceLanguage;
+        lastLiveTargetLanguage = profile.TranslatorSettings.TargetLanguage;
         var cancellationSource = new CancellationTokenSource();
         liveTranslationCancellation = cancellationSource;
         lastCandidatePipelineReadiness = null;
         lastLiveTranslationFailureKind = null;
-        lastCandidateDegradedDiagnosticsFingerprint = null;
-        latestCandidateLifecycleEvents = Array.Empty<LiveCandidateLifecycleEvent>();
+        latestCandidateLifecycleEvents.Clear();
         droppedCandidateLifecycleEventCount = 0;
         IsLiveTranslationRunning = true;
         PipelineStatus = $"Live translation running for {profile.OcrZones.Count} OCR zone(s). {CreateLiveTimingStatus(liveTiming)}";
@@ -2813,6 +2928,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
 
         PipelineStatus = "Stopping live translation...";
+        PipelineStatusSeverity = PipelineStatusSeverity.Normal;
         StatusMessage = PipelineStatus;
         QueueLiveDiagnosticsSnapshot("stop-live-requested");
         liveTranslationCancellation.Cancel();
@@ -2836,20 +2952,15 @@ public sealed class MainViewModel : ValidatableObservableObject
             {
                 try
                 {
+                    var refreshStopwatch = Stopwatch.StartNew();
                     var update = await liveSession.RefreshAsync();
-
-                    cancellationToken.ThrowIfCancellationRequested();
-                    ApplyCandidateLifecycleTrace(
-                        update.CandidateLifecycleEvents,
-                        update.DroppedCandidateLifecycleEventCount);
-                    if (update.OverlayChanged)
-                    {
-                        ApplyBatchPipelineResult(profile, update.BatchResult, isLiveMode: true);
-                    }
-
-                    ApplyCandidatePipelineReadinessStatus(update.CandidateReadiness);
-
-                    await Task.Delay(liveTiming.PollingInterval, cancellationToken);
+                    ApplyLiveTranslationUpdate(profile, update, cancellationToken);
+                    var remainingPollingInterval = liveTiming.PollingInterval - refreshStopwatch.Elapsed;
+                    await WaitForNextLiveRefreshAsync(
+                        liveSession,
+                        profile,
+                        remainingPollingInterval,
+                        cancellationToken);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -2860,6 +2971,7 @@ public sealed class MainViewModel : ValidatableObservableObject
                     lastLiveTranslationFailureKind = exception.GetType().Name;
                     logger.Error(exception, "Live translation pipeline failed.");
                     PipelineStatus = exception.Message;
+                    PipelineStatusSeverity = PipelineStatusSeverity.Error;
                     StatusMessage = PipelineStatus;
                     await DelayAfterLiveTranslationFailureAsync(cancellationToken);
                 }
@@ -2868,6 +2980,7 @@ public sealed class MainViewModel : ValidatableObservableObject
                     lastLiveTranslationFailureKind = exception.GetType().Name;
                     logger.Error(exception, "Unexpected live translation pipeline failure.");
                     PipelineStatus = "Live translation failed. Check logs for details.";
+                    PipelineStatusSeverity = PipelineStatusSeverity.Error;
                     StatusMessage = PipelineStatus;
                     await DelayAfterLiveTranslationFailureAsync(cancellationToken);
                 }
@@ -2881,16 +2994,89 @@ public sealed class MainViewModel : ValidatableObservableObject
                 {
                     HideLiveTranslationOverlay();
                 }
+                else
+                {
+                    OverlayPreviewStatus = "Live translation overlay hidden.";
+                    OnPropertyChanged(nameof(IsOverlayPreviewVisible));
+                }
 
                 liveTranslationCancellation.Dispose();
                 liveTranslationCancellation = null;
                 IsLiveTranslationRunning = false;
                 PipelineStatus = "Live translation stopped.";
+                PipelineStatusSeverity = PipelineStatusSeverity.Normal;
                 StatusMessage = PipelineStatus;
                 QueueLiveDiagnosticsSnapshot("live-stopped");
                 NotifyCommandStateChanged();
             }
         }
+    }
+
+    private void ApplyLiveTranslationUpdate(
+        GameProfile profile,
+        LiveTranslationPipelineUpdate update,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ApplyCandidateLifecycleTrace(
+            update.CandidateLifecycleEvents,
+            update.DroppedCandidateLifecycleEventCount);
+        if (update.OverlayChanged)
+        {
+            ApplyBatchPipelineResult(profile, update.BatchResult, isLiveMode: true);
+        }
+        else if (update.BatchResult.HasFailures)
+        {
+            PipelineStatus = CreateLivePipelineStatus(update.BatchResult);
+            PipelineStatusSeverity = ResolvePipelineStatusSeverity(update.BatchResult);
+            StatusMessage = PipelineStatus;
+            if (PipelineStatusSeverity != PipelineStatusSeverity.Normal
+                && overlayService.CurrentSnapshot?.TextItems.Count is > 0)
+            {
+                OverlayPreviewStatus = "BingWeb is temporarily unavailable; keeping the previous overlay visible.";
+            }
+        }
+
+        ApplyCandidatePipelineReadinessStatus(update.CandidateReadiness);
+    }
+
+    private async Task WaitForNextLiveRefreshAsync(
+        TranslationPipelineService.LiveTranslationSession liveSession,
+        GameProfile profile,
+        TimeSpan remainingPollingInterval,
+        CancellationToken cancellationToken)
+    {
+        if (remainingPollingInterval <= TimeSpan.Zero)
+        {
+            return;
+        }
+
+        var pollingDelay = Task.Delay(remainingPollingInterval, cancellationToken);
+        while (!pollingDelay.IsCompleted)
+        {
+            using var completionWaitCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var workCompletion = liveSession.WaitForWorkCompletionAsync(completionWaitCancellation.Token);
+            var completedTask = await Task.WhenAny(pollingDelay, workCompletion);
+            if (ReferenceEquals(completedTask, pollingDelay))
+            {
+                completionWaitCancellation.Cancel();
+                try
+                {
+                    await workCompletion;
+                }
+                catch (OperationCanceledException) when (completionWaitCancellation.IsCancellationRequested)
+                {
+                }
+
+                break;
+            }
+
+            await workCompletion;
+            var completionUpdate = await liveSession.PublishCompletedWorkAsync();
+            ApplyLiveTranslationUpdate(profile, completionUpdate, cancellationToken);
+        }
+
+        await pollingDelay;
     }
 
     private void HideLiveTranslationOverlay()
@@ -2921,17 +3107,20 @@ public sealed class MainViewModel : ValidatableObservableObject
     private static LiveTranslationTiming CreateLiveTranslationTiming(LiveTranslationTimingPreset preset)
     {
         var normalizedPreset = NormalizeLiveTranslationTimingPreset(preset);
-        var (pollingInterval, stableTextInterval) = normalizedPreset switch
+        var (pollingInterval, stableTextInterval, confirmationObservations) = normalizedPreset switch
         {
             LiveTranslationTimingPreset.Fast => (
                 TimeSpan.FromMilliseconds(100),
-                TimeSpan.FromMilliseconds(200)),
+                TimeSpan.FromMilliseconds(200),
+                2),
             LiveTranslationTimingPreset.Conservative => (
                 TimeSpan.FromMilliseconds(160),
-                TimeSpan.FromMilliseconds(320)),
+                TimeSpan.FromMilliseconds(320),
+                4),
             _ => (
                 TimeSpan.FromMilliseconds(125),
-                TimeSpan.FromMilliseconds(250)),
+                TimeSpan.FromMilliseconds(250),
+                3),
         };
 
         return new LiveTranslationTiming(
@@ -2943,12 +3132,20 @@ public sealed class MainViewModel : ValidatableObservableObject
                 preservePreviousOverlayWhileWaitingForStableText: true,
                 restorePreviousOverlayAfterCapture: true,
                 enableCandidateDetectorPilot: true,
-                requireCandidateReadinessBarrier: true));
+                minimumCandidateGroupingObservations: confirmationObservations,
+                minimumStableTextObservations: confirmationObservations)
+            {
+                MinimumCandidateGroupingDuration = stableTextInterval,
+            });
     }
 
     private static string CreateLiveTimingStatus(LiveTranslationTiming timing)
     {
-        return $"Polling {timing.PollingInterval.TotalMilliseconds:0} ms; translating after {timing.StableTextInterval.TotalMilliseconds:0} ms of stable OCR text.";
+        return $"Polling {timing.PollingInterval.TotalMilliseconds:0} ms; translating after "
+            + $"{timing.RunOptions.MinimumCandidateGroupingObservations} matching grouping observations over at least "
+            + $"{timing.RunOptions.MinimumCandidateGroupingDuration.TotalMilliseconds:0} ms and "
+            + $"{timing.RunOptions.MinimumStableTextObservations} matching OCR observations over at least "
+            + $"{timing.StableTextInterval.TotalMilliseconds:0} ms.";
     }
 
     private void ApplyCandidateLifecycleTrace(
@@ -2961,49 +3158,27 @@ public sealed class MainViewModel : ValidatableObservableObject
             throw new ArgumentOutOfRangeException(nameof(droppedEventCount));
         }
 
-        latestCandidateLifecycleEvents = lifecycleEvents.ToArray();
+        var newlyDroppedEventCount = droppedEventCount - droppedCandidateLifecycleEventCount;
+        if (newlyDroppedEventCount < 0)
+        {
+            latestCandidateLifecycleEvents.Clear();
+        }
+        else if (newlyDroppedEventCount >= latestCandidateLifecycleEvents.Count)
+        {
+            latestCandidateLifecycleEvents.Clear();
+        }
+        else if (newlyDroppedEventCount > 0)
+        {
+            latestCandidateLifecycleEvents.RemoveRange(0, newlyDroppedEventCount);
+        }
+
+        latestCandidateLifecycleEvents.AddRange(lifecycleEvents);
         droppedCandidateLifecycleEventCount = droppedEventCount;
     }
 
     private void ApplyCandidatePipelineReadinessStatus(CandidatePipelineReadiness readiness)
     {
         lastCandidatePipelineReadiness = readiness;
-        QueueCandidateDegradedDiagnosticsIfNeeded(readiness);
-        if (readiness.Status == CandidatePipelineReadinessStatus.Ready
-            || readiness.Status == CandidatePipelineReadinessStatus.Disabled)
-        {
-            return;
-        }
-
-        PipelineStatus = readiness.Status == CandidatePipelineReadinessStatus.Prewarming
-            ? "Preparing the candidate text pipeline..."
-            : $"Candidate text pipeline degraded: {readiness.UnavailableReason ?? "runtime is unavailable."}";
-        StatusMessage = PipelineStatus;
-    }
-
-    private void QueueCandidateDegradedDiagnosticsIfNeeded(CandidatePipelineReadiness readiness)
-    {
-        if (readiness.Status != CandidatePipelineReadinessStatus.Degraded)
-        {
-            return;
-        }
-
-        var fingerprint = string.Join(
-            '|',
-            readiness.Generation,
-            readiness.RestartCount,
-            readiness.UnavailableReason ?? string.Empty,
-            readiness.NextRetryAt?.ToUnixTimeMilliseconds().ToString() ?? string.Empty);
-        if (string.Equals(
-            lastCandidateDegradedDiagnosticsFingerprint,
-            fingerprint,
-            StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        lastCandidateDegradedDiagnosticsFingerprint = fingerprint;
-        QueueLiveDiagnosticsSnapshot("candidate-degraded");
     }
 
     public async Task CleanupTranslationCacheAsync()
@@ -3377,6 +3552,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         PipelineStatus = isLiveMode
             ? CreateLivePipelineStatus(result)
             : CreateBatchPipelineStatus(result);
+        PipelineStatusSeverity = ResolvePipelineStatusSeverity(result);
         StatusMessage = PipelineStatus;
         OnPropertyChanged(nameof(IsOverlayPreviewVisible));
         NotifyCommandStateChanged();
@@ -3610,6 +3786,35 @@ public sealed class MainViewModel : ValidatableObservableObject
         return $"{failure.Message} {innerMessage.Trim()}";
     }
 
+    private static PipelineStatusSeverity ResolvePipelineStatusSeverity(TranslationPipelineBatchResult result)
+    {
+        var severity = PipelineStatusSeverity.Normal;
+        foreach (var failure in result.ZoneFailures)
+        {
+            var providerException = FindTranslatorProviderException(failure.Exception);
+            if (providerException is null
+                || !string.Equals(providerException.ProviderId, "BingWeb", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (providerException.FailureKind == TranslatorProviderFailureKind.Throttled
+                || (providerException.FailureKind == TranslatorProviderFailureKind.Timeout
+                    && (providerException.RetryAfter.HasValue
+                        || providerException.ConsecutiveFailureCount >= 2)))
+            {
+                return PipelineStatusSeverity.Error;
+            }
+
+            if (providerException.FailureKind == TranslatorProviderFailureKind.Timeout)
+            {
+                severity = PipelineStatusSeverity.Warning;
+            }
+        }
+
+        return severity;
+    }
+
     private static string CreateProviderDiagnosticStatus(TranslationPipelineBatchResult result)
     {
         var diagnostics = result.ZoneResults
@@ -3664,6 +3869,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             TranslatorProviderFailureKind.Configuration => "configuration failure",
             TranslatorProviderFailureKind.Http => "HTTP failure",
             TranslatorProviderFailureKind.Throttled => "throttled",
+            TranslatorProviderFailureKind.Timeout => "timed out",
             TranslatorProviderFailureKind.EmptyResponse => "empty response",
             TranslatorProviderFailureKind.Parse => "parse failure",
             TranslatorProviderFailureKind.UnsupportedResponse => "unsupported response",
@@ -3676,10 +3882,14 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     private static bool IsExperimentalWebProvider(string provider)
     {
-        return string.Equals(provider, "WebAuto", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(provider, "GoogleWeb", StringComparison.OrdinalIgnoreCase)
+        return string.Equals(provider, "GoogleWeb", StringComparison.OrdinalIgnoreCase)
             || string.Equals(provider, "BingWeb", StringComparison.OrdinalIgnoreCase)
             || string.Equals(provider, "YandexWeb", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string CreateRemovedTranslatorProviderStatus(string provider)
+    {
+        return $"{provider.Trim()} is no longer supported. Choose another translator provider.";
     }
 
     private static TimeSpan SumElapsed(
@@ -4019,9 +4229,6 @@ public sealed class MainViewModel : ValidatableObservableObject
             OcrEngine = string.IsNullOrWhiteSpace(profile.OcrSettings.Engine)
                 ? OcrSettings.Default.Engine
                 : profile.OcrSettings.Engine;
-            OcrOrientationMode = OcrSettings.IsSupportedOrientationMode(profile.OcrSettings.OrientationMode)
-                ? profile.OcrSettings.OrientationMode
-                : OcrSettings.Default.OrientationMode;
             OverlayMaskMode = profile.OverlaySettings.MaskMode;
             OverlayMaskColor = profile.OverlaySettings.MaskColor;
             OverlayOpacity = profile.OverlaySettings.Opacity;
@@ -4035,6 +4242,9 @@ public sealed class MainViewModel : ValidatableObservableObject
             OcrPreprocessingScale = profile.OcrPreprocessingSettings.Scale;
             OcrPreprocessingNoiseReductionEnabled = profile.OcrPreprocessingSettings.NoiseReductionEnabled;
             ReplaceZones(profile.OcrZones.Select(OcrZoneEditorViewModel.FromModel));
+            OcrOrientationMode = OcrSettings.IsSupportedOrientationMode(profile.OcrSettings.OrientationMode)
+                ? profile.OcrSettings.OrientationMode
+                : OcrSettings.Default.OrientationMode;
         });
 
         SyncOcrPreprocessingPresetSelection();
@@ -4058,7 +4268,6 @@ public sealed class MainViewModel : ValidatableObservableObject
             SourceLanguage = settings.GetValue<string>(DraftSourceLanguageSettingKey) ?? string.Empty;
             TargetLanguage = settings.GetValue<string>(DraftTargetLanguageSettingKey) ?? string.Empty;
             OcrEngine = settings.GetValue<string>(DraftOcrEngineSettingKey) ?? OcrSettings.Default.Engine;
-            OcrOrientationMode = settings.GetValue<OcrOrientationMode?>(DraftOcrOrientationModeSettingKey) ?? OcrSettings.Default.OrientationMode;
             OverlayMaskMode = settings.GetValue<OverlayMaskMode?>(DraftOverlayMaskModeSettingKey) ?? OverlaySettings.Default.MaskMode;
             OverlayMaskColor = settings.GetValue<string>(DraftOverlayMaskColorSettingKey) ?? OverlaySettings.Default.MaskColor;
             OverlayOpacity = settings.GetValue<double?>(DraftOverlayOpacitySettingKey) ?? OverlaySettings.Default.Opacity;
@@ -4072,6 +4281,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             OcrPreprocessingScale = settings.GetValue<double?>(DraftOcrPreprocessingScaleSettingKey) ?? OcrPreprocessingSettings.Default.Scale;
             OcrPreprocessingNoiseReductionEnabled = settings.GetValue<bool?>(DraftOcrPreprocessingNoiseReductionSettingKey) ?? OcrPreprocessingSettings.Default.NoiseReductionEnabled;
             ReplaceZones(draftZones.Select(OcrZoneEditorViewModel.FromModel));
+            OcrOrientationMode = settings.GetValue<OcrOrientationMode?>(DraftOcrOrientationModeSettingKey) ?? OcrSettings.Default.OrientationMode;
             if (!string.IsNullOrWhiteSpace(draftSelectedZoneId))
             {
                 SelectedZone = OcrZones.FirstOrDefault(zone => string.Equals(zone.Id, draftSelectedZoneId, StringComparison.Ordinal))
@@ -4187,7 +4397,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private bool CanSaveTranslatorCredentials()
     {
         return CanSelectTranslatorProvider()
-            && TranslatorCredentialService.RequiresStoredCredentials(TranslatorProvider)
+            && RequiresStoredTranslatorCredentials
             && !string.IsNullOrWhiteSpace(TranslatorCredentialSecret)
             && !string.IsNullOrWhiteSpace(TranslatorCredentialProjectId)
             && !string.IsNullOrWhiteSpace(TranslatorCredentialEndpoint);
@@ -4199,6 +4409,16 @@ public sealed class MainViewModel : ValidatableObservableObject
         {
             HasStoredTranslatorCredentials = false;
             TranslatorCredentialStatus = "Select a translator provider to check credentials.";
+            NotifyCommandStateChanged();
+            return;
+        }
+
+        if (TranslatorCredentialService.IsRemovedProvider(TranslatorProvider))
+        {
+            TranslatorCredentialEndpoint = string.Empty;
+            TranslatorCredentialSecret = string.Empty;
+            HasStoredTranslatorCredentials = false;
+            TranslatorCredentialStatus = CreateRemovedTranslatorProviderStatus(TranslatorProvider);
             NotifyCommandStateChanged();
             return;
         }
@@ -4311,6 +4531,39 @@ public sealed class MainViewModel : ValidatableObservableObject
         return TesseractLanguageCatalog.TryGetTrainedDataCode(language, out _);
     }
 
+    private OcrOrientationMode NormalizeOcrOrientationMode(OcrOrientationMode orientationMode)
+    {
+        if (!Enum.IsDefined(orientationMode))
+        {
+            return OcrSettings.Default.OrientationMode;
+        }
+
+        return SupportsVerticalOcrLayout()
+            ? orientationMode
+            : OcrOrientationMode.Horizontal;
+    }
+
+    private void EnsureOcrOrientationMatchesConfiguredLanguages()
+    {
+        OcrOrientationMode = NormalizeOcrOrientationMode(ocrOrientationMode);
+    }
+
+    private bool SupportsVerticalOcrLayout()
+    {
+        var languages = OcrZones
+            .Select(ResolveOcrLanguage)
+            .Where(language => !string.IsNullOrWhiteSpace(language))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (languages.Length == 0 && !string.IsNullOrWhiteSpace(SourceLanguage))
+        {
+            languages = new[] { SourceLanguage };
+        }
+
+        return languages.Length == 0
+            || languages.All(TesseractLanguageCatalog.SupportsVerticalTextLayout);
+    }
+
     private static string NormalizeTranslatorLanguageTag(string languageTag)
     {
         if (string.IsNullOrWhiteSpace(languageTag))
@@ -4374,6 +4627,8 @@ public sealed class MainViewModel : ValidatableObservableObject
 
         SelectedZone = OcrZones.FirstOrDefault();
         SyncSelectedZoneState();
+        OnPropertyChanged(nameof(IsOcrOrientationSelectionEnabled));
+        OnPropertyChanged(nameof(OcrOrientationSelectionToolTip));
     }
 
     private void AttachZone(OcrZoneEditorViewModel zone)
@@ -4390,6 +4645,9 @@ public sealed class MainViewModel : ValidatableObservableObject
     {
         if (string.Equals(e.PropertyName, nameof(OcrZoneEditorViewModel.OcrLanguage), StringComparison.Ordinal))
         {
+            EnsureOcrOrientationMatchesConfiguredLanguages();
+            OnPropertyChanged(nameof(IsOcrOrientationSelectionEnabled));
+            OnPropertyChanged(nameof(OcrOrientationSelectionToolTip));
             ResetOcrLanguagePackStatus();
             NotifyCommandStateChanged();
         }
@@ -4450,11 +4708,17 @@ public sealed class MainViewModel : ValidatableObservableObject
             string.IsNullOrWhiteSpace(ProfileName)
                 ? new[] { "Profile name is required." }
                 : Array.Empty<string>());
-        SetErrors(
-            nameof(TranslatorProvider),
-            string.IsNullOrWhiteSpace(TranslatorProvider)
-                ? new[] { "Translator provider is required." }
-                : Array.Empty<string>());
+        var translatorProviderErrors = new List<string>();
+        if (string.IsNullOrWhiteSpace(TranslatorProvider))
+        {
+            translatorProviderErrors.Add("Translator provider is required.");
+        }
+        else if (TranslatorCredentialService.IsRemovedProvider(TranslatorProvider))
+        {
+            translatorProviderErrors.Add(CreateRemovedTranslatorProviderStatus(TranslatorProvider));
+        }
+
+        SetErrors(nameof(TranslatorProvider), translatorProviderErrors);
         SetErrors(
             nameof(SourceLanguage),
             string.IsNullOrWhiteSpace(SourceLanguage)
@@ -4722,7 +4986,14 @@ public sealed class MainViewModel : ValidatableObservableObject
             Directory.CreateDirectory(liveDiagnosticsDirectory);
             var fileName = $"game-translator-live-{trigger}-{capturedAt:yyyyMMdd-HHmmss-fff}-{sequence:D4}.txt";
             var filePath = Path.Combine(liveDiagnosticsDirectory, fileName);
-            await File.WriteAllTextAsync(filePath, report, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            var boundedReport = LimitLiveDiagnosticsReport(report, MaximumLiveDiagnosticsReportUtf8Bytes);
+            await File.WriteAllTextAsync(filePath, boundedReport, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            if (boundedReport.Length != report.Length)
+            {
+                logger.Warning(
+                    $"Live diagnostics report for '{trigger}' was truncated to {MaximumLiveDiagnosticsReportUtf8Bytes} UTF-8 bytes.");
+            }
+
             logger.Information($"Live diagnostics saved for '{trigger}' to '{filePath}'.");
         }
         catch (Exception exception)
@@ -4738,11 +5009,110 @@ public sealed class MainViewModel : ValidatableObservableObject
         builder.AppendLine($"Trigger: {trigger}");
         builder.AppendLine($"CapturedUtc: {capturedAt:O}");
         builder.AppendLine($"Directory: {liveDiagnosticsDirectory}");
+        builder.AppendLine($"MaximumUtf8Bytes: {MaximumLiveDiagnosticsReportUtf8Bytes}");
         builder.AppendLine("Privacy: profile free-text fields and credential values are omitted.");
+        builder.AppendLine("Storage: local files only; no diagnostics upload is performed.");
         builder.AppendLine();
         builder.Append(BuildDebugInfoReport());
 
         return builder.ToString();
+    }
+
+    private static string LimitLiveDiagnosticsReport(string report, int maximumUtf8Bytes)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+        if (maximumUtf8Bytes <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maximumUtf8Bytes));
+        }
+
+        var encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+        if (encoding.GetByteCount(report) <= maximumUtf8Bytes)
+        {
+            return report;
+        }
+
+        const string truncationMarker = "\r\n[diagnostics truncated: oldest report body omitted to enforce the UTF-8 size limit]\r\n";
+        var markerBytes = encoding.GetByteCount(truncationMarker);
+        if (markerBytes >= maximumUtf8Bytes)
+        {
+            return GetUtf8Prefix(report, maximumUtf8Bytes, encoding);
+        }
+
+        var prefixByteLimit = Math.Min(
+            LiveDiagnosticsReportPrefixUtf8Bytes,
+            (maximumUtf8Bytes - markerBytes) / 4);
+        var prefix = GetUtf8Prefix(report, prefixByteLimit, encoding);
+        var suffixByteLimit = maximumUtf8Bytes - markerBytes - encoding.GetByteCount(prefix);
+        var suffix = GetUtf8Suffix(report, suffixByteLimit, encoding);
+        return string.Concat(prefix, truncationMarker, suffix);
+    }
+
+    private static string GetUtf8Prefix(string value, int maximumUtf8Bytes, Encoding encoding)
+    {
+        if (maximumUtf8Bytes <= 0 || value.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var length = FindMaximumUtf8PrefixLength(value, maximumUtf8Bytes, encoding);
+        while (length > 0 && char.IsHighSurrogate(value[length - 1]))
+        {
+            length--;
+        }
+
+        return value[..length];
+    }
+
+    private static string GetUtf8Suffix(string value, int maximumUtf8Bytes, Encoding encoding)
+    {
+        if (maximumUtf8Bytes <= 0 || value.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var low = 0;
+        var high = value.Length;
+        while (low < high)
+        {
+            var middle = low + ((high - low) / 2);
+            if (encoding.GetByteCount(value.AsSpan(middle)) <= maximumUtf8Bytes)
+            {
+                high = middle;
+            }
+            else
+            {
+                low = middle + 1;
+            }
+        }
+
+        var start = low;
+        while (start < value.Length && char.IsLowSurrogate(value[start]))
+        {
+            start++;
+        }
+
+        return value[start..];
+    }
+
+    private static int FindMaximumUtf8PrefixLength(string value, int maximumUtf8Bytes, Encoding encoding)
+    {
+        var low = 0;
+        var high = value.Length;
+        while (low < high)
+        {
+            var middle = low + ((high - low + 1) / 2);
+            if (encoding.GetByteCount(value.AsSpan(0, middle)) <= maximumUtf8Bytes)
+            {
+                low = middle;
+            }
+            else
+            {
+                high = middle - 1;
+            }
+        }
+
+        return low;
     }
 
     private void MoveSelectedZoneBy(int offset)
@@ -4964,6 +5334,18 @@ public sealed class MainViewModel : ValidatableObservableObject
         builder.AppendLine($"  OcrPreviewBlockCount: {OcrDebugTextBlocks.Count}");
         builder.AppendLine($"  IsOverlayPreviewVisible: {IsOverlayPreviewVisible}");
         builder.AppendLine($"  IsDebugOverlayEnabled: {IsDebugOverlayEnabled}");
+        var liveTiming = lastLiveTranslationTiming ?? CreateLiveTranslationTiming(LiveTranslationTimingPreset);
+        builder.AppendLine($"  LiveTimingPreset: {lastLiveTranslationTimingPreset?.ToString() ?? "(not started; current selection shown below)"}");
+        builder.AppendLine($"  CurrentLiveTimingSelection: {LiveTranslationTimingPreset}");
+        builder.AppendLine($"  LivePollingIntervalMs: {liveTiming.PollingInterval.TotalMilliseconds:0}");
+        builder.AppendLine($"  RequiredGroupingObservations: {liveTiming.RunOptions.MinimumCandidateGroupingObservations}");
+        builder.AppendLine($"  MinimumGroupingDurationMs: {liveTiming.RunOptions.MinimumCandidateGroupingDuration.TotalMilliseconds:0}");
+        builder.AppendLine($"  StableTextIntervalMs: {liveTiming.StableTextInterval.TotalMilliseconds:0}");
+        builder.AppendLine($"  RequiredOcrTextObservations: {liveTiming.RunOptions.MinimumStableTextObservations}");
+        builder.AppendLine($"  OcrPreprocessingPresetAtLastStart: {lastLiveOcrPreprocessingPreset}");
+        builder.AppendLine($"  CurrentOcrPreprocessingSelection: {SelectedOcrPreprocessingPreset.DisplayName}");
+        builder.AppendLine($"  TranslatorProviderAtLastStart: {lastLiveTranslatorProvider}");
+        builder.AppendLine($"  TranslatorLanguagesAtLastStart: {lastLiveSourceLanguage}->{lastLiveTargetLanguage}");
         builder.AppendLine();
 
         builder.AppendLine("Statuses");
@@ -4995,6 +5377,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             builder.AppendLine($"  Overlay style: {SelectedZone.OverlayTextStyleSummary}");
             builder.AppendLine($"  Content layout: {SelectedZone.ContentLayoutModeSummary}");
             builder.AppendLine($"  Content policy: {SelectedZone.ContentLayoutPolicySummary}");
+            builder.AppendLine($"  Candidate grouping: {SelectedZone.CandidateGroupingSummary}");
             builder.AppendLine($"  Legacy grouping (diagnostic only): {SelectedZone.TranslationGroupingModeSummary}");
         }
 
@@ -5070,7 +5453,9 @@ public sealed class MainViewModel : ValidatableObservableObject
     {
         builder.AppendLine();
         builder.AppendLine("Live candidate lifecycle");
-        builder.AppendLine("  Privacy: IDs, geometry, counts, timestamps, and durations only; OCR and translated text are not recorded here.");
+        builder.AppendLine("  Text diagnostics: bounded OCR, translation-input, and translated text are recorded locally; provider responses, credentials, and frame pixels are not recorded.");
+        builder.AppendLine("  Storage: local files only; no diagnostics upload is performed.");
+        builder.AppendLine("  EventBufferCapacity: 131072");
         builder.AppendLine($"  RetainedEvents: {latestCandidateLifecycleEvents.Count}");
         builder.AppendLine($"  DroppedOldestEvents: {droppedCandidateLifecycleEventCount}");
         if (latestCandidateLifecycleEvents.Count == 0)
@@ -5099,6 +5484,60 @@ public sealed class MainViewModel : ValidatableObservableObject
                     string.Join(";", entry.SourceCandidateBounds.Select(FormatBounds)));
             }
 
+            AppendLifecycleField(
+                builder,
+                "WritingSystemProfile",
+                entry.WritingSystemGroupingProfile?.ToString());
+            AppendLifecycleField(builder, "OcrOrientation", entry.OcrOrientationMode?.ToString());
+            AppendLifecycleField(builder, "DetectorPresetRequested", entry.RequestedDetectorPreset?.ToString());
+            AppendLifecycleField(builder, "DetectorPresetEffective", entry.EffectiveDetectorPreset?.ToString());
+            AppendLifecycleField(builder, "DetectorThreshold", FormatDiagnosticDouble(entry.DetectorThreshold));
+            AppendLifecycleField(builder, "DetectorBoxThreshold", FormatDiagnosticDouble(entry.DetectorBoxThreshold));
+            AppendLifecycleField(builder, "DetectorUnclipRatio", FormatDiagnosticDouble(entry.DetectorUnclipRatio));
+            AppendLifecycleField(builder, "RawDetectorCandidates", entry.RawDetectorCandidateCount?.ToString(CultureInfo.InvariantCulture));
+            AppendLifecycleField(builder, "DetectorConfidenceMin", FormatDiagnosticDouble(entry.MinimumDetectorConfidence));
+            AppendLifecycleField(builder, "DetectorConfidenceMax", FormatDiagnosticDouble(entry.MaximumDetectorConfidence));
+            AppendLifecycleField(builder, "DetectorConfidenceAverage", FormatDiagnosticDouble(entry.AverageDetectorConfidence));
+            if (entry.OrderedOcrBlockBoundsCount > 0)
+            {
+                AppendLifecycleField(
+                    builder,
+                    "OrderedOcrBlocks",
+                    entry.OrderedOcrBlockBoundsCount.ToString());
+                AppendLifecycleField(
+                    builder,
+                    "OrderedOcrBoundsRetained",
+                    entry.OrderedOcrBlockBounds.Count.ToString());
+                AppendLifecycleField(
+                    builder,
+                    "OrderedOcrBoundsFingerprint",
+                    entry.OrderedOcrBlockBoundsFingerprint);
+                AppendLifecycleField(
+                    builder,
+                    "OrderedOcrBounds",
+                    string.Join(";", entry.OrderedOcrBlockBounds.Select(FormatBounds)));
+            }
+
+            if (entry.OrderedGroupedMemberBoundsCount > 0)
+            {
+                AppendLifecycleField(
+                    builder,
+                    "OrderedGroupedMembers",
+                    entry.OrderedGroupedMemberBoundsCount.ToString());
+                AppendLifecycleField(
+                    builder,
+                    "OrderedGroupedMemberBoundsRetained",
+                    entry.OrderedGroupedMemberBounds.Count.ToString());
+                AppendLifecycleField(
+                    builder,
+                    "OrderedGroupedMemberBoundsFingerprint",
+                    entry.OrderedGroupedMemberBoundsFingerprint);
+                AppendLifecycleField(
+                    builder,
+                    "OrderedGroupedMemberBounds",
+                    string.Join(";", entry.OrderedGroupedMemberBounds.Select(FormatBounds)));
+            }
+
             if (entry.CandidateRevision > 0)
             {
                 AppendLifecycleField(builder, "Revision", entry.CandidateRevision.ToString());
@@ -5123,11 +5562,52 @@ public sealed class MainViewModel : ValidatableObservableObject
             AppendLifecycleField(builder, "RecognizedBlocks", entry.RecognizedBlockCount?.ToString());
             AppendLifecycleField(builder, "TranslationInputGroups", entry.TranslationInputBlockCount?.ToString());
             AppendLifecycleField(builder, "TranslatedBlocks", entry.TranslatedBlockCount?.ToString());
+            AppendLifecycleTextDiagnostics(
+                builder,
+                "OcrTextEntries",
+                "OcrText",
+                entry.OcrTextCount,
+                entry.OcrTexts);
+            AppendLifecycleTextDiagnostics(
+                builder,
+                "TranslationInputEntries",
+                "TranslationInputText",
+                entry.TranslationInputTextCount,
+                entry.TranslationInputTexts);
+            AppendLifecycleTextDiagnostics(
+                builder,
+                "TranslatedTextEntries",
+                "TranslatedText",
+                entry.TranslatedTextCount,
+                entry.TranslatedTexts);
+            AppendLifecycleField(builder, "GroupingObservations", entry.GroupingObservationCount?.ToString());
+            AppendLifecycleField(builder, "RequiredGroupingObservations", entry.RequiredGroupingObservationCount?.ToString());
+            if (entry.GroupingFirstObservedAt is { } groupingFirstObservedAt)
+            {
+                AppendLifecycleField(builder, "GroupingFirstObservedAt", groupingFirstObservedAt.ToString("O"));
+            }
+
+            if (entry.GroupingLastObservedAt is { } groupingLastObservedAt)
+            {
+                AppendLifecycleField(builder, "GroupingLastObservedAt", groupingLastObservedAt.ToString("O"));
+            }
+
+            if (entry.GroupingObservedDuration is { } groupingObservedDuration)
+            {
+                AppendLifecycleField(builder, "GroupingObservedMs", groupingObservedDuration.TotalMilliseconds.ToString("F1"));
+            }
+
+            if (entry.RequiredGroupingDuration is { } requiredGroupingDuration)
+            {
+                AppendLifecycleField(builder, "RequiredGroupingDurationMs", requiredGroupingDuration.TotalMilliseconds.ToString("F1"));
+            }
 
             if (entry.TextStability is { } textStability)
             {
                 AppendLifecycleField(builder, "StabilityRequired", textStability.IsRequired.ToString());
                 AppendLifecycleField(builder, "StabilitySatisfied", textStability.IsStable.ToString());
+                AppendLifecycleField(builder, "OcrObservations", textStability.ObservationCount.ToString());
+                AppendLifecycleField(builder, "RequiredOcrObservations", textStability.RequiredObservationCount.ToString());
                 if (textStability.FirstObservedAt is { } firstObservedAt)
                 {
                     AppendLifecycleField(builder, "StabilityFirstObservedAt", firstObservedAt.ToString("O"));
@@ -5144,11 +5624,24 @@ public sealed class MainViewModel : ValidatableObservableObject
                 }
             }
 
+            AppendLifecycleField(builder, "TranslationMemoryCacheHits", entry.TranslationMemoryCacheHitCount?.ToString());
+            AppendLifecycleField(builder, "TranslationPersistentCacheHits", entry.TranslationPersistentCacheHitCount?.ToString());
+            AppendLifecycleField(builder, "TranslationCacheMisses", entry.TranslationCacheMissCount?.ToString());
+            AppendLifecycleField(builder, "TranslationCacheStored", entry.TranslationCacheStoredCount?.ToString());
+            AppendLifecycleField(builder, "TranslationOutputsSanitized", entry.TranslationOutputSanitizedCount?.ToString());
+            AppendLifecycleField(builder, "TranslationProvider", entry.TranslationProviderId);
+            AppendLifecycleField(builder, "ProviderRequestStartedAt", entry.ProviderRequestStartedAt?.ToString("O"));
+            AppendLifecycleField(builder, "ProviderRequestCompletedAt", entry.ProviderRequestCompletedAt?.ToString("O"));
+
             AppendLifecycleField(builder, "OverlayTextItems", entry.OverlayTextItemCount?.ToString());
             AppendLifecycleField(builder, "OverlayMaskItems", entry.OverlayMaskItemCount?.ToString());
             if (entry.FailureStage is { } failureStage)
             {
                 AppendLifecycleField(builder, "FailureStage", failureStage.ToString());
+                AppendLifecycleField(builder, "FailureExceptionType", entry.FailureExceptionType);
+                AppendLifecycleQuotedField(builder, "FailureExceptionMessage", entry.FailureExceptionMessage);
+                AppendLifecycleField(builder, "FailureRootCauseType", entry.FailureRootCauseType);
+                AppendLifecycleQuotedField(builder, "FailureRootCauseMessage", entry.FailureRootCauseMessage);
             }
 
             if (entry.CancellationReason != LiveCandidateCancellationReason.None)
@@ -5160,12 +5653,51 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
     }
 
+    private static string? FormatDiagnosticDouble(double? value)
+    {
+        return value?.ToString("0.###", CultureInfo.InvariantCulture);
+    }
+
     private static void AppendLifecycleField(StringBuilder builder, string label, string? value)
     {
         if (!string.IsNullOrWhiteSpace(value))
         {
             builder.Append($" {label}={value}");
         }
+    }
+
+    private static void AppendLifecycleQuotedField(StringBuilder builder, string label, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        var escaped = value
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("\"", "\\\"", StringComparison.Ordinal);
+        builder.Append($" {label}=\"{escaped}\"");
+    }
+
+    private static void AppendLifecycleTextDiagnostics(
+        StringBuilder builder,
+        string countLabel,
+        string textLabel,
+        int count,
+        IReadOnlyList<string> values)
+    {
+        if (count == 0)
+        {
+            return;
+        }
+
+        AppendLifecycleField(builder, countLabel, count.ToString());
+        if (values.Count < count)
+        {
+            AppendLifecycleField(builder, $"{countLabel}Retained", values.Count.ToString());
+        }
+
+        AppendLifecycleQuotedField(builder, textLabel, string.Join(" || ", values));
     }
 
     private static string FormatBounds(BoundingBox bounds)

@@ -1,3 +1,5 @@
+using GameTranslator.Domain.Profiles;
+
 namespace GameTranslator.Application.Ocr;
 
 /// <summary>
@@ -12,6 +14,20 @@ public sealed class BoundedTextCandidateGroupingService
     private const int MaximumVerticalGroupMembers = 4;
     private const int MaximumHorizontalStackGroupMembers = 6;
     private const int MaximumComplexSouthEastAsianHorizontalStackGroupMembers = 8;
+    private const int MaximumAutomaticHorizontalStackGroupMembers = 10;
+    private const double MinimumStrictContinuationHorizontalOverlapRatio = 0.8d;
+    private const int MaximumStrictContinuationVerticalGap = 12;
+    private const double MinimumAdaptiveColumnWidthRatio = 0.5d;
+    private const double MaximumAdaptiveColumnWidthRatio = 2d;
+    private const double MaximumNormalizedTopOffset = 0.5d;
+    private const double MaximumNormalizedBottomOffset = 0.75d;
+    private const double MaximumNormalizedCenterOffset = 0.5d;
+    private const double MinimumTightRaggedBottomSharedOverlapRatio = 0.95d;
+    private const double MaximumTightRaggedBottomNormalizedTopOffset = 0.05d;
+    private const double MaximumTightRaggedBottomNormalizedBottomOffset = 1d;
+    private const int MaximumTightRaggedBottomHorizontalGap = 2;
+    private const int MinimumSignificantHorizontalGapIncrease = 4;
+    private const double MaximumNormalizedHorizontalGapIncrease = 0.2d;
     private const int DenseLayoutMinimumCandidates = 20;
     private const double DenseTopAlignmentMaximumZoneFraction = 0.05d;
 
@@ -30,6 +46,19 @@ public sealed class BoundedTextCandidateGroupingService
         int zoneHeight,
         WritingSystemGroupingProfile groupingProfile)
     {
+        return Group(candidates, zoneHeight, groupingProfile, OcrCandidateGroupingSettings.Default);
+    }
+
+    /// <summary>
+    /// Forms bounded candidates with optional per-zone hard limits. Auto mode follows the
+    /// writing-system policy; explicit values remain hard limits.
+    /// </summary>
+    public IReadOnlyList<TextCandidate> Group(
+        IEnumerable<TextCandidate> candidates,
+        int zoneHeight,
+        WritingSystemGroupingProfile groupingProfile,
+        OcrCandidateGroupingSettings? candidateGroupingSettings)
+    {
         ArgumentNullException.ThrowIfNull(candidates);
         if (zoneHeight <= 0)
         {
@@ -41,19 +70,32 @@ public sealed class BoundedTextCandidateGroupingService
             throw new ArgumentOutOfRangeException(nameof(groupingProfile));
         }
 
+        var groupingSettings = candidateGroupingSettings ?? OcrCandidateGroupingSettings.Default;
+        ValidateGroupingSettings(groupingSettings);
+
         var materialized = candidates.ToArray();
         if (IsDenseTopAlignedLayout(materialized, zoneHeight))
         {
             return Order(materialized);
         }
 
-        var verticalCandidates = materialized
-            .Where(candidate => candidate.Bounds.Height >= candidate.Bounds.Width)
-            .OrderBy(candidate => candidate.Bounds.X)
-            .ThenBy(candidate => candidate.Bounds.Y)
-            .ThenBy(candidate => candidate.Bounds.Width)
-            .ThenBy(candidate => candidate.Bounds.Height)
-            .ToList();
+        var usesAdaptiveCjkVerticalAuto = groupingProfile is WritingSystemGroupingProfile.CjkVertical
+            && groupingSettings.MaximumVerticalColumns is null;
+        var verticalCandidatesSource = materialized
+            .Where(candidate => candidate.Bounds.Height >= candidate.Bounds.Width);
+        var verticalCandidates = usesAdaptiveCjkVerticalAuto
+            ? verticalCandidatesSource
+                .OrderByDescending(candidate => candidate.Bounds.X)
+                .ThenBy(candidate => candidate.Bounds.Y)
+                .ThenBy(candidate => candidate.Bounds.Width)
+                .ThenBy(candidate => candidate.Bounds.Height)
+                .ToList()
+            : verticalCandidatesSource
+                .OrderBy(candidate => candidate.Bounds.X)
+                .ThenBy(candidate => candidate.Bounds.Y)
+                .ThenBy(candidate => candidate.Bounds.Width)
+                .ThenBy(candidate => candidate.Bounds.Height)
+                .ToList();
         var grouped = materialized
             .Where(candidate => candidate.Bounds.Height < candidate.Bounds.Width)
             .OrderBy(candidate => candidate.Bounds.Y)
@@ -62,30 +104,39 @@ public sealed class BoundedTextCandidateGroupingService
             .ThenBy(candidate => candidate.Bounds.Height)
             .ToList();
 
-        while (verticalCandidates.Count > 0)
+        if (usesAdaptiveCjkVerticalAuto)
         {
-            var group = new List<TextCandidate> { verticalCandidates[0] };
-            verticalCandidates.RemoveAt(0);
-            while (group.Count < MaximumVerticalGroupMembers)
+            GroupAdaptiveCjkVerticalCandidates(verticalCandidates, grouped);
+        }
+        else
+        {
+            while (verticalCandidates.Count > 0)
             {
-                var next = verticalCandidates
-                    .Where(candidate => CanExtend(group, candidate))
-                    .OrderBy(candidate => group.Min(member => HorizontalGap(member.Bounds, candidate.Bounds)))
-                    .ThenBy(candidate => candidate.Bounds.X)
-                    .ThenBy(candidate => candidate.Bounds.Y)
-                    .ThenBy(candidate => candidate.Bounds.Width)
-                    .ThenBy(candidate => candidate.Bounds.Height)
-                    .FirstOrDefault();
-                if (next is null)
+                var group = new List<TextCandidate> { verticalCandidates[0] };
+                verticalCandidates.RemoveAt(0);
+                var maximumVerticalGroupMembers = groupingSettings.MaximumVerticalColumns
+                    ?? MaximumVerticalGroupMembers;
+                while (group.Count < maximumVerticalGroupMembers)
                 {
-                    break;
+                    var next = verticalCandidates
+                        .Where(candidate => CanExtend(group, candidate))
+                        .OrderBy(candidate => group.Min(member => HorizontalGap(member.Bounds, candidate.Bounds)))
+                        .ThenBy(candidate => candidate.Bounds.X)
+                        .ThenBy(candidate => candidate.Bounds.Y)
+                        .ThenBy(candidate => candidate.Bounds.Width)
+                        .ThenBy(candidate => candidate.Bounds.Height)
+                        .FirstOrDefault();
+                    if (next is null)
+                    {
+                        break;
+                    }
+
+                    verticalCandidates.Remove(next);
+                    group.Add(next);
                 }
 
-                verticalCandidates.Remove(next);
-                group.Add(next);
+                grouped.Add(CreateGroupedCandidate(group));
             }
-
-            grouped.Add(CreateGroupedCandidate(group));
         }
 
         var horizontalCandidates = grouped
@@ -101,10 +152,16 @@ public sealed class BoundedTextCandidateGroupingService
         {
             var group = new List<TextCandidate> { horizontalCandidates[0] };
             horizontalCandidates.RemoveAt(0);
-            while (group.Count < GetMaximumHorizontalStackGroupMembers(groupingProfile))
+            var automaticPrimaryLimit = GetMaximumHorizontalStackGroupMembers(groupingProfile);
+            var maximumHorizontalGroupMembers = groupingSettings.MaximumHorizontalLines
+                ?? MaximumAutomaticHorizontalStackGroupMembers;
+            while (group.Count < maximumHorizontalGroupMembers)
             {
                 var next = horizontalCandidates
                     .Where(candidate => CanExtendVerticalStack(group, candidate, groupingProfile))
+                    .Where(candidate => groupingSettings.MaximumHorizontalLines is not null
+                        || group.Count < automaticPrimaryLimit
+                        || CanStrictlyExtendAutomaticVerticalStack(group, candidate))
                     .OrderBy(candidate => group.Min(member => VerticalGap(member.Bounds, candidate.Bounds)))
                     .ThenBy(candidate => candidate.Bounds.Y)
                     .ThenBy(candidate => candidate.Bounds.X)
@@ -124,6 +181,181 @@ public sealed class BoundedTextCandidateGroupingService
         }
 
         return Order(grouped);
+    }
+
+    private static void GroupAdaptiveCjkVerticalCandidates(
+        List<TextCandidate> candidates,
+        ICollection<TextCandidate> grouped)
+    {
+        while (candidates.Count > 0)
+        {
+            var group = new List<TextCandidate> { candidates[0] };
+            candidates.RemoveAt(0);
+            while (true)
+            {
+                var next = FindImmediateCjkVerticalNeighbor(group[^1], candidates);
+                if (next is null || !CanExtendAdaptiveCjkVerticalGroup(group, next))
+                {
+                    break;
+                }
+
+                candidates.Remove(next);
+                group.Add(next);
+            }
+
+            grouped.Add(CreateGroupedCandidate(group));
+        }
+    }
+
+    private static TextCandidate? FindImmediateCjkVerticalNeighbor(
+        TextCandidate current,
+        IEnumerable<TextCandidate> candidates)
+    {
+        var currentCenterX = GetCenterX(current.Bounds);
+        return candidates
+            .Where(candidate => GetCenterX(candidate.Bounds) < currentCenterX)
+            .Where(candidate => SharedVerticalOverlapRatio(new[] { current, candidate })
+                >= MinimumSharedVerticalOverlapRatio)
+            .OrderByDescending(candidate => GetCenterX(candidate.Bounds))
+            .ThenBy(candidate => candidate.Bounds.Y)
+            .ThenBy(candidate => candidate.Bounds.Width)
+            .ThenBy(candidate => candidate.Bounds.Height)
+            .FirstOrDefault();
+    }
+
+    private static bool CanExtendAdaptiveCjkVerticalGroup(
+        IReadOnlyList<TextCandidate> group,
+        TextCandidate candidate)
+    {
+        if (SharedVerticalOverlapRatio(group.Append(candidate)) < MinimumSharedVerticalOverlapRatio)
+        {
+            return false;
+        }
+
+        var adjacent = group[^1];
+        var adjacentGap = HorizontalGap(adjacent.Bounds, candidate.Bounds);
+        if (adjacentGap > MaximumHorizontalGap(adjacent.Bounds, candidate.Bounds))
+        {
+            return false;
+        }
+
+        if (!HasCoherentAdaptiveColumnWidth(group, candidate)
+            || !HasCoherentAdaptiveVerticalAlignment(group, candidate, adjacentGap))
+        {
+            return false;
+        }
+
+        return !HasSignificantAdaptiveHorizontalGapIncrease(group, candidate, adjacentGap);
+    }
+
+    private static bool HasCoherentAdaptiveColumnWidth(
+        IReadOnlyList<TextCandidate> group,
+        TextCandidate candidate)
+    {
+        var prospectiveGroup = group.Append(candidate).ToArray();
+        var medianWidth = Median(prospectiveGroup.Select(member => member.Bounds.Width));
+        return prospectiveGroup.All(member =>
+        {
+            var widthRatio = member.Bounds.Width / medianWidth;
+            return widthRatio is >= MinimumAdaptiveColumnWidthRatio and <= MaximumAdaptiveColumnWidthRatio;
+        });
+    }
+
+    private static bool HasCoherentAdaptiveVerticalAlignment(
+        IReadOnlyList<TextCandidate> group,
+        TextCandidate candidate,
+        int adjacentGap)
+    {
+        var prospectiveGroup = group.Append(candidate).ToArray();
+        var medianHeight = Median(prospectiveGroup.Select(member => member.Bounds.Height));
+        var medianTop = Median(prospectiveGroup.Select(member => member.Bounds.Y));
+        var medianBottom = Median(prospectiveGroup.Select(member => member.Bounds.Bottom));
+        var medianCenter = Median(prospectiveGroup.Select(member => GetCenterY(member.Bounds)));
+
+        var hasStandardAlignment = prospectiveGroup.All(member =>
+            Math.Abs(member.Bounds.Y - medianTop) / medianHeight <= MaximumNormalizedTopOffset
+            && Math.Abs(member.Bounds.Bottom - medianBottom) / medianHeight <= MaximumNormalizedBottomOffset
+            && Math.Abs(GetCenterY(member.Bounds) - medianCenter) / medianHeight <= MaximumNormalizedCenterOffset);
+        if (hasStandardAlignment)
+        {
+            return true;
+        }
+
+        if (prospectiveGroup.Length < 3
+            || adjacentGap > MaximumTightRaggedBottomHorizontalGap
+            || SharedVerticalOverlapRatio(prospectiveGroup) < MinimumTightRaggedBottomSharedOverlapRatio
+            || Enumerable.Range(1, prospectiveGroup.Length - 1).Any(index =>
+                HorizontalGap(prospectiveGroup[index - 1].Bounds, prospectiveGroup[index].Bounds)
+                    > MaximumTightRaggedBottomHorizontalGap))
+        {
+            return false;
+        }
+
+        return prospectiveGroup.All(member =>
+            Math.Abs(member.Bounds.Y - medianTop) / medianHeight <= MaximumTightRaggedBottomNormalizedTopOffset
+            && Math.Abs(member.Bounds.Bottom - medianBottom) / medianHeight <= MaximumTightRaggedBottomNormalizedBottomOffset
+            && Math.Abs(GetCenterY(member.Bounds) - medianCenter) / medianHeight <= MaximumNormalizedCenterOffset);
+    }
+
+    private static bool HasSignificantAdaptiveHorizontalGapIncrease(
+        IReadOnlyList<TextCandidate> group,
+        TextCandidate candidate,
+        int adjacentGap)
+    {
+        if (group.Count < 2)
+        {
+            return false;
+        }
+
+        var previousGaps = Enumerable.Range(1, group.Count - 1)
+            .Select(index => HorizontalGap(group[index - 1].Bounds, group[index].Bounds));
+        var medianPreviousGap = Median(previousGaps);
+        var medianColumnWidth = Median(group
+            .Append(candidate)
+            .Select(member => member.Bounds.Width));
+        var normalizedGapIncrease = (adjacentGap - medianPreviousGap) / medianColumnWidth;
+
+        return adjacentGap - medianPreviousGap > MinimumSignificantHorizontalGapIncrease
+            && normalizedGapIncrease > MaximumNormalizedHorizontalGapIncrease;
+    }
+
+    private static void ValidateGroupingSettings(OcrCandidateGroupingSettings settings)
+    {
+        if (!IsValidGroupingLimit(settings.MaximumHorizontalLines)
+            || !IsValidGroupingLimit(settings.MaximumVerticalColumns))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(settings),
+                $"Candidate grouping limits must be {OcrCandidateGroupingSettings.MinimumLimit} through {OcrCandidateGroupingSettings.MaximumLimit}, or Auto.");
+        }
+    }
+
+    private static bool IsValidGroupingLimit(int? value)
+    {
+        return value is null
+            or >= OcrCandidateGroupingSettings.MinimumLimit and <= OcrCandidateGroupingSettings.MaximumLimit;
+    }
+
+    private static bool CanStrictlyExtendAutomaticVerticalStack(
+        IReadOnlyList<TextCandidate> group,
+        TextCandidate candidate)
+    {
+        var groupLeft = group.Min(member => member.Bounds.X);
+        var groupRight = group.Max(member => member.Bounds.Right);
+        var overlap = Math.Min(groupRight, candidate.Bounds.Right) - Math.Max(groupLeft, candidate.Bounds.X);
+        var smallerWidth = Math.Min(groupRight - groupLeft, candidate.Bounds.Width);
+        if (overlap <= 0
+            || overlap / (double)smallerWidth < MinimumStrictContinuationHorizontalOverlapRatio)
+        {
+            return false;
+        }
+
+        var last = group
+            .OrderByDescending(member => member.Bounds.Bottom)
+            .ThenByDescending(member => member.Bounds.Y)
+            .First();
+        return candidate.Bounds.Y >= last.Bounds.Y
+            && VerticalGap(last.Bounds, candidate.Bounds) <= MaximumStrictContinuationVerticalGap;
     }
 
     private static bool IsDenseTopAlignedLayout(
@@ -244,6 +476,35 @@ public sealed class BoundedTextCandidateGroupingService
     private static int MaximumVerticalGap(BoundingBox first, BoundingBox second)
     {
         return Math.Max(12, (int)Math.Round(Math.Min(first.Height, second.Height) * VerticalGapFactor));
+    }
+
+    private static double GetCenterX(BoundingBox bounds)
+    {
+        return bounds.X + bounds.Width / 2d;
+    }
+
+    private static double GetCenterY(BoundingBox bounds)
+    {
+        return bounds.Y + bounds.Height / 2d;
+    }
+
+    private static double Median(IEnumerable<int> values)
+    {
+        return Median(values.Select(value => (double)value));
+    }
+
+    private static double Median(IEnumerable<double> values)
+    {
+        var ordered = values.Order().ToArray();
+        if (ordered.Length == 0)
+        {
+            throw new ArgumentException("At least one value is required.", nameof(values));
+        }
+
+        var middle = ordered.Length / 2;
+        return ordered.Length % 2 == 0
+            ? (ordered[middle - 1] + ordered[middle]) / 2d
+            : ordered[middle];
     }
 
     private static IReadOnlyList<TextCandidate> Order(IEnumerable<TextCandidate> candidates)

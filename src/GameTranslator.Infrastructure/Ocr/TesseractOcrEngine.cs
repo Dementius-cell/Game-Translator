@@ -12,12 +12,14 @@ namespace GameTranslator.Infrastructure.Ocr;
 
 public sealed class TesseractOcrEngine : IOcrEngine
 {
+    internal const int MaximumRecognitionConcurrency = 3;
     private const int BytesPerPixel = 4;
     private const int ComicRefinementPaddingPixels = 4;
     private const double MinimumComicSourceWordConfidence = 50d;
     private const double QualityUpscaleFallbackScale = 2d;
     private const float OrientationConfidenceThreshold = 15f;
     private const string SupportedPixelFormat = "Bgra32";
+    private static readonly BoundedNativeOcrExecutor RecognitionExecutor = new(MaximumRecognitionConcurrency);
     private readonly string tessdataPath;
 
     public TesseractOcrEngine()
@@ -41,6 +43,16 @@ public sealed class TesseractOcrEngine : IOcrEngine
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
+        return RecognitionExecutor.ExecuteAsync(
+            token => Recognize(request, token),
+            cancellationToken);
+    }
+
+    private ApplicationOcrResult Recognize(
+        OcrRequest request,
+        CancellationToken cancellationToken)
+    {
+
         try
         {
             var bitmapBytes = CreateBitmapBytes(request.Frame);
@@ -57,14 +69,13 @@ public sealed class TesseractOcrEngine : IOcrEngine
 
             if (request.LayoutMode is OcrLayoutMode.Comic)
             {
-                return Task.FromResult(
-                    CreateComicResult(
-                        request,
-                        engine,
-                        image,
-                        recognitionOrientationMode,
-                        language,
-                        cancellationToken));
+                return CreateComicResult(
+                    request,
+                    engine,
+                    image,
+                    recognitionOrientationMode,
+                    language,
+                    cancellationToken);
             }
 
             var pageSegMode = MapLayoutMode(request.LayoutMode, recognitionOrientationMode);
@@ -95,13 +106,12 @@ public sealed class TesseractOcrEngine : IOcrEngine
                 words = qualityWords;
             }
 
-            return Task.FromResult(
-                new ApplicationOcrResult(
-                    request,
-                    textBlocks,
-                    DateTimeOffset.UtcNow,
-                    CreateTextBlockSources(textBlocks, recognitionOrientationMode),
-                    words: words));
+            return new ApplicationOcrResult(
+                request,
+                textBlocks,
+                DateTimeOffset.UtcNow,
+                CreateTextBlockSources(textBlocks, recognitionOrientationMode),
+                words: words);
         }
         catch (OperationCanceledException)
         {

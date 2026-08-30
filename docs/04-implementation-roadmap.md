@@ -4,7 +4,7 @@
 
 Проект: Система экранного OCR-перевода игровых субтитров и текста для Windows 11
 
-Версия документа: 1.2 (обновлено)
+Версия документа: 1.3 (обновлено 2026-08-25)
 
 ------------------------------------------------------------------------
 
@@ -120,7 +120,59 @@ Memory Cache + SQLite. TTL 30 дней, ручная очистка. Стати�
 
 # 18. Этап 15. Оптимизация производительности (2 спринта)
 
-Frame Difference Detection, пропуск неизменных кадров. Цели: CPU ≤25% средняя, RAM ≤500 МБ.
+Цели этапа: уменьшить задержку от появления стабильного исходного текста до публикации переведённого overlay, сохранив качество r29, revision/source revalidation и штатный путь ADR-030. Целевые ресурсные ориентиры сохраняются: CPU ≤25% средняя, RAM ≤500 МБ; GPU/runtime оцениваются отдельно на принятом RTX 3080 proxy для RTX 3060 8 GiB.
+
+Baseline для этой очереди — десять owner live-сессий portable r29 от 2026-08-24. Во всех сессиях candidate pipeline оставался `Ready`, без restart, `CandidateWorkFailed` и потерянных lifecycle events. Прогретый detector показал P50 `118.3 ms` / P95 `151.5 ms`; один Tesseract crop OCR — P50 `43.7 ms` для английского и `61.6 ms` для японского. Основные локальные задержки создают синхронный запуск нескольких OCR-кандидатов, ожидание завершённой работы до следующего polling-цикла и повторные OCR-наблюдения стабильного crop. Provider latency остаётся внешним измерением и не должна маскироваться fallback или сменой default.
+
+## 18.1. Очередь оптимизаций live candidate pipeline
+
+1. **Bounded asynchronous Tesseract execution.** Перенести CPU/native Tesseract recognition с вызывающего live/UI-потока в ограниченный executor с измеряемым параллелизмом, начиная с `2..3`. Не менять публичный `IOcrEngine`, OCR-модель, preprocessing, grouping, число stability observations или результат распознавания. Исправить lifecycle timing так, чтобы `CandidateWorkStarted` предшествовал фактической работе. Gate: несколько кандидатов больше не блокируют reconciliation последовательно; нет роста OCR failures, process crashes или расхождений golden/calibration tests.
+2. **Event-driven completion and overlay publication.** Собирать завершившиеся candidate tasks и публиковать revision-valid snapshot без обязательного ожидания следующего detector polling-цикла. Сохранить единственный сериализованный authority для candidate revision, geometry/source identity, cancellation и overlay removal. Gate: provider-completed → overlay latency уменьшается, а stale revision никогда не публикуется.
+3. **Remove redundant frame copies and make candidate crop materialization allocation-aware.** Убрать неиспользуемую полную `FrameFingerprint`-копию zone frame из candidate path; затем измерить и при необходимости сделать crop/fingerprint ленивыми, не ослабляя byte-exact source identity. Baseline оценивает только лишние full-zone copies примерно в `28.9 GiB` временных аллокаций за десять сессий. Gate: эквивалентное обнаружение source changes/cancellation и измеримое снижение allocations/GC pause.
+4. **Byte-identical crop OCR reuse.** После отдельного сравнения результатов разрешить reuse только уже полученного реального Tesseract результата, когда candidate revision, geometry и все crop bytes совпадают. Наблюдение нового captured frame должно оставаться явным; approximate image matching и reuse между различными revisions запрещены. Этот пункт меняет способ доказательства OCR stability и реализуется только после пунктов 1–3, отдельного quality-теста и явного подтверждения владельца.
+5. **Non-blocking detector prewarm.** Исследовать фоновый прогрев packaged Paddle worker после готовности подходящего профиля, чтобы убрать cold first-detect `3.2–5.0 s`. Это не readiness barrier: `Start live` не ждёт отдельный тестовый перевод, provider не вызывается, failure не вызывает fallback, а availability остаётся диагностической. До включения по умолчанию требуется решение по раннему занятию GPU/VRAM и сравнение app-start/resource behavior.
+
+## 18.2. Порядок и quality gates
+
+- Первый безопасный пакет: пункты `1 → 2 → 3`, каждый с отдельными focused tests и повторным разбором privacy-safe lifecycle timings.
+- После пакета повторить Release build, полный test suite, docs mini-check и owner live smoke на горизонтальном английском и вертикальном/горизонтальном CJK. Новый portable RC собирается только по отдельной команде владельца.
+- Пункт 4 не объединять с первым пакетом: сначала доказать, что remaining delay действительно оправдывает изменение stability semantics.
+- Пункт 5 можно исследовать отдельно, но не превращать в startup gate и не увеличивать product scope скрытым provider/cache/legacy fallback.
+- Не менять provider default. Для сравнения network latency фиксировать provider identity, cache hit/miss и request timestamps. После owner-решения 2026-08-29 автоматический локальный live-report может сохранять bounded OCR, translation-input и финальный translated text; raw provider response, credentials и frame pixels не записываются, а приложение не выполняет upload диагностических файлов.
+- Успех измеряется end-to-end latency, detector/OCR/provider/collection percentiles, allocation rate, CPU/RAM/GPU и отсутствием premature/stale overlays, а не только средним временем одного метода.
+
+## 18.3. Адаптивная группировка вертикального CJK после r34
+
+Owner live-проверка r34 подтвердила, что фиксированное число колонок является неверной границей для японской вертикальной разметки. Пять соседних колонок с общим vertical overlap `1.0` и horizontal gap `2 px` были разделены `4 + 1` исключительно из-за `MaximumVerticalGroupMembers = 4`; left-to-right seed дополнительно отделил правую начальную колонку японского текста. Это pre-OCR candidate-composition defect, а не общий split внутри translation grouping: в том же отчёте все `46/46` непустых completed works дали по одной translation-input group и одному translated block без failure.
+
+- Изменение ограничено `WritingSystemGroupingProfile.CjkVertical`. Auto (`MaximumVerticalColumns = null`/missing) означает adaptive segmentation без fixed column count; явное значение `1..12` остаётся пользовательским hard override.
+- Вертикальные CJK-кандидаты рассматриваются справа налево и только через непосредственных пространственных соседей. Merge требует локальной близости и whole-group coherence; transitive creep через цепочку слабых совпадений запрещён.
+- Граница группы определяется shared vertical overlap, normalized adjacent gap/pitch, top/bottom/center alignment и заметным geometry/whitespace discontinuity, а не количеством колонок. Решение должно оставаться детерминированным и выдавать диагностируемую причину merge/cut вместо непрозрачной magic score.
+- Подтверждённые r36 ragged-bottom реплики могут превысить обычный bottom-alignment порог только с третьей колонки, при shared overlap не ниже `0.95`, normalized top offset не выше `0.05` и каждом межколоночном gap не больше `2 px`; более широкий `6 px` контрпример остаётся разрывом группы. Это узкое послабление не применяется к explicit override или non-`CjkVertical` профилям.
+- CJK target post-filter не применяет aspect ratio общей широкой рамки как единственный критерий к уже принятой многоколоночной группе. Если aggregate шире своей высоты, дополнительный путь требует не менее двух source members, полного вложения каждого member в aggregate и вертикального aspect ratio каждого member. Одиночный широкий candidate и группа хотя бы с одним горизонтальным member сохраняют прежний reject; grouping boundaries при этом не меняются.
+- Horizontal/non-CJK profiles, Tesseract behavior, stability observations/durations, byte-exact source identity, revision/source revalidation, cancellation/publication authority, provider/cache policy и roadmap items 4-5 не меняются.
+- Diagnostics сохраняют ordered OCR/group member bounds и resolved writing-system/orientation. После owner-решения 2026-08-29 локальный live-report также сохраняет bounded OCR, translation-input и финальный translated text; raw provider response, credentials и frame pixels остаются исключёнными, автоматической отправки отчётов нет.
+- Gates: tracked regressions на `2/5/8/12` колонок, adjacent bubbles, ragged/staggered/noise/mixed layouts и explicit override; затем существующие S9/S10, Japanese/Chinese local geometry corpora, focused tests, Release build, full suite, docs mini-check и owner live smoke. Portable собирается только по отдельной команде владельца.
+- Owner smoke r39 подтвердил post-filter correction на живой вертикальной китайской разметке: `41` wide multi-member completions (`12` двухколоночных, `19` трёхколоночных, `10` четырёхколоночных), из которых `33` дошли до непустого OCR и перевода, а `8` завершились OCR-empty. Групп шире четырёх source members и признаков page-wide/neighbor-bubble merge не обнаружено; точный четырёхколоночный `115x101` пример переведён как одна группа. Быстрых empty-overlay gaps короче секунды и тройных последовательных повторов слов в китайских переводах не найдено. Это owner-live acceptance узкого post-filter fix; оно не означает, что Tesseract распознаёт каждый принятый crop без ошибок.
+
+Подробный локальный implementation handoff: `work/adaptive-cjk-vertical-grouping-handoff-20260829.md`.
+
+## 18.4. Китайский detector preset и PP-OCRv5 research после r37
+
+- Штатный `boxThreshold=0.60` не изменяется глобально. Per-zone `Standard` остаётся default для существующих и новых профилей; отсутствующее поле JSON десериализуется как `Standard`.
+- Для ручного китайского smoke доступны opt-in `ChineseExperimental` (`0.65`) и diagnostic-only `ChineseStrictExperimental` (`0.70`). Оба режима разрешаются в `Standard` для non-Chinese language tags, используют тот же persistent Paddle predictor и не перезагружают модель между запросами.
+- Headless A/B на локальных RCTW vertical, game-dialogue horizontal и MDPBench horizontal inputs показал для thresholds `0.60`, `0.65`, `0.70` соответственно `8/8/7`, `3/3/3` и `62/61/57` raw candidates. Поэтому `0.65` выбран только как безопасный opt-in для owner smoke; automatic default promotion запрещён, а `0.70` остаётся сравнительным режимом.
+- Локальный offline PP-OCRv5 benchmark на тех же `11` detector crops сравнивает `PP-OCRv5_mobile_rec`, `PP-OCRv5_server_rec` и production Tesseract. Оба PP recognizer лучше распознали горизонтальный китайский game text, но вернули empty на высоком вертикальном crop, который Tesseract распознал. PP-OCRv5 не подключается к production без расширенного annotated benchmark, решения по vertical routing/packaging и отдельного ADR; локальные модели и текстовые отчёты не включаются в portable и не публикуются.
+- Gates: profile round-trip/default/validation, per-request preset propagation, worker source contract, non-Chinese fallback, privacy-safe lifecycle diagnostics, focused tests, Release build, full suite, docs mini-check и owner live smoke. OCR/grouping semantics и roadmap items 4-5 не меняются.
+
+## 18.5. BingWeb timeout/throttle visibility
+
+- Один BingWeb HTTP request ограничен `15 s`; немедленного повтора того же запроса и автоматической смены provider нет.
+- Первый последовательный timeout показывается как warning. Второй timeout немедленно открывает provider-local pause на `60 s` и показывается как error. Успешный ответ сбрасывает timeout counter.
+- HTTP `429` показывается сразу, сразу открывает pause и использует корректный `Retry-After`, если он больше стандартных `60 s`. Во время pause новые network requests не отправляются.
+- Уже опубликованный overlay сохраняется при Bing timeout/throttle, пока authoritative candidate остаётся актуальным. Его нельзя перепубликовать как новую revision; replacement проходит существующие geometry/source/revision checks.
+- Live pipeline/UI status переносит provider id, failure kind/status, timing, consecutive count и retry interval. Lifecycle diagnostics сохраняют доступные provider/timing fields без raw provider response, credentials или frame pixels; stopped-session report может уже не содержать восстановившееся transient state. Provider default/fallback policy не меняется.
+- r39 owner smoke зафиксировал `28` Bing translation-stage failures в трёх сессиях: первые clusters появились около `15 s`, последующие быстрые отказы соответствуют активной `60 s` pause. Ни один failure не опубликовал пустой overlay поверх уже показанного текста; HTTP `429`/`Retry-After` в этой выборке не наблюдались. Текущий stopped-session lifecycle сохраняет `FailureStage=Translation`, но не всегда удерживает timeout/429 kind после восстановления, поэтому точное подтверждение показанного UI warning/error остаётся отдельным observability follow-up.
 
 ------------------------------------------------------------------------
 

@@ -20,6 +20,21 @@ public sealed class TextCandidateDetectionRequest
         string language,
         OcrOrientationMode orientationMode,
         OcrLayoutMode layoutMode)
+        : this(
+            frame,
+            language,
+            orientationMode,
+            layoutMode,
+            TextCandidateDetectorPreset.Standard)
+    {
+    }
+
+    public TextCandidateDetectionRequest(
+        CapturedFrame frame,
+        string language,
+        OcrOrientationMode orientationMode,
+        OcrLayoutMode layoutMode,
+        TextCandidateDetectorPreset detectorPreset)
     {
         Frame = frame ?? throw new ArgumentNullException(nameof(frame));
         ArgumentException.ThrowIfNullOrWhiteSpace(language);
@@ -34,9 +49,15 @@ public sealed class TextCandidateDetectionRequest
             throw new ArgumentOutOfRangeException(nameof(layoutMode));
         }
 
+        if (!Enum.IsDefined(detectorPreset))
+        {
+            throw new ArgumentOutOfRangeException(nameof(detectorPreset));
+        }
+
         Language = language.Trim();
         OrientationMode = orientationMode;
         LayoutMode = layoutMode;
+        DetectorPreset = detectorPreset;
     }
 
     public CapturedFrame Frame { get; }
@@ -46,6 +67,54 @@ public sealed class TextCandidateDetectionRequest
     public OcrOrientationMode OrientationMode { get; }
 
     public OcrLayoutMode LayoutMode { get; }
+
+    public TextCandidateDetectorPreset DetectorPreset { get; }
+}
+
+public sealed record TextCandidateDetectionDiagnostics(
+    TextCandidateDetectorPreset RequestedPreset,
+    TextCandidateDetectorPreset EffectivePreset,
+    double Threshold,
+    double BoxThreshold,
+    double UnclipRatio,
+    int RawCandidateCount = 0,
+    double? MinimumConfidence = null,
+    double? MaximumConfidence = null,
+    double? AverageConfidence = null)
+{
+    public TextCandidateDetectionDiagnostics Validate()
+    {
+        if (!Enum.IsDefined(RequestedPreset) || !Enum.IsDefined(EffectivePreset))
+        {
+            throw new ArgumentOutOfRangeException(nameof(EffectivePreset));
+        }
+
+        if (!double.IsFinite(Threshold) || Threshold <= 0d
+            || !double.IsFinite(BoxThreshold) || BoxThreshold <= 0d
+            || !double.IsFinite(UnclipRatio) || UnclipRatio <= 0d)
+        {
+            throw new ArgumentOutOfRangeException(nameof(Threshold));
+        }
+
+        if (RawCandidateCount < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(RawCandidateCount));
+        }
+
+        ValidateConfidence(MinimumConfidence, nameof(MinimumConfidence));
+        ValidateConfidence(MaximumConfidence, nameof(MaximumConfidence));
+        ValidateConfidence(AverageConfidence, nameof(AverageConfidence));
+
+        return this;
+    }
+
+    private static void ValidateConfidence(double? value, string parameterName)
+    {
+        if (value is { } confidence && (!double.IsFinite(confidence) || confidence is < 0d or > 1d))
+        {
+            throw new ArgumentOutOfRangeException(parameterName);
+        }
+    }
 }
 
 public sealed class TextCandidateDetectionResult
@@ -54,7 +123,8 @@ public sealed class TextCandidateDetectionResult
         TextCandidateDetectorAvailability availability,
         string detectorId,
         string? unavailableReason,
-        IEnumerable<TextCandidate> candidates)
+        IEnumerable<TextCandidate> candidates,
+        TextCandidateDetectionDiagnostics? diagnostics)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(detectorId);
         ArgumentNullException.ThrowIfNull(candidates);
@@ -76,6 +146,7 @@ public sealed class TextCandidateDetectionResult
             ? null
             : unavailableReason.Trim();
         Candidates = candidates.ToArray();
+        Diagnostics = diagnostics?.Validate();
     }
 
     public TextCandidateDetectorAvailability Availability { get; }
@@ -86,15 +157,19 @@ public sealed class TextCandidateDetectionResult
 
     public IReadOnlyList<TextCandidate> Candidates { get; }
 
+    public TextCandidateDetectionDiagnostics? Diagnostics { get; }
+
     public static TextCandidateDetectionResult Available(
         string detectorId,
-        IEnumerable<TextCandidate> candidates)
+        IEnumerable<TextCandidate> candidates,
+        TextCandidateDetectionDiagnostics? diagnostics = null)
     {
         return new TextCandidateDetectionResult(
             TextCandidateDetectorAvailability.Available,
             detectorId,
             unavailableReason: null,
-            candidates);
+            candidates,
+            diagnostics);
     }
 
     public static TextCandidateDetectionResult Unavailable(string detectorId, string reason)
@@ -103,7 +178,8 @@ public sealed class TextCandidateDetectionResult
             TextCandidateDetectorAvailability.Unavailable,
             detectorId,
             reason,
-            Array.Empty<TextCandidate>());
+            Array.Empty<TextCandidate>(),
+            diagnostics: null);
     }
 }
 

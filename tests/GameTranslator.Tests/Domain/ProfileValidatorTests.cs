@@ -126,6 +126,53 @@ public sealed class ProfileValidatorTests
     }
 
     [Fact]
+    public void Validate_WhenDetectorPresetIsInvalid_ReturnsInvalidDetectorPresetError()
+    {
+        var profile = CreateValidProfile() with
+        {
+            OcrZones = new[]
+            {
+                CreateZone("dialog", new AbsoluteRectangle(10, 10, 120, 40)) with
+                {
+                    DetectorPreset = (TextCandidateDetectorPreset)999,
+                },
+            },
+        };
+
+        var result = validator.Validate(profile);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(
+            result.Errors,
+            error => error.Code == ProfileValidationErrorCodes.InvalidOcrZoneDetectorPreset);
+    }
+
+    [Fact]
+    public void Validate_WhenCandidateGroupingLimitIsOutOfRange_ReturnsInvalidCandidateGroupingError()
+    {
+        var profile = CreateValidProfile() with
+        {
+            OcrZones = new[]
+            {
+                CreateZone("dialog", new AbsoluteRectangle(10, 10, 120, 40)) with
+                {
+                    CandidateGrouping = new OcrCandidateGroupingSettings
+                    {
+                        MaximumHorizontalLines = OcrCandidateGroupingSettings.MaximumLimit + 1,
+                    },
+                },
+            },
+        };
+
+        var result = validator.Validate(profile);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(
+            result.Errors,
+            error => error.Code == ProfileValidationErrorCodes.InvalidOcrZoneCandidateGrouping);
+    }
+
+    [Fact]
     public void Validate_WhenTranslationGroupingModeIsInvalid_ReturnsInvalidGroupingModeError()
     {
         var profile = CreateValidProfile() with

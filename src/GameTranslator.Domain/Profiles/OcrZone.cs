@@ -14,6 +14,10 @@ public sealed record OcrZone
 
     public ContentLayoutMode ContentLayoutMode { get; init; } = ContentLayoutMode.DialogComic;
 
+    public TextCandidateDetectorPreset DetectorPreset { get; init; } = TextCandidateDetectorPreset.Standard;
+
+    public OcrCandidateGroupingSettings CandidateGrouping { get; init; } = OcrCandidateGroupingSettings.Default;
+
     public OcrZoneTextStyle TextStyle { get; init; } = OcrZoneTextStyle.Default;
 
     public TranslationGroupingMode TranslationGroupingMode { get; init; } = TranslationGroupingMode.BlockByBlock;

@@ -13,15 +13,28 @@ public sealed class TranslatorProviderException : Exception
         string providerId,
         TranslatorProviderFailureKind failureKind,
         string message,
-        Exception? innerException = null)
+        Exception? innerException = null,
+        TimeSpan? retryAfter = null,
+        int consecutiveFailureCount = 0)
         : base(message, innerException)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(providerId);
+        if (retryAfter.HasValue && retryAfter.Value <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(retryAfter));
+        }
+
+        if (consecutiveFailureCount < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(consecutiveFailureCount));
+        }
 
         ProviderId = providerId.Trim();
         FailureKind = Enum.IsDefined(failureKind)
             ? failureKind
             : TranslatorProviderFailureKind.Unknown;
+        RetryAfter = retryAfter;
+        ConsecutiveFailureCount = consecutiveFailureCount;
     }
 
     public TranslatorProviderException(
@@ -38,8 +51,16 @@ public sealed class TranslatorProviderException : Exception
         HttpStatusCode statusCode,
         TranslatorProviderFailureKind failureKind,
         string message,
-        Exception? innerException = null)
-        : this(providerId, failureKind, message, innerException)
+        Exception? innerException = null,
+        TimeSpan? retryAfter = null,
+        int consecutiveFailureCount = 0)
+        : this(
+            providerId,
+            failureKind,
+            message,
+            innerException,
+            retryAfter,
+            consecutiveFailureCount)
     {
         StatusCode = statusCode;
     }
@@ -49,6 +70,10 @@ public sealed class TranslatorProviderException : Exception
     public TranslatorProviderFailureKind FailureKind { get; }
 
     public HttpStatusCode? StatusCode { get; }
+
+    public TimeSpan? RetryAfter { get; }
+
+    public int ConsecutiveFailureCount { get; }
 
     private static TranslatorProviderFailureKind ClassifyStatusCode(HttpStatusCode statusCode)
     {

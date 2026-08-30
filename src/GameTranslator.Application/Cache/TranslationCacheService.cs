@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using GameTranslator.Application.Translation;
 using GameTranslator.Domain.Profiles;
 
@@ -8,6 +9,7 @@ public sealed class TranslationCacheService
     private readonly ITranslationCacheRepository repository;
     private readonly TranslationCacheOptions options;
     private readonly Dictionary<TranslationCacheKey, TranslationCacheEntry> memoryEntries = new();
+    private readonly ConcurrentDictionary<TranslationCacheKey, SemaphoreSlim> keyLocks = new();
     private readonly object memoryEntriesLock = new();
 
     public TranslationCacheService(
@@ -35,78 +37,141 @@ public sealed class TranslationCacheService
             throw new ArgumentException("Translation cache requires at least one source text.", nameof(sourceTexts));
         }
 
-        var translatedTexts = new string[sourceTexts.Count];
-        var misses = new List<CacheMiss>();
-        var memoryHits = 0;
-        var persistentHits = 0;
-
-        for (var index = 0; index < sourceTexts.Count; index++)
+        var orderedKeys = sourceTexts
+            .Select(sourceText => CreateKey(settings, sourceText))
+            .Distinct()
+            .OrderBy(CreateLockOrderKey, StringComparer.Ordinal)
+            .ToArray();
+        var acquiredLocks = new List<SemaphoreSlim>(orderedKeys.Length);
+        try
         {
-            var key = CreateKey(settings, sourceTexts[index]);
-            if (TryGetMemoryEntry(key, now, out var memoryEntry))
+            foreach (var key in orderedKeys)
             {
-                translatedTexts[index] = memoryEntry.TranslatedText;
-                memoryHits++;
-                continue;
+                var keyLock = keyLocks.GetOrAdd(key, static _ => new SemaphoreSlim(1, 1));
+                await keyLock.WaitAsync(cancellationToken);
+                acquiredLocks.Add(keyLock);
             }
 
-            var persistentEntry = await repository.GetAsync(key, now, cancellationToken);
-            if (persistentEntry is not null)
+            var translatedTexts = new string[sourceTexts.Count];
+            var misses = new List<CacheMiss>();
+            var memoryHits = 0;
+            var persistentHits = 0;
+            var sanitizedTranslationCount = 0;
+
+            for (var index = 0; index < sourceTexts.Count; index++)
             {
-                StoreMemoryEntry(key, persistentEntry);
-                translatedTexts[index] = persistentEntry.TranslatedText;
-                persistentHits++;
-                continue;
+                var key = CreateKey(settings, sourceTexts[index]);
+                if (TryGetMemoryEntry(key, now, out var memoryEntry))
+                {
+                    var sanitation = TranslationOutputSanitizer.Sanitize(
+                        settings.Provider,
+                        key.SourceText,
+                        memoryEntry.TranslatedText);
+                    translatedTexts[index] = sanitation.Text;
+                    if (sanitation.WasSanitized)
+                    {
+                        StoreMemoryEntry(key, ReplaceTranslatedText(memoryEntry, sanitation.Text));
+                        sanitizedTranslationCount++;
+                    }
+
+                    memoryHits++;
+                    continue;
+                }
+
+                var persistentEntry = await repository.GetAsync(key, now, cancellationToken);
+                if (persistentEntry is not null)
+                {
+                    var sanitation = TranslationOutputSanitizer.Sanitize(
+                        settings.Provider,
+                        key.SourceText,
+                        persistentEntry.TranslatedText);
+                    var cachedMemoryEntry = sanitation.WasSanitized
+                        ? ReplaceTranslatedText(persistentEntry, sanitation.Text)
+                        : persistentEntry;
+                    StoreMemoryEntry(key, cachedMemoryEntry);
+                    translatedTexts[index] = sanitation.Text;
+                    if (sanitation.WasSanitized)
+                    {
+                        sanitizedTranslationCount++;
+                    }
+
+                    persistentHits++;
+                    continue;
+                }
+
+                misses.Add(new CacheMiss(index, key, key.SourceText));
             }
 
-            misses.Add(new CacheMiss(index, key, key.SourceText));
+            var storedCount = 0;
+            var translatedAt = now;
+            var providerId = settings.Provider;
+            var diagnosticMessage = string.Empty;
+            DateTimeOffset? providerRequestStartedAt = null;
+            DateTimeOffset? providerRequestCompletedAt = null;
+            if (misses.Count > 0)
+            {
+                providerRequestStartedAt = DateTimeOffset.UtcNow;
+                var response = await translateMissingAsync(misses.Select(miss => miss.SourceText).ToArray());
+                providerRequestCompletedAt = DateTimeOffset.UtcNow;
+                if (response.TranslatedTexts.Count != misses.Count)
+                {
+                    throw new InvalidOperationException("Translated miss count must match cache miss count.");
+                }
+
+                translatedAt = response.TranslatedAt;
+                providerId = string.IsNullOrWhiteSpace(response.ProviderId)
+                    ? settings.Provider
+                    : response.ProviderId;
+                diagnosticMessage = response.DiagnosticMessage;
+                for (var index = 0; index < misses.Count; index++)
+                {
+                    var miss = misses[index];
+                    var sanitation = TranslationOutputSanitizer.Sanitize(
+                        settings.Provider,
+                        miss.SourceText,
+                        response.TranslatedTexts[index]);
+                    var translatedText = sanitation.Text;
+                    translatedTexts[miss.Index] = translatedText;
+                    if (sanitation.WasSanitized)
+                    {
+                        sanitizedTranslationCount++;
+                    }
+
+                    var entry = new TranslationCacheEntry(
+                        miss.Key,
+                        translatedText,
+                        translatedAt,
+                        translatedAt.Add(options.TimeToLive),
+                        translatedAt,
+                        hitCount: 0);
+                    // A provider may finish after its caller was invalidated. Persisting that completed,
+                    // text-keyed response prevents the replacement revision from issuing the same request.
+                    await repository.SaveAsync(entry, CancellationToken.None);
+                    StoreMemoryEntry(miss.Key, entry);
+                    storedCount++;
+                }
+            }
+
+            return new TranslationCacheResult(
+                translatedTexts,
+                translatedAt,
+                memoryHits,
+                persistentHits,
+                misses.Count,
+                storedCount,
+                providerId,
+                diagnosticMessage,
+                providerRequestStartedAt,
+                providerRequestCompletedAt,
+                sanitizedTranslationCount);
         }
-
-        var storedCount = 0;
-        var translatedAt = now;
-        var providerId = settings.Provider;
-        var diagnosticMessage = string.Empty;
-        if (misses.Count > 0)
+        finally
         {
-            var response = await translateMissingAsync(misses.Select(miss => miss.SourceText).ToArray());
-            if (response.TranslatedTexts.Count != misses.Count)
+            for (var index = acquiredLocks.Count - 1; index >= 0; index--)
             {
-                throw new InvalidOperationException("Translated miss count must match cache miss count.");
-            }
-
-            translatedAt = response.TranslatedAt;
-            providerId = string.IsNullOrWhiteSpace(response.ProviderId)
-                ? settings.Provider
-                : response.ProviderId;
-            diagnosticMessage = response.DiagnosticMessage;
-            for (var index = 0; index < misses.Count; index++)
-            {
-                var miss = misses[index];
-                var translatedText = response.TranslatedTexts[index];
-                translatedTexts[miss.Index] = translatedText;
-
-                var entry = new TranslationCacheEntry(
-                    miss.Key,
-                    translatedText,
-                    translatedAt,
-                    translatedAt.Add(options.TimeToLive),
-                    translatedAt,
-                    hitCount: 0);
-                await repository.SaveAsync(entry, cancellationToken);
-                StoreMemoryEntry(miss.Key, entry);
-                storedCount++;
+                acquiredLocks[index].Release();
             }
         }
-
-        return new TranslationCacheResult(
-            translatedTexts,
-            translatedAt,
-            memoryHits,
-            persistentHits,
-            misses.Count,
-            storedCount,
-            providerId,
-            diagnosticMessage);
     }
 
     public async Task<TranslationCacheCleanupResult> CleanupExpiredAsync(
@@ -174,6 +239,30 @@ public sealed class TranslationCacheService
             settings.SourceLanguage,
             settings.TargetLanguage,
             sourceText);
+    }
+
+    private static string CreateLockOrderKey(TranslationCacheKey key)
+    {
+        return string.Join(
+            "\u001f",
+            key.Provider.ToUpperInvariant(),
+            key.SourceLanguage.ToUpperInvariant(),
+            key.TargetLanguage.ToUpperInvariant(),
+            key.SourceTextHash,
+            key.SourceText);
+    }
+
+    private static TranslationCacheEntry ReplaceTranslatedText(
+        TranslationCacheEntry entry,
+        string translatedText)
+    {
+        return new TranslationCacheEntry(
+            entry.Key,
+            translatedText,
+            entry.CreatedAt,
+            entry.ExpiresAt,
+            entry.LastAccessedAt,
+            entry.HitCount);
     }
 
     private sealed record CacheMiss(int Index, TranslationCacheKey Key, string SourceText);

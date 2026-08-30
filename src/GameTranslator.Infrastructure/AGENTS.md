@@ -21,7 +21,7 @@ Keep concrete external integrations isolated behind Application contracts.
 - Implement Application interfaces without changing their public semantics unless the matching Application contract is intentionally changed and tested.
 - Do not remove Windows OCR or Tesseract support, and do not make the product depend on only one OCR engine.
 - Store secrets only through Windows Credential Manager or an approved protected fallback; redact provider credentials from logs, exceptions, diagnostics, and artifacts.
-- `WebAuto` and web translator providers are diagnostic/experimental paths and must not become silent production defaults.
+- Credentialless web translator providers are separately selected diagnostic/experimental paths and must not become silent production defaults or automatic fallback chains.
 - Do not add process injection, hooks, game memory access, drivers, anti-cheat bypass, or reverse engineering.
 
 ## Work Guidance

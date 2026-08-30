@@ -13,8 +13,8 @@
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
 
         <Style x:Key="ModernButtonStyle" TargetType="Button">
-            <Setter Property="MinHeight" Value="34" />
-            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="Padding" Value="10,4" />
             <Setter Property="Background" Value="#FFFFFF" />
             <Setter Property="BorderBrush" Value="#C9D2DC" />
             <Setter Property="BorderThickness" Value="1" />
@@ -31,7 +31,7 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="6"
+                            CornerRadius="5"
                             SnapsToDevicePixels="True">
                             <ContentPresenter
                                 Margin="{TemplateBinding Padding}"
@@ -62,8 +62,8 @@
             <Setter Property="Background" Value="#087F8C" />
             <Setter Property="BorderBrush" Value="#087F8C" />
             <Setter Property="Foreground" Value="#FFFFFF" />
-            <Setter Property="FontSize" Value="14" />
-            <Setter Property="MinHeight" Value="38" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="MinHeight" Value="32" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -72,7 +72,7 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="6">
+                            CornerRadius="5">
                             <ContentPresenter
                                 Margin="{TemplateBinding Padding}"
                                 HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
@@ -101,8 +101,8 @@
             <Setter Property="BorderBrush" Value="#E0B8B8" />
         </Style>
         <Style x:Key="CompactButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButtonStyle}">
-            <Setter Property="MinHeight" Value="30" />
-            <Setter Property="Padding" Value="9,5" />
+            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="Padding" Value="8,3" />
             <Setter Property="FontSize" Value="12" />
         </Style>
         <Style TargetType="Button" BasedOn="{StaticResource ModernButtonStyle}" />
@@ -111,20 +111,20 @@
             <Setter Property="Background" Value="#FFFFFF" />
             <Setter Property="BorderBrush" Value="#DCE3E9" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="8" />
-            <Setter Property="Padding" Value="16" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="10" />
         </Style>
         <Style x:Key="SubtleCardBorderStyle" TargetType="Border" BasedOn="{StaticResource CardBorderStyle}">
             <Setter Property="Background" Value="#F8FAFB" />
-            <Setter Property="Padding" Value="12" />
+            <Setter Property="Padding" Value="8" />
         </Style>
         <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontSize" Value="16" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Foreground" Value="#17212B" />
         </Style>
         <Style x:Key="FieldLabelStyle" TargetType="TextBlock">
-            <Setter Property="Margin" Value="0,0,0,6" />
+            <Setter Property="Margin" Value="0,0,0,3" />
             <Setter Property="Foreground" Value="#4B5865" />
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
@@ -132,10 +132,21 @@
             <Setter Property="Foreground" Value="#66727F" />
             <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
+        <Style x:Key="PipelineStatusTextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#087F55" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding PipelineStatusSeverity}" Value="Warning">
+                    <Setter Property="Foreground" Value="#B45309" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding PipelineStatusSeverity}" Value="Error">
+                    <Setter Property="Foreground" Value="#B91C1C" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
 
         <Style TargetType="TextBox">
-            <Setter Property="MinHeight" Value="34" />
-            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="Padding" Value="7,3" />
             <Setter Property="Background" Value="#FFFFFF" />
             <Setter Property="BorderBrush" Value="#C9D2DC" />
             <Setter Property="BorderThickness" Value="1" />
@@ -151,8 +162,8 @@
             </Style.Triggers>
         </Style>
         <Style TargetType="ComboBox">
-            <Setter Property="MinHeight" Value="34" />
-            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="Padding" Value="7,3" />
             <Setter Property="Background" Value="#FFFFFF" />
             <Setter Property="BorderBrush" Value="#C9D2DC" />
             <Setter Property="BorderThickness" Value="1" />
@@ -166,8 +177,8 @@
             </Style.Triggers>
         </Style>
         <Style TargetType="PasswordBox">
-            <Setter Property="MinHeight" Value="34" />
-            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="Padding" Value="7,3" />
             <Setter Property="Background" Value="#FFFFFF" />
             <Setter Property="BorderBrush" Value="#C9D2DC" />
             <Setter Property="BorderThickness" Value="1" />
@@ -182,7 +193,7 @@
             <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
         </Style>
         <Style TargetType="ListBoxItem">
-            <Setter Property="Margin" Value="0,0,0,10" />
+            <Setter Property="Margin" Value="0,0,0,6" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="Background" Value="Transparent" />
@@ -195,8 +206,8 @@
                             Background="#FFFFFF"
                             BorderBrush="#DCE3E9"
                             BorderThickness="1"
-                            CornerRadius="8"
-                            Padding="14">
+                            CornerRadius="6"
+                            Padding="8">
                             <ContentPresenter />
                         </Border>
                         <ControlTemplate.Triggers>
@@ -230,8 +241,8 @@
         </Style>
         <Style x:Key="WorkspaceTabItemStyle" TargetType="TabItem">
             <Setter Property="Foreground" Value="#33414E" />
-            <Setter Property="FontSize" Value="14" />
-            <Setter Property="Padding" Value="14,12" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Padding" Value="10,7" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -240,7 +251,7 @@
                             x:Name="TabChrome"
                             Background="Transparent"
                             BorderBrush="Transparent"
-                            BorderThickness="0,0,0,3"
+                            BorderThickness="0,0,0,2"
                             Padding="{TemplateBinding Padding}">
                             <ContentPresenter
                                 HorizontalAlignment="Center"
@@ -264,7 +275,7 @@
         <DataTemplate DataType="{x:Type viewModels:MainViewModel}">
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="344" />
+                    <ColumnDefinition Width="280" />
                     <ColumnDefinition Width="1" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
@@ -274,7 +285,7 @@
                     Background="#F8FAFB"
                     BorderBrush="#DCE3E9"
                     BorderThickness="0,0,1,0"
-                    Padding="24,24,24,18">
+                    Padding="14,10,14,10">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -285,13 +296,13 @@
 
                         <StackPanel Grid.Row="0">
                             <TextBlock
-                                FontSize="24"
+                                FontSize="18"
                                 FontWeight="SemiBold"
                                 Foreground="#17212B"
                                 Text="Profiles" />
-                            <UniformGrid Margin="0,18,0,0" Columns="4">
+                            <UniformGrid Margin="0,6,0,0" Columns="4">
                                 <Button
-                                    Margin="0,0,6,0"
+                                    Margin="0,0,4,0"
                                     Style="{StaticResource CompactButtonStyle}"
                                     Command="{Binding BeginCreateProfileCommand}"
                                     Content="New" />
@@ -306,7 +317,7 @@
                                     Command="{Binding ExportSelectedProfileCommand}"
                                     Content="Export" />
                                 <Button
-                                    Margin="6,0,0,0"
+                                    Margin="4,0,0,0"
                                     Style="{StaticResource CompactButtonStyle}"
                                     Command="{Binding RefreshProfilesCommand}"
                                     Content="Refresh" />
@@ -324,20 +335,20 @@
                                         ToolTip="Double-click the profile name to rename it."
                                         MouseLeftButtonDown="OnProfileItemMouseLeftButtonDown">
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="42" />
+                                            <ColumnDefinition Width="38" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
                                         <Border
-                                            Width="34"
-                                            Height="34"
+                                            Width="30"
+                                            Height="30"
                                             HorizontalAlignment="Left"
                                             VerticalAlignment="Top"
                                             Background="#DDEFF1"
-                                            CornerRadius="17">
+                                            CornerRadius="15">
                                             <TextBlock
                                                 HorizontalAlignment="Center"
                                                 VerticalAlignment="Center"
-                                                FontSize="15"
+                                                FontSize="13"
                                                 Foreground="#087F8C"
                                                 Text="GT" />
                                         </Border>
@@ -388,7 +399,7 @@
                                                 </TextBox>
                                             </Grid>
                                             <TextBlock
-                                                Margin="0,4,0,0"
+                                                Margin="0,2,0,0"
                                                 Foreground="#66727F">
                                                 <Run Text="{Binding TranslatorSettings.SourceLanguage}" />
                                                 <Run Text=" to " />
@@ -400,15 +411,15 @@
                             </ListBox.ItemTemplate>
                         </ListBox>
 
-                        <UniformGrid Grid.Row="3" Margin="0,12,0,0" Columns="2">
+                        <UniformGrid Grid.Row="3" Margin="0,4,0,0" Columns="2">
                             <Button
-                                Margin="0,0,6,0"
-                                Padding="12,6"
+                                Margin="0,0,4,0"
+                                Padding="9,4"
                                 Command="{Binding CloneSelectedProfileCommand}"
                                 Content="Clone" />
                             <Button
-                                Margin="6,0,0,0"
-                                Padding="12,6"
+                                Margin="4,0,0,0"
+                                Padding="9,4"
                                 Command="{Binding DeleteSelectedProfileCommand}"
                                 Content="Delete"
                                 Style="{StaticResource DangerButtonStyle}" />
@@ -427,7 +438,7 @@
                         VerticalScrollBarVisibility="Auto">
                         <Border
                             Width="{Binding ActualWidth, ElementName=WorkspaceScrollViewer}"
-                            Padding="32,24,32,28">
+                            Padding="18,12,18,16">
                         <StackPanel>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -436,11 +447,11 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
                                 <TextBlock
-                                    FontSize="30"
+                                    FontSize="22"
                                     FontWeight="SemiBold"
                                     Foreground="#17212B"
                                     Text="{Binding ApplicationName}" />
-                                    <TextBlock Margin="0,6,0,0" Foreground="#66727F">
+                                    <TextBlock Margin="0,3,0,0" Foreground="#66727F">
                                         <Run Text="Active profile: " />
                                         <Run FontWeight="SemiBold" Foreground="#087F8C" Text="{Binding ActiveProfileName, Mode=OneWay}" />
                                     </TextBlock>
@@ -451,25 +462,25 @@
                                     Orientation="Horizontal"
                                     VerticalAlignment="Center">
                                     <Button
-                                        MinWidth="88"
+                                        MinWidth="78"
                                         Style="{StaticResource PrimaryButtonStyle}"
                                         Command="{Binding StartLiveTranslationCommand}"
                                         Content="Start live"
                                         ToolTip="Start live translation for the active profile." />
                                     <Button
-                                        MinWidth="84"
-                                        Margin="8,0,0,0"
+                                        MinWidth="74"
+                                        Margin="4,0,0,0"
                                         Command="{Binding StopLiveTranslationCommand}"
                                         Content="Stop live"
                                         ToolTip="Stop live translation and save the automatic stop report." />
                                     <Button
-                                        MinWidth="76"
-                                        Margin="18,0,0,0"
+                                        MinWidth="66"
+                                        Margin="10,0,0,0"
                                         Command="{Binding ResetEditorCommand}"
                                         Content="Reset" />
                                     <Button
-                                        MinWidth="96"
-                                        Margin="8,0,0,0"
+                                        MinWidth="86"
+                                        Margin="4,0,0,0"
                                         Style="{StaticResource PrimaryButtonStyle}"
                                         Command="{Binding SaveProfileCommand}"
                                         Content="Save profile" />
@@ -477,24 +488,24 @@
                             </Grid>
 
                             <TextBlock
-                                Margin="0,12,0,0"
+                                Margin="0,6,0,0"
                                 Style="{StaticResource MutedTextStyle}"
                                 Text="{Binding StatusMessage}"
                                 TextTrimming="CharacterEllipsis" />
 
                             <Border
-                                Margin="0,0,0,16"
+                                Margin="0,0,0,2"
                                 Background="#FFF4F4"
                                 BorderBrush="#E3B4B4"
                                 BorderThickness="1"
                                 CornerRadius="4"
-                                Padding="12"
+                                Padding="8"
                                 Visibility="{Binding HasValidationErrors, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <ItemsControl ItemsSource="{Binding ValidationErrors}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
                                             <TextBlock
-                                                Margin="0,2,0,2"
+                                                Margin="0,1"
                                                 Foreground="#8B1E1E"
                                                 Text="{Binding}" />
                                         </DataTemplate>
@@ -503,18 +514,18 @@
                             </Border>
 
                             <Expander
-                                Margin="0,16,0,0"
+                                Margin="0,4,0,0"
                                 HorizontalContentAlignment="Stretch"
                                 Header="Edit profile details"
                                 IsExpanded="False">
-                                <Border Margin="0,10,0,0" Style="{StaticResource SubtleCardBorderStyle}">
+                                <Border Margin="0,4,0,0" Style="{StaticResource SubtleCardBorderStyle}">
                                     <Grid>
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="150" />
+                                        <ColumnDefinition Width="110" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
 
@@ -527,23 +538,23 @@
                                     <TextBox
                                         Grid.Row="0"
                                         Grid.Column="1"
-                                        Padding="8,6"
+                                        Padding="6,3"
                                         Text="{Binding ProfileName, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
 
                                     <TextBlock
                                         Grid.Row="1"
                                         Grid.Column="0"
-                                        Margin="0,12,0,0"
+                                        Margin="0,6,0,0"
                                         VerticalAlignment="Top"
                                         Foreground="#253238"
                                         Text="Description" />
                                     <TextBox
                                         Grid.Row="1"
                                         Grid.Column="1"
-                                        Margin="0,12,0,0"
-                                        Padding="8,6"
+                                        Margin="0,6,0,0"
+                                        Padding="6,3"
                                         AcceptsReturn="True"
-                                        Height="88"
+                                        Height="64"
                                         TextWrapping="Wrap"
                                         VerticalScrollBarVisibility="Auto"
                                         Text="{Binding ProfileDescription, UpdateSourceTrigger=PropertyChanged}" />
@@ -552,8 +563,8 @@
                             </Expander>
 
                             <TabControl
-                                Height="46"
-                                Margin="0,14,0,0"
+                                Height="36"
+                                Margin="0,4,0,0"
                                 Style="{StaticResource WorkspaceTabControlStyle}"
                                 SelectedIndex="{Binding SelectedWorkspaceTabIndex, Mode=TwoWay}">
                                 <TabItem Header="Zones &amp; OCR" Style="{StaticResource WorkspaceTabItemStyle}" />
@@ -566,7 +577,7 @@
 
                             <Border
                                 x:Name="OverlayPreviewCard"
-                                Margin="0,12,0,0"
+                                Margin="0,6,0,0"
                                 MaxWidth="1040"
                                 Style="{StaticResource CardBorderStyle}"
                                 Visibility="{Binding IsOverlayTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -591,22 +602,22 @@
                                     <Button
                                         Grid.Row="1"
                                         Grid.Column="0"
-                                        Margin="0,12,0,0"
-                                        Padding="12,6"
+                                        Margin="0,6,0,0"
+                                        Padding="9,4"
                                         Command="{Binding ShowOverlayPreviewCommand}"
                                         Content="Show test overlay"
                                         Style="{StaticResource PrimaryButtonStyle}" />
                                     <Button
                                         Grid.Row="1"
                                         Grid.Column="1"
-                                        Margin="8,12,0,0"
-                                        Padding="12,6"
+                                        Margin="4,6,0,0"
+                                        Padding="9,4"
                                         Command="{Binding HideOverlayPreviewCommand}"
                                         Content="Hide overlay" />
                                     <TextBlock
                                         Grid.Row="1"
                                         Grid.Column="2"
-                                        Margin="12,12,0,0"
+                                        Margin="6,6,0,0"
                                         VerticalAlignment="Center"
                                         Foreground="#56616F"
                                         Text="{Binding OverlayPreviewStatus}" />
@@ -614,14 +625,14 @@
                                         Grid.Row="2"
                                         Grid.Column="0"
                                         Grid.ColumnSpan="2"
-                                        Margin="0,12,0,0"
+                                        Margin="0,6,0,0"
                                         VerticalAlignment="Center"
                                         Content="Debug metrics"
                                         IsChecked="{Binding IsDebugOverlayEnabled, Mode=TwoWay}" />
                                     <TextBlock
                                         Grid.Row="2"
                                         Grid.Column="2"
-                                        Margin="12,12,0,0"
+                                        Margin="6,6,0,0"
                                         VerticalAlignment="Center"
                                         Foreground="#56616F"
                                         Text="{Binding DebugOverlayStatus}"
@@ -629,7 +640,7 @@
                                     <TextBlock
                                         Grid.Row="3"
                                         Grid.Column="0"
-                                        Margin="0,12,0,0"
+                                        Margin="0,6,0,0"
                                         VerticalAlignment="Center"
                                         Foreground="#253238"
                                         Text="Vertical width" />
@@ -637,7 +648,7 @@
                                         Grid.Row="3"
                                         Grid.Column="1"
                                         Grid.ColumnSpan="2"
-                                        Margin="12,12,0,0">
+                                        Margin="6,6,0,0">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="64" />
@@ -654,8 +665,8 @@
                                             Value="{Binding DebugVerticalSourceWidthMultiplier, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                         <TextBox
                                             Grid.Column="1"
-                                            Margin="12,0,0,0"
-                                            Padding="8,6"
+                                            Margin="4,0,0,0"
+                                            Padding="6,3"
                                             IsEnabled="{Binding IsDebugOverlayEnabled}"
                                             ToolTip="Session-only starting width for vertical-source translations."
                                             Text="{Binding DebugVerticalSourceWidthMultiplier, UpdateSourceTrigger=PropertyChanged, StringFormat=F1, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
@@ -665,7 +676,7 @@
 
                             <Border
                                 x:Name="HotkeysSettingsCard"
-                                Margin="0,12,0,0"
+                                Margin="0,6,0,0"
                                 MaxWidth="1040"
                                 Style="{StaticResource CardBorderStyle}"
                                 Visibility="{Binding IsHotkeysSettingsTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -690,14 +701,14 @@
                                     <ItemsControl
                                         Grid.Row="1"
                                         Grid.ColumnSpan="3"
-                                        Margin="0,12,0,0"
+                                        Margin="0,6,0,0"
                                         ItemsSource="{Binding HotkeyBindings}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <Grid Margin="0,0,0,8">
+                                                <Grid Margin="0,0,0,2">
                                                     <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="180" />
-                                                        <ColumnDefinition Width="90" />
+                                                        <ColumnDefinition Width="160" />
+                                                        <ColumnDefinition Width="78" />
                                                         <ColumnDefinition Width="*" />
                                                     </Grid.ColumnDefinitions>
                                                     <TextBlock
@@ -712,7 +723,7 @@
                                                         IsChecked="{Binding IsEnabled, Mode=TwoWay}" />
                                                     <TextBox
                                                         Grid.Column="2"
-                                                        Padding="8,6"
+                                                        Padding="6,3"
                                                         Text="{Binding GestureText, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
                                                 </Grid>
                                             </DataTemplate>
@@ -721,7 +732,7 @@
                                     <TextBlock
                                         Grid.Row="2"
                                         Grid.Column="0"
-                                        Margin="0,8,12,0"
+                                        Margin="0,4,6,0"
                                         VerticalAlignment="Center"
                                         Foreground="#56616F"
                                         Text="{Binding GlobalHotkeyStatus}"
@@ -729,15 +740,15 @@
                                     <Button
                                         Grid.Row="2"
                                         Grid.Column="1"
-                                        Margin="8,8,0,0"
-                                        Padding="12,6"
+                                        Margin="4,4,0,0"
+                                        Padding="9,4"
                                         Command="{Binding ResetGlobalHotkeysCommand}"
                                         Content="Reset" />
                                     <Button
                                         Grid.Row="2"
                                         Grid.Column="2"
-                                        Margin="8,8,0,0"
-                                        Padding="12,6"
+                                        Margin="4,4,0,0"
+                                        Padding="9,4"
                                         Command="{Binding ApplyGlobalHotkeysCommand}"
                                         Content="Apply"
                                         Style="{StaticResource PrimaryButtonStyle}" />
@@ -745,7 +756,7 @@
                                         Grid.Row="3"
                                         Grid.Column="0"
                                         Grid.ColumnSpan="2"
-                                        Margin="0,14,12,0"
+                                        Margin="0,8,6,0"
                                         VerticalAlignment="Center"
                                         Foreground="#56616F"
                                         Text="{Binding UpdateStatus}"
@@ -753,8 +764,8 @@
                                     <Button
                                         Grid.Row="3"
                                         Grid.Column="2"
-                                        Margin="8,14,0,0"
-                                        Padding="12,6"
+                                        Margin="4,8,0,0"
+                                        Padding="9,4"
                                         Command="{Binding CheckForUpdatesCommand}"
                                         Content="Check for updates" />
                                 </Grid>
@@ -762,7 +773,7 @@
 
                             <Border
                                 x:Name="OcrPacksCard"
-                                Margin="0,12,0,0"
+                                Margin="0,6,0,0"
                                 MaxWidth="1180"
                                 HorizontalAlignment="Left"
                                 Style="{StaticResource CardBorderStyle}"
@@ -775,27 +786,27 @@
                                             Text="OCR language packs" />
                                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                                             <Button
-                                                Margin="8,0,0,0"
+                                                Margin="4,0,0,0"
                                                 Style="{StaticResource CompactButtonStyle}"
                                                 Command="{Binding CheckOcrLanguagePackChecklistCommand}"
                                                 Content="Check common" />
                                             <Button
-                                                Margin="8,0,0,0"
+                                                Margin="4,0,0,0"
                                                 Style="{StaticResource CompactButtonStyle}"
                                                 Command="{Binding InstallTesseractLanguagePackChecklistCommand}"
                                                 Content="Install Tesseract" />
                                             <Button
-                                                Margin="8,0,0,0"
+                                                Margin="4,0,0,0"
                                                 Style="{StaticResource CompactButtonStyle}"
                                                 Command="{Binding ShowWindowsOcrLanguagePackHelpCommand}"
                                                 Content="Windows OCR help" />
                                         </StackPanel>
                                     </DockPanel>
-                                    <Grid Margin="0,12,0,6">
+                                    <Grid Margin="0,6,0,3">
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="110" />
-                                            <ColumnDefinition Width="240" />
-                                            <ColumnDefinition Width="100" />
+                                            <ColumnDefinition Width="90" />
+                                            <ColumnDefinition Width="210" />
+                                            <ColumnDefinition Width="86" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Style="{StaticResource FieldLabelStyle}" Text="Engine" />
@@ -803,16 +814,16 @@
                                         <TextBlock Grid.Column="2" Style="{StaticResource FieldLabelStyle}" Text="State" />
                                         <TextBlock Grid.Column="3" Style="{StaticResource FieldLabelStyle}" Text="Details" />
                                     </Grid>
-                                    <ScrollViewer Height="430" VerticalScrollBarVisibility="Auto">
+                                    <ScrollViewer Height="360" VerticalScrollBarVisibility="Auto">
                                         <ItemsControl ItemsSource="{Binding OcrLanguagePackChecklistItems}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
                                                     <Border
-                                                        Margin="0,0,0,4"
+                                                        Margin="0,0,0,2"
                                                         Background="#FFFFFF"
                                                         BorderBrush="#E2E8ED"
                                                         BorderThickness="0,0,0,1"
-                                                        Padding="0,6">
+                                                        Padding="0,3">
                                                         <Grid>
                                                             <Grid.ColumnDefinitions>
                                                                 <ColumnDefinition Width="110" />
@@ -821,7 +832,7 @@
                                                                 <ColumnDefinition Width="*" />
                                                             </Grid.ColumnDefinitions>
                                                             <TextBlock VerticalAlignment="Top" Foreground="#33414E" Text="{Binding EngineId}" />
-                                                            <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                                                            <StackPanel Grid.Column="1" Margin="0,0,4,0">
                                                                 <TextBlock Foreground="#17212B" Text="{Binding DisplayName}" TextWrapping="Wrap" />
                                                                 <TextBlock Margin="0,2,0,0" Style="{StaticResource MutedTextStyle}" Text="{Binding Purpose}" />
                                                             </StackPanel>
@@ -837,8 +848,8 @@
                             </Border>
                             <Border
                                 x:Name="TranslationSettingsCard"
-                                Margin="0,12,0,0"
-                                MaxWidth="760"
+                                Margin="0,6,0,0"
+                                MaxWidth="700"
                                 HorizontalAlignment="Left"
                                 Style="{StaticResource CardBorderStyle}"
                                 Visibility="{Binding IsTranslationTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -859,7 +870,7 @@
                                         <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="150" />
+                                        <ColumnDefinition Width="132" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
 
@@ -871,22 +882,22 @@
                                     <TextBlock
                                         Grid.Row="0"
                                         Grid.ColumnSpan="2"
-                                        Margin="0,24,0,0"
+                                        Margin="0,6,0,0"
                                         Foreground="#56616F"
                                         Text="{Binding TranslatorSettingsSummary}" />
 
                                     <TextBlock
                                         Grid.Row="1"
                                         Grid.Column="0"
-                                        Margin="0,12,0,0"
+                                        Margin="0,6,0,0"
                                         VerticalAlignment="Center"
                                         Foreground="#253238"
                                         Text="Provider" />
                                     <ComboBox
                                         Grid.Row="1"
                                         Grid.Column="1"
-                                        Margin="0,12,0,0"
-                                        Padding="6,4"
+                                        Margin="0,6,0,0"
+                                        Padding="6,3"
                                         IsEditable="True"
                                         ItemsSource="{Binding TranslatorProviderOptions}"
                                         Text="{Binding TranslatorProvider, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
@@ -894,15 +905,15 @@
                                     <TextBlock
                                         Grid.Row="2"
                                         Grid.Column="0"
-                                        Margin="0,12,0,0"
+                                        Margin="0,6,0,0"
                                         VerticalAlignment="Center"
                                         Foreground="#253238"
                                         Text="Source language" />
                                     <ComboBox
                                         Grid.Row="2"
                                         Grid.Column="1"
-                                        Margin="0,12,0,0"
-                                        Padding="6,4"
+                                        Margin="0,6,0,0"
+                                        Padding="6,3"
                                         DisplayMemberPath="DisplayName"
                                         IsEditable="False"
                                         IsTextSearchEnabled="True"
@@ -914,15 +925,15 @@
                                     <TextBlock
                                         Grid.Row="3"
                                         Grid.Column="0"
-                                        Margin="0,12,0,0"
+                                        Margin="0,6,0,0"
                                         VerticalAlignment="Center"
                                         Foreground="#253238"
                                         Text="Target language" />
                                     <ComboBox
                                         Grid.Row="3"
                                         Grid.Column="1"
-                                        Margin="0,12,0,0"
-                                        Padding="6,4"
+                                        Margin="0,6,0,0"
+                                        Padding="6,3"
                                         DisplayMemberPath="DisplayName"
                                         IsEditable="False"
                                         IsTextSearchEnabled="True"
@@ -934,7 +945,7 @@
                                     <TextBlock
                                         Grid.Row="4"
                                         Grid.Column="0"
-                                        Margin="0,12,0,0"
+                                        Margin="0,6,0,0"
                                         VerticalAlignment="Center"
                                         Foreground="#253238"
                                         Text="Endpoint"
@@ -942,15 +953,15 @@
                                     <TextBox
                                         Grid.Row="4"
                                         Grid.Column="1"
-                                        Margin="0,12,0,0"
-                                        Padding="6,4"
+                                        Margin="0,6,0,0"
+                                        Padding="6,3"
                                         Text="{Binding TranslatorCredentialEndpoint, UpdateSourceTrigger=PropertyChanged}"
                                         Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
                                     <TextBlock
                                         Grid.Row="5"
                                         Grid.Column="0"
-                                        Margin="0,12,0,0"
+                                        Margin="0,6,0,0"
                                         VerticalAlignment="Center"
                                         Foreground="#253238"
                                         Text="Project / folder id"
@@ -958,15 +969,15 @@
                                     <TextBox
                                         Grid.Row="5"
                                         Grid.Column="1"
-                                        Margin="0,12,0,0"
-                                        Padding="6,4"
+                                        Margin="0,6,0,0"
+                                        Padding="6,3"
                                         Text="{Binding TranslatorCredentialProjectId, UpdateSourceTrigger=PropertyChanged}"
                                         Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
                                     <TextBlock
                                         Grid.Row="6"
                                         Grid.Column="0"
-                                        Margin="0,12,0,0"
+                                        Margin="0,6,0,0"
                                         VerticalAlignment="Center"
                                         Foreground="#253238"
                                         Text="Region / location"
@@ -974,15 +985,15 @@
                                     <TextBox
                                         Grid.Row="6"
                                         Grid.Column="1"
-                                        Margin="0,12,0,0"
-                                        Padding="6,4"
+                                        Margin="0,6,0,0"
+                                        Padding="6,3"
                                         Text="{Binding TranslatorCredentialLocation, UpdateSourceTrigger=PropertyChanged}"
                                         Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
                                     <TextBlock
                                         Grid.Row="7"
                                         Grid.Column="0"
-                                        Margin="0,12,0,0"
+                                        Margin="0,6,0,0"
                                         VerticalAlignment="Center"
                                         Foreground="#253238"
                                         Text="API key / token"
@@ -990,8 +1001,8 @@
                                     <PasswordBox
                                         Grid.Row="7"
                                         Grid.Column="1"
-                                        Margin="0,12,0,0"
-                                        Padding="6,4"
+                                        Margin="0,6,0,0"
+                                        Padding="6,3"
                                         behaviors:PasswordBoxBinding.IsEnabled="True"
                                         behaviors:PasswordBoxBinding.BoundPassword="{Binding TranslatorCredentialSecret, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                         Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}" />
@@ -999,21 +1010,21 @@
                                     <StackPanel
                                         Grid.Row="8"
                                         Grid.Column="1"
-                                        Margin="0,12,0,0"
+                                        Margin="0,6,0,0"
                                         Orientation="Horizontal"
                                         Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}">
                                         <Button
-                                            MinWidth="120"
+                                            MinWidth="108"
                                             Command="{Binding SaveTranslatorCredentialsCommand}"
                                             Content="Save credentials" />
                                         <Button
-                                            MinWidth="88"
-                                            Margin="8,0,0,0"
+                                            MinWidth="78"
+                                            Margin="4,0,0,0"
                                             Command="{Binding ValidateTranslatorCredentialsCommand}"
                                             Content="Validate" />
                                         <Button
-                                            MinWidth="80"
-                                            Margin="8,0,0,0"
+                                            MinWidth="72"
+                                            Margin="4,0,0,0"
                                             Command="{Binding DeleteTranslatorCredentialsCommand}"
                                             Content="Delete" />
                                     </StackPanel>
@@ -1021,22 +1032,22 @@
                                     <TextBlock
                                         Grid.Row="9"
                                         Grid.Column="1"
-                                        Margin="0,8,0,0"
+                                        Margin="0,4,0,0"
                                         Foreground="#56616F"
                                         Text="{Binding TranslatorCredentialStatus}" />
 
                                     <TextBlock
                                         Grid.Row="10"
                                         Grid.ColumnSpan="2"
-                                        Margin="0,12,0,0"
+                                        Margin="0,6,0,0"
                                         Foreground="#56616F"
-                                        Text="Official providers use stored credentials. For beta tests without credentials, use WebAuto first; individual web providers are diagnostic and not release defaults." />
+                                        Text="Official providers use stored credentials. GoogleWeb, BingWeb, and YandexWeb are separate diagnostic providers without stored credentials; none is a release default or fallback." />
                                 </Grid>
                             </Border>
 
                             <Border
                                 x:Name="OverlaySettingsCard"
-                                Margin="0,12,0,0"
+                                Margin="0,6,0,0"
                                 MaxWidth="1040"
                                 Style="{StaticResource CardBorderStyle}"
                                 Visibility="{Binding IsOverlayTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -1050,7 +1061,7 @@
                                         <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="150" />
+                                        <ColumnDefinition Width="132" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
 
@@ -1063,40 +1074,40 @@
                                     <TextBlock
                                         Grid.Row="1"
                                         Grid.Column="0"
-                                        Margin="0,12,0,0"
+                                        Margin="0,6,0,0"
                                         VerticalAlignment="Center"
                                         Foreground="#253238"
                                         Text="Mask mode" />
                                     <ComboBox
                                         Grid.Row="1"
                                         Grid.Column="1"
-                                        Margin="0,12,0,0"
-                                        Padding="6,4"
+                                        Margin="0,6,0,0"
+                                        Padding="6,3"
                                         ItemsSource="{Binding OverlayMaskModes}"
                                         SelectedItem="{Binding OverlayMaskMode}" />
 
                                     <TextBlock
                                         Grid.Row="2"
                                         Grid.Column="0"
-                                        Margin="0,12,0,0"
+                                        Margin="0,6,0,0"
                                         VerticalAlignment="Center"
                                         Foreground="#253238"
                                         Text="Mask color" />
                                     <TextBox
                                         Grid.Row="2"
                                         Grid.Column="1"
-                                        Margin="0,12,0,0"
-                                        Padding="8,6"
+                                        Margin="0,6,0,0"
+                                        Padding="6,3"
                                         Text="{Binding OverlayMaskColor, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
 
                                     <TextBlock
                                         Grid.Row="3"
                                         Grid.Column="0"
-                                        Margin="0,12,0,0"
+                                        Margin="0,6,0,0"
                                         VerticalAlignment="Top"
                                         Foreground="#253238"
                                         Text="Opacity" />
-                                    <Grid Grid.Row="3" Grid.Column="1" Margin="0,12,0,0">
+                                    <Grid Grid.Row="3" Grid.Column="1" Margin="0,6,0,0">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="88" />
@@ -1111,18 +1122,18 @@
                                             Value="{Binding OverlayOpacity, Mode=TwoWay}" />
                                         <TextBox
                                             Grid.Column="1"
-                                            Margin="12,0,0,0"
-                                            Padding="8,6"
+                                            Margin="4,0,0,0"
+                                            Padding="6,3"
                                             Text="{Binding OverlayOpacity, UpdateSourceTrigger=PropertyChanged, StringFormat=F2, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                     </Grid>
                                     <TextBlock
                                         Grid.Row="4"
                                         Grid.Column="0"
-                                        Margin="0,12,0,0"
+                                        Margin="0,6,0,0"
                                         VerticalAlignment="Top"
                                         Foreground="#253238"
                                         Text="Padding" />
-                                    <Grid Grid.Row="4" Grid.Column="1" Margin="0,12,0,0">
+                                    <Grid Grid.Row="4" Grid.Column="1" Margin="0,6,0,0">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="88" />
@@ -1137,14 +1148,14 @@
                                             Value="{Binding OverlayPadding, Mode=TwoWay}" />
                                         <TextBox
                                             Grid.Column="1"
-                                            Margin="12,0,0,0"
-                                            Padding="8,6"
+                                            Margin="4,0,0,0"
+                                            Padding="6,3"
                                             Text="{Binding OverlayPadding, UpdateSourceTrigger=PropertyChanged, StringFormat=F0, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                     </Grid>
                                     <TextBlock
                                         Grid.Row="5"
                                         Grid.ColumnSpan="2"
-                                        Margin="0,12,0,0"
+                                        Margin="0,6,0,0"
                                         Foreground="#56616F"
                                         Text="Use #RRGGBB or #AARRGGBB for mask color. Sliders are for quick tuning; inputs stay available for exact values."
                                         TextWrapping="Wrap" />
@@ -1153,7 +1164,7 @@
 
                             <Border
                                 x:Name="ZoneLiveWorkspaceCard"
-                                Margin="0,12,0,0"
+                                Margin="0,6,0,0"
                                 MaxWidth="1180"
                                 Style="{StaticResource CardBorderStyle}"
                                 Visibility="{Binding IsZonesOcrOrLiveDiagnosticsTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -1172,53 +1183,53 @@
                                             Style="{StaticResource SectionTitleStyle}"
                                             Text="OCR zones" />
                                         <TextBlock
-                                            Margin="12,0,0,0"
+                                            Margin="4,0,0,0"
                                             VerticalAlignment="Center"
                                             Foreground="#56616F"
                                             Text="{Binding ZoneSummary}" />
                                         <Button
                                             DockPanel.Dock="Right"
-                                            Margin="8,0,0,0"
+                                            Margin="4,0,0,0"
                                             Command="{Binding MoveSelectedZoneDownCommand}"
                                             Content="Later"
                                             Style="{StaticResource CompactButtonStyle}"
                                             ToolTip="Move the selected zone later in OCR processing order." />
                                         <Button
                                             DockPanel.Dock="Right"
-                                            Margin="8,0,0,0"
+                                            Margin="4,0,0,0"
                                             Command="{Binding MoveSelectedZoneUpCommand}"
                                             Content="Earlier"
                                             Style="{StaticResource CompactButtonStyle}"
                                             ToolTip="Move the selected zone earlier in OCR processing order." />
                                         <Button
                                             DockPanel.Dock="Right"
-                                            Margin="8,0,0,0"
-                                            Padding="12,6"
+                                            Margin="4,0,0,0"
+                                            Padding="9,4"
                                             Command="{Binding DuplicateSelectedZoneCommand}"
                                             Content="Duplicate" />
                                         <Button
                                             DockPanel.Dock="Right"
-                                            Margin="8,0,0,0"
-                                            Padding="12,6"
+                                            Margin="4,0,0,0"
+                                            Padding="9,4"
                                             Command="{Binding RemoveSelectedZoneCommand}"
                                             Content="Remove zone" />
                                         <Button
                                             DockPanel.Dock="Right"
-                                            Margin="8,0,0,0"
-                                            Padding="12,6"
+                                            Margin="4,0,0,0"
+                                            Padding="9,4"
                                             Command="{Binding PickScreenZoneCommand}"
                                             Content="Pick screen" />
                                         <Button
                                             DockPanel.Dock="Right"
-                                            Padding="12,6"
+                                            Padding="9,4"
                                             Command="{Binding AddZoneCommand}"
                                             Content="Add zone" />
                                     </DockPanel>
 
-                                    <Grid Grid.Row="1" Margin="0,16,0,0">
+                                    <Grid Grid.Row="1" Margin="0,4,0,0">
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="12" />
+                                            <RowDefinition Height="6" />
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
 
@@ -1228,8 +1239,8 @@
                                             HorizontalAlignment="Left">
                                         <Border
                                             x:Name="OcrPreprocessingCard"
-                                            Width="530"
-                                            Margin="12,0,0,0"
+                                            Width="500"
+                                            Margin="4,0,0,0"
                                             HorizontalAlignment="Left"
                                             FlowDirection="LeftToRight"
                                             Style="{StaticResource SubtleCardBorderStyle}"
@@ -1258,10 +1269,10 @@
                                                 <StackPanel
                                                     Grid.Row="1"
                                                     Grid.Column="0"
-                                                    Margin="0,8,10,0">
-                                                    <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="OCR engine" />
+                                                    Margin="0,4,6,0">
+                                                    <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="OCR engine" />
                                                     <ComboBox
-                                                        Padding="6,4"
+                                                        Padding="6,3"
                                                         BorderBrush="{Binding OcrEngineBorderBrush}"
                                                         ItemsSource="{Binding OcrEngines}"
                                                         SelectedValue="{Binding OcrEngine, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -1277,20 +1288,22 @@
                                                 <StackPanel
                                                     Grid.Row="1"
                                                     Grid.Column="1"
-                                                    Margin="0,8,10,0">
-                                                    <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="Orientation" />
+                                                    Margin="0,4,6,0">
+                                                    <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Orientation" />
                                                     <ComboBox
-                                                        Padding="6,4"
+                                                        Padding="6,3"
+                                                        IsEnabled="{Binding IsOcrOrientationSelectionEnabled}"
                                                         ItemsSource="{Binding OcrOrientations}"
-                                                        SelectedItem="{Binding OcrOrientationMode, Mode=TwoWay}" />
+                                                        SelectedItem="{Binding OcrOrientationMode, Mode=TwoWay}"
+                                                        ToolTip="{Binding OcrOrientationSelectionToolTip}" />
                                                 </StackPanel>
                                                 <StackPanel
                                                     Grid.Row="1"
                                                     Grid.Column="2"
-                                                    Margin="0,8,0,0">
-                                                    <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="Aggressiveness" />
+                                                    Margin="0,4,0,0">
+                                                    <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Image preprocessing" />
                                                     <ComboBox
-                                                        Padding="6,4"
+                                                        Padding="6,3"
                                                         ItemsSource="{Binding OcrPreprocessingPresets}"
                                                         SelectedItem="{Binding SelectedOcrPreprocessingPreset, Mode=TwoWay}"
                                                         ToolTip="{Binding OcrPreprocessingPresetSummary}" />
@@ -1298,21 +1311,21 @@
                                                 <Button
                                                     Grid.Row="2"
                                                     Grid.Column="0"
-                                                    Margin="0,8,10,0"
-                                                    Padding="6,4"
+                                                    Margin="0,4,6,0"
+                                                    Padding="6,3"
                                                     Content="Check OCR language"
                                                     Command="{Binding CheckOcrLanguagePackCommand}" />
                                                 <Button
                                                     Grid.Row="2"
                                                     Grid.Column="1"
-                                                    Margin="0,8,10,0"
-                                                    Padding="6,4"
+                                                    Margin="0,4,6,0"
+                                                    Padding="6,3"
                                                     Command="{Binding InstallOcrLanguagePackCommand}"
                                                     Content="Install OCR language" />
                                                 <TextBlock
                                                     Grid.Row="2"
                                                     Grid.Column="2"
-                                                    Margin="0,8,0,0"
+                                                    Margin="0,4,0,0"
                                                     VerticalAlignment="Center"
                                                     Foreground="#56616F"
                                                     Text="{Binding OcrLanguagePackStatus}"
@@ -1320,45 +1333,45 @@
                                                 <CheckBox
                                                     Grid.Row="3"
                                                     Grid.Column="0"
-                                                    Margin="0,8,10,0"
+                                                    Margin="0,4,6,0"
                                                     Content="Enabled"
                                                     IsChecked="{Binding OcrPreprocessingEnabled, Mode=TwoWay}" />
                                                 <CheckBox
                                                     Grid.Row="3"
                                                     Grid.Column="1"
-                                                    Margin="0,8,10,0"
+                                                    Margin="0,4,6,0"
                                                     Content="Threshold"
                                                     IsChecked="{Binding OcrPreprocessingThresholdingEnabled, Mode=TwoWay}" />
                                                 <CheckBox
                                                     Grid.Row="3"
                                                     Grid.Column="2"
-                                                    Margin="0,8,0,0"
+                                                    Margin="0,4,0,0"
                                                     Content="Noise reduction"
                                                     IsChecked="{Binding OcrPreprocessingNoiseReductionEnabled, Mode=TwoWay}" />
                                                 <UniformGrid
                                                     Grid.Row="4"
                                                     Grid.ColumnSpan="3"
-                                                    Margin="0,8,0,0"
+                                                    Margin="0,4,0,0"
                                                     Columns="5">
-                                                    <StackPanel Margin="0,0,6,0">
-                                                        <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="Contrast" />
-                                                        <TextBox Padding="6,4" Text="{Binding OcrPreprocessingContrast, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    <StackPanel Margin="0,0,4,0">
+                                                        <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Contrast" />
+                                                        <TextBox Padding="6,3" Text="{Binding OcrPreprocessingContrast, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                                     </StackPanel>
-                                                    <StackPanel Margin="0,0,6,0">
-                                                        <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="Brightness" />
-                                                        <TextBox Padding="6,4" Text="{Binding OcrPreprocessingBrightness, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    <StackPanel Margin="0,0,4,0">
+                                                        <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Brightness" />
+                                                        <TextBox Padding="6,3" Text="{Binding OcrPreprocessingBrightness, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                                     </StackPanel>
-                                                    <StackPanel Margin="0,0,6,0">
-                                                        <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="Sharpness" />
-                                                        <TextBox Padding="6,4" Text="{Binding OcrPreprocessingSharpness, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    <StackPanel Margin="0,0,4,0">
+                                                        <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Sharpness" />
+                                                        <TextBox Padding="6,3" Text="{Binding OcrPreprocessingSharpness, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                                     </StackPanel>
-                                                    <StackPanel Margin="0,0,6,0">
-                                                        <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="Threshold" />
-                                                        <TextBox Padding="6,4" Text="{Binding OcrPreprocessingThreshold, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    <StackPanel Margin="0,0,4,0">
+                                                        <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Threshold" />
+                                                        <TextBox Padding="6,3" Text="{Binding OcrPreprocessingThreshold, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                                     </StackPanel>
                                                     <StackPanel>
-                                                        <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="Scale" />
-                                                        <TextBox Padding="6,4" Text="{Binding OcrPreprocessingScale, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                        <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Scale" />
+                                                        <TextBox Padding="6,3" Text="{Binding OcrPreprocessingScale, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                                     </StackPanel>
                                                 </UniformGrid>
                                             </Grid>
@@ -1367,7 +1380,7 @@
 
                                         <Border
                                             x:Name="ZoneSurfaceCard"
-                                            Width="570"
+                                            Width="540"
                                             HorizontalAlignment="Left"
                                             FlowDirection="LeftToRight"
                                             Style="{StaticResource SubtleCardBorderStyle}"
@@ -1382,14 +1395,14 @@
                                                     Foreground="#56616F"
                                                     Text="{Binding ZoneSurfaceSummary}" />
                                                 <TextBlock
-                                                    Margin="0,4,0,12"
+                                                    Margin="0,2,0,6"
                                                     Foreground="#56616F"
                                                     Text="Drag empty space to create a zone. Drag a zone to move it. Drag its lower-right handle to resize it."
                                                     TextWrapping="Wrap" />
 
                                                 <Viewbox
-                                                    Width="520"
-                                                    Height="292.5"
+                                                    Width="490"
+                                                    Height="275.625"
                                                     HorizontalAlignment="Left"
                                                     Stretch="Uniform">
                                                     <Border
@@ -1517,7 +1530,7 @@
                                                 BorderBrush="#D7DEE8"
                                                 BorderThickness="1"
                                                 CornerRadius="4"
-                                                Padding="12">
+                                                Padding="8">
                                                 <Border.Style>
                                                     <Style TargetType="Border">
                                                         <Setter Property="Grid.Column" Value="0" />
@@ -1543,7 +1556,7 @@
                                                         <RowDefinition Height="Auto" />
                                                     </Grid.RowDefinitions>
                                                     <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="140" />
+                                                    <ColumnDefinition Width="128" />
                                                         <ColumnDefinition Width="*" />
                                                     </Grid.ColumnDefinitions>
 
@@ -1557,19 +1570,19 @@
                                                 <TextBox
                                                     Grid.Row="0"
                                                     Grid.Column="1"
-                                                    Padding="8,6"
+                                                    Padding="6,3"
                                                     Text="{Binding SelectedZone.Name, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}"
                                                     Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
                                                 <Border
                                                     Grid.Row="1"
                                                     Grid.ColumnSpan="2"
-                                                    Margin="0,12,0,0"
+                                                    Margin="0,6,0,0"
                                                     Background="#FFFFFF"
                                                     BorderBrush="#D7DEE8"
                                                     BorderThickness="1"
                                                     CornerRadius="4"
-                                                    Padding="10"
+                                                    Padding="8"
                                                     Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                     <StackPanel>
                                                         <TextBlock
@@ -1584,7 +1597,7 @@
                                                             Margin="0,2,0,0"
                                                             Foreground="#56616F"
                                                             Text="{Binding SelectedZone.RelativeBoundsSummary}" />
-                                                        <Grid Margin="0,8,0,0">
+                                                        <Grid Margin="0,4,0,0">
                                                             <Grid.ColumnDefinitions>
                                                                 <ColumnDefinition Width="*" />
                                                                 <ColumnDefinition Width="88" />
@@ -1597,7 +1610,7 @@
                                                                 Value="{Binding SelectedZone.RelativeAreaPercent, Mode=OneWay}" />
                                                             <TextBlock
                                                                 Grid.Column="1"
-                                                                Margin="12,0,0,0"
+                                                                Margin="4,0,0,0"
                                                                 VerticalAlignment="Center"
                                                                 Foreground="#2A5D67"
                                                                 Text="{Binding SelectedZone.RelativeAreaPercent, StringFormat={}{0:F2}%}" />
@@ -1606,7 +1619,7 @@
                                                             Margin="0,6,0,0"
                                                             Foreground="#56616F"
                                                             Text="{Binding SelectedZone.AbsoluteArea, StringFormat=Area {0} px}" />
-                                                        <Grid Margin="0,10,0,0">
+                                                        <Grid Margin="0,6,0,0">
                                                             <Grid.ColumnDefinitions>
                                                                 <ColumnDefinition Width="120" />
                                                                 <ColumnDefinition Width="*" />
@@ -1618,7 +1631,7 @@
                                                                 Text="OCR language" />
                                                             <ComboBox
                                                                 Grid.Column="1"
-                                                                Padding="8,6"
+                                                                Padding="6,3"
                                                                 DisplayMemberPath="DisplayName"
                                                                 IsEditable="False"
                                                                 IsTextSearchEnabled="True"
@@ -1633,7 +1646,7 @@
                                                 <TextBlock
                                                     Grid.Row="2"
                                                     Grid.Column="0"
-                                                    Margin="0,12,0,0"
+                                                    Margin="0,6,0,0"
                                                     VerticalAlignment="Top"
                                                     Foreground="#253238"
                                                     Text="Absolute bounds"
@@ -1641,31 +1654,31 @@
                                                 <UniformGrid
                                                     Grid.Row="2"
                                                     Grid.Column="1"
-                                                    Margin="0,12,0,0"
+                                                    Margin="0,6,0,0"
                                                     Columns="4"
                                                     Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                    <StackPanel Margin="0,0,6,0">
-                                                        <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="X" />
-                                                        <TextBox Padding="8,6" Text="{Binding SelectedZone.AbsoluteX, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    <StackPanel Margin="0,0,4,0">
+                                                        <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="X" />
+                                                        <TextBox Padding="6,3" Text="{Binding SelectedZone.AbsoluteX, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                                     </StackPanel>
-                                                    <StackPanel Margin="6,0,6,0">
-                                                        <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="Y" />
-                                                        <TextBox Padding="8,6" Text="{Binding SelectedZone.AbsoluteY, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    <StackPanel Margin="4,0,4,0">
+                                                        <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Y" />
+                                                        <TextBox Padding="6,3" Text="{Binding SelectedZone.AbsoluteY, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                                     </StackPanel>
-                                                    <StackPanel Margin="6,0,6,0">
-                                                        <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="W" />
-                                                        <TextBox Padding="8,6" Text="{Binding SelectedZone.AbsoluteWidth, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    <StackPanel Margin="4,0,4,0">
+                                                        <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="W" />
+                                                        <TextBox Padding="6,3" Text="{Binding SelectedZone.AbsoluteWidth, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                                     </StackPanel>
-                                                    <StackPanel Margin="6,0,0,0">
-                                                        <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="H" />
-                                                        <TextBox Padding="8,6" Text="{Binding SelectedZone.AbsoluteHeight, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    <StackPanel Margin="4,0,0,0">
+                                                        <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="H" />
+                                                        <TextBox Padding="6,3" Text="{Binding SelectedZone.AbsoluteHeight, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                                     </StackPanel>
                                                 </UniformGrid>
 
                                                 <TextBlock
                                                     Grid.Row="3"
                                                     Grid.Column="0"
-                                                    Margin="0,12,0,0"
+                                                    Margin="0,6,0,0"
                                                     VerticalAlignment="Top"
                                                     Foreground="#253238"
                                                     Text="Relative bounds"
@@ -1673,39 +1686,40 @@
                                                 <UniformGrid
                                                     Grid.Row="3"
                                                     Grid.Column="1"
-                                                    Margin="0,12,0,0"
+                                                    Margin="0,6,0,0"
                                                     Columns="4"
                                                     Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                    <StackPanel Margin="0,0,6,0">
-                                                        <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="X" />
-                                                        <TextBox Padding="8,6" Text="{Binding SelectedZone.RelativeX, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    <StackPanel Margin="0,0,4,0">
+                                                        <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="X" />
+                                                        <TextBox Padding="6,3" Text="{Binding SelectedZone.RelativeX, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                                     </StackPanel>
-                                                    <StackPanel Margin="6,0,6,0">
-                                                        <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="Y" />
-                                                        <TextBox Padding="8,6" Text="{Binding SelectedZone.RelativeY, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    <StackPanel Margin="4,0,4,0">
+                                                        <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Y" />
+                                                        <TextBox Padding="6,3" Text="{Binding SelectedZone.RelativeY, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                                     </StackPanel>
-                                                    <StackPanel Margin="6,0,6,0">
-                                                        <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="W" />
-                                                        <TextBox Padding="8,6" Text="{Binding SelectedZone.RelativeWidth, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    <StackPanel Margin="4,0,4,0">
+                                                        <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="W" />
+                                                        <TextBox Padding="6,3" Text="{Binding SelectedZone.RelativeWidth, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                                     </StackPanel>
-                                                    <StackPanel Margin="6,0,0,0">
-                                                        <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="H" />
-                                                        <TextBox Padding="8,6" Text="{Binding SelectedZone.RelativeHeight, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                    <StackPanel Margin="4,0,0,0">
+                                                        <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="H" />
+                                                        <TextBox Padding="6,3" Text="{Binding SelectedZone.RelativeHeight, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                                     </StackPanel>
                                                 </UniformGrid>
 
                                                 <Border
                                                     Grid.Row="4"
                                                     Grid.ColumnSpan="2"
-                                                    Margin="0,12,0,0"
+                                                    Margin="0,6,0,0"
                                                     Background="#FFFFFF"
                                                     BorderBrush="#D7DEE8"
                                                     BorderThickness="1"
                                                     CornerRadius="4"
-                                                    Padding="10"
+                                                    Padding="8"
                                                     Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                     <Grid>
                                                         <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto" />
                                                             <RowDefinition Height="Auto" />
                                                             <RowDefinition Height="Auto" />
                                                             <RowDefinition Height="Auto" />
@@ -1725,54 +1739,69 @@
                                                             FontWeight="SemiBold"
                                                             Text="Content layout &amp; overlay" />
                                                         <StackPanel
-                                                            Grid.Row="3"
+                                                            Grid.Row="4"
                                                             Grid.Column="0"
-                                                            Margin="0,10,8,0">
-                                                            <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="Font" />
+                                                            Margin="0,6,4,0">
+                                                            <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Font" />
                                                             <ComboBox
-                                                                Padding="8,6"
+                                                                Padding="6,3"
                                                                 ItemsSource="{Binding InstalledFontFamilies}"
                                                                 SelectedItem="{Binding SelectedZone.OverlayFontFamily, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
                                                         </StackPanel>
                                                         <StackPanel
-                                                            Grid.Row="3"
+                                                            Grid.Row="4"
                                                             Grid.Column="1"
-                                                            Margin="0,10,8,0">
-                                                            <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="Size" />
+                                                            Margin="0,6,4,0">
+                                                            <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Size" />
                                                             <TextBox
-                                                                Padding="8,6"
+                                                                Padding="6,3"
                                                                 Text="{Binding SelectedZone.OverlayFontSize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                                         </StackPanel>
                                                         <CheckBox
-                                                            Grid.Row="3"
+                                                            Grid.Row="4"
                                                             Grid.Column="2"
-                                                            Margin="8,32,8,0"
+                                                            Margin="4,24,4,0"
                                                             VerticalAlignment="Top"
                                                             Content="Bold"
                                                             IsChecked="{Binding SelectedZone.OverlayIsBold, Mode=TwoWay}" />
                                                         <CheckBox
-                                                            Grid.Row="3"
+                                                            Grid.Row="4"
                                                             Grid.Column="3"
-                                                            Margin="8,32,0,0"
+                                                            Margin="4,24,0,0"
                                                             VerticalAlignment="Top"
                                                             Content="Italic"
                                                             IsChecked="{Binding SelectedZone.OverlayIsItalic, Mode=TwoWay}" />
                                                         <StackPanel
                                                             Grid.Row="1"
-                                                            Grid.ColumnSpan="4"
-                                                            Margin="0,10,0,0">
-                                                            <TextBlock Margin="0,0,0,4" Foreground="#56616F" Text="Content layout mode" />
+                                                            Grid.Column="0"
+                                                            Grid.ColumnSpan="2"
+                                                            Margin="0,6,4,0">
+                                                            <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Content layout mode" />
                                                             <ComboBox
-                                                                Padding="8,6"
+                                                                Padding="6,3"
                                                                 DisplayMemberPath="DisplayName"
                                                                 ItemsSource="{Binding ContentLayoutModeOptions}"
                                                                 SelectedValue="{Binding SelectedZone.ContentLayoutMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}"
                                                                 SelectedValuePath="Mode" />
                                                         </StackPanel>
+                                                        <StackPanel
+                                                            Grid.Row="1"
+                                                            Grid.Column="2"
+                                                            Grid.ColumnSpan="2"
+                                                            Margin="4,6,0,0">
+                                                            <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Detector preset" />
+                                                            <ComboBox
+                                                                Padding="6,3"
+                                                                DisplayMemberPath="DisplayName"
+                                                                ItemsSource="{Binding CandidateDetectorPresetOptions}"
+                                                                SelectedValue="{Binding SelectedZone.DetectorPreset, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}"
+                                                                SelectedValuePath="Preset"
+                                                                ToolTip="{Binding SelectedZone.DetectorPresetSummary}" />
+                                                        </StackPanel>
                                                         <TextBlock
                                                             Grid.Row="2"
                                                             Grid.Column="0"
-                                                            Margin="0,12,8,0"
+                                                            Margin="0,6,4,0"
                                                             VerticalAlignment="Center"
                                                             Foreground="#56616F"
                                                             Text="Mode policy" />
@@ -1780,17 +1809,69 @@
                                                             Grid.Row="2"
                                                             Grid.Column="1"
                                                             Grid.ColumnSpan="3"
-                                                            Margin="0,10,0,0"
+                                                            Margin="0,6,0,0"
                                                             Foreground="#56616F"
                                                             Text="{Binding SelectedZone.ContentLayoutPolicySummary}"
                                                             TextWrapping="Wrap" />
+                                                        <StackPanel
+                                                            Grid.Row="3"
+                                                            Grid.ColumnSpan="4"
+                                                            Margin="0,6,0,0"
+                                                            Visibility="{Binding IsHorizontalOcrOrientation, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                            <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Candidate grouping - maximum horizontal lines" />
+                                                            <DockPanel LastChildFill="True">
+                                                                <CheckBox
+                                                                    Margin="0,0,4,0"
+                                                                    VerticalAlignment="Center"
+                                                                    Content="Auto"
+                                                                    IsChecked="{Binding SelectedZone.UseAutomaticHorizontalCandidateGroupingLimit, Mode=TwoWay}" />
+                                                                <TextBox
+                                                                    Width="72"
+                                                                    HorizontalAlignment="Left"
+                                                                    Padding="6,3"
+                                                                    IsEnabled="{Binding SelectedZone.IsCustomHorizontalCandidateGroupingLimit}"
+                                                                    Text="{Binding SelectedZone.MaximumHorizontalCandidateLines, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                                <TextBlock
+                                                                    Margin="4,0,0,0"
+                                                                    VerticalAlignment="Center"
+                                                                    Foreground="#56616F"
+                                                                    Text="Auto keeps writing-system limits and only extends a strongly aligned bubble."
+                                                                    TextWrapping="Wrap" />
+                                                            </DockPanel>
+                                                        </StackPanel>
+                                                        <StackPanel
+                                                            Grid.Row="3"
+                                                            Grid.ColumnSpan="4"
+                                                            Margin="0,6,0,0"
+                                                            Visibility="{Binding IsVerticalOcrOrientation, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                            <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Candidate grouping - maximum vertical columns" />
+                                                            <DockPanel LastChildFill="True">
+                                                                <CheckBox
+                                                                    Margin="0,0,4,0"
+                                                                    VerticalAlignment="Center"
+                                                                    Content="Auto"
+                                                                    IsChecked="{Binding SelectedZone.UseAutomaticVerticalCandidateGroupingLimit, Mode=TwoWay}" />
+                                                                <TextBox
+                                                                    Width="72"
+                                                                    HorizontalAlignment="Left"
+                                                                    Padding="6,3"
+                                                                    IsEnabled="{Binding SelectedZone.IsCustomVerticalCandidateGroupingLimit}"
+                                                                    Text="{Binding SelectedZone.MaximumVerticalCandidateColumns, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                                <TextBlock
+                                                                    Margin="4,0,0,0"
+                                                                    VerticalAlignment="Center"
+                                                                    Foreground="#56616F"
+                                                                    Text="Auto follows vertical CJK geometry without a fixed column count; a numeric value is a hard limit."
+                                                                    TextWrapping="Wrap" />
+                                                            </DockPanel>
+                                                        </StackPanel>
                                                     </Grid>
                                                 </Border>
 
                                                 <TextBlock
                                                     Grid.Row="5"
                                                     Grid.ColumnSpan="2"
-                                                    Margin="0,12,0,0"
+                                                    Margin="0,6,0,0"
                                                     Foreground="#56616F"
                                                     Text="Absolute values are pixel-based. Relative values stay within 0..1 and are useful for future resolution-aware workflows."
                                                     Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}" />
@@ -1798,7 +1879,7 @@
                                                 <Border
                                                     Grid.Row="6"
                                                     Grid.ColumnSpan="2"
-                                                    Margin="0,12,0,0"
+                                                    Margin="0,6,0,0"
                                                     Style="{StaticResource SubtleCardBorderStyle}"
                                                     Visibility="{Binding IsLiveDiagnosticsTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                     <Grid>
@@ -1830,77 +1911,77 @@
                                                         <Button
                                                             Grid.Row="5"
                                                             Grid.Column="0"
-                                                            Margin="0,10,0,0"
-                                                            Padding="12,6"
+                                                            Margin="0,6,0,0"
+                                                            Padding="9,4"
                                                             Command="{Binding RefreshCapturePreviewCommand}"
                                                             Content="Refresh preview" />
                                                         <Button
                                                             Grid.Row="5"
                                                             Grid.Column="1"
-                                                            Margin="8,10,0,0"
-                                                            Padding="12,6"
+                                                            Margin="4,6,0,0"
+                                                            Padding="9,4"
                                                             Command="{Binding MeasureCaptureRefreshCommand}"
                                                             Content="Measure FPS" />
                                                         <TextBlock
                                                             Grid.Row="5"
                                                             Grid.Column="3"
-                                                            Margin="12,10,0,0"
+                                                            Margin="6,6,0,0"
                                                             VerticalAlignment="Center"
                                                             Foreground="#56616F"
                                                             Text="{Binding CapturePreviewStatus}" />
                                                         <TextBlock
                                                             Grid.Row="6"
                                                             Grid.ColumnSpan="4"
-                                                            Margin="0,8,0,0"
+                                                            Margin="0,4,0,0"
                                                             Foreground="#2A5D67"
                                                             Text="{Binding CaptureRefreshMetricsSummary}" />
                                                         <Button
                                                             Grid.Row="7"
                                                             Grid.Column="0"
-                                                            Margin="0,10,0,0"
-                                                            Padding="12,6"
+                                                            Margin="0,6,0,0"
+                                                            Padding="9,4"
                                                             Command="{Binding RecognizeOcrPreviewCommand}"
                                                             Content="Recognize OCR" />
                                                         <Button
                                                             Grid.Row="7"
                                                             Grid.Column="1"
-                                                            Margin="8,10,0,0"
-                                                            Padding="12,6"
+                                                            Margin="4,6,0,0"
+                                                            Padding="9,4"
                                                             Command="{Binding RunTranslationPipelineCommand}"
                                                             Content="Run all zones" />
                                                         <Button
                                                             Grid.Row="7"
                                                             Grid.Column="2"
-                                                            Margin="8,10,0,0"
-                                                            Padding="12,6"
+                                                            Margin="4,6,0,0"
+                                                            Padding="9,4"
                                                             Command="{Binding CollectDebugInfoCommand}"
                                                             Content="Collect debug info" />
                                                         <TextBlock
                                                             Grid.Row="7"
                                                             Grid.Column="3"
-                                                            Margin="12,10,0,0"
+                                                            Margin="6,6,0,0"
                                                             VerticalAlignment="Center"
                                                             Foreground="#56616F"
                                                             Text="{Binding OcrPreviewStatus}" />
                                                         <TextBlock
                                                             Grid.Row="3"
                                                             Grid.Column="0"
-                                                            Margin="0,12,0,0"
+                                                            Margin="0,6,0,0"
                                                             VerticalAlignment="Center"
                                                             Foreground="#253238"
                                                             Text="Live timing" />
                                                         <ComboBox
                                                             Grid.Row="3"
                                                             Grid.Column="1"
-                                                            Margin="8,12,0,0"
+                                                            Margin="4,6,0,0"
                                                             MinWidth="128"
-                                                            Padding="8,6"
+                                                            Padding="6,3"
                                                             ItemsSource="{Binding LiveTranslationTimingPresets}"
                                                             SelectedItem="{Binding LiveTranslationTimingPreset, Mode=TwoWay}" />
                                                         <TextBlock
                                                             Grid.Row="3"
                                                             Grid.Column="3"
-                                                            Margin="12,12,0,0"
+                                                            Margin="6,6,0,0"
                                                             VerticalAlignment="Center"
                                                             Foreground="#56616F"
                                                             Text="{Binding LiveTranslationTimingSummary}"
@@ -1908,69 +1989,69 @@
                                                         <Button
                                                             Grid.Row="1"
                                                             Grid.Column="0"
-                                                            MinWidth="180"
-                                                            Margin="0,18,0,0"
-                                                            Padding="12,6"
+                                                            MinWidth="150"
+                                                            Margin="0,6,0,0"
+                                                            Padding="9,4"
                                                             Style="{StaticResource PrimaryButtonStyle}"
                                                             Command="{Binding StartLiveTranslationCommand}"
                                                             Content="Start live" />
                                                         <Button
                                                             Grid.Row="1"
                                                             Grid.Column="1"
-                                                            MinWidth="160"
-                                                            Margin="10,18,0,0"
-                                                            Padding="12,6"
+                                                            MinWidth="130"
+                                                            Margin="4,6,0,0"
+                                                            Padding="9,4"
                                                             Command="{Binding StopLiveTranslationCommand}"
                                                             Content="Stop live" />
                                                         <Button
                                                             Grid.Row="1"
                                                             Grid.Column="2"
-                                                            MinWidth="180"
-                                                            Margin="10,18,0,0"
-                                                            Padding="12,6"
+                                                            MinWidth="150"
+                                                            Margin="4,6,0,0"
+                                                            Padding="9,4"
                                                             Command="{Binding OpenLiveDiagnosticsFolderCommand}"
                                                             Content="Open live reports"
                                                             ToolTip="Open the folder with automatically saved live-session reports." />
                                                         <TextBlock
                                                             Grid.Row="2"
                                                             Grid.ColumnSpan="4"
-                                                            Margin="0,14,0,0"
+                                                            Margin="0,4,0,0"
                                                             VerticalAlignment="Center"
-                                                            Foreground="#087F55"
                                                             FontWeight="SemiBold"
+                                                            Style="{StaticResource PipelineStatusTextStyle}"
                                                             Text="{Binding PipelineStatus}"
                                                             TextWrapping="Wrap" />
                                                         <TextBlock
                                                             Grid.Row="4"
                                                             Grid.ColumnSpan="4"
-                                                            Margin="0,24,0,0"
+                                                            Margin="0,6,0,0"
                                                             Style="{StaticResource SectionTitleStyle}"
                                                             Text="Diagnostics" />
                                                         <Button
                                                             Grid.Row="8"
                                                             Grid.Column="0"
-                                                            Margin="0,10,0,0"
-                                                            Padding="12,6"
+                                                            Margin="0,6,0,0"
+                                                            Padding="9,4"
                                                             Command="{Binding CleanupTranslationCacheCommand}"
                                                             Content="Clean cache" />
                                                         <TextBlock
                                                             Grid.Row="8"
                                                             Grid.Column="1"
                                                             Grid.ColumnSpan="3"
-                                                            Margin="12,10,0,0"
+                                                            Margin="6,6,0,0"
                                                             VerticalAlignment="Center"
                                                             Foreground="#56616F"
                                                             Text="{Binding TranslationCacheStatus}" />
                                                         <ItemsControl
                                                             Grid.Row="9"
                                                             Grid.ColumnSpan="4"
-                                                            Margin="0,10,0,0"
+                                                            Margin="0,6,0,0"
                                                             ItemsSource="{Binding OcrDebugTextBlocks}"
                                                             Visibility="{Binding HasOcrPreview, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                             <ItemsControl.ItemTemplate>
                                                                 <DataTemplate>
                                                                     <Border
-                                                                        Margin="0,0,0,6"
+                                                                        Margin="0,0,0,3"
                                                                         Background="#F8FAFC"
                                                                         BorderBrush="#E2E8F0"
                                                                         BorderThickness="1"
@@ -1979,7 +2060,7 @@
                                                                         <DockPanel>
                                                                             <TextBlock
                                                                                 DockPanel.Dock="Right"
-                                                                                Margin="12,0,0,0"
+                                                                                Margin="4,0,0,0"
                                                                                 Foreground="#2A5D67"
                                                                                 Text="{Binding CoordinatesSummary}" />
                                                                             <TextBlock
@@ -1994,11 +2075,11 @@
                                                         <Border
                                                             Grid.Row="10"
                                                             Grid.ColumnSpan="4"
-                                                            Margin="0,10,0,0"
+                                                            Margin="0,6,0,0"
                                                             Background="#F8FAFC"
                                                             BorderBrush="#E2E8F0"
                                                             BorderThickness="1"
-                                                            Height="160"
+                                                            Height="140"
                                                             Visibility="{Binding HasCapturePreview, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                             <Viewbox Stretch="Uniform">
                                                                 <Grid
@@ -2070,21 +2151,21 @@
 
     <Grid Background="#F7F8FA">
         <Grid.RowDefinitions>
-            <RowDefinition Height="64" />
-            <RowDefinition Height="*" />
             <RowDefinition Height="40" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="24" />
         </Grid.RowDefinitions>
 
         <Border Grid.Row="0" Background="#10242C">
-            <DockPanel LastChildFill="False" Margin="24,0">
+            <DockPanel LastChildFill="False" Margin="16,0">
                 <Border
-                    Width="34"
-                    Height="34"
-                    Margin="0,0,12,0"
+                    Width="28"
+                    Height="28"
+                    Margin="0,0,8,0"
                     VerticalAlignment="Center"
                     BorderBrush="#B9D8D4"
                     BorderThickness="1"
-                    CornerRadius="7">
+                    CornerRadius="5">
                     <TextBlock
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center"
@@ -2095,7 +2176,7 @@
                 </Border>
                 <TextBlock
                     VerticalAlignment="Center"
-                    FontSize="20"
+                    FontSize="18"
                     FontWeight="SemiBold"
                     Foreground="#FFFFFF"
                     Text="{Binding ApplicationName}" />
@@ -2109,7 +2190,7 @@
 
         <StatusBar
             Grid.Row="2"
-            Padding="24,0"
+            Padding="16,0"
             Background="#F8FAFB"
             BorderBrush="#DCE3E9"
             BorderThickness="0,1,0,0">

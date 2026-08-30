@@ -6,7 +6,7 @@ using GameTranslator.Application.Translation;
 
 namespace GameTranslator.Infrastructure.Translation;
 
-public sealed class GoogleWebTranslatorProvider : ITranslatorProvider
+public class GoogleWebTranslatorProvider : ITranslatorProvider
 {
     private readonly HttpClient httpClient;
 
@@ -15,7 +15,7 @@ public sealed class GoogleWebTranslatorProvider : ITranslatorProvider
         this.httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
     }
 
-    public string ProviderId => "GoogleWeb";
+    public virtual string ProviderId => "GoogleWeb";
 
     public async Task<TranslateResponse> TranslateAsync(
         TranslateRequest request,
@@ -40,7 +40,7 @@ public sealed class GoogleWebTranslatorProvider : ITranslatorProvider
         using var httpRequest = new HttpRequestMessage(
             HttpMethod.Get,
             CreateTranslateUri(request, text));
-        AddBrowserHeaders(httpRequest);
+        ConfigureRequest(httpRequest);
 
         using var response = await httpClient.SendAsync(httpRequest, cancellationToken);
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -63,15 +63,19 @@ public sealed class GoogleWebTranslatorProvider : ITranslatorProvider
             throw new TranslatorProviderException(
                 ProviderId,
                 TranslatorProviderFailureKind.Parse,
-                "GoogleWeb translation response could not be parsed.",
+                $"{ProviderId} translation response could not be parsed.",
                 exception);
         }
     }
 
-    private static Uri CreateTranslateUri(TranslateRequest request, string text)
+    protected virtual string GetSourceLanguage(TranslateRequest request) => NormalizeLanguageTag(request.SourceLanguage);
+
+    protected virtual void ConfigureRequest(HttpRequestMessage request) => AddBrowserHeaders(request);
+
+    private Uri CreateTranslateUri(TranslateRequest request, string text)
     {
         var endpoint = request.Credentials.Endpoint.ToString().TrimEnd('/');
-        var source = Uri.EscapeDataString(NormalizeLanguageTag(request.SourceLanguage));
+        var source = Uri.EscapeDataString(GetSourceLanguage(request));
         var target = Uri.EscapeDataString(NormalizeLanguageTag(request.TargetLanguage));
         var query = Uri.EscapeDataString(text);
 
@@ -85,7 +89,7 @@ public sealed class GoogleWebTranslatorProvider : ITranslatorProvider
             : languageTag.Trim();
     }
 
-    private static string ParseGoogleWebTranslation(string responseBody)
+    private string ParseGoogleWebTranslation(string responseBody)
     {
         using var document = JsonDocument.Parse(responseBody);
         var root = document.RootElement;
@@ -113,9 +117,9 @@ public sealed class GoogleWebTranslatorProvider : ITranslatorProvider
         if (string.IsNullOrWhiteSpace(translation))
         {
             throw new TranslatorProviderException(
-                "GoogleWeb",
+                ProviderId,
                 TranslatorProviderFailureKind.EmptyResponse,
-                "GoogleWeb translation response did not contain translated text.");
+                $"{ProviderId} translation response did not contain translated text.");
         }
 
         return translation;
@@ -126,7 +130,7 @@ public sealed class GoogleWebTranslatorProvider : ITranslatorProvider
         return new TranslatorProviderException(
             ProviderId,
             statusCode,
-            $"GoogleWeb translation request failed with HTTP {(int)statusCode}: {CreateSafeErrorMessage(responseBody)}");
+            $"{ProviderId} translation request failed with HTTP {(int)statusCode}: {CreateSafeErrorMessage(responseBody)}");
     }
 
     private static string CreateSafeErrorMessage(string responseBody)

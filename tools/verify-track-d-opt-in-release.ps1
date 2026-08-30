@@ -72,7 +72,12 @@ try {
     }
 
     $readyAt = [DateTimeOffset]::UtcNow
-    $request = @{ inputPath = (Resolve-Path $InputImagePath).Path } | ConvertTo-Json -Compress
+    $request = [ordered]@{
+        inputPath = (Resolve-Path $InputImagePath).Path
+        threshold = 0.3
+        boxThreshold = 0.6
+        unclipRatio = 1.2
+    } | ConvertTo-Json -Compress
     $process.StandardInput.WriteLine($request)
     $process.StandardInput.Flush()
 
@@ -103,6 +108,9 @@ try {
         readyMs = [math]::Round(($readyAt - $startedAt).TotalMilliseconds, 1)
         firstResultMs = [math]::Round(($completedAt - $startedAt).TotalMilliseconds, 1)
         candidateCount = @($result.candidates).Count
+        detectorThreshold = 0.3
+        detectorBoxThreshold = 0.6
+        detectorUnclipRatio = 1.2
         standardError = $standardError
     }
     $report | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $reportPath -Encoding utf8

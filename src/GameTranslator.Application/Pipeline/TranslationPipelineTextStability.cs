@@ -10,13 +10,17 @@ public sealed class TranslationPipelineTextStability
         isRequired: false,
         isStable: true,
         firstObservedAt: null,
-        lastObservedAt: null);
+        lastObservedAt: null,
+        observationCount: 0,
+        requiredObservationCount: 0);
 
     public TranslationPipelineTextStability(
         bool isRequired,
         bool isStable,
         DateTimeOffset? firstObservedAt,
-        DateTimeOffset? lastObservedAt)
+        DateTimeOffset? lastObservedAt,
+        int observationCount = 0,
+        int requiredObservationCount = 0)
     {
         if (firstObservedAt is null != lastObservedAt is null)
         {
@@ -31,10 +35,25 @@ public sealed class TranslationPipelineTextStability
                 "The last text-stability observation cannot precede the first observation.");
         }
 
+        if (observationCount < 0 || requiredObservationCount < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                observationCount < 0 ? nameof(observationCount) : nameof(requiredObservationCount));
+        }
+
+        if (observationCount > 0 && firstObservedAt is null)
+        {
+            throw new ArgumentException(
+                "A positive text-stability observation count requires timestamps.",
+                nameof(observationCount));
+        }
+
         IsRequired = isRequired;
         IsStable = isStable;
         FirstObservedAt = firstObservedAt;
         LastObservedAt = lastObservedAt;
+        ObservationCount = observationCount;
+        RequiredObservationCount = requiredObservationCount;
     }
 
     public bool IsRequired { get; }
@@ -44,6 +63,10 @@ public sealed class TranslationPipelineTextStability
     public DateTimeOffset? FirstObservedAt { get; }
 
     public DateTimeOffset? LastObservedAt { get; }
+
+    public int ObservationCount { get; }
+
+    public int RequiredObservationCount { get; }
 
     public TimeSpan? ObservedDuration => FirstObservedAt is { } first && LastObservedAt is { } last
         ? last - first

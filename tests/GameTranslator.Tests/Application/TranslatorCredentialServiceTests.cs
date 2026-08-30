@@ -55,7 +55,6 @@ public sealed class TranslatorCredentialServiceTests
     }
 
     [Theory]
-    [InlineData("WebAuto", "https://translate.googleapis.com/")]
     [InlineData("GoogleWeb", "https://translate.googleapis.com/")]
     [InlineData("BingWeb", "https://www.bing.com/")]
     [InlineData("YandexWeb", "https://translate.yandex.net/")]
@@ -74,6 +73,22 @@ public sealed class TranslatorCredentialServiceTests
         Assert.Equal(provider, credentials.ProjectId);
         Assert.Equal("global", credentials.Location);
         Assert.Equal(new Uri(endpoint), credentials.Endpoint);
+        Assert.Equal(0, storage.ReadCount);
+    }
+
+    [Theory]
+    [InlineData("WebAuto")]
+    [InlineData("web-auto")]
+    [InlineData("glhf")]
+    public async Task CreateCredentialsAsync_ForRemovedProvider_ThrowsWithoutReadingStoredSecrets(string provider)
+    {
+        var storage = new TestCredentialStorage();
+        var service = new TranslatorCredentialService(storage);
+
+        var exception = await Assert.ThrowsAsync<NotSupportedException>(
+            () => service.CreateCredentialsAsync(provider));
+
+        Assert.Contains("no longer supported", exception.Message, StringComparison.Ordinal);
         Assert.Equal(0, storage.ReadCount);
     }
 

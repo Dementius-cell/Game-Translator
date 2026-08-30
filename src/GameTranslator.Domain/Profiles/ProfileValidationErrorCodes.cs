@@ -10,6 +10,10 @@ public static class ProfileValidationErrorCodes
 
     public const string InvalidOcrZoneContentLayoutMode = "profile.ocrZone.contentLayoutMode.invalid";
 
+    public const string InvalidOcrZoneDetectorPreset = "profile.ocrZone.detectorPreset.invalid";
+
+    public const string InvalidOcrZoneCandidateGrouping = "profile.ocrZone.candidateGrouping.invalid";
+
     public const string InvalidOcrZoneTextStyle = "profile.ocrZone.textStyle.invalid";
 
     public const string InvalidOcrZoneTranslationGroupingMode = "profile.ocrZone.translationGroupingMode.invalid";

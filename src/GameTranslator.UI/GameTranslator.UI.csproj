@@ -45,13 +45,54 @@
 
   <Target Name="PublishInfrastructureCompositionModule" AfterTargets="Publish">
     <ItemGroup>
-      <InfrastructureCompositionModulePublish Include="..\GameTranslator.Infrastructure\bin\$(Configuration)\net9.0-windows10.0.19041.0\$(RuntimeIdentifier)\**\*" />
+      <!--
+        Infrastructure is intentionally loaded through the composition seam rather
+        than a UI project reference. Copy only its own runtime payload here.
+        Copying the whole self-contained Infrastructure output overwrites the WPF
+        runtime files published for the UI (for example WindowsBase.dll) with the
+        smaller reference assemblies from Microsoft.NETCore.App.Ref.
+      -->
+      <InfrastructureCompositionModulePublish Include="..\GameTranslator.Infrastructure\bin\$(Configuration)\net9.0-windows10.0.19041.0\$(RuntimeIdentifier)\GameTranslator.Infrastructure.dll" />
+      <InfrastructureCompositionModulePublish Include="..\GameTranslator.Infrastructure\bin\$(Configuration)\net9.0-windows10.0.19041.0\$(RuntimeIdentifier)\GameTranslator.Infrastructure.pdb" />
+      <InfrastructureCompositionModulePublish Include="..\GameTranslator.Infrastructure\bin\$(Configuration)\net9.0-windows10.0.19041.0\$(RuntimeIdentifier)\Microsoft.Data.Sqlite.dll" />
+      <InfrastructureCompositionModulePublish Include="..\GameTranslator.Infrastructure\bin\$(Configuration)\net9.0-windows10.0.19041.0\$(RuntimeIdentifier)\Microsoft.Extensions.DependencyInjection.Abstractions.dll" />
+      <InfrastructureCompositionModulePublish Include="..\GameTranslator.Infrastructure\bin\$(Configuration)\net9.0-windows10.0.19041.0\$(RuntimeIdentifier)\Microsoft.Extensions.Logging.Abstractions.dll" />
+      <InfrastructureCompositionModulePublish Include="..\GameTranslator.Infrastructure\bin\$(Configuration)\net9.0-windows10.0.19041.0\$(RuntimeIdentifier)\Microsoft.Windows.SDK.NET.dll" />
+      <InfrastructureCompositionModulePublish Include="..\GameTranslator.Infrastructure\bin\$(Configuration)\net9.0-windows10.0.19041.0\$(RuntimeIdentifier)\SQLitePCLRaw.batteries_v2.dll" />
+      <InfrastructureCompositionModulePublish Include="..\GameTranslator.Infrastructure\bin\$(Configuration)\net9.0-windows10.0.19041.0\$(RuntimeIdentifier)\SQLitePCLRaw.core.dll" />
+      <InfrastructureCompositionModulePublish Include="..\GameTranslator.Infrastructure\bin\$(Configuration)\net9.0-windows10.0.19041.0\$(RuntimeIdentifier)\SQLitePCLRaw.provider.e_sqlite3.dll" />
+      <InfrastructureCompositionModulePublish Include="..\GameTranslator.Infrastructure\bin\$(Configuration)\net9.0-windows10.0.19041.0\$(RuntimeIdentifier)\TesseractOCR.dll" />
+      <InfrastructureCompositionModulePublish Include="..\GameTranslator.Infrastructure\bin\$(Configuration)\net9.0-windows10.0.19041.0\$(RuntimeIdentifier)\WinRT.Runtime.dll" />
+      <InfrastructureCompositionModulePublish Include="..\GameTranslator.Infrastructure\bin\$(Configuration)\net9.0-windows10.0.19041.0\$(RuntimeIdentifier)\e_sqlite3.dll" />
+      <!--
+        Keep the architecture directory in the destination. TesseractOCR resolves
+        its native payload from x64 or x86; placing these DLLs in PublishDir itself
+        lets the managed assembly load but makes every OCR request fail at runtime.
+      -->
+      <InfrastructureCompositionModuleX64Publish Include="..\GameTranslator.Infrastructure\bin\$(Configuration)\net9.0-windows10.0.19041.0\$(RuntimeIdentifier)\x64\**\*" />
+      <InfrastructureCompositionModuleX86Publish Include="..\GameTranslator.Infrastructure\bin\$(Configuration)\net9.0-windows10.0.19041.0\$(RuntimeIdentifier)\x86\**\*" />
+      <InfrastructureCompositionModuleWorkerPublish Include="..\GameTranslator.Infrastructure\Ocr\paddle_text_detector_worker.py" />
     </ItemGroup>
     <Copy
       SourceFiles="@(InfrastructureCompositionModulePublish)"
       DestinationFiles="@(InfrastructureCompositionModulePublish->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
       SkipUnchangedFiles="true"
       Condition="'@(InfrastructureCompositionModulePublish)' != ''" />
+    <Copy
+      SourceFiles="@(InfrastructureCompositionModuleX64Publish)"
+      DestinationFiles="@(InfrastructureCompositionModuleX64Publish->'$(PublishDir)x64\%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true"
+      Condition="'@(InfrastructureCompositionModuleX64Publish)' != ''" />
+    <Copy
+      SourceFiles="@(InfrastructureCompositionModuleX86Publish)"
+      DestinationFiles="@(InfrastructureCompositionModuleX86Publish->'$(PublishDir)x86\%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true"
+      Condition="'@(InfrastructureCompositionModuleX86Publish)' != ''" />
+    <Copy
+      SourceFiles="@(InfrastructureCompositionModuleWorkerPublish)"
+      DestinationFiles="@(InfrastructureCompositionModuleWorkerPublish->'$(PublishDir)candidate-detector\%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true"
+      Condition="'@(InfrastructureCompositionModuleWorkerPublish)' != ''" />
   </Target>
 
 </Project>

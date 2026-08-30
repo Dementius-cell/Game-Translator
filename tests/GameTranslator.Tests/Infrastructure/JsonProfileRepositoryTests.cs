@@ -25,6 +25,7 @@ public sealed class JsonProfileRepositoryTests : IDisposable
         Assert.True(Directory.Exists(profilesDirectory));
         Assert.Contains("\"schemaVersion\": \"1.0\"", json);
         Assert.Contains("\"contentLayoutMode\": \"DialogComic\"", json);
+        Assert.Contains("\"detectorPreset\": \"ChineseExperimental\"", json);
         Assert.False(json.Contains("apiKey", StringComparison.OrdinalIgnoreCase));
         Assert.False(json.Contains("secret", StringComparison.OrdinalIgnoreCase));
         Assert.False(json.Contains("credential", StringComparison.OrdinalIgnoreCase));
@@ -46,6 +47,8 @@ public sealed class JsonProfileRepositoryTests : IDisposable
         Assert.Equal(profile.OcrZones[0].RelativeBounds, loaded.OcrZones[0].RelativeBounds);
         Assert.Equal(profile.OcrZones[0].OcrLanguage, loaded.OcrZones[0].OcrLanguage);
         Assert.Equal(profile.OcrZones[0].ContentLayoutMode, loaded.OcrZones[0].ContentLayoutMode);
+        Assert.Equal(profile.OcrZones[0].DetectorPreset, loaded.OcrZones[0].DetectorPreset);
+        Assert.Equal(profile.OcrZones[0].CandidateGrouping, loaded.OcrZones[0].CandidateGrouping);
         Assert.Equal(profile.OcrZones[0].TextStyle, loaded.OcrZones[0].TextStyle);
         Assert.Equal(profile.OcrZones[0].TranslationGroupingMode, loaded.OcrZones[0].TranslationGroupingMode);
         Assert.Equal(profile.OcrZones[0].TextGrouping, loaded.OcrZones[0].TextGrouping);
@@ -127,6 +130,8 @@ public sealed class JsonProfileRepositoryTests : IDisposable
         Assert.Equal(string.Empty, profile.OcrZones[0].OcrLanguage);
         Assert.Equal("en", profile.OcrZones[0].ResolveOcrLanguage(profile.TranslatorSettings.SourceLanguage));
         Assert.Equal(ContentLayoutMode.DialogComic, profile.OcrZones[0].ContentLayoutMode);
+        Assert.Equal(TextCandidateDetectorPreset.Standard, profile.OcrZones[0].DetectorPreset);
+        Assert.Equal(OcrCandidateGroupingSettings.Default, profile.OcrZones[0].CandidateGrouping);
         Assert.Equal(TranslationGroupingMode.BlockByBlock, profile.OcrZones[0].TranslationGroupingMode);
         Assert.Equal(OcrZoneTextGroupingSettings.Default, profile.OcrZones[0].TextGrouping);
     }
@@ -154,6 +159,12 @@ public sealed class JsonProfileRepositoryTests : IDisposable
                     RelativeBounds = new RelativeRectangle(0.1, 0.2, 0.4, 0.1),
                     OcrLanguage = "jpn_vert",
                     ContentLayoutMode = ContentLayoutMode.DialogComic,
+                    DetectorPreset = TextCandidateDetectorPreset.ChineseExperimental,
+                    CandidateGrouping = new OcrCandidateGroupingSettings
+                    {
+                        MaximumHorizontalLines = 9,
+                        MaximumVerticalColumns = 5,
+                    },
                     TextStyle = new OcrZoneTextStyle
                     {
                         FontFamily = "Arial",

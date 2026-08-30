@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http;
+using System.Globalization;
 using System.Text;
 using GameTranslator.Application.Translation;
 using GameTranslator.Infrastructure.Translation;
@@ -119,14 +120,15 @@ public sealed class ExperimentalWebTranslatorProviderTests
         Assert.Equal(2, handler.Requests.Count);
         Assert.EndsWith("/translator", handler.Requests[0].Uri?.AbsolutePath, StringComparison.Ordinal);
         Assert.Contains("/ttranslatev3", handler.Requests[1].Uri?.AbsolutePath, StringComparison.Ordinal);
-        Assert.Contains("fromLang=en", handler.Requests[1].Content, StringComparison.Ordinal);
+        Assert.Contains("IID=translator.5024.1", handler.Requests[1].Uri?.Query, StringComparison.Ordinal);
+        Assert.Contains("fromLang=auto-detect", handler.Requests[1].Content, StringComparison.Ordinal);
         Assert.Contains("to=ru", handler.Requests[1].Content, StringComparison.Ordinal);
         Assert.Contains("token=TOKENVALUE", handler.Requests[1].Content, StringComparison.Ordinal);
         Assert.Contains("key=12345", handler.Requests[1].Content, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task BingWebTranslateAsync_WhenSessionTokenFails_RetriesWithFreshSession()
+    public async Task BingWebTranslateAsync_WhenDirectRequestFails_DoesNotRetry()
     {
         var handler = new SequenceHttpMessageHandler(
             new HttpResponseMessage(HttpStatusCode.OK)
@@ -136,35 +138,127 @@ public sealed class ExperimentalWebTranslatorProviderTests
             new HttpResponseMessage(HttpStatusCode.Unauthorized)
             {
                 Content = CreateJsonContent("""{ "error": "stale token" }"""),
-            },
-            new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = CreateHtmlContent(CreateBingSessionHtml("NEWIG", "22222", "NEWTOKEN")),
-            },
-            new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = CreateJsonContent("""[{ "translations": [ { "text": "Привет", "to": "ru" } ] }]"""),
             });
         var provider = new BingWebTranslatorProvider(new HttpClient(handler));
 
-        var response = await provider.TranslateAsync(CreateRequest("BingWeb", "https://www.bing.com"));
+        var exception = await Assert.ThrowsAsync<TranslatorProviderException>(
+            () => provider.TranslateAsync(CreateRequest("BingWeb", "https://www.bing.com")));
 
-        Assert.Equal(new[] { "Привет" }, response.TranslatedTexts);
-        Assert.Equal(4, handler.Requests.Count);
+        Assert.Equal("BingWeb", exception.ProviderId);
+        Assert.Equal(TranslatorProviderFailureKind.Http, exception.FailureKind);
+        Assert.Equal(HttpStatusCode.Unauthorized, exception.StatusCode);
+        Assert.Equal(2, handler.Requests.Count);
         Assert.Contains("token=OLDTOKEN", handler.Requests[1].Content, StringComparison.Ordinal);
         Assert.Contains("key=11111", handler.Requests[1].Content, StringComparison.Ordinal);
-        Assert.Contains("token=NEWTOKEN", handler.Requests[3].Content, StringComparison.Ordinal);
-        Assert.Contains("key=22222", handler.Requests[3].Content, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task BingWebTranslateAsync_WhenTwoRequestsTimeout_OpensCooldownWithoutRetrying()
+    {
+        var handler = new ScriptedHttpMessageHandler(
+            (_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = CreateHtmlContent(CreateBingSessionHtml("ABCDEF123456", CreateCurrentBingKey(), "TOKENVALUE")),
+            }),
+            (_, cancellationToken) => WaitForCancellationAsync(cancellationToken),
+            (_, cancellationToken) => WaitForCancellationAsync(cancellationToken));
+        var provider = new BingWebTranslatorProvider(
+            new HttpClient(handler),
+            TimeProvider.System,
+            TimeSpan.FromMilliseconds(20),
+            TimeSpan.FromSeconds(60));
+
+        var first = await Assert.ThrowsAsync<TranslatorProviderException>(
+            () => provider.TranslateAsync(CreateRequest("BingWeb", "https://www.bing.com")));
+        var second = await Assert.ThrowsAsync<TranslatorProviderException>(
+            () => provider.TranslateAsync(CreateRequest("BingWeb", "https://www.bing.com")));
+        var paused = await Assert.ThrowsAsync<TranslatorProviderException>(
+            () => provider.TranslateAsync(CreateRequest("BingWeb", "https://www.bing.com")));
+
+        Assert.Equal(TranslatorProviderFailureKind.Timeout, first.FailureKind);
+        Assert.Equal(1, first.ConsecutiveFailureCount);
+        Assert.Null(first.RetryAfter);
+        Assert.Equal(TranslatorProviderFailureKind.Timeout, second.FailureKind);
+        Assert.Equal(2, second.ConsecutiveFailureCount);
+        Assert.Equal(TimeSpan.FromSeconds(60), second.RetryAfter);
+        Assert.Equal(TranslatorProviderFailureKind.Timeout, paused.FailureKind);
+        Assert.Equal(2, paused.ConsecutiveFailureCount);
+        Assert.InRange(paused.RetryAfter!.Value, TimeSpan.FromSeconds(59), TimeSpan.FromSeconds(60));
+        Assert.Equal(3, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task BingWebTranslateAsync_WhenProviderReturns429_UsesRetryAfterAndPausesImmediately()
+    {
+        var throttledResponse = new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+        {
+            Content = CreateJsonContent("""{ "error": "rate limited" }"""),
+        };
+        throttledResponse.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(
+            TimeSpan.FromSeconds(90));
+        var handler = new SequenceHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = CreateHtmlContent(CreateBingSessionHtml("ABCDEF123456", CreateCurrentBingKey(), "TOKENVALUE")),
+            },
+            throttledResponse);
+        var provider = new BingWebTranslatorProvider(
+            new HttpClient(handler),
+            TimeProvider.System,
+            TimeSpan.FromSeconds(15),
+            TimeSpan.FromSeconds(60));
+
+        var throttled = await Assert.ThrowsAsync<TranslatorProviderException>(
+            () => provider.TranslateAsync(CreateRequest("BingWeb", "https://www.bing.com")));
+        var paused = await Assert.ThrowsAsync<TranslatorProviderException>(
+            () => provider.TranslateAsync(CreateRequest("BingWeb", "https://www.bing.com")));
+
+        Assert.Equal(TranslatorProviderFailureKind.Throttled, throttled.FailureKind);
+        Assert.Equal(HttpStatusCode.TooManyRequests, throttled.StatusCode);
+        Assert.Equal(TimeSpan.FromSeconds(90), throttled.RetryAfter);
+        Assert.Equal(TranslatorProviderFailureKind.Throttled, paused.FailureKind);
+        Assert.InRange(paused.RetryAfter!.Value, TimeSpan.FromSeconds(89), TimeSpan.FromSeconds(90));
+        Assert.Equal(2, handler.Requests.Count);
+    }
+
+    [Fact]
+    public async Task BingWebTranslateAsync_WhenSuccessFollowsTimeout_ResetsConsecutiveTimeoutCount()
+    {
+        var handler = new ScriptedHttpMessageHandler(
+            (_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = CreateHtmlContent(CreateBingSessionHtml("ABCDEF123456", CreateCurrentBingKey(), "TOKENVALUE")),
+            }),
+            (_, cancellationToken) => WaitForCancellationAsync(cancellationToken),
+            (_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = CreateJsonContent("""[{ "translations": [ { "text": "Привет", "to": "ru" } ] }]"""),
+            }),
+            (_, cancellationToken) => WaitForCancellationAsync(cancellationToken));
+        var provider = new BingWebTranslatorProvider(
+            new HttpClient(handler),
+            TimeProvider.System,
+            TimeSpan.FromMilliseconds(20),
+            TimeSpan.FromSeconds(60));
+
+        var first = await Assert.ThrowsAsync<TranslatorProviderException>(
+            () => provider.TranslateAsync(CreateRequest("BingWeb", "https://www.bing.com")));
+        var success = await provider.TranslateAsync(CreateRequest("BingWeb", "https://www.bing.com"));
+        var afterSuccess = await Assert.ThrowsAsync<TranslatorProviderException>(
+            () => provider.TranslateAsync(CreateRequest("BingWeb", "https://www.bing.com")));
+
+        Assert.Equal(1, first.ConsecutiveFailureCount);
+        Assert.Equal(new[] { "Привет" }, success.TranslatedTexts);
+        Assert.Equal(TranslatorProviderFailureKind.Timeout, afterSuccess.FailureKind);
+        Assert.Equal(1, afterSuccess.ConsecutiveFailureCount);
+        Assert.Null(afterSuccess.RetryAfter);
+        Assert.Equal(4, handler.RequestCount);
     }
 
     [Fact]
     public async Task YandexWebTranslateAsync_WhenResponseContainsText_ReturnsTranslatedText()
     {
         var handler = new SequenceHttpMessageHandler(
-            new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = CreateHtmlContent(CreateYandexSessionHtml("de0be810.179383a6.9f2492fa.47875647d22747")),
-            },
             new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = CreateJsonContent("""{ "code": 200, "lang": "en-ru", "text": [ "Привет" ] }"""),
@@ -174,27 +268,22 @@ public sealed class ExperimentalWebTranslatorProviderTests
         var response = await provider.TranslateAsync(CreateRequest("YandexWeb", "https://translate.yandex.net"));
 
         Assert.Equal(new[] { "Привет" }, response.TranslatedTexts);
-        Assert.Equal(2, handler.Requests.Count);
-        Assert.Equal(HttpMethod.Get, handler.Requests[0].Method);
-        Assert.Equal(HttpMethod.Post, handler.Requests[1].Method);
-        Assert.Contains("/api/v1/tr.json/translate", handler.Requests[1].Uri?.AbsolutePath, StringComparison.Ordinal);
-        Assert.Contains("srv=tr-text", handler.Requests[1].Uri?.Query, StringComparison.Ordinal);
-        Assert.Contains("id=de0be810.179383a6.9f2492fa.47875647d22747-0-0", handler.Requests[1].Uri?.Query, StringComparison.Ordinal);
-        Assert.Contains("lang=en-ru", handler.Requests[1].Content, StringComparison.Ordinal);
+        var translateRequest = Assert.Single(handler.Requests);
+        Assert.Equal(HttpMethod.Post, translateRequest.Method);
+        Assert.Contains("/api/v1/tr.json/translate", translateRequest.Uri?.AbsolutePath, StringComparison.Ordinal);
+        Assert.Contains("ucid=", translateRequest.Uri?.Query, StringComparison.Ordinal);
+        Assert.Contains("srv=android", translateRequest.Uri?.Query, StringComparison.Ordinal);
+        Assert.Contains("format=text", translateRequest.Uri?.Query, StringComparison.Ordinal);
+        Assert.Contains("lang=ru", translateRequest.Content, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task YandexWebTranslateAsync_WhenSessionPageIsCaptcha_ThrowsProviderException()
+    public async Task YandexWebTranslateAsync_WhenProviderReturnsRateLimit_ReportsThrottledFailure()
     {
         var handler = new SequenceHttpMessageHandler(
             new HttpResponseMessage(HttpStatusCode.OK)
             {
-                RequestMessage = new HttpRequestMessage(HttpMethod.Get, "https://translate.yandex.ru/showcaptchafast"),
-                Content = CreateHtmlContent("<html>SmartCaptcha</html>"),
-            },
-            new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = CreateHtmlContent("<html>SmartCaptcha</html>"),
+                Content = CreateJsonContent("""{ "code": 429, "message": "rate limited" }"""),
             });
         var provider = new YandexWebTranslatorProvider(new HttpClient(handler));
 
@@ -203,70 +292,7 @@ public sealed class ExperimentalWebTranslatorProviderTests
 
         Assert.Equal("YandexWeb", exception.ProviderId);
         Assert.Equal(TranslatorProviderFailureKind.Throttled, exception.FailureKind);
-        Assert.Contains("session could not be created", exception.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("captcha", exception.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public async Task WebAutoTranslateAsync_WhenGoogleWebFails_FallsBackToBingWeb()
-    {
-        var handler = new SequenceHttpMessageHandler(
-            new HttpResponseMessage(HttpStatusCode.TooManyRequests)
-            {
-                Content = CreateJsonContent("""{ "error": "rate limited" }"""),
-            },
-            new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = CreateHtmlContent(CreateBingSessionHtml("ABCDEF123456", "12345", "TOKENVALUE")),
-            },
-            new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = CreateJsonContent("""[{ "translations": [ { "text": "Привет", "to": "ru" } ] }]"""),
-            });
-        var provider = new WebAutoTranslatorProvider(new HttpClient(handler));
-
-        var response = await provider.TranslateAsync(CreateRequest("WebAuto", "https://translate.googleapis.com"));
-
-        Assert.Equal(new[] { "Привет" }, response.TranslatedTexts);
-        Assert.Equal("BingWeb", response.ProviderId);
-        Assert.Contains("WebAuto used BingWeb", response.DiagnosticMessage, StringComparison.Ordinal);
-        Assert.Contains("1 provider fallback", response.DiagnosticMessage, StringComparison.Ordinal);
-        Assert.Equal(3, handler.Requests.Count);
-        Assert.Contains("/translate_a/single", handler.Requests[0].Uri?.AbsolutePath, StringComparison.Ordinal);
-        Assert.EndsWith("/translator", handler.Requests[1].Uri?.AbsolutePath, StringComparison.Ordinal);
-        Assert.Contains("/ttranslatev3", handler.Requests[2].Uri?.AbsolutePath, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task WebAutoTranslateAsync_WhenAllProvidersFail_ReportsFallbackFailureCategories()
-    {
-        var handler = new SequenceHttpMessageHandler(
-            new HttpResponseMessage(HttpStatusCode.TooManyRequests)
-            {
-                Content = CreateJsonContent("""{ "error": "rate limited" }"""),
-            },
-            new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = CreateHtmlContent("<html>missing session</html>"),
-            },
-            new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = CreateHtmlContent("<html>SmartCaptcha</html>"),
-            },
-            new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = CreateHtmlContent("<html>SmartCaptcha</html>"),
-            });
-        var provider = new WebAutoTranslatorProvider(new HttpClient(handler));
-
-        var exception = await Assert.ThrowsAsync<TranslatorProviderException>(
-            () => provider.TranslateAsync(CreateRequest("WebAuto", "https://translate.googleapis.com")));
-
-        Assert.Equal("WebAuto", exception.ProviderId);
-        Assert.Equal(TranslatorProviderFailureKind.AllProvidersFailed, exception.FailureKind);
-        Assert.Contains("GoogleWeb [Throttled]", exception.Message, StringComparison.Ordinal);
-        Assert.Contains("BingWeb [UnsupportedResponse]", exception.Message, StringComparison.Ordinal);
-        Assert.Contains("YandexWeb [Throttled]", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("provider code 429", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     private static TranslateRequest CreateRequest(string provider, string endpoint, string sourceLanguage = "en", string targetLanguage = "ru")
@@ -303,15 +329,15 @@ public sealed class ExperimentalWebTranslatorProviderTests
                 """;
     }
 
-    private static string CreateYandexSessionHtml(string sid)
+    private static string CreateCurrentBingKey()
     {
-        return $$"""
-                 <html>
-                 <script>
-                 window.__INITIAL_STATE__ = {"SID":"{{sid}}","SRV":"tr-text"};
-                 </script>
-                 </html>
-                 """;
+        return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static async Task<HttpResponseMessage> WaitForCancellationAsync(CancellationToken cancellationToken)
+    {
+        await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        throw new InvalidOperationException("The request should have been cancelled by the provider timeout.");
     }
 
     private sealed class SequenceHttpMessageHandler : HttpMessageHandler
@@ -337,6 +363,27 @@ public sealed class ExperimentalWebTranslatorProviderTests
                     : await request.Content.ReadAsStringAsync(cancellationToken)));
 
             return responses.Dequeue();
+        }
+    }
+
+    private sealed class ScriptedHttpMessageHandler : HttpMessageHandler
+    {
+        private readonly Queue<Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>>> responses;
+
+        public ScriptedHttpMessageHandler(
+            params Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>>[] responses)
+        {
+            this.responses = new Queue<Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>>>(responses);
+        }
+
+        public int RequestCount { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            RequestCount++;
+            return responses.Dequeue()(request, cancellationToken);
         }
     }
 

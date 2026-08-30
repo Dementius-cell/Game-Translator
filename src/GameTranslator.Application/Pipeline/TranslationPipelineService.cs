@@ -160,12 +160,6 @@ public sealed class TranslationPipelineService
         TranslationPipelineRunOptions runOptions,
         CancellationToken cancellationToken)
     {
-        if (runOptions.RequireCandidateReadinessBarrier)
-        {
-            throw new InvalidOperationException(
-                "ADR-028 readiness requires a persistent LiveTranslationSession; one-shot candidate runs cannot publish before a verified prewarm.");
-        }
-
         var resultSlots = new List<TranslationPipelineResult?>();
         var failureSlots = new List<TranslationPipelineZoneFailure?>();
         var pendingCandidateTasks = new List<PipelineZoneTask>();
@@ -234,7 +228,8 @@ public sealed class TranslationPipelineService
                         CreateCandidateRunOptionsWithoutDetector(runOptions),
                         cancellationToken,
                         CreateCandidateOverlayPlacementConstraints(zone, orderedRegions, region),
-                        candidateTranslationLimiter)));
+                        candidateTranslationLimiter,
+                        new CandidateRecognitionContext(region.Candidate, zone.AbsoluteBounds.Height))));
             }
         }
 
@@ -328,7 +323,8 @@ public sealed class TranslationPipelineService
         CapturedFrame? capturedFrame = null,
         TimeSpan? capturedFrameElapsed = null,
         OverlayPlacementConstraints? overlayPlacementConstraints = null,
-        SemaphoreSlim? candidateTranslationLimiter = null)
+        SemaphoreSlim? candidateTranslationLimiter = null,
+        CandidateRecognitionContext? candidateRecognitionContext = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(zone);
@@ -416,6 +412,19 @@ public sealed class TranslationPipelineService
                 : ocrService.RecognizeAsync(request, cancellationToken));
         var sourceResult = ocrMeasurement.Value;
         ocrElapsed = ocrMeasurement.Elapsed;
+
+        if (candidateRecognitionContext is { } candidateContext
+            && !candidateRegionOcrService.IsRecognizedCandidateAccepted(
+                request,
+                candidateContext.Candidate,
+                candidateContext.SourceZoneHeight,
+                sourceResult))
+        {
+            sourceResult = new OcrResult(
+                sourceResult.Request,
+                Array.Empty<OcrTextBlock>(),
+                sourceResult.RecognizedAt);
+        }
 
         if (sourceResult.TextBlocks.Count == 0)
         {
@@ -618,7 +627,8 @@ public sealed class TranslationPipelineService
         TranslationPipelineRunOptions runOptions,
         CancellationToken cancellationToken,
         OverlayPlacementConstraints? overlayPlacementConstraints = null,
-        SemaphoreSlim? candidateTranslationLimiter = null)
+        SemaphoreSlim? candidateTranslationLimiter = null,
+        CandidateRecognitionContext? candidateRecognitionContext = null)
     {
         return RunZoneAsync(
             profile,
@@ -631,7 +641,8 @@ public sealed class TranslationPipelineService
             capturedFrame: frame,
             capturedFrameElapsed: captureElapsed,
             overlayPlacementConstraints: overlayPlacementConstraints,
-            candidateTranslationLimiter: candidateTranslationLimiter);
+            candidateTranslationLimiter: candidateTranslationLimiter,
+            candidateRecognitionContext: candidateRecognitionContext);
     }
 
     private async Task<OcrResult> RecognizeCandidateRegionsAsync(
@@ -669,7 +680,11 @@ public sealed class TranslationPipelineService
             profile.OcrSettings.Engine,
             profile.OcrSettings.OrientationMode,
             ResolveOcrLayoutMode(zone),
-            zone.ContentLayoutMode);
+            zone.ContentLayoutMode,
+            zone.CandidateGrouping)
+        {
+            DetectorPreset = zone.DetectorPreset,
+        };
     }
 
     private static IReadOnlyList<TextCandidateRegion> OrderCandidateRegions(
@@ -706,6 +721,8 @@ public sealed class TranslationPipelineService
                     .CandidateOverlayLayout,
             },
             ContentLayoutMode = sourceZone.ContentLayoutMode,
+            DetectorPreset = sourceZone.DetectorPreset,
+            CandidateGrouping = sourceZone.CandidateGrouping ?? OcrCandidateGroupingSettings.Default,
             TranslationGroupingMode = TranslationGroupingMode.WholeZone,
             TextGrouping = OcrZoneTextGroupingSettings.Default,
         };
@@ -761,11 +778,13 @@ public sealed class TranslationPipelineService
             sourceOptions.PreservePreviousOverlayWhileWaitingForStableText,
             sourceOptions.RestorePreviousOverlayAfterCapture,
             enableCandidateDetectorPilot: false,
-            requireCandidateReadinessBarrier: sourceOptions.RequireCandidateReadinessBarrier,
             minimumCandidateOverlayVisibleDuration: sourceOptions.MinimumCandidateOverlayVisibleDuration,
             candidateTranslationMaxParallelism: sourceOptions.CandidateTranslationMaxParallelism,
-            candidatePrewarmMaximumAttempts: sourceOptions.CandidatePrewarmMaximumAttempts,
-            candidatePrewarmInitialRetryDelay: sourceOptions.CandidatePrewarmInitialRetryDelay);
+            minimumCandidateGroupingObservations: sourceOptions.MinimumCandidateGroupingObservations,
+            minimumStableTextObservations: sourceOptions.MinimumStableTextObservations)
+        {
+            MinimumCandidateGroupingDuration = sourceOptions.MinimumCandidateGroupingDuration,
+        };
     }
 
     private static SemaphoreSlim? CreateCandidateTranslationLimiter(
@@ -908,7 +927,9 @@ public sealed class TranslationPipelineService
                 isRequired: true,
                 isStable: false,
                 firstObservedAt: null,
-                lastObservedAt: null);
+                lastObservedAt: null,
+                observationCount: 0,
+                requiredObservationCount: runOptions.MinimumStableTextObservations);
         }
 
         lock (textStabilityStateLock)
@@ -919,25 +940,34 @@ public sealed class TranslationPipelineService
                 textStabilityStates[stateKey] = new PipelineTextStabilityState(
                     textSignature,
                     sourceResult.RecognizedAt,
-                    sourceResult.RecognizedAt);
+                    sourceResult.RecognizedAt,
+                    ObservationCount: 1);
 
                 return new TranslationPipelineTextStability(
                     isRequired: true,
-                    isStable: runOptions.StableTextInterval == TimeSpan.Zero,
+                    isStable: runOptions.StableTextInterval == TimeSpan.Zero
+                        && runOptions.MinimumStableTextObservations <= 1,
                     firstObservedAt: sourceResult.RecognizedAt,
-                    lastObservedAt: sourceResult.RecognizedAt);
+                    lastObservedAt: sourceResult.RecognizedAt,
+                    observationCount: 1,
+                    requiredObservationCount: runOptions.MinimumStableTextObservations);
             }
 
+            var observationCount = checked(state.ObservationCount + 1);
             textStabilityStates[stateKey] = state with
             {
                 LastSeenAt = sourceResult.RecognizedAt,
+                ObservationCount = observationCount,
             };
 
             return new TranslationPipelineTextStability(
                 isRequired: true,
-                isStable: CalculateElapsed(state.FirstSeenAt, sourceResult.RecognizedAt) >= runOptions.StableTextInterval,
+                isStable: observationCount >= runOptions.MinimumStableTextObservations
+                    && CalculateElapsed(state.FirstSeenAt, sourceResult.RecognizedAt) >= runOptions.StableTextInterval,
                 firstObservedAt: state.FirstSeenAt,
-                lastObservedAt: sourceResult.RecognizedAt);
+                lastObservedAt: sourceResult.RecognizedAt,
+                observationCount: observationCount,
+                requiredObservationCount: runOptions.MinimumStableTextObservations);
         }
     }
 
@@ -1072,7 +1102,11 @@ public sealed class TranslationPipelineService
             profile.OcrSettings.Engine,
             profile.OcrSettings.OrientationMode,
             ResolveOcrLayoutMode(zone),
-            zone.ContentLayoutMode);
+            zone.ContentLayoutMode,
+            zone.CandidateGrouping)
+        {
+            DetectorPreset = zone.DetectorPreset,
+        };
 
         return new OcrResult(
             request,
@@ -1103,6 +1137,7 @@ public sealed class TranslationPipelineService
             zone.TextStyle,
             ResolveOcrLanguage(profile, zone),
             zone.ContentLayoutMode,
+            zone.CandidateGrouping ?? OcrCandidateGroupingSettings.Default,
             zone.TranslationGroupingMode,
             zone.TextGrouping ?? OcrZoneTextGroupingSettings.Default,
             profile.TranslatorSettings,
@@ -1263,7 +1298,7 @@ public sealed class TranslationPipelineService
         var reason = string.IsNullOrWhiteSpace(detection.UnavailableReason)
             ? "The candidate-region detector is unavailable."
             : detection.UnavailableReason;
-        var message = $"Candidate-region pipeline is degraded: {reason}";
+        var message = $"Candidate-region detector is unavailable: {reason}";
         return CreateZoneFailure(
             zone,
             new TranslationPipelineException(
@@ -1348,6 +1383,10 @@ public sealed class TranslationPipelineService
         bool Debounced,
         double? FrameDifferenceRatio);
 
+    private readonly record struct CandidateRecognitionContext(
+        TextCandidate Candidate,
+        int SourceZoneHeight);
+
     private sealed record PipelineZoneTask(
         int Index,
         OcrZone Zone,
@@ -1361,6 +1400,7 @@ public sealed class TranslationPipelineService
         OcrZoneTextStyle TextStyle,
         string OcrLanguage,
         ContentLayoutMode ContentLayoutMode,
+        OcrCandidateGroupingSettings CandidateGrouping,
         TranslationGroupingMode TranslationGroupingMode,
         OcrZoneTextGroupingSettings TextGrouping,
         TranslatorSettings TranslatorSettings,
@@ -1376,11 +1416,16 @@ public sealed class TranslationPipelineService
     private sealed record PipelineTextStabilityState(
         string TextSignature,
         DateTimeOffset FirstSeenAt,
-        DateTimeOffset LastSeenAt);
+        DateTimeOffset LastSeenAt,
+        int ObservationCount);
 
     public sealed class LiveTranslationSession : IDisposable
     {
-        private const int MaximumCandidateLifecycleEvents = 2048;
+        // The trace remains in memory only for the duration of a live session. The automatic
+        // report writer independently enforces its 99 MB UTF-8 file limit.
+        private const int MaximumCandidateLifecycleEvents = 131_072;
+        private const int MaximumCandidateGeometryJitterPixels = 4;
+        private const double MinimumCandidateGeometryJitterIntersectionOverUnion = 0.95d;
 
         private readonly TranslationPipelineService service;
         private readonly GameProfile profile;
@@ -1388,14 +1433,16 @@ public sealed class TranslationPipelineService
         private readonly CancellationTokenSource cancellationSource;
         private readonly Dictionary<string, LiveZoneState> zoneStates;
         private readonly SemaphoreSlim? candidateTranslationLimiter;
-        private readonly List<LiveCandidateLifecycleEvent> candidateLifecycleEvents = new();
+        private readonly SemaphoreSlim stateAuthority = new(initialCount: 1, maxCount: 1);
+        private readonly object workCompletionSignalSyncRoot = new();
+        private readonly Queue<LiveCandidateLifecycleEvent> candidateLifecycleEvents = new();
+        private List<LiveCandidateLifecycleEvent> candidateLifecycleEventsSinceLastUpdate = new();
+        private TaskCompletionSource<bool> workCompletionSignal = CreateWorkCompletionSignal();
         private CandidatePipelineReadiness candidateReadiness = CandidatePipelineReadiness.Disabled;
-        private Task<CandidatePrewarmResult>? candidatePrewarmTask;
-        private int candidatePrewarmAttemptCount;
         private int droppedCandidateLifecycleEventCount;
         private long candidateLifecycleEventSequence;
         private long refreshSequence;
-        private DateTimeOffset? nextCandidatePrewarmAt;
+        private bool hasDeferredOverlayPublication;
         private bool disposed;
 
         internal LiveTranslationSession(
@@ -1413,6 +1460,9 @@ public sealed class TranslationPipelineService
                 zone => new LiveZoneState(zone),
                 StringComparer.Ordinal);
             candidateTranslationLimiter = CreateCandidateTranslationLimiter(runOptions);
+            candidateReadiness = runOptions.EnableCandidateDetectorPilot
+                ? CandidatePipelineReadiness.Active
+                : CandidatePipelineReadiness.Disabled;
         }
 
         public async Task<LiveTranslationPipelineUpdate> RefreshAsync()
@@ -1420,9 +1470,70 @@ public sealed class TranslationPipelineService
             ThrowIfDisposed();
             var cancellationToken = cancellationSource.Token;
             cancellationToken.ThrowIfCancellationRequested();
+            await stateAuthority.WaitAsync(cancellationToken);
+            try
+            {
+                ThrowIfDisposed();
+                return await RefreshCoreAsync(cancellationToken);
+            }
+            finally
+            {
+                stateAuthority.Release();
+            }
+        }
+
+        public async Task WaitForWorkCompletionAsync(CancellationToken cancellationToken = default)
+        {
+            ThrowIfDisposed();
+            Task signalTask;
+            lock (workCompletionSignalSyncRoot)
+            {
+                signalTask = workCompletionSignal.Task;
+            }
+
+            if (!cancellationToken.CanBeCanceled)
+            {
+                await signalTask.WaitAsync(cancellationSource.Token);
+                return;
+            }
+
+            using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationSource.Token,
+                cancellationToken);
+            await signalTask.WaitAsync(linkedCancellation.Token);
+        }
+
+        public async Task<LiveTranslationPipelineUpdate> PublishCompletedWorkAsync()
+        {
+            ThrowIfDisposed();
+            var cancellationToken = cancellationSource.Token;
+            cancellationToken.ThrowIfCancellationRequested();
+            await stateAuthority.WaitAsync(cancellationToken);
+            try
+            {
+                ThrowIfDisposed();
+                ResetWorkCompletionSignalForCollection();
+                var overlayChanged = await CollectCompletedWorkAsync();
+                var batchResult = CreateBatchResult();
+                overlayChanged = PublishOverlaySnapshotIfReady(batchResult, overlayChanged);
+
+                return CreateLiveUpdate(
+                    batchResult,
+                    overlayChanged,
+                    Array.Empty<string>());
+            }
+            finally
+            {
+                stateAuthority.Release();
+            }
+        }
+
+        private async Task<LiveTranslationPipelineUpdate> RefreshCoreAsync(CancellationToken cancellationToken)
+        {
             refreshSequence = checked(refreshSequence + 1);
 
             var cancelledZoneIds = new List<string>();
+            ResetWorkCompletionSignalForCollection();
             var overlayChanged = await CollectCompletedWorkAsync();
             IReadOnlyList<LiveCapturedZone> capturedZones;
             try
@@ -1437,11 +1548,7 @@ public sealed class TranslationPipelineService
                     exception.Message,
                     cancelledZoneIds);
                 var captureLossBatchResult = CreateBatchResult();
-                if (overlayChanged)
-                {
-                    service.overlayService.Show(captureLossBatchResult.OverlaySnapshot);
-                    RecordOverlaySnapshotPublished(captureLossBatchResult.OverlaySnapshot);
-                }
+                overlayChanged = PublishOverlaySnapshotIfReady(captureLossBatchResult, overlayChanged);
 
                 return CreateLiveUpdate(
                     captureLossBatchResult,
@@ -1449,35 +1556,19 @@ public sealed class TranslationPipelineService
                     cancelledZoneIds);
             }
 
-            if (RequiresCandidateReadinessBarrier()
-                && !await AdvanceCandidateReadinessAsync(capturedZones, cancelledZoneIds, cancellationToken))
-            {
-                var pendingBatchResult = CreateBatchResult();
-                if (overlayChanged)
-                {
-                    service.overlayService.Show(pendingBatchResult.OverlaySnapshot);
-                    RecordOverlaySnapshotPublished(pendingBatchResult.OverlaySnapshot);
-                }
-
-                return CreateLiveUpdate(
-                    pendingBatchResult,
-                    overlayChanged,
-                    cancelledZoneIds);
-            }
-
             foreach (var capturedZone in capturedZones)
             {
-                overlayChanged |= await ReconcileCapturedZoneAsync(capturedZone, cancelledZoneIds, cancellationToken);
+                overlayChanged |= await ReconcileCapturedZoneAsync(
+                    capturedZone,
+                    cancelledZoneIds,
+                    cancellationToken);
             }
 
             await Task.Yield();
+            ResetWorkCompletionSignalForCollection();
             overlayChanged |= await CollectCompletedWorkAsync();
             var batchResult = CreateBatchResult();
-            if (overlayChanged)
-            {
-                service.overlayService.Show(batchResult.OverlaySnapshot);
-                RecordOverlaySnapshotPublished(batchResult.OverlaySnapshot);
-            }
+            overlayChanged = PublishOverlaySnapshotIfReady(batchResult, overlayChanged);
 
             return CreateLiveUpdate(
                 batchResult,
@@ -1490,13 +1581,74 @@ public sealed class TranslationPipelineService
             bool overlayChanged,
             IEnumerable<string> cancelledZoneIds)
         {
+            var lifecycleEventsSinceLastUpdate = candidateLifecycleEventsSinceLastUpdate;
+            candidateLifecycleEventsSinceLastUpdate = new List<LiveCandidateLifecycleEvent>();
             return new LiveTranslationPipelineUpdate(
                 batchResult,
                 overlayChanged,
                 cancelledZoneIds,
                 candidateReadiness,
-                candidateLifecycleEvents,
+                lifecycleEventsSinceLastUpdate,
                 droppedCandidateLifecycleEventCount);
+        }
+
+        private bool PublishOverlaySnapshotIfReady(
+            TranslationPipelineBatchResult batchResult,
+            bool overlayChanged)
+        {
+            if (!overlayChanged && !hasDeferredOverlayPublication)
+            {
+                return false;
+            }
+
+            if (ShouldDeferTransientEmptyOverlay(batchResult.OverlaySnapshot))
+            {
+                hasDeferredOverlayPublication = true;
+                return false;
+            }
+
+            hasDeferredOverlayPublication = false;
+            service.overlayService.Show(batchResult.OverlaySnapshot);
+            RecordOverlaySnapshotPublished(batchResult.OverlaySnapshot);
+            return true;
+        }
+
+        private bool ShouldDeferTransientEmptyOverlay(OverlaySnapshot snapshot)
+        {
+            if (!runOptions.EnableCandidateDetectorPilot
+                || snapshot.TextItems.Count > 0
+                || service.overlayService.CurrentSnapshot?.TextItems.Count is not > 0)
+            {
+                return false;
+            }
+
+            return zoneStates.Values
+                .SelectMany(state => state.CandidateStates.Values)
+                .Any(candidateState =>
+                    candidateState.Failure is null
+                        ? candidateState.Result is null
+                            || candidateState.Result.Optimization.TranslationSkipped
+                        : IsRetainableBingWebFailure(candidateState.Failure));
+        }
+
+        private static bool IsRetainableBingWebFailure(TranslationPipelineZoneFailure failure)
+        {
+            if (failure.Stage != TranslationPipelineStage.Translation)
+            {
+                return false;
+            }
+
+            for (var exception = failure.Exception; exception is not null; exception = exception.InnerException!)
+            {
+                if (exception is TranslatorProviderException providerException)
+                {
+                    return string.Equals(providerException.ProviderId, "BingWeb", StringComparison.OrdinalIgnoreCase)
+                        && providerException.FailureKind is
+                            TranslatorProviderFailureKind.Timeout or TranslatorProviderFailureKind.Throttled;
+                }
+            }
+
+            return false;
         }
 
         public void Dispose()
@@ -1520,188 +1672,10 @@ public sealed class TranslationPipelineService
             cancellationSource.Dispose();
         }
 
-        private bool RequiresCandidateReadinessBarrier()
-        {
-            return runOptions.EnableCandidateDetectorPilot
-                && runOptions.RequireCandidateReadinessBarrier;
-        }
-
-        private async Task<bool> AdvanceCandidateReadinessAsync(
-            IReadOnlyList<LiveCapturedZone> capturedZones,
-            ICollection<string> cancelledZoneIds,
-            CancellationToken cancellationToken)
-        {
-            if (candidateReadiness.IsReady)
-            {
-                return true;
-            }
-
-            if (candidatePrewarmTask is not null)
-            {
-                if (!candidatePrewarmTask.IsCompleted)
-                {
-                    return false;
-                }
-
-                CandidatePrewarmResult prewarmResult;
-                try
-                {
-                    prewarmResult = await candidatePrewarmTask;
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    throw;
-                }
-                finally
-                {
-                    candidatePrewarmTask = null;
-                }
-
-                if (!prewarmResult.Succeeded)
-                {
-                    MarkCandidateReadinessDegraded(
-                        prewarmResult.UnavailableReason,
-                        cancelledZoneIds);
-                    return false;
-                }
-
-                candidateReadiness = new CandidatePipelineReadiness(
-                    CandidatePipelineReadinessStatus.Ready,
-                    checked(candidateReadiness.Generation + 1),
-                    candidateReadiness.RestartCount,
-                    unavailableReason: null,
-                    nextRetryAt: null);
-                candidatePrewarmAttemptCount = 0;
-                nextCandidatePrewarmAt = null;
-
-                // The frame used for prewarm is discarded. The next refresh starts live candidate work.
-                return false;
-            }
-
-            if (candidatePrewarmAttemptCount >= runOptions.CandidatePrewarmMaximumAttempts)
-            {
-                return false;
-            }
-
-            if (nextCandidatePrewarmAt is { } retryAt && DateTimeOffset.UtcNow < retryAt)
-            {
-                return false;
-            }
-
-            var prewarmZone = capturedZones.FirstOrDefault();
-            if (prewarmZone is null)
-            {
-                MarkCandidateReadinessDegraded(
-                    "Candidate readiness requires a captured OCR zone.",
-                    cancelledZoneIds);
-                return false;
-            }
-
-            candidateReadiness = new CandidatePipelineReadiness(
-                CandidatePipelineReadinessStatus.Prewarming,
-                candidateReadiness.Generation,
-                candidateReadiness.RestartCount,
-                unavailableReason: null,
-                nextRetryAt: null);
-            nextCandidatePrewarmAt = null;
-            candidatePrewarmAttemptCount++;
-            candidatePrewarmTask = PrewarmCandidatePipelineAsync(prewarmZone, cancellationToken);
-            return false;
-        }
-
-        private async Task<CandidatePrewarmResult> PrewarmCandidatePipelineAsync(
-            LiveCapturedZone capturedZone,
-            CancellationToken cancellationToken)
-        {
-            if (!string.Equals(profile.TranslatorSettings.Provider, "GoogleWeb", StringComparison.OrdinalIgnoreCase))
-            {
-                return CandidatePrewarmResult.Unavailable(
-                    "ADR-028 candidate readiness requires the direct GoogleWeb provider.");
-            }
-
-            try
-            {
-                var detection = await service.candidateRegionOcrService.DetectAsync(
-                    CreateOcrRequest(profile, capturedZone.Zone, capturedZone.Frame),
-                    cancellationToken);
-                if (detection.Availability != TextCandidateDetectorAvailability.Available)
-                {
-                    return CandidatePrewarmResult.Unavailable(
-                        detection.UnavailableReason ?? "Candidate detector prewarm was unavailable.");
-                }
-
-                var credentials = await service.credentialService.CreateCredentialsAsync(
-                    profile.TranslatorSettings.Provider,
-                    cancellationToken);
-                var response = await service.translatorManager.TranslateAsync(
-                    profile.TranslatorSettings,
-                    ["テスト"],
-                    credentials,
-                    cancellationToken);
-                return string.Equals(response.ProviderId, "GoogleWeb", StringComparison.Ordinal)
-                    && response.TranslatedTexts.Count == 1
-                    && !string.IsNullOrWhiteSpace(response.TranslatedTexts[0])
-                    ? CandidatePrewarmResult.Success
-                    : CandidatePrewarmResult.Unavailable(
-                        "Direct GoogleWeb provider prewarm did not return one usable translation.");
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (TranslatorProviderException exception)
-            {
-                var status = exception.StatusCode is { } statusCode
-                    ? $"; HTTP {(int)statusCode}"
-                    : string.Empty;
-                return CandidatePrewarmResult.Unavailable(
-                    $"Direct GoogleWeb provider prewarm was unavailable ({exception.ProviderId}; {exception.FailureKind}{status}).");
-            }
-            catch (Exception exception)
-            {
-                return CandidatePrewarmResult.Unavailable(
-                    $"Direct GoogleWeb provider prewarm was unavailable ({exception.GetType().Name}).");
-            }
-        }
-
-        private bool MarkCandidateReadinessDegraded(
-            string? unavailableReason,
-            ICollection<string> cancelledZoneIds)
-        {
-            // A readiness failure invalidates any outstanding prewarm result. It may finish in
-            // the background, but its completion is no longer eligible to transition this session.
-            candidatePrewarmTask = null;
-            var overlayChanged = false;
-            foreach (var state in zoneStates.Values)
-            {
-                foreach (var candidateState in state.CandidateStates.Values.ToArray())
-                {
-                    overlayChanged |= CancelAndRemoveCandidate(
-                        state,
-                        candidateState,
-                        cancelledZoneIds,
-                        LiveCandidateCancellationReason.CandidatePipelineDegraded);
-                }
-            }
-
-            candidateReadiness = new CandidatePipelineReadiness(
-                CandidatePipelineReadinessStatus.Degraded,
-                candidateReadiness.Generation,
-                checked(candidateReadiness.RestartCount + 1),
-                unavailableReason,
-                nextRetryAt: ScheduleNextCandidatePrewarm());
-            return overlayChanged;
-        }
-
         private bool InvalidateCandidatesForCaptureLoss(
             string unavailableReason,
             ICollection<string> cancelledZoneIds)
         {
-            if (RequiresCandidateReadinessBarrier())
-            {
-                return MarkCandidateReadinessDegraded(unavailableReason, cancelledZoneIds);
-            }
-
             var overlayChanged = false;
             foreach (var state in zoneStates.Values)
             {
@@ -1716,24 +1690,6 @@ public sealed class TranslationPipelineService
             }
 
             return overlayChanged;
-        }
-
-        private DateTimeOffset? ScheduleNextCandidatePrewarm()
-        {
-            if (candidatePrewarmAttemptCount >= runOptions.CandidatePrewarmMaximumAttempts)
-            {
-                nextCandidatePrewarmAt = null;
-                return null;
-            }
-
-            var exponent = Math.Max(candidatePrewarmAttemptCount - 1, 0);
-            var delayMilliseconds = runOptions.CandidatePrewarmInitialRetryDelay.TotalMilliseconds
-                * Math.Pow(2d, exponent);
-            var delay = TimeSpan.FromMilliseconds(Math.Min(
-                delayMilliseconds,
-                TimeSpan.FromSeconds(30).TotalMilliseconds));
-            nextCandidatePrewarmAt = DateTimeOffset.UtcNow.Add(delay);
-            return nextCandidatePrewarmAt;
         }
 
         private async Task<IReadOnlyList<LiveCapturedZone>> CaptureZonesAsync(CancellationToken cancellationToken)
@@ -1799,11 +1755,6 @@ public sealed class TranslationPipelineService
 
         private bool IsZoneRefreshDue(LiveZoneState state, DateTimeOffset now)
         {
-            if (RequiresCandidateReadinessBarrier() && !candidateReadiness.IsReady)
-            {
-                return true;
-            }
-
             return ContentLayoutPolicyResolver
                 .Resolve(state.Zone.ContentLayoutMode)
                 .IsLiveRefreshDue(state.LastRefreshAt, now);
@@ -1850,7 +1801,6 @@ public sealed class TranslationPipelineService
             CancellationToken cancellationToken)
         {
             var state = zoneStates[capturedZone.Zone.Id];
-            state.SourceIdentity = FrameFingerprint.FromFrame(capturedZone.Frame);
             RecordLifecycleEvent(
                 LiveCandidateLifecycleEventKind.CandidateDetectionStarted,
                 zoneId: state.Zone.Id,
@@ -1865,18 +1815,20 @@ public sealed class TranslationPipelineService
                 zoneId: state.Zone.Id,
                 frameCapturedAt: capturedZone.Frame.CapturedAt,
                 elapsed: detectionStopwatch.Elapsed,
-                candidateCount: detection.Regions.Count);
+                candidateCount: detection.Regions.Count,
+                requestedDetectorPreset: detection.Diagnostics?.RequestedPreset,
+                effectiveDetectorPreset: detection.Diagnostics?.EffectivePreset,
+                detectorThreshold: detection.Diagnostics?.Threshold,
+                detectorBoxThreshold: detection.Diagnostics?.BoxThreshold,
+                detectorUnclipRatio: detection.Diagnostics?.UnclipRatio,
+                rawDetectorCandidateCount: detection.Diagnostics?.RawCandidateCount,
+                minimumDetectorConfidence: detection.Diagnostics?.MinimumConfidence,
+                maximumDetectorConfidence: detection.Diagnostics?.MaximumConfidence,
+                averageDetectorConfidence: detection.Diagnostics?.AverageConfidence);
             var overlayChanged = false;
 
             if (detection.Availability != TextCandidateDetectorAvailability.Available)
             {
-                if (RequiresCandidateReadinessBarrier())
-                {
-                    return MarkCandidateReadinessDegraded(
-                        detection.UnavailableReason,
-                        cancelledZoneIds);
-                }
-
                 foreach (var candidateState in state.CandidateStates.Values.ToArray())
                 {
                     overlayChanged |= CancelAndRemoveCandidate(
@@ -1889,14 +1841,19 @@ public sealed class TranslationPipelineService
                 return overlayChanged;
             }
 
-            var currentCandidateIds = new HashSet<string>(StringComparer.Ordinal);
+            var matchedCandidateIds = new HashSet<string>(StringComparer.Ordinal);
             var orderedRegions = OrderCandidateRegions(detection.Regions);
             foreach (var region in orderedRegions)
             {
                 var candidateId = CreateCandidateId(state.Zone, region.Candidate.Bounds);
-                currentCandidateIds.Add(candidateId);
+                var candidateState = FindMatchingCandidateState(
+                    state,
+                    region,
+                    candidateId,
+                    matchedCandidateIds,
+                    out var matchedGeometryJitter);
 
-                if (!state.CandidateStates.TryGetValue(candidateId, out var candidateState))
+                if (candidateState is null)
                 {
                     candidateState = new LiveCandidateState(
                         candidateId,
@@ -1904,31 +1861,109 @@ public sealed class TranslationPipelineService
                         CreateCandidateZone(state.Zone, region.Candidate.Bounds),
                         region,
                         FrameFingerprint.FromFrame(region.Frame),
-                        CreateCandidateGeometrySignature(region.Candidate));
+                        CreateCandidateGeometrySignature(region.Candidate),
+                        capturedZone.Frame.CapturedAt);
                     state.CandidateStates.Add(candidateId, candidateState);
+                    matchedCandidateIds.Add(candidateId);
                     RecordCandidateLifecycleEvent(
                         LiveCandidateLifecycleEventKind.CandidateDiscovered,
                         candidateState,
                         frameCapturedAt: capturedZone.Frame.CapturedAt);
-                    StartCandidateWork(
+                    RecordCandidateGroupingAwaitingConfirmationIfNeeded(
                         candidateState,
-                        capturedZone.CaptureElapsed,
-                        CreateCandidateOverlayPlacementConstraints(state.Zone, orderedRegions, region));
+                        capturedZone.Frame.CapturedAt);
+                    if (IsCandidateGroupingConfirmed(candidateState))
+                    {
+                        StartCandidateWork(
+                            candidateState,
+                            capturedZone.CaptureElapsed,
+                            CreateCandidateOverlayPlacementConstraints(state.Zone, orderedRegions, region));
+                    }
+
                     continue;
                 }
 
+                matchedCandidateIds.Add(candidateState.Id);
+
                 var geometrySignature = CreateCandidateGeometrySignature(region.Candidate);
-                if (!string.Equals(candidateState.GeometrySignature, geometrySignature, StringComparison.Ordinal))
+                var geometryChanged = !string.Equals(
+                    candidateState.GeometrySignature,
+                    geometrySignature,
+                    StringComparison.Ordinal);
+                var sourceChanged = !candidateState.SourceIdentity.Matches(region.Frame);
+                if (geometryChanged
+                    && matchedGeometryJitter
+                    && HasBoundedCandidateMemberGeometryJitter(candidateState.Region, region))
                 {
                     candidateState.Region = region;
                     candidateState.GeometrySignature = geometrySignature;
+                    ObserveMatchingCandidateGrouping(
+                        candidateState,
+                        capturedZone.Frame.CapturedAt);
+                    RecordCandidateLifecycleEvent(
+                        LiveCandidateLifecycleEventKind.CandidateGeometryJitterMatched,
+                        candidateState,
+                        frameCapturedAt: capturedZone.Frame.CapturedAt);
+                }
+                else if (geometryChanged)
+                {
+                    var hadPublishedResult = candidateState.Result is not null || candidateState.Failure is not null;
+                    if (candidateState.ActiveWork is not null)
+                    {
+                        cancelledZoneIds.Add(candidateState.Id);
+                        RecordCandidateLifecycleEvent(
+                            LiveCandidateLifecycleEventKind.CandidateWorkCancelled,
+                            candidateState,
+                            frameCapturedAt: capturedZone.Frame.CapturedAt,
+                            cancellationReason: LiveCandidateCancellationReason.CandidateGroupingChanged);
+                        CancelActiveWork(candidateState);
+                    }
+
+                    candidateState.Region = region;
+                    candidateState.GeometrySignature = geometrySignature;
+                    ResetCandidateGroupingObservation(
+                        candidateState,
+                        capturedZone.Frame.CapturedAt);
+                    candidateState.SourceIdentity = FrameFingerprint.FromFrame(region.Frame);
+                    candidateState.Result = null;
+                    candidateState.Failure = null;
+                    candidateState.Revision = checked(candidateState.Revision + 1);
+                    ClearCandidateTextStability(candidateState);
                     RecordCandidateLifecycleEvent(
                         LiveCandidateLifecycleEventKind.CandidateGroupingChanged,
                         candidateState,
                         frameCapturedAt: capturedZone.Frame.CapturedAt);
+
+                    if (sourceChanged)
+                    {
+                        RecordCandidateLifecycleEvent(
+                            LiveCandidateLifecycleEventKind.CandidateSourceChanged,
+                            candidateState,
+                            frameCapturedAt: capturedZone.Frame.CapturedAt);
+                    }
+
+                    RecordCandidateGroupingAwaitingConfirmationIfNeeded(
+                        candidateState,
+                        capturedZone.Frame.CapturedAt);
+                    if (IsCandidateGroupingConfirmed(candidateState))
+                    {
+                        StartCandidateWork(
+                            candidateState,
+                            capturedZone.CaptureElapsed,
+                            CreateCandidateOverlayPlacementConstraints(state.Zone, orderedRegions, region));
+                    }
+
+                    overlayChanged |= hadPublishedResult;
+                    continue;
+                }
+                else
+                {
+                    ObserveMatchingCandidateGrouping(
+                        candidateState,
+                        capturedZone.Frame.CapturedAt);
                 }
 
-                if (!candidateState.SourceIdentity.Matches(region.Frame))
+                if (sourceChanged)
                 {
                     var hadPublishedResult = candidateState.Result is not null || candidateState.Failure is not null;
                     if (candidateState.ActiveWork is not null)
@@ -1947,29 +1982,45 @@ public sealed class TranslationPipelineService
                     candidateState.Result = null;
                     candidateState.Failure = null;
                     candidateState.Revision = checked(candidateState.Revision + 1);
+                    ClearCandidateTextStability(candidateState);
                     RecordCandidateLifecycleEvent(
                         LiveCandidateLifecycleEventKind.CandidateSourceChanged,
                         candidateState,
                         frameCapturedAt: capturedZone.Frame.CapturedAt);
-                    StartCandidateWork(
+                    RecordCandidateGroupingAwaitingConfirmationIfNeeded(
                         candidateState,
-                        capturedZone.CaptureElapsed,
-                        CreateCandidateOverlayPlacementConstraints(state.Zone, orderedRegions, region));
+                        capturedZone.Frame.CapturedAt);
+                    if (IsCandidateGroupingConfirmed(candidateState))
+                    {
+                        StartCandidateWork(
+                            candidateState,
+                            capturedZone.CaptureElapsed,
+                            CreateCandidateOverlayPlacementConstraints(state.Zone, orderedRegions, region));
+                    }
+
                     overlayChanged |= hadPublishedResult;
                     continue;
                 }
 
-                if (candidateState.ActiveWork is null && ShouldProcessStableFrame(candidateState))
+                if (candidateState.ActiveWork is null
+                    && ShouldProcessStableFrame(candidateState)
+                    && IsCandidateGroupingConfirmed(candidateState))
                 {
                     StartCandidateWork(
                         candidateState,
                         capturedZone.CaptureElapsed,
                         CreateCandidateOverlayPlacementConstraints(state.Zone, orderedRegions, region));
                 }
+                else
+                {
+                    RecordCandidateGroupingAwaitingConfirmationIfNeeded(
+                        candidateState,
+                        capturedZone.Frame.CapturedAt);
+                }
             }
 
             foreach (var candidateState in state.CandidateStates.Values
-                         .Where(candidate => !currentCandidateIds.Contains(candidate.Id))
+                         .Where(candidate => !matchedCandidateIds.Contains(candidate.Id))
                          .ToArray())
             {
                 overlayChanged |= CancelAndRemoveCandidate(
@@ -1980,6 +2031,113 @@ public sealed class TranslationPipelineService
             }
 
             return overlayChanged;
+        }
+
+        private static LiveCandidateState? FindMatchingCandidateState(
+            LiveZoneState sourceState,
+            TextCandidateRegion region,
+            string exactCandidateId,
+            ISet<string> matchedCandidateIds,
+            out bool matchedGeometryJitter)
+        {
+            ArgumentNullException.ThrowIfNull(sourceState);
+            ArgumentNullException.ThrowIfNull(region);
+            ArgumentException.ThrowIfNullOrWhiteSpace(exactCandidateId);
+            ArgumentNullException.ThrowIfNull(matchedCandidateIds);
+
+            matchedGeometryJitter = false;
+            if (sourceState.CandidateStates.TryGetValue(exactCandidateId, out var exactCandidate)
+                && !matchedCandidateIds.Contains(exactCandidate.Id))
+            {
+                return exactCandidate;
+            }
+
+            var matchedCandidate = sourceState.CandidateStates.Values
+                .Where(candidate => !matchedCandidateIds.Contains(candidate.Id))
+                .Where(candidate => HasCompatibleCandidateMemberCount(candidate.Region, region))
+                .Select(candidate => new
+                {
+                    Candidate = candidate,
+                    IntersectionOverUnion = CalculateIntersectionOverUnion(
+                        candidate.AnchorBounds,
+                        region.Candidate.Bounds),
+                })
+                .Where(match => match.IntersectionOverUnion >= MinimumCandidateGeometryJitterIntersectionOverUnion)
+                .Where(match => HasBoundedCandidateGeometryJitter(
+                    match.Candidate.AnchorBounds,
+                    region.Candidate.Bounds))
+                .OrderByDescending(match => match.IntersectionOverUnion)
+                .ThenBy(match => match.Candidate.Id, StringComparer.Ordinal)
+                .Select(match => match.Candidate)
+                .FirstOrDefault();
+            if (matchedCandidate is not null)
+            {
+                matchedGeometryJitter = true;
+            }
+
+            return matchedCandidate;
+        }
+
+        private static bool HasCompatibleCandidateMemberCount(
+            TextCandidateRegion existingRegion,
+            TextCandidateRegion currentRegion)
+        {
+            ArgumentNullException.ThrowIfNull(existingRegion);
+            ArgumentNullException.ThrowIfNull(currentRegion);
+
+            return existingRegion.Candidate.SourceCandidateBounds.Count
+                == currentRegion.Candidate.SourceCandidateBounds.Count;
+        }
+
+        private static bool HasBoundedCandidateMemberGeometryJitter(
+            TextCandidateRegion existingRegion,
+            TextCandidateRegion currentRegion)
+        {
+            var existingMembers = OrderCandidateMemberBounds(existingRegion.Candidate.SourceCandidateBounds);
+            var currentMembers = OrderCandidateMemberBounds(currentRegion.Candidate.SourceCandidateBounds);
+            if (existingMembers.Length != currentMembers.Length)
+            {
+                return false;
+            }
+
+            return existingMembers
+                .Zip(currentMembers)
+                .All(pair => HasBoundedCandidateGeometryJitter(pair.First, pair.Second));
+        }
+
+        private static BoundingBox[] OrderCandidateMemberBounds(IEnumerable<BoundingBox> bounds)
+        {
+            return bounds
+                .OrderBy(member => member.Y)
+                .ThenBy(member => member.X)
+                .ThenBy(member => member.Width)
+                .ThenBy(member => member.Height)
+                .ToArray();
+        }
+
+        private static bool HasBoundedCandidateGeometryJitter(BoundingBox anchor, BoundingBox current)
+        {
+            return Math.Abs(anchor.X - current.X) <= MaximumCandidateGeometryJitterPixels
+                && Math.Abs(anchor.Y - current.Y) <= MaximumCandidateGeometryJitterPixels
+                && Math.Abs(anchor.Right - current.Right) <= MaximumCandidateGeometryJitterPixels
+                && Math.Abs(anchor.Bottom - current.Bottom) <= MaximumCandidateGeometryJitterPixels;
+        }
+
+        private static double CalculateIntersectionOverUnion(BoundingBox left, BoundingBox right)
+        {
+            var intersectionWidth = Math.Min(left.Right, right.Right) - Math.Max(left.X, right.X);
+            var intersectionHeight = Math.Min(left.Bottom, right.Bottom) - Math.Max(left.Y, right.Y);
+            if (intersectionWidth <= 0 || intersectionHeight <= 0)
+            {
+                return 0d;
+            }
+
+            var intersectionArea = checked((long)intersectionWidth * intersectionHeight);
+            var unionArea = checked(
+                (long)left.Width * left.Height
+                + (long)right.Width * right.Height
+                - intersectionArea);
+            return unionArea <= 0 ? 0d : intersectionArea / (double)unionArea;
         }
 
         private bool CancelAndRemoveCandidate(
@@ -2003,6 +2161,7 @@ public sealed class TranslationPipelineService
                 LiveCandidateLifecycleEventKind.CandidateRemoved,
                 candidateState,
                 cancellationReason: cancellationReason);
+            ClearCandidateTextStability(candidateState);
             sourceState.CandidateStates.Remove(candidateState.Id);
             return hadPublishedResult;
         }
@@ -2014,7 +2173,11 @@ public sealed class TranslationPipelineService
         {
             var candidateCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationSource.Token);
             candidateState.WorkAttempt = checked(candidateState.WorkAttempt + 1);
-            candidateState.ActiveWork = new LiveZoneWork(
+            RecordCandidateLifecycleEvent(
+                LiveCandidateLifecycleEventKind.CandidateWorkStarted,
+                candidateState,
+                frameCapturedAt: candidateState.Region.Frame.CapturedAt);
+            var candidateWork = new LiveZoneWork(
                 candidateCancellation,
                 service.RunCapturedZoneAsync(
                     CreateCandidateProfile(candidateState.Zone),
@@ -2025,11 +2188,15 @@ public sealed class TranslationPipelineService
                     CreateCandidateRunOptions(),
                     candidateCancellation.Token,
                     overlayPlacementConstraints,
-                    candidateTranslationLimiter));
-            RecordCandidateLifecycleEvent(
-                LiveCandidateLifecycleEventKind.CandidateWorkStarted,
-                candidateState,
-                frameCapturedAt: candidateState.Region.Frame.CapturedAt);
+                    candidateTranslationLimiter,
+                    new CandidateRecognitionContext(
+                        candidateState.Region.Candidate,
+                        zoneStates[candidateState.SourceZoneId].Zone.AbsoluteBounds.Height)),
+                candidateState.Revision,
+                candidateState.GeometrySignature,
+                candidateState.SourceIdentity);
+            candidateState.ActiveWork = candidateWork;
+            SignalWhenWorkCompletes(candidateWork.Task);
         }
 
         private GameProfile CreateCandidateProfile(OcrZone candidateZone)
@@ -2061,7 +2228,7 @@ public sealed class TranslationPipelineService
         private void StartWork(LiveZoneState state, LiveCapturedZone capturedZone)
         {
             var zoneCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationSource.Token);
-            state.ActiveWork = new LiveZoneWork(
+            var zoneWork = new LiveZoneWork(
                 zoneCancellation,
                 service.RunCapturedZoneAsync(
                     profile,
@@ -2071,6 +2238,42 @@ public sealed class TranslationPipelineService
                     state.Result?.OverlaySnapshot,
                     runOptions,
                     zoneCancellation.Token));
+            state.ActiveWork = zoneWork;
+            SignalWhenWorkCompletes(zoneWork.Task);
+        }
+
+        private void SignalWhenWorkCompletes(Task workTask)
+        {
+            _ = workTask.ContinueWith(
+                (_, state) => ((LiveTranslationSession)state!).SignalWorkCompletion(),
+                this,
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
+
+        private void SignalWorkCompletion()
+        {
+            lock (workCompletionSignalSyncRoot)
+            {
+                workCompletionSignal.TrySetResult(true);
+            }
+        }
+
+        private void ResetWorkCompletionSignalForCollection()
+        {
+            lock (workCompletionSignalSyncRoot)
+            {
+                if (workCompletionSignal.Task.IsCompleted)
+                {
+                    workCompletionSignal = CreateWorkCompletionSignal();
+                }
+            }
+        }
+
+        private static TaskCompletionSource<bool> CreateWorkCompletionSignal()
+        {
+            return new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         }
 
         private static bool ShouldProcessStableFrame(LiveZoneState state)
@@ -2083,6 +2286,55 @@ public sealed class TranslationPipelineService
         {
             return state.Failure is null
                 && (state.Result is null || state.Result.Optimization.TranslationSkipped);
+        }
+
+        private bool IsCandidateGroupingConfirmed(LiveCandidateState state)
+        {
+            return !runOptions.RequireStableTextBeforeTranslation
+                || (state.ConsecutiveGroupingObservations >= runOptions.MinimumCandidateGroupingObservations
+                    && state.GroupingObservedDuration >= runOptions.MinimumCandidateGroupingDuration);
+        }
+
+        private static void ObserveMatchingCandidateGrouping(
+            LiveCandidateState state,
+            DateTimeOffset observedAt)
+        {
+            state.ConsecutiveGroupingObservations = checked(
+                state.ConsecutiveGroupingObservations + 1);
+            if (observedAt > state.GroupingLastObservedAt)
+            {
+                state.GroupingLastObservedAt = observedAt;
+            }
+        }
+
+        private static void ResetCandidateGroupingObservation(
+            LiveCandidateState state,
+            DateTimeOffset observedAt)
+        {
+            state.ConsecutiveGroupingObservations = 1;
+            state.GroupingFirstObservedAt = observedAt;
+            state.GroupingLastObservedAt = observedAt;
+        }
+
+        private void ClearCandidateTextStability(LiveCandidateState candidateState)
+        {
+            var candidateProfile = CreateCandidateProfile(candidateState.Zone);
+            service.ClearTextStabilityState(CreateStateKey(candidateProfile, candidateState.Zone));
+        }
+
+        private void RecordCandidateGroupingAwaitingConfirmationIfNeeded(
+            LiveCandidateState candidateState,
+            DateTimeOffset frameCapturedAt)
+        {
+            if (IsCandidateGroupingConfirmed(candidateState))
+            {
+                return;
+            }
+
+            RecordCandidateLifecycleEvent(
+                LiveCandidateLifecycleEventKind.CandidateGroupingAwaitingConfirmation,
+                candidateState,
+                frameCapturedAt: frameCapturedAt);
         }
 
         private async Task<bool> CollectCompletedWorkAsync()
@@ -2127,6 +2379,21 @@ public sealed class TranslationPipelineService
                     try
                     {
                         var completedResult = await candidateWork.Task;
+                        if (candidateWork.CandidateRevision != candidateState.Revision
+                            || !string.Equals(
+                                candidateWork.CandidateGeometrySignature,
+                                candidateState.GeometrySignature,
+                                StringComparison.Ordinal)
+                            || candidateWork.CandidateSourceIdentity is null
+                            || !candidateWork.CandidateSourceIdentity.Matches(candidateState.Region.Frame))
+                        {
+                            RecordCandidateLifecycleEvent(
+                                LiveCandidateLifecycleEventKind.CandidateWorkCancelled,
+                                candidateState,
+                                cancellationReason: LiveCandidateCancellationReason.CandidateSourceChanged);
+                            continue;
+                        }
+
                         candidateState.Result = completedResult;
                         candidateState.Failure = null;
                         RecordCandidateLifecycleEvent(
@@ -2145,10 +2412,15 @@ public sealed class TranslationPipelineService
                     {
                         candidateState.Result = null;
                         candidateState.Failure = CreateZoneFailure(candidateState.Zone, exception);
+                        var failureDiagnostics = CreateOcrFailureDiagnostics(exception);
                         RecordCandidateLifecycleEvent(
                             LiveCandidateLifecycleEventKind.CandidateWorkFailed,
                             candidateState,
-                            failureStage: exception.Stage);
+                            failureStage: exception.Stage,
+                            failureExceptionType: failureDiagnostics.ExceptionType,
+                            failureExceptionMessage: failureDiagnostics.ExceptionMessage,
+                            failureRootCauseType: failureDiagnostics.RootCauseType,
+                            failureRootCauseMessage: failureDiagnostics.RootCauseMessage);
                         overlayChanged = true;
                     }
                     finally
@@ -2261,9 +2533,26 @@ public sealed class TranslationPipelineService
             TranslationPipelineResult? result = null,
             DateTimeOffset? frameCapturedAt = null,
             TranslationPipelineStage? failureStage = null,
+            string? failureExceptionType = null,
+            string? failureExceptionMessage = null,
+            string? failureRootCauseType = null,
+            string? failureRootCauseMessage = null,
             LiveCandidateCancellationReason cancellationReason = LiveCandidateCancellationReason.None)
         {
             ArgumentNullException.ThrowIfNull(candidateState);
+
+            var sourceOcrResult = result?.SourceOcrResult;
+            var translationInputTexts = sourceOcrResult is null
+                ? null
+                : TranslationTextGroupingService
+                    .CreateTranslationSourceResult(sourceOcrResult, candidateState.Zone)
+                    .TextBlocks
+                    .Select(block => block.Text);
+            WritingSystemGroupingProfile? writingSystemGroupingProfile = sourceOcrResult is null
+                ? null
+                : WritingSystemGroupingProfileResolver.Resolve(
+                    sourceOcrResult.Request.Language,
+                    sourceOcrResult.Request.OrientationMode);
 
             RecordLifecycleEvent(
                 kind,
@@ -2279,8 +2568,38 @@ public sealed class TranslationPipelineService
                 translationInputBlockCount: result?.TranslationInputBlockCount,
                 translatedBlockCount: result?.TranslatedBlockCount,
                 textStability: result?.TextStability,
+                groupingObservationCount: candidateState.ConsecutiveGroupingObservations,
+                requiredGroupingObservationCount: runOptions.RequireStableTextBeforeTranslation
+                    ? runOptions.MinimumCandidateGroupingObservations
+                    : 0,
+                groupingFirstObservedAt: candidateState.GroupingFirstObservedAt,
+                groupingLastObservedAt: candidateState.GroupingLastObservedAt,
+                requiredGroupingDuration: runOptions.RequireStableTextBeforeTranslation
+                    ? runOptions.MinimumCandidateGroupingDuration
+                    : TimeSpan.Zero,
+                translationMemoryCacheHitCount: result?.CacheResult?.MemoryHitCount,
+                translationPersistentCacheHitCount: result?.CacheResult?.PersistentHitCount,
+                translationCacheMissCount: result?.CacheResult?.MissCount,
+                translationCacheStoredCount: result?.CacheResult?.StoredCount,
+                translationOutputSanitizedCount: result?.CacheResult?.SanitizedTranslationCount,
+                translationProviderId: result?.CacheResult?.ProviderId,
+                providerRequestStartedAt: result?.CacheResult?.ProviderRequestStartedAt,
+                providerRequestCompletedAt: result?.CacheResult?.ProviderRequestCompletedAt,
                 failureStage: failureStage,
-                cancellationReason: cancellationReason);
+                failureExceptionType: failureExceptionType,
+                failureExceptionMessage: failureExceptionMessage,
+                failureRootCauseType: failureRootCauseType,
+                failureRootCauseMessage: failureRootCauseMessage,
+                cancellationReason: cancellationReason,
+                orderedOcrBlockBounds: sourceOcrResult?.TextBlocks.Select(block => block.Bounds),
+                orderedGroupedMemberBounds: sourceOcrResult is null
+                    ? null
+                    : TranslationTextGroupingService.ResolveOrderedMemberBoundsForDiagnostics(sourceOcrResult),
+                writingSystemGroupingProfile: writingSystemGroupingProfile,
+                ocrOrientationMode: sourceOcrResult?.Request.OrientationMode,
+                ocrTexts: sourceOcrResult?.TextBlocks.Select(block => block.Text),
+                translationInputTexts: translationInputTexts,
+                translatedTexts: result?.TranslateResponse?.TranslatedTexts);
         }
 
         private void RecordLifecycleEvent(
@@ -2298,10 +2617,43 @@ public sealed class TranslationPipelineService
             int? translationInputBlockCount = null,
             int? translatedBlockCount = null,
             TranslationPipelineTextStability? textStability = null,
+            int? groupingObservationCount = null,
+            int? requiredGroupingObservationCount = null,
+            DateTimeOffset? groupingFirstObservedAt = null,
+            DateTimeOffset? groupingLastObservedAt = null,
+            TimeSpan? requiredGroupingDuration = null,
+            int? translationMemoryCacheHitCount = null,
+            int? translationPersistentCacheHitCount = null,
+            int? translationCacheMissCount = null,
+            int? translationCacheStoredCount = null,
+            string? translationProviderId = null,
+            DateTimeOffset? providerRequestStartedAt = null,
+            DateTimeOffset? providerRequestCompletedAt = null,
             int? overlayTextItemCount = null,
             int? overlayMaskItemCount = null,
             TranslationPipelineStage? failureStage = null,
-            LiveCandidateCancellationReason cancellationReason = LiveCandidateCancellationReason.None)
+            string? failureExceptionType = null,
+            string? failureExceptionMessage = null,
+            string? failureRootCauseType = null,
+            string? failureRootCauseMessage = null,
+            LiveCandidateCancellationReason cancellationReason = LiveCandidateCancellationReason.None,
+            int? translationOutputSanitizedCount = null,
+            IEnumerable<BoundingBox>? orderedOcrBlockBounds = null,
+            IEnumerable<BoundingBox>? orderedGroupedMemberBounds = null,
+            WritingSystemGroupingProfile? writingSystemGroupingProfile = null,
+            OcrOrientationMode? ocrOrientationMode = null,
+            TextCandidateDetectorPreset? requestedDetectorPreset = null,
+            TextCandidateDetectorPreset? effectiveDetectorPreset = null,
+            double? detectorThreshold = null,
+            double? detectorBoxThreshold = null,
+            double? detectorUnclipRatio = null,
+            int? rawDetectorCandidateCount = null,
+            double? minimumDetectorConfidence = null,
+            double? maximumDetectorConfidence = null,
+            double? averageDetectorConfidence = null,
+            IEnumerable<string>? ocrTexts = null,
+            IEnumerable<string>? translationInputTexts = null,
+            IEnumerable<string>? translatedTexts = null)
         {
             if (!runOptions.EnableCandidateDetectorPilot)
             {
@@ -2310,11 +2662,11 @@ public sealed class TranslationPipelineService
 
             if (candidateLifecycleEvents.Count == MaximumCandidateLifecycleEvents)
             {
-                candidateLifecycleEvents.RemoveAt(0);
+                candidateLifecycleEvents.Dequeue();
                 droppedCandidateLifecycleEventCount = checked(droppedCandidateLifecycleEventCount + 1);
             }
 
-            candidateLifecycleEvents.Add(new LiveCandidateLifecycleEvent(
+            var lifecycleEvent = new LiveCandidateLifecycleEvent(
                 sequence: checked(candidateLifecycleEventSequence + 1),
                 refreshSequence: refreshSequence,
                 occurredAt: DateTimeOffset.UtcNow,
@@ -2332,11 +2684,64 @@ public sealed class TranslationPipelineService
                 translationInputBlockCount: translationInputBlockCount,
                 translatedBlockCount: translatedBlockCount,
                 textStability: textStability,
+                groupingObservationCount: groupingObservationCount,
+                requiredGroupingObservationCount: requiredGroupingObservationCount,
+                groupingFirstObservedAt: groupingFirstObservedAt,
+                groupingLastObservedAt: groupingLastObservedAt,
+                requiredGroupingDuration: requiredGroupingDuration,
+                translationMemoryCacheHitCount: translationMemoryCacheHitCount,
+                translationPersistentCacheHitCount: translationPersistentCacheHitCount,
+                translationCacheMissCount: translationCacheMissCount,
+                translationCacheStoredCount: translationCacheStoredCount,
+                translationProviderId: translationProviderId,
+                providerRequestStartedAt: providerRequestStartedAt,
+                providerRequestCompletedAt: providerRequestCompletedAt,
                 overlayTextItemCount: overlayTextItemCount,
                 overlayMaskItemCount: overlayMaskItemCount,
                 failureStage: failureStage,
-                cancellationReason: cancellationReason));
+                failureExceptionType: failureExceptionType,
+                failureExceptionMessage: failureExceptionMessage,
+                failureRootCauseType: failureRootCauseType,
+                failureRootCauseMessage: failureRootCauseMessage,
+                cancellationReason: cancellationReason,
+                translationOutputSanitizedCount: translationOutputSanitizedCount,
+                orderedOcrBlockBounds: orderedOcrBlockBounds,
+                orderedGroupedMemberBounds: orderedGroupedMemberBounds,
+                writingSystemGroupingProfile: writingSystemGroupingProfile,
+                ocrOrientationMode: ocrOrientationMode,
+                requestedDetectorPreset: requestedDetectorPreset,
+                effectiveDetectorPreset: effectiveDetectorPreset,
+                detectorThreshold: detectorThreshold,
+                detectorBoxThreshold: detectorBoxThreshold,
+                detectorUnclipRatio: detectorUnclipRatio,
+                rawDetectorCandidateCount: rawDetectorCandidateCount,
+                minimumDetectorConfidence: minimumDetectorConfidence,
+                maximumDetectorConfidence: maximumDetectorConfidence,
+                averageDetectorConfidence: averageDetectorConfidence,
+                ocrTexts: ocrTexts,
+                translationInputTexts: translationInputTexts,
+                translatedTexts: translatedTexts);
+            candidateLifecycleEvents.Enqueue(lifecycleEvent);
+            candidateLifecycleEventsSinceLastUpdate.Add(lifecycleEvent);
             candidateLifecycleEventSequence = checked(candidateLifecycleEventSequence + 1);
+        }
+
+        private static OcrFailureDiagnostics CreateOcrFailureDiagnostics(
+            TranslationPipelineException exception)
+        {
+            ArgumentNullException.ThrowIfNull(exception);
+
+            if (exception.Stage != TranslationPipelineStage.Ocr || exception.InnerException is not { } innerException)
+            {
+                return OcrFailureDiagnostics.Empty;
+            }
+
+            var rootCause = innerException.GetBaseException();
+            return new OcrFailureDiagnostics(
+                innerException.GetType().FullName ?? innerException.GetType().Name,
+                innerException.Message,
+                rootCause.GetType().FullName ?? rootCause.GetType().Name,
+                rootCause.Message);
         }
 
         private static string CreateCandidateGeometrySignature(TextCandidate candidate)
@@ -2351,6 +2756,15 @@ public sealed class TranslationPipelineService
                     .ThenBy(bounds => bounds.Width)
                     .ThenBy(bounds => bounds.Height)
                     .Select(bounds => $"{bounds.X}:{bounds.Y}:{bounds.Width}:{bounds.Height}"));
+        }
+
+        private sealed record OcrFailureDiagnostics(
+            string? ExceptionType,
+            string? ExceptionMessage,
+            string? RootCauseType,
+            string? RootCauseMessage)
+        {
+            public static OcrFailureDiagnostics Empty { get; } = new(null, null, null, null);
         }
 
         private void ThrowIfDisposed()
@@ -2388,7 +2802,8 @@ public sealed class TranslationPipelineService
                 OcrZone zone,
                 TextCandidateRegion region,
                 FrameFingerprint sourceIdentity,
-                string geometrySignature)
+                string geometrySignature,
+                DateTimeOffset groupingObservedAt)
             {
                 Id = id;
                 SourceZoneId = sourceZoneId;
@@ -2396,6 +2811,9 @@ public sealed class TranslationPipelineService
                 Region = region;
                 SourceIdentity = sourceIdentity;
                 GeometrySignature = geometrySignature;
+                AnchorBounds = region.Candidate.Bounds;
+                GroupingFirstObservedAt = groupingObservedAt;
+                GroupingLastObservedAt = groupingObservedAt;
             }
 
             public string Id { get; }
@@ -2406,9 +2824,27 @@ public sealed class TranslationPipelineService
 
             public TextCandidateRegion Region { get; set; }
 
+            /// <summary>
+            /// Fixed geometry at discovery. Matching against this anchor prevents successive
+            /// small detector changes from gradually attaching a candidate to another region.
+            /// </summary>
+            public BoundingBox AnchorBounds { get; }
+
             public FrameFingerprint SourceIdentity { get; set; }
 
             public string GeometrySignature { get; set; }
+
+            /// <summary>
+            /// A live profile that requires stable OCR text must see the same bounded grouping
+            /// on a subsequent detector pass before it starts crop OCR or translation.
+            /// </summary>
+            public int ConsecutiveGroupingObservations { get; set; } = 1;
+
+            public DateTimeOffset GroupingFirstObservedAt { get; set; }
+
+            public DateTimeOffset GroupingLastObservedAt { get; set; }
+
+            public TimeSpan GroupingObservedDuration => GroupingLastObservedAt - GroupingFirstObservedAt;
 
             public int Revision { get; set; } = 1;
 
@@ -2423,21 +2859,15 @@ public sealed class TranslationPipelineService
 
         private sealed record LiveZoneWork(
             CancellationTokenSource Cancellation,
-            Task<TranslationPipelineResult> Task);
+            Task<TranslationPipelineResult> Task,
+            int CandidateRevision = 0,
+            string? CandidateGeometrySignature = null,
+            FrameFingerprint? CandidateSourceIdentity = null);
 
         private sealed record LiveCapturedZone(
             OcrZone Zone,
             CapturedFrame Frame,
             TimeSpan CaptureElapsed);
-
-        private sealed record CandidatePrewarmResult(
-            bool Succeeded,
-            string? UnavailableReason)
-        {
-            public static CandidatePrewarmResult Success { get; } = new(true, null);
-
-            public static CandidatePrewarmResult Unavailable(string reason) => new(false, reason);
-        }
 
         private sealed record LivePublishedState(
             TranslationPipelineResult? Result,

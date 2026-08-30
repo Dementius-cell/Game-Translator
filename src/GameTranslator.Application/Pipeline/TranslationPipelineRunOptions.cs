@@ -2,15 +2,17 @@ namespace GameTranslator.Application.Pipeline;
 
 public sealed class TranslationPipelineRunOptions
 {
+    private TimeSpan minimumCandidateGroupingDuration;
+
     public static TimeSpan DefaultStableTextInterval { get; } = TimeSpan.FromSeconds(1);
 
     public static TimeSpan DefaultMinimumCandidateOverlayVisibleDuration { get; } = TimeSpan.FromSeconds(2);
 
     public const int DefaultCandidateTranslationMaxParallelism = 3;
 
-    public const int DefaultCandidatePrewarmMaximumAttempts = 3;
+    public const int DefaultMinimumCandidateGroupingObservations = 2;
 
-    public static TimeSpan DefaultCandidatePrewarmInitialRetryDelay { get; } = TimeSpan.FromSeconds(1);
+    public const int DefaultMinimumStableTextObservations = 1;
 
     /// <summary>
     /// Default product path: transient GPU-detected regions, bounded grouping and Tesseract crop recognition.
@@ -31,11 +33,10 @@ public sealed class TranslationPipelineRunOptions
         bool preservePreviousOverlayWhileWaitingForStableText = false,
         bool restorePreviousOverlayAfterCapture = false,
         bool enableCandidateDetectorPilot = true,
-        bool requireCandidateReadinessBarrier = false,
         TimeSpan? minimumCandidateOverlayVisibleDuration = null,
         int candidateTranslationMaxParallelism = DefaultCandidateTranslationMaxParallelism,
-        int candidatePrewarmMaximumAttempts = DefaultCandidatePrewarmMaximumAttempts,
-        TimeSpan? candidatePrewarmInitialRetryDelay = null)
+        int minimumCandidateGroupingObservations = DefaultMinimumCandidateGroupingObservations,
+        int minimumStableTextObservations = DefaultMinimumStableTextObservations)
     {
         var effectiveStableTextInterval = stableTextInterval ?? DefaultStableTextInterval;
         if (effectiveStableTextInterval < TimeSpan.Zero)
@@ -61,20 +62,18 @@ public sealed class TranslationPipelineRunOptions
                 $"Candidate translation max parallelism must be 1 through {DefaultCandidateTranslationMaxParallelism}.");
         }
 
-        if (candidatePrewarmMaximumAttempts is < 1 or > DefaultCandidatePrewarmMaximumAttempts)
+        if (minimumCandidateGroupingObservations is < 1 or > 8)
         {
             throw new ArgumentOutOfRangeException(
-                nameof(candidatePrewarmMaximumAttempts),
-                $"Candidate prewarm maximum attempts must be 1 through {DefaultCandidatePrewarmMaximumAttempts}.");
+                nameof(minimumCandidateGroupingObservations),
+                "Minimum candidate grouping observations must be 1 through 8.");
         }
 
-        var effectiveCandidatePrewarmInitialRetryDelay = candidatePrewarmInitialRetryDelay
-            ?? DefaultCandidatePrewarmInitialRetryDelay;
-        if (effectiveCandidatePrewarmInitialRetryDelay < TimeSpan.Zero)
+        if (minimumStableTextObservations is < 1 or > 8)
         {
             throw new ArgumentOutOfRangeException(
-                nameof(candidatePrewarmInitialRetryDelay),
-                "Candidate prewarm initial retry delay must not be negative.");
+                nameof(minimumStableTextObservations),
+                "Minimum stable text observations must be 1 through 8.");
         }
 
         RequireStableTextBeforeTranslation = requireStableTextBeforeTranslation;
@@ -82,11 +81,10 @@ public sealed class TranslationPipelineRunOptions
         PreservePreviousOverlayWhileWaitingForStableText = preservePreviousOverlayWhileWaitingForStableText;
         RestorePreviousOverlayAfterCapture = restorePreviousOverlayAfterCapture;
         EnableCandidateDetectorPilot = enableCandidateDetectorPilot;
-        RequireCandidateReadinessBarrier = requireCandidateReadinessBarrier;
         MinimumCandidateOverlayVisibleDuration = effectiveMinimumCandidateOverlayVisibleDuration;
         CandidateTranslationMaxParallelism = candidateTranslationMaxParallelism;
-        CandidatePrewarmMaximumAttempts = candidatePrewarmMaximumAttempts;
-        CandidatePrewarmInitialRetryDelay = effectiveCandidatePrewarmInitialRetryDelay;
+        MinimumCandidateGroupingObservations = minimumCandidateGroupingObservations;
+        MinimumStableTextObservations = minimumStableTextObservations;
     }
 
     public bool RequireStableTextBeforeTranslation { get; }
@@ -104,12 +102,6 @@ public sealed class TranslationPipelineRunOptions
     public bool EnableCandidateDetectorPilot { get; }
 
     /// <summary>
-    /// ADR-028 policy: live candidate work starts only after an asynchronous
-    /// detector plus direct-provider prewarm has succeeded.
-    /// </summary>
-    public bool RequireCandidateReadinessBarrier { get; }
-
-    /// <summary>
     /// Conditional readability grace after a candidate overlay is published.
     /// Safety invalidation still removes the overlay immediately.
     /// </summary>
@@ -121,12 +113,33 @@ public sealed class TranslationPipelineRunOptions
     public int CandidateTranslationMaxParallelism { get; }
 
     /// <summary>
-    /// Policy-limited number of prewarm attempts before a live session remains degraded.
+    /// Consecutive matching detector-group observations required before crop OCR starts.
     /// </summary>
-    public int CandidatePrewarmMaximumAttempts { get; }
+    public int MinimumCandidateGroupingObservations { get; }
 
     /// <summary>
-    /// Initial delay for the bounded exponential prewarm recovery policy.
+    /// Minimum wall-clock duration covered by matching detector-group observations before crop OCR starts.
+    /// This prevents a faster detector cadence from shortening the effective grouping-stability window.
     /// </summary>
-    public TimeSpan CandidatePrewarmInitialRetryDelay { get; }
+    public TimeSpan MinimumCandidateGroupingDuration
+    {
+        get => minimumCandidateGroupingDuration;
+        init
+        {
+            if (value < TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(MinimumCandidateGroupingDuration),
+                    "Minimum candidate grouping duration must not be negative.");
+            }
+
+            minimumCandidateGroupingDuration = value;
+        }
+    }
+
+    /// <summary>
+    /// Consecutive matching normalized OCR observations required before translation starts.
+    /// </summary>
+    public int MinimumStableTextObservations { get; }
+
 }

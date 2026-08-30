@@ -104,4 +104,19 @@ public sealed class TesseractLanguageCatalogTests
         Assert.True(found);
         Assert.Equal(expectedLanguageTag, actualLanguageTag);
     }
+
+    [Theory]
+    [InlineData("ja", true)]
+    [InlineData("jpn_vert", true)]
+    [InlineData("zh-CN", true)]
+    [InlineData("chi_tra_vert", true)]
+    [InlineData("ko", false)]
+    [InlineData("th", false)]
+    [InlineData("en", false)]
+    public void SupportsVerticalTextLayout_ReturnsOnlyBundledVerticalLanguageLayouts(
+        string language,
+        bool expected)
+    {
+        Assert.Equal(expected, TesseractLanguageCatalog.SupportsVerticalTextLayout(language));
+    }
 }

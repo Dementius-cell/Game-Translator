@@ -1,5 +1,6 @@
 using System.IO;
 using System.Reflection;
+using GameTranslator.Application.Capture;
 using GameTranslator.Application.Ocr;
 using GameTranslator.Domain.Profiles;
 using GameTranslator.Infrastructure.Composition;
@@ -30,6 +31,120 @@ public sealed class TesseractOcrEngineTests
         var engine = new TesseractOcrEngine("tessdata");
 
         Assert.Equal(OcrSettings.TesseractEngineId, engine.EngineId);
+        Assert.Equal(3, TesseractOcrEngine.MaximumRecognitionConcurrency);
+    }
+
+    [Fact]
+    public async Task BoundedNativeOcrExecutor_WhenManyOperationsRun_BoundsConcurrency()
+    {
+        const int maximumConcurrency = 3;
+        var executor = new BoundedNativeOcrExecutor(maximumConcurrency);
+        var releaseOperations = new ManualResetEventSlim(initialState: false);
+        var allSlotsOccupied = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var activeOperations = 0;
+        var maximumObservedConcurrency = 0;
+
+        var operations = Enumerable.Range(0, 9)
+            .Select(_ => executor.ExecuteAsync(
+                cancellationToken =>
+                {
+                    var active = Interlocked.Increment(ref activeOperations);
+                    UpdateMaximum(ref maximumObservedConcurrency, active);
+                    if (active == maximumConcurrency)
+                    {
+                        allSlotsOccupied.TrySetResult(true);
+                    }
+
+                    try
+                    {
+                        releaseOperations.Wait(cancellationToken);
+                        return active;
+                    }
+                    finally
+                    {
+                        Interlocked.Decrement(ref activeOperations);
+                    }
+                }))
+            .ToArray();
+
+        await allSlotsOccupied.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(maximumConcurrency, Volatile.Read(ref activeOperations));
+        Assert.Equal(maximumConcurrency, Volatile.Read(ref maximumObservedConcurrency));
+
+        releaseOperations.Set();
+        await Task.WhenAll(operations).WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(maximumConcurrency, maximumObservedConcurrency);
+        Assert.Equal(maximumConcurrency, executor.MaximumConcurrency);
+    }
+
+    [Fact]
+    public async Task BoundedNativeOcrExecutor_WhenCancelledWhileWaiting_DoesNotStartQueuedOperation()
+    {
+        var executor = new BoundedNativeOcrExecutor(maximumConcurrency: 1);
+        var firstOperationStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstOperation = new ManualResetEventSlim(initialState: false);
+        var firstOperation = executor.ExecuteAsync(
+            cancellationToken =>
+            {
+                firstOperationStarted.TrySetResult(true);
+                releaseFirstOperation.Wait(cancellationToken);
+                return 1;
+            });
+        await firstOperationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        using var cancellationSource = new CancellationTokenSource();
+        var queuedOperationStarted = false;
+        var queuedOperation = executor.ExecuteAsync(
+            _ =>
+            {
+                queuedOperationStarted = true;
+                return 2;
+            },
+            cancellationSource.Token);
+
+        cancellationSource.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => queuedOperation);
+        Assert.False(queuedOperationStarted);
+
+        releaseFirstOperation.Set();
+        Assert.Equal(1, await firstOperation.WaitAsync(TimeSpan.FromSeconds(2)));
+    }
+
+    [Fact]
+    public async Task TesseractOcrEngine_WhenNativeInitializationFails_WrapsTheException()
+    {
+        var missingTessdataPath = Path.Combine(
+            Path.GetTempPath(),
+            $"game-translator-missing-tessdata-{Guid.NewGuid():N}");
+        var engine = new TesseractOcrEngine(missingTessdataPath);
+
+        var exception = await Assert.ThrowsAsync<OcrEngineException>(
+            () => engine.RecognizeAsync(CreateRequest()));
+
+        Assert.Contains("Tesseract OCR failed", exception.Message, StringComparison.Ordinal);
+        Assert.NotNull(exception.InnerException);
+    }
+
+    [Fact]
+    public void PortableReleasePackaging_PreservesNativeArchitectureAndRequiresPackagedOcrSmoke()
+    {
+        var repositoryRoot = RepositoryRoot.Find();
+        var uiProject = File.ReadAllText(
+            Path.Combine(repositoryRoot, "src", "GameTranslator.UI", "GameTranslator.UI.csproj"));
+        var buildScript = File.ReadAllText(
+            Path.Combine(repositoryRoot, "tools", "build-track-d-opt-in-release.ps1"));
+        var finalizeScript = File.ReadAllText(
+            Path.Combine(repositoryRoot, "tools", "finalize-track-d-opt-in-release.ps1"));
+
+        Assert.Contains("InfrastructureCompositionModuleX64Publish", uiProject, StringComparison.Ordinal);
+        Assert.Contains("$(PublishDir)x64\\%(RecursiveDir)", uiProject, StringComparison.Ordinal);
+        Assert.Contains("$(PublishDir)x86\\%(RecursiveDir)", uiProject, StringComparison.Ordinal);
+        Assert.Contains("Assert-PackagedTesseractNativeLayout", buildScript, StringComparison.Ordinal);
+        Assert.Contains("--portable-ocr-smoke", buildScript, StringComparison.Ordinal);
+        Assert.Contains("portable-tesseract-ocr-smoke.json", buildScript, StringComparison.Ordinal);
+        Assert.Contains("portable-tesseract-ocr-smoke.json", finalizeScript, StringComparison.Ordinal);
+        Assert.Contains("portableTesseractOcrSmoke", finalizeScript, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -276,5 +391,38 @@ public sealed class TesseractOcrEngineTests
 
         return (BoundingBox)(method.Invoke(null, new object[] { bounds, originalWidth, originalHeight, scale })
             ?? throw new InvalidOperationException("MapBoundsFromPreprocessedFrame returned null."));
+    }
+
+    private static OcrRequest CreateRequest()
+    {
+        const int width = 2;
+        const int height = 2;
+        const int stride = width * 4;
+        var frame = new CapturedFrame(
+            new CaptureRegion(0, 0, width, height),
+            width,
+            height,
+            stride,
+            "Bgra32",
+            new byte[stride * height],
+            DateTimeOffset.UtcNow);
+        return new OcrRequest(
+            frame,
+            "eng",
+            engineId: OcrSettings.TesseractEngineId,
+            orientationMode: OcrOrientationMode.Horizontal,
+            layoutMode: OcrLayoutMode.Dialog);
+    }
+
+    private static void UpdateMaximum(ref int target, int value)
+    {
+        while (true)
+        {
+            var current = Volatile.Read(ref target);
+            if (value <= current || Interlocked.CompareExchange(ref target, value, current) == current)
+            {
+                return;
+            }
+        }
     }
 }

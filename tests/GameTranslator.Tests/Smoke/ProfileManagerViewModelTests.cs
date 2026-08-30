@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.IO;
+using System.Net;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Text;
@@ -185,6 +186,7 @@ public sealed class ProfileManagerViewModelTests
         SetPropertyValue(selectedZone, "OverlayIsItalic", true);
         SetPropertyValue(selectedZone, "OverlayCanExpandBeyondSource", true);
         SetPropertyValue(selectedZone, "OcrLanguage", "jpn_vert");
+        SetPropertyValue(selectedZone, "DetectorPreset", TextCandidateDetectorPreset.ChineseExperimental);
         SetPropertyValue(selectedZone, "TranslationGroupingMode", TranslationGroupingMode.NearbyBlocks);
         SetPropertyValue(selectedZone, "TextGroupMergeDistancePercent", 6.5d);
 
@@ -206,6 +208,7 @@ public sealed class ProfileManagerViewModelTests
         Assert.Equal(OverlayTextLayoutMode.ExpandFromSourceCenter, persistedZone.TextStyle.LayoutMode);
         Assert.Equal("jpn_vert", persistedZone.OcrLanguage);
         Assert.Equal(ContentLayoutMode.DialogComic, persistedZone.ContentLayoutMode);
+        Assert.Equal(TextCandidateDetectorPreset.ChineseExperimental, persistedZone.DetectorPreset);
         Assert.Equal(TranslationGroupingMode.NearbyBlocks, persistedZone.TranslationGroupingMode);
         Assert.Equal(6.5d, persistedZone.TextGrouping.MergeDistancePercent);
         Assert.Equal(
@@ -250,7 +253,7 @@ public sealed class ProfileManagerViewModelTests
             .Cast<object>()
             .ToArray();
         var aggressivePreset = presets.Single(
-            preset => string.Equals(GetPropertyValue(preset, "DisplayName")?.ToString(), "Aggressive", StringComparison.Ordinal));
+            preset => string.Equals(GetPropertyValue(preset, "DisplayName")?.ToString(), "Strong (2x)", StringComparison.Ordinal));
 
         SetPropertyValue(viewModel, "SelectedOcrPreprocessingPreset", aggressivePreset);
 
@@ -266,7 +269,7 @@ public sealed class ProfileManagerViewModelTests
         Assert.Equal(1.7d, settings.GetValue<double>("shell.draft.ocr.preprocessing.contrast"));
         Assert.Equal(150, settings.GetValue<int>("shell.draft.ocr.preprocessing.threshold"));
         Assert.Equal(
-            "Aggressive",
+            "Strong (2x)",
             GetPropertyValue(GetPropertyValue(viewModel, "SelectedOcrPreprocessingPreset")!, "DisplayName"));
 
         SetPropertyValue(viewModel, "OcrPreprocessingContrast", 1.8d);
@@ -274,6 +277,52 @@ public sealed class ProfileManagerViewModelTests
         Assert.Equal(
             "Custom",
             GetPropertyValue(GetPropertyValue(viewModel, "SelectedOcrPreprocessingPreset")!, "DisplayName"));
+    }
+
+    [Fact]
+    public void OcrPreprocessingPreset_SmallSourceHeavy_IsAnExplicitThreeTimesUpscaleProfile()
+    {
+        var settings = new TestSettingsService();
+        var viewModel = CreateMainViewModel(new InMemoryProfileRepository(), settings);
+        var smallSourcePreset = Assert.IsAssignableFrom<System.Collections.IEnumerable>(
+                GetPropertyValue(viewModel, "OcrPreprocessingPresets"))
+            .Cast<object>()
+            .Single(preset => string.Equals(
+                GetPropertyValue(preset, "DisplayName")?.ToString(),
+                "Tiny source - heavy (3x)",
+                StringComparison.Ordinal));
+
+        SetPropertyValue(viewModel, "SelectedOcrPreprocessingPreset", smallSourcePreset);
+
+        Assert.True(Assert.IsType<bool>(GetPropertyValue(viewModel, "OcrPreprocessingEnabled")));
+        Assert.Equal(3d, Assert.IsType<double>(GetPropertyValue(viewModel, "OcrPreprocessingScale")));
+        Assert.True(Assert.IsType<bool>(GetPropertyValue(viewModel, "OcrPreprocessingThresholdingEnabled")));
+        Assert.True(Assert.IsType<bool>(GetPropertyValue(viewModel, "OcrPreprocessingNoiseReductionEnabled")));
+        Assert.Equal(3d, settings.GetValue<double>("shell.draft.ocr.preprocessing.scale"));
+    }
+
+    [Fact]
+    public void OcrOrientation_WhenConfiguredLanguageHasNoVerticalLayout_DisablesAndNormalizesToHorizontal()
+    {
+        var viewModel = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService());
+
+        InvokeMethod(viewModel, "BeginCreateProfile");
+        SetPropertyValue(viewModel, "SourceLanguage", "th");
+        SetPropertyValue(viewModel, "OcrOrientationMode", OcrOrientationMode.Vertical);
+
+        Assert.False(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsOcrOrientationSelectionEnabled")));
+        Assert.Equal(OcrOrientationMode.Horizontal, GetPropertyValue(viewModel, "OcrOrientationMode"));
+
+        SetPropertyValue(viewModel, "SourceLanguage", "ja");
+        SetPropertyValue(viewModel, "OcrOrientationMode", OcrOrientationMode.Vertical);
+
+        Assert.True(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsOcrOrientationSelectionEnabled")));
+        Assert.Equal(OcrOrientationMode.Vertical, GetPropertyValue(viewModel, "OcrOrientationMode"));
+
+        SetPropertyValue(viewModel, "SourceLanguage", "en");
+
+        Assert.False(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsOcrOrientationSelectionEnabled")));
+        Assert.Equal(OcrOrientationMode.Horizontal, GetPropertyValue(viewModel, "OcrOrientationMode"));
     }
 
     [Fact]
@@ -345,12 +394,41 @@ public sealed class ProfileManagerViewModelTests
     public void TranslatorProvider_ExposesCredentialFieldsOnlyForStoredCredentialProviders()
     {
         var viewModel = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService());
+        var providerOptions = Assert.IsAssignableFrom<IReadOnlyList<string>>(
+            GetPropertyValue(viewModel, "TranslatorProviderOptions"));
+
+        Assert.Contains("GoogleWeb", providerOptions);
+        Assert.Contains("BingWeb", providerOptions);
+        Assert.Contains("YandexWeb", providerOptions);
+        Assert.DoesNotContain("WebAuto", providerOptions);
+        Assert.DoesNotContain("glhf", providerOptions);
 
         SetPropertyValue(viewModel, "TranslatorProvider", "GoogleWeb");
         Assert.False(Assert.IsType<bool>(GetPropertyValue(viewModel, "RequiresStoredTranslatorCredentials")));
 
         SetPropertyValue(viewModel, "TranslatorProvider", "Google");
         Assert.True(Assert.IsType<bool>(GetPropertyValue(viewModel, "RequiresStoredTranslatorCredentials")));
+    }
+
+    [Theory]
+    [InlineData("WebAuto")]
+    [InlineData("glhf")]
+    public void TranslatorProvider_WhenLegacyRemovedValueIsLoaded_RequiresExplicitReplacement(string provider)
+    {
+        var viewModel = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService());
+
+        SetPropertyValue(viewModel, "TranslatorProvider", provider);
+
+        Assert.Equal(provider, GetPropertyValue(viewModel, "TranslatorProvider"));
+        Assert.False(Assert.IsType<bool>(GetPropertyValue(viewModel, "RequiresStoredTranslatorCredentials")));
+        Assert.True(Assert.IsType<bool>(GetPropertyValue(viewModel, "HasValidationErrors")));
+        Assert.Contains(
+            Assert.IsAssignableFrom<IReadOnlyList<string>>(GetPropertyValue(viewModel, "ValidationErrors")),
+            error => error.Contains("no longer supported", StringComparison.Ordinal));
+        Assert.Contains(
+            "no longer supported",
+            GetPropertyValue(viewModel, "TranslatorCredentialStatus")?.ToString() ?? string.Empty,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -670,6 +748,7 @@ public sealed class ProfileManagerViewModelTests
         SetPropertyValue(selectedZone, "RelativeHeight", 0.1);
         SetPropertyValue(selectedZone, "OcrLanguage", "jpn_vert");
         SetPropertyValue(selectedZone, "ContentLayoutMode", ContentLayoutMode.DialogComic);
+        SetPropertyValue(selectedZone, "DetectorPreset", TextCandidateDetectorPreset.ChineseStrictExperimental);
         SetPropertyValue(selectedZone, "TranslationGroupingMode", TranslationGroupingMode.NearbyBlocks);
         SetPropertyValue(selectedZone, "TextGroupMergeDistancePercent", 6.5d);
 
@@ -685,6 +764,7 @@ public sealed class ProfileManagerViewModelTests
         Assert.Equal(new AbsoluteRectangle(10, 20, 300, 80), storedProfile.OcrZones[0].AbsoluteBounds);
         Assert.Equal("jpn_vert", storedProfile.OcrZones[0].OcrLanguage);
         Assert.Equal(ContentLayoutMode.DialogComic, storedProfile.OcrZones[0].ContentLayoutMode);
+        Assert.Equal(TextCandidateDetectorPreset.ChineseStrictExperimental, storedProfile.OcrZones[0].DetectorPreset);
         Assert.Equal(TranslationGroupingMode.NearbyBlocks, storedProfile.OcrZones[0].TranslationGroupingMode);
         Assert.Equal(6.5d, storedProfile.OcrZones[0].TextGrouping.MergeDistancePercent);
     }
@@ -1954,7 +2034,7 @@ public sealed class ProfileManagerViewModelTests
             EngineId = OcrSettings.TesseractEngineId,
             ResultFactory = request => CreateFullAppSmokeOcrResult(request, zones),
         };
-        var translator = new TestTranslatorProvider("WebAuto");
+        var translator = new TestTranslatorProvider("GoogleWeb");
         var overlay = new TestOverlayService();
         var viewModel = CreateMainViewModel(
             new InMemoryProfileRepository(),
@@ -1966,7 +2046,7 @@ public sealed class ProfileManagerViewModelTests
 
         InvokeMethod(viewModel, "BeginCreateProfile");
         SetPropertyValue(viewModel, "ProfileName", "Full app overlay smoke");
-        SetPropertyValue(viewModel, "TranslatorProvider", "WebAuto");
+        SetPropertyValue(viewModel, "TranslatorProvider", "GoogleWeb");
         SetPropertyValue(viewModel, "SourceLanguage", "ja");
         SetPropertyValue(viewModel, "TargetLanguage", "ru");
         SetPropertyValue(viewModel, "OcrEngine", OcrSettings.TesseractEngineId);
@@ -2026,7 +2106,7 @@ public sealed class ProfileManagerViewModelTests
             Assert.Equal("ru", request.TargetLanguage);
         });
         Assert.Equal(new[] { "Press start The old road is blocked ahead" }, translator.Requests[0].Texts);
-        Assert.Equal(new[] { "Save Load Options" }, translator.Requests[1].Texts);
+        Assert.Equal(new[] { "Options Load Save" }, translator.Requests[1].Texts);
         Assert.Equal(new[] { "Quest updated reward ready HP +25" }, translator.Requests[2].Texts);
 
         Assert.True(overlay.IsVisible);
@@ -2044,7 +2124,7 @@ public sealed class ProfileManagerViewModelTests
             Assert.InRange(item.X + item.Width, 1, 1920);
             Assert.InRange(item.Y + item.Height, 1, 1080);
         });
-        Assert.Contains(snapshot.TextItems, item => string.Equals(item.Text, "Translated Save Load Options", StringComparison.Ordinal));
+        Assert.Contains(snapshot.TextItems, item => string.Equals(item.Text, "Translated Options Load Save", StringComparison.Ordinal));
         Assert.Contains(
             "Full pipeline translated 3 text block(s) across 3 OCR zone(s).",
             GetPropertyValue(viewModel, "PipelineStatus")?.ToString(),
@@ -2118,8 +2198,17 @@ public sealed class ProfileManagerViewModelTests
             Assert.Contains("Live candidate pipeline", stoppedReport, StringComparison.Ordinal);
             Assert.Contains("Candidate grouping geometry", stoppedReport, StringComparison.Ordinal);
             Assert.Contains("Live candidate lifecycle", stoppedReport, StringComparison.Ordinal);
-            Assert.Contains("OCR and translated text are not recorded here.", stoppedReport, StringComparison.Ordinal);
+            Assert.Contains("LiveTimingPreset: Balanced", stoppedReport, StringComparison.Ordinal);
+            Assert.Contains("RequiredGroupingObservations: 3", stoppedReport, StringComparison.Ordinal);
+            Assert.Contains("MinimumGroupingDurationMs: 250", stoppedReport, StringComparison.Ordinal);
+            Assert.Contains("RequiredOcrTextObservations: 3", stoppedReport, StringComparison.Ordinal);
+            Assert.Contains("OcrPreprocessingPresetAtLastStart:", stoppedReport, StringComparison.Ordinal);
+            Assert.Contains("TranslatorProviderAtLastStart: Google", stoppedReport, StringComparison.Ordinal);
+            Assert.Contains("Text diagnostics: bounded OCR, translation-input, and translated text are recorded locally", stoppedReport, StringComparison.Ordinal);
+            Assert.Contains("Storage: local files only; no diagnostics upload is performed.", stoppedReport, StringComparison.Ordinal);
             Assert.Contains("Privacy: profile free-text fields and credential values are omitted.", stoppedReport, StringComparison.Ordinal);
+            Assert.Contains("MaximumUtf8Bytes: 99000000", stoppedReport, StringComparison.Ordinal);
+            Assert.True(new FileInfo(stoppedReportPath).Length <= 99_000_000);
         }
         finally
         {
@@ -2128,6 +2217,135 @@ public sealed class ProfileManagerViewModelTests
                 Directory.Delete(diagnosticsDirectory, recursive: true);
             }
         }
+    }
+
+    [Fact]
+    public void LiveDiagnosticsReportLimit_PreservesUtf8AndKeepsTheNewestTail()
+    {
+        var mainViewModelType = LoadUiAssembly().GetType(
+            "GameTranslator.UI.ViewModels.MainViewModel",
+            throwOnError: true)
+            ?? throw new InvalidOperationException("MainViewModel type was not found.");
+        var limitMethod = mainViewModelType.GetMethod(
+            "LimitLiveDiagnosticsReport",
+            BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException("Live diagnostics limit method was not found.");
+        const int maximumUtf8Bytes = 160;
+        var report = string.Concat(
+            "header\r\n",
+            string.Concat(Enumerable.Repeat("日本語😀", 100)),
+            "\r\nlatest lifecycle tail");
+
+        var limitedReport = Assert.IsType<string>(
+            limitMethod.Invoke(null, new object[] { report, maximumUtf8Bytes }));
+
+        Assert.True(Encoding.UTF8.GetByteCount(limitedReport) <= maximumUtf8Bytes);
+        Assert.Contains("[diagnostics truncated:", limitedReport, StringComparison.Ordinal);
+        Assert.StartsWith("header", limitedReport, StringComparison.Ordinal);
+        Assert.EndsWith("latest lifecycle tail", limitedReport, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LiveDiagnosticsFailureMessage_IsQuotedAndEscapedOnOneLifecycleLine()
+    {
+        var mainViewModelType = LoadUiAssembly().GetType(
+            "GameTranslator.UI.ViewModels.MainViewModel",
+            throwOnError: true)
+            ?? throw new InvalidOperationException("MainViewModel type was not found.");
+        var appendMethod = mainViewModelType.GetMethod(
+            "AppendLifecycleQuotedField",
+            BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException("AppendLifecycleQuotedField was not found.");
+        var builder = new StringBuilder();
+
+        appendMethod.Invoke(
+            null,
+            new object[]
+            {
+                builder,
+                "FailureRootCauseMessage",
+                "Could not load \"x64\\tesseract55.dll\".",
+            });
+
+        Assert.Equal(
+            " FailureRootCauseMessage=\"Could not load \\\"x64\\\\tesseract55.dll\\\".\"",
+            builder.ToString());
+    }
+
+    [Fact]
+    public void LiveDiagnosticsLifecycle_IncludesBoundedOrderedGeometryAndLocalTextEvidence()
+    {
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService());
+        var lifecycleEventsField = viewModel.GetType().GetField(
+            "latestCandidateLifecycleEvents",
+            BindingFlags.NonPublic | BindingFlags.Instance)
+            ?? throw new InvalidOperationException("Lifecycle event buffer was not found.");
+        var lifecycleEvents = Assert.IsType<List<LiveCandidateLifecycleEvent>>(
+            lifecycleEventsField.GetValue(viewModel));
+        lifecycleEvents.Add(new LiveCandidateLifecycleEvent(
+            sequence: 1,
+            refreshSequence: 1,
+            occurredAt: DateTimeOffset.UnixEpoch,
+            kind: LiveCandidateLifecycleEventKind.CandidateWorkCompleted,
+            orderedOcrBlockBounds: new[]
+            {
+                new BoundingBox(2, 4, 8, 30),
+                new BoundingBox(26, 4, 8, 30),
+            },
+            orderedGroupedMemberBounds: new[]
+            {
+                new BoundingBox(26, 4, 8, 30),
+                new BoundingBox(2, 4, 8, 30),
+            },
+            ocrTexts: new[] { "First source", "Second\nsource" },
+            translationInputTexts: new[] { "Second source First source" },
+            translatedTexts: new[] { "Translated \"value\"" },
+            writingSystemGroupingProfile: WritingSystemGroupingProfile.CjkVertical,
+            ocrOrientationMode: OcrOrientationMode.Vertical,
+            requestedDetectorPreset: TextCandidateDetectorPreset.ChineseExperimental,
+            effectiveDetectorPreset: TextCandidateDetectorPreset.ChineseExperimental,
+            detectorThreshold: 0.30,
+            detectorBoxThreshold: 0.65,
+            detectorUnclipRatio: 1.20,
+            rawDetectorCandidateCount: 7,
+            minimumDetectorConfidence: 0.66,
+            maximumDetectorConfidence: 0.94,
+            averageDetectorConfidence: 0.81));
+        var appendMethod = viewModel.GetType().GetMethod(
+            "AppendLiveCandidateLifecycleDebugInfo",
+            BindingFlags.NonPublic | BindingFlags.Instance)
+            ?? throw new InvalidOperationException("Lifecycle report formatter was not found.");
+        var builder = new StringBuilder();
+
+        appendMethod.Invoke(viewModel, new object[] { builder });
+
+        var report = builder.ToString();
+        Assert.Contains("WritingSystemProfile=CjkVertical", report, StringComparison.Ordinal);
+        Assert.Contains("OcrOrientation=Vertical", report, StringComparison.Ordinal);
+        Assert.Contains("DetectorPresetRequested=ChineseExperimental", report, StringComparison.Ordinal);
+        Assert.Contains("DetectorPresetEffective=ChineseExperimental", report, StringComparison.Ordinal);
+        Assert.Contains("DetectorThreshold=0.3", report, StringComparison.Ordinal);
+        Assert.Contains("DetectorBoxThreshold=0.65", report, StringComparison.Ordinal);
+        Assert.Contains("DetectorUnclipRatio=1.2", report, StringComparison.Ordinal);
+        Assert.Contains("RawDetectorCandidates=7", report, StringComparison.Ordinal);
+        Assert.Contains("DetectorConfidenceMin=0.66", report, StringComparison.Ordinal);
+        Assert.Contains("DetectorConfidenceMax=0.94", report, StringComparison.Ordinal);
+        Assert.Contains("DetectorConfidenceAverage=0.81", report, StringComparison.Ordinal);
+        Assert.Contains("OrderedOcrBlocks=2", report, StringComparison.Ordinal);
+        Assert.Contains("OrderedOcrBounds=X2,Y4,W8,H30;X26,Y4,W8,H30", report, StringComparison.Ordinal);
+        Assert.Contains("OrderedGroupedMembers=2", report, StringComparison.Ordinal);
+        Assert.Contains("OrderedGroupedMemberBounds=X26,Y4,W8,H30;X2,Y4,W8,H30", report, StringComparison.Ordinal);
+        Assert.Contains("OrderedOcrBoundsFingerprint=", report, StringComparison.Ordinal);
+        Assert.Contains("OrderedGroupedMemberBoundsFingerprint=", report, StringComparison.Ordinal);
+        Assert.Contains("OcrTextEntries=2", report, StringComparison.Ordinal);
+        Assert.Contains("OcrText=\"First source || Second source\"", report, StringComparison.Ordinal);
+        Assert.Contains("TranslationInputEntries=1", report, StringComparison.Ordinal);
+        Assert.Contains("TranslationInputText=\"Second source First source\"", report, StringComparison.Ordinal);
+        Assert.Contains("TranslatedTextEntries=1", report, StringComparison.Ordinal);
+        Assert.Contains("TranslatedText=\"Translated \\\"value\\\"\"", report, StringComparison.Ordinal);
+        Assert.Contains("Storage: local files only; no diagnostics upload is performed.", report, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -2372,6 +2590,55 @@ public sealed class ProfileManagerViewModelTests
         Assert.Contains("Provider GoogleWeb parse failure", pipelineStatus, StringComparison.Ordinal);
         Assert.Contains("could not be parsed", pipelineStatus, StringComparison.Ordinal);
         Assert.DoesNotContain("Original subtitle", pipelineStatus, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(TranslatorProviderFailureKind.Timeout, 1, false, "Warning")]
+    [InlineData(TranslatorProviderFailureKind.Timeout, 2, true, "Error")]
+    [InlineData(TranslatorProviderFailureKind.Throttled, 1, true, "Error")]
+    public async Task RunTranslationPipelineAsync_WhenBingWebIsUnhealthy_SetsVisibleStatusSeverity(
+        TranslatorProviderFailureKind failureKind,
+        int consecutiveFailureCount,
+        bool hasRetryAfter,
+        string expectedSeverity)
+    {
+        TimeSpan? retryAfter = hasRetryAfter ? TimeSpan.FromSeconds(60) : null;
+        var providerFailure = failureKind == TranslatorProviderFailureKind.Throttled
+            ? new TranslatorProviderException(
+                "BingWeb",
+                HttpStatusCode.TooManyRequests,
+                failureKind,
+                "BingWeb returned HTTP 429 and has been paused.",
+                retryAfter: retryAfter,
+                consecutiveFailureCount: consecutiveFailureCount)
+            : new TranslatorProviderException(
+                "BingWeb",
+                failureKind,
+                "BingWeb did not respond within 15 seconds.",
+                retryAfter: retryAfter,
+                consecutiveFailureCount: consecutiveFailureCount);
+        var translator = new TestTranslatorProvider("BingWeb", failure: providerFailure);
+        var viewModel = CreateMainViewModel(
+            new InMemoryProfileRepository(),
+            new TestSettingsService(),
+            ocrEngine: new TestOcrEngine
+            {
+                BlocksFactory = _ => new[]
+                {
+                    new OcrTextBlock("Original subtitle", new BoundingBox(0, 0, 40, 12)),
+                },
+            },
+            translatorProvider: translator);
+
+        ConfigureValidDraftProfile(viewModel, "BingWeb provider health");
+        SetPropertyValue(viewModel, "TranslatorProvider", "BingWeb");
+        InvokeMethodWithArguments(viewModel, "StartZoneSelection", 10d, 20d);
+        InvokeMethodWithArguments(viewModel, "CompleteZoneSelection", 110d, 70d);
+
+        await InvokeTaskMethodAsync(viewModel, "RunTranslationPipelineAsync");
+
+        Assert.Equal(expectedSeverity, GetPropertyValue(viewModel, "PipelineStatusSeverity")?.ToString());
+        Assert.Contains("BingWeb", GetPropertyValue(viewModel, "PipelineStatus")?.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]

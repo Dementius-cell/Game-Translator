@@ -225,12 +225,21 @@ public sealed class OcrServiceTests
                 IsEnabled = true,
                 Scale = 2,
             },
-            contentLayoutMode: ContentLayoutMode.DialogComic);
+            contentLayoutMode: ContentLayoutMode.DialogComic,
+            candidateGroupingSettings: new OcrCandidateGroupingSettings
+            {
+                MaximumHorizontalLines = 9,
+            })
+        {
+            DetectorPreset = TextCandidateDetectorPreset.ChineseExperimental,
+        };
 
         await service.RecognizeAsync(request);
 
         var engineRequest = Assert.Single(engine.Requests);
         Assert.Equal(ContentLayoutMode.DialogComic, engineRequest.ContentLayoutMode);
+        Assert.Equal(9, engineRequest.CandidateGroupingSettings.MaximumHorizontalLines);
+        Assert.Equal(TextCandidateDetectorPreset.ChineseExperimental, engineRequest.DetectorPreset);
     }
 
     [Fact]

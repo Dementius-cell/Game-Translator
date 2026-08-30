@@ -6,6 +6,7 @@ namespace GameTranslator.Tests.Smoke;
 public sealed class ShellWorkspaceTabsSourceTests
 {
     private static readonly XNamespace Wpf = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+    private static readonly XNamespace Xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
 
     [Fact]
     public void ShellView_DefinesSixWorkspaceTabsWithoutDuplicatingProfileNavigation()
@@ -132,7 +133,7 @@ public sealed class ShellWorkspaceTabsSourceTests
         Assert.Contains(
             document.Descendants(Wpf + "TextBlock"),
             element => (string?)element.Attribute("Text") == "{Binding ApplicationName}"
-                && (string?)element.Attribute("FontSize") == "30");
+                && (string?)element.Attribute("FontSize") == "22");
         Assert.Contains(
             document.Descendants(Wpf + "Run"),
             element => (string?)element.Attribute("Text") == "{Binding ActiveProfileName, Mode=OneWay}");
@@ -141,6 +142,87 @@ public sealed class ShellWorkspaceTabsSourceTests
             .Descendants(Wpf + "Expander")
             .Single(element => (string?)element.Attribute("Header") == "Edit profile details");
         Assert.Equal("False", (string?)profileDetails.Attribute("IsExpanded"));
+    }
+
+    [Fact]
+    public void ShellView_UsesDenseReadableSpacingScaleAcrossSharedChrome()
+    {
+        var document = LoadShellView();
+        var resources = document.Root!.Element(Wpf + "UserControl.Resources")!;
+
+        AssertStyleSetter(resources, "ModernButtonStyle", "MinHeight", "30");
+        AssertStyleSetter(resources, "ModernButtonStyle", "Padding", "10,4");
+        AssertStyleSetter(resources, "PrimaryButtonStyle", "MinHeight", "32");
+        AssertStyleSetter(resources, "CompactButtonStyle", "MinHeight", "26");
+        AssertStyleSetter(resources, "CardBorderStyle", "Padding", "10");
+        AssertStyleSetter(resources, "SubtleCardBorderStyle", "Padding", "8");
+        AssertStyleSetter(resources, "WorkspaceTabItemStyle", "Padding", "10,7");
+
+        var textBoxStyle = resources
+            .Elements(Wpf + "Style")
+            .Single(style => style.Attribute(Xaml + "Key") is null
+                && (string?)style.Attribute("TargetType") == "TextBox");
+        Assert.Equal(
+            "30",
+            (string?)textBoxStyle.Elements(Wpf + "Setter")
+                .Single(setter => (string?)setter.Attribute("Property") == "MinHeight")
+                .Attribute("Value"));
+
+        var workspaceTemplate = resources.Elements(Wpf + "DataTemplate").Single();
+        var workspaceGrid = workspaceTemplate.Element(Wpf + "Grid")!;
+        var workspaceColumns = workspaceGrid
+            .Element(Wpf + "Grid.ColumnDefinitions")!
+            .Elements(Wpf + "ColumnDefinition")
+            .Select(column => (string?)column.Attribute("Width"))
+            .ToArray();
+        Assert.Equal(new[] { "280", "1", "*" }, workspaceColumns);
+
+        var sidebar = workspaceGrid
+            .Elements(Wpf + "Border")
+            .Single(border => (string?)border.Attribute("Grid.Column") == "0");
+        Assert.Equal("14,10,14,10", (string?)sidebar.Attribute("Padding"));
+
+        var workspaceScrollViewer = document
+            .Descendants(Wpf + "ScrollViewer")
+            .Single(element => (string?)element.Attribute(Xaml + "Name") == "WorkspaceScrollViewer");
+        Assert.Equal("18,12,18,16", (string?)workspaceScrollViewer.Element(Wpf + "Border")!.Attribute("Padding"));
+
+        var rootGrid = document.Root!.Elements(Wpf + "Grid").Single();
+        var rootRows = rootGrid
+            .Element(Wpf + "Grid.RowDefinitions")!
+            .Elements(Wpf + "RowDefinition")
+            .Select(row => (string?)row.Attribute("Height"))
+            .ToArray();
+        Assert.Equal(new[] { "40", "*", "24" }, rootRows);
+    }
+
+    [Fact]
+    public void ShellView_ShowsPipelineWarningsAndErrorsWithDistinctStatusColors()
+    {
+        var document = LoadShellView();
+        var resources = document.Root!.Element(Wpf + "UserControl.Resources")!;
+        var statusStyle = resources
+            .Elements(Wpf + "Style")
+            .Single(style => (string?)style.Attribute(Xaml + "Key") == "PipelineStatusTextStyle");
+        var triggers = statusStyle
+            .Element(Wpf + "Style.Triggers")!
+            .Elements(Wpf + "DataTrigger")
+            .ToDictionary(
+                trigger => (string)trigger.Attribute("Value")!,
+                trigger => (string)trigger.Element(Wpf + "Setter")!.Attribute("Value")!);
+
+        Assert.Equal("#B45309", triggers["Warning"]);
+        Assert.Equal("#B91C1C", triggers["Error"]);
+        Assert.All(
+            statusStyle.Element(Wpf + "Style.Triggers")!.Elements(Wpf + "DataTrigger"),
+            trigger => Assert.Equal(
+                "{Binding PipelineStatusSeverity}",
+                (string?)trigger.Attribute("Binding")));
+
+        var pipelineStatus = document
+            .Descendants(Wpf + "TextBlock")
+            .Single(element => (string?)element.Attribute("Text") == "{Binding PipelineStatus}");
+        Assert.Equal("{StaticResource PipelineStatusTextStyle}", (string?)pipelineStatus.Attribute("Style"));
     }
 
     [Fact]
@@ -178,7 +260,7 @@ public sealed class ShellWorkspaceTabsSourceTests
             .Ancestors(Wpf + "Border")
             .First(element => element.Attribute("Visibility") is not null);
 
-        Assert.Equal("760", (string?)translationCard.Attribute("MaxWidth"));
+        Assert.Equal("700", (string?)translationCard.Attribute("MaxWidth"));
         Assert.Equal("Left", (string?)translationCard.Attribute("HorizontalAlignment"));
 
         var credentialVisibility = "{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}";
@@ -244,5 +326,20 @@ public sealed class ShellWorkspaceTabsSourceTests
                 "GameTranslator.UI",
                 "Views",
                 "ShellView.xaml"));
+    }
+
+    private static void AssertStyleSetter(
+        XElement resources,
+        string styleKey,
+        string property,
+        string expectedValue)
+    {
+        var style = resources
+            .Elements(Wpf + "Style")
+            .Single(element => (string?)element.Attribute(Xaml + "Key") == styleKey);
+        var setter = style
+            .Elements(Wpf + "Setter")
+            .Single(element => (string?)element.Attribute("Property") == property);
+        Assert.Equal(expectedValue, (string?)setter.Attribute("Value"));
     }
 }

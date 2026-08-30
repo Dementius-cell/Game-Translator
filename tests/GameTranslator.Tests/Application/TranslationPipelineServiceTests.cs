@@ -1,3 +1,4 @@
+using System.IO;
 using GameTranslator.Application.Cache;
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Credentials;
@@ -14,6 +15,18 @@ public sealed class TranslationPipelineServiceTests
     private static readonly DateTimeOffset FrameTime = new(2026, 6, 19, 12, 0, 1, TimeSpan.Zero);
     private static readonly DateTimeOffset OcrTime = new(2026, 6, 19, 12, 0, 2, TimeSpan.Zero);
     private static readonly DateTimeOffset TranslatedAt = DateTimeOffset.UtcNow.AddMinutes(1);
+
+    [Fact]
+    public void RunOptions_WhenMinimumCandidateGroupingDurationIsNegative_RejectsIt()
+    {
+        var exception = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new TranslationPipelineRunOptions
+            {
+                MinimumCandidateGroupingDuration = TimeSpan.FromMilliseconds(-1),
+            });
+
+        Assert.Equal("MinimumCandidateGroupingDuration", exception.ParamName);
+    }
 
     [Fact]
     public async Task RunAsync_WhenTextIsRecognized_TranslatesAndShowsOverlay()
@@ -559,6 +572,8 @@ public sealed class TranslationPipelineServiceTests
         Assert.Equal(1, first.TranslationInputBlockCount);
         Assert.True(first.TextStability.IsRequired);
         Assert.False(first.TextStability.IsStable);
+        Assert.Equal(1, first.TextStability.ObservationCount);
+        Assert.Equal(1, first.TextStability.RequiredObservationCount);
         Assert.Equal(OcrTime, first.TextStability.FirstObservedAt);
         Assert.Equal(OcrTime.AddMilliseconds(500), second.TextStability.LastObservedAt);
         Assert.Equal(TimeSpan.FromMilliseconds(500), second.TextStability.ObservedDuration);
@@ -567,6 +582,7 @@ public sealed class TranslationPipelineServiceTests
         Assert.Equal(1, translator.CallCount);
         Assert.Equal(1, third.TranslationInputBlockCount);
         Assert.True(third.TextStability.IsStable);
+        Assert.Equal(3, third.TextStability.ObservationCount);
         Assert.Equal(TimeSpan.FromMilliseconds(1100), third.TextStability.ObservedDuration);
         Assert.Equal(new[] { "Translated Hello" }, third.TranslateResponse?.TranslatedTexts);
         Assert.Equal("Translated Hello", Assert.Single(third.OverlaySnapshot.TextItems).Text);
@@ -1017,19 +1033,22 @@ public sealed class TranslationPipelineServiceTests
         var failure = Assert.Single(result.ZoneFailures);
         Assert.Equal(zone.Id, failure.ZoneId);
         Assert.Equal(TranslationPipelineStage.Ocr, failure.Stage);
-        Assert.Contains("Candidate-region pipeline is degraded", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("Candidate-region detector is unavailable", failure.Message, StringComparison.Ordinal);
         Assert.Empty(result.OverlaySnapshot.TextItems);
     }
 
-    [Fact]
-    public async Task LiveSession_WhenAdr028ReadinessIsRequired_DiscardsPrewarmFrameThenPublishesCandidateAfterReady()
+    [Theory]
+    [InlineData("YandexWeb")]
+    [InlineData("BingWeb")]
+    public async Task LiveSession_WhenExplicitWebProviderIsConfigured_UsesItForRealCandidateWorkWithoutPrewarm(
+        string providerId)
     {
         var zone = CreateZone("zone-dialog", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
         var profile = CreateProfile(zone) with
         {
             TranslatorSettings = new TranslatorSettings
             {
-                Provider = "GoogleWeb",
+                Provider = providerId,
                 SourceLanguage = "ja",
                 TargetLanguage = "ru",
             },
@@ -1057,145 +1076,87 @@ public sealed class TranslationPipelineServiceTests
                 "test-detector",
                 new[] { new TextCandidate(candidateBounds, 0.95) });
         });
-        var translator = new FakeTranslatorProvider("GoogleWeb");
+        var translator = new FakeTranslatorProvider(providerId);
         var overlay = new FakeOverlayService();
         var service = CreateService(frameSource, ocrEngine, translator, overlay, candidateDetector: detector);
 
         using var session = service.CreateLiveSession(
             profile,
             new TranslationPipelineRunOptions(
-                enableCandidateDetectorPilot: true,
-                requireCandidateReadinessBarrier: true));
-
-        var prewarming = await session.RefreshAsync();
-        Assert.Equal(CandidatePipelineReadinessStatus.Prewarming, prewarming.CandidateReadiness.Status);
-        Assert.Empty(prewarming.BatchResult.ZoneResults);
-        Assert.Equal(1, detectorCallCount);
-        Assert.Equal(1, translator.CallCount);
-
-        var readyAfterDiscardingPrewarmFrame = await session.RefreshAsync();
-        Assert.True(
-            readyAfterDiscardingPrewarmFrame.CandidateReadiness.Status == CandidatePipelineReadinessStatus.Ready,
-            readyAfterDiscardingPrewarmFrame.CandidateReadiness.UnavailableReason);
-        Assert.Equal(1, readyAfterDiscardingPrewarmFrame.CandidateReadiness.Generation);
-        Assert.Empty(readyAfterDiscardingPrewarmFrame.BatchResult.ZoneResults);
-        Assert.Equal(1, detectorCallCount);
-        Assert.Equal(1, translator.CallCount);
+                enableCandidateDetectorPilot: true));
 
         var live = await session.RefreshAsync();
+        await WaitForConditionAsync(
+            () => overlay.CurrentSnapshot?.TextItems.SingleOrDefault()?.Text == "Translated Candidate");
+
         Assert.Equal(CandidatePipelineReadinessStatus.Ready, live.CandidateReadiness.Status);
-        Assert.Equal(2, detectorCallCount);
-        Assert.Equal(2, translator.CallCount);
-        Assert.Equal("Translated Candidate", Assert.Single(live.BatchResult.OverlaySnapshot.TextItems).Text);
+        Assert.Equal(1, detectorCallCount);
+        Assert.Equal(1, translator.CallCount);
         Assert.Equal(new[] { "Show:1" }, overlay.Events);
     }
 
     [Fact]
-    public async Task LiveSession_WhenAdr028PrewarmFails_UsesBoundedRecoveryWithoutStartingCandidateWork()
+    public async Task LiveSession_WhenCandidateOcrFails_RecordsImmediateAndRootCauseDiagnostics()
     {
         var zone = CreateZone("zone-dialog", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
-        var profile = CreateProfile(zone) with
+        var profile = CreateProfile(zone);
+        var candidateBounds = new BoundingBox(8, 8, 30, 12);
+        var frameSource = new FakeCaptureFrameSource
         {
-            TranslatorSettings = new TranslatorSettings
-            {
-                Provider = "GoogleWeb",
-                SourceLanguage = "ja",
-                TargetLanguage = "ru",
-            },
+            PixelFrames = Enumerable.Range(1, 8)
+                .Select(frameMarker => CreateCandidatePilotPixels(
+                    zone,
+                    (byte)frameMarker,
+                    (candidateBounds, (byte)10)))
+                .ToArray(),
         };
-        var frameSource = new FakeCaptureFrameSource();
-        var ocrEngine = new FakeOcrEngine { EngineId = OcrSettings.TesseractEngineId };
-        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available(
-            "test-detector",
-            new[] { new TextCandidate(new BoundingBox(8, 8, 30, 12), 0.95) }));
-        var translator = new FakeTranslatorProvider(
-            "GoogleWeb",
-            translateAsync: (request, _) => Task.FromResult(new TranslateResponse(
-                request.Texts.Select(text => $"Translated {text}"),
-                TranslatedAt,
-                providerId: "UnexpectedProvider")));
-        var service = CreateService(frameSource, ocrEngine, translator, new FakeOverlayService(), candidateDetector: detector);
-
-        using var session = service.CreateLiveSession(
-            profile,
-            new TranslationPipelineRunOptions(
-                enableCandidateDetectorPilot: true,
-                requireCandidateReadinessBarrier: true,
-                candidatePrewarmMaximumAttempts: 2,
-                candidatePrewarmInitialRetryDelay: TimeSpan.Zero));
-
-        var firstPrewarm = await session.RefreshAsync();
-        Assert.Equal(CandidatePipelineReadinessStatus.Prewarming, firstPrewarm.CandidateReadiness.Status);
-        Assert.Equal(1, translator.CallCount);
-
-        var firstFailure = await session.RefreshAsync();
-        Assert.Equal(CandidatePipelineReadinessStatus.Degraded, firstFailure.CandidateReadiness.Status);
-        Assert.Equal(1, firstFailure.CandidateReadiness.RestartCount);
-        Assert.NotNull(firstFailure.CandidateReadiness.NextRetryAt);
-
-        var secondPrewarm = await session.RefreshAsync();
-        Assert.Equal(CandidatePipelineReadinessStatus.Prewarming, secondPrewarm.CandidateReadiness.Status);
-        Assert.Equal(2, translator.CallCount);
-
-        var exhausted = await session.RefreshAsync();
-        Assert.Equal(CandidatePipelineReadinessStatus.Degraded, exhausted.CandidateReadiness.Status);
-        Assert.Equal(2, exhausted.CandidateReadiness.RestartCount);
-        Assert.Null(exhausted.CandidateReadiness.NextRetryAt);
-
-        var remainsDegraded = await session.RefreshAsync();
-        Assert.Equal(CandidatePipelineReadinessStatus.Degraded, remainsDegraded.CandidateReadiness.Status);
-        Assert.Equal(2, translator.CallCount);
-        Assert.Empty(remainsDegraded.BatchResult.ZoneResults);
-    }
-
-    [Fact]
-    public async Task LiveSession_WhenDirectGoogleWebPrewarmHasProviderFailure_ReportsSafeProviderDetail()
-    {
-        var zone = CreateZone("zone-dialog", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
-        var profile = CreateProfile(zone) with
+        var rootCause = new DllNotFoundException("x64 native\tload failed");
+        var ocrFailure = new OcrEngineException("Tesseract failed\nfor the candidate crop", rootCause);
+        var ocrEngine = new FakeOcrEngine
         {
-            TranslatorSettings = new TranslatorSettings
-            {
-                Provider = "GoogleWeb",
-                SourceLanguage = "ja",
-                TargetLanguage = "ru",
-            },
+            EngineId = OcrSettings.TesseractEngineId,
+            FailureFactory = _ => ocrFailure,
         };
         var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available(
             "test-detector",
-            new[] { new TextCandidate(new BoundingBox(8, 8, 30, 12), 0.95) }));
-        var translator = new FakeTranslatorProvider(
-            "GoogleWeb",
-            translateAsync: (_, _) => Task.FromException<TranslateResponse>(
-                new TranslatorProviderException(
-                    "GoogleWeb",
-                    System.Net.HttpStatusCode.TooManyRequests,
-                    "provider response is intentionally not included in readiness diagnostics")));
+            new[] { new TextCandidate(candidateBounds, 0.95) }));
+        var translator = new FakeTranslatorProvider("Google");
         var service = CreateService(
-            new FakeCaptureFrameSource(),
-            new FakeOcrEngine { EngineId = OcrSettings.TesseractEngineId },
+            frameSource,
+            ocrEngine,
             translator,
             new FakeOverlayService(),
             candidateDetector: detector);
 
         using var session = service.CreateLiveSession(
             profile,
-            new TranslationPipelineRunOptions(
-                enableCandidateDetectorPilot: true,
-                requireCandidateReadinessBarrier: true,
-                candidatePrewarmMaximumAttempts: 1));
+            new TranslationPipelineRunOptions(enableCandidateDetectorPilot: true));
+        var lifecycleEvents = new List<LiveCandidateLifecycleEvent>();
+        for (var attempt = 0; attempt < 8; attempt++)
+        {
+            var update = await session.RefreshAsync();
+            lifecycleEvents.AddRange(update.CandidateLifecycleEvents);
+            if (lifecycleEvents.Any(entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateWorkFailed))
+            {
+                break;
+            }
 
-        await session.RefreshAsync();
-        var degraded = await session.RefreshAsync();
+            await Task.Yield();
+        }
 
-        Assert.Equal(CandidatePipelineReadinessStatus.Degraded, degraded.CandidateReadiness.Status);
-        Assert.Equal(
-            "Direct GoogleWeb provider prewarm was unavailable (GoogleWeb; Throttled; HTTP 429).",
-            degraded.CandidateReadiness.UnavailableReason);
+        var failure = Assert.Single(
+            lifecycleEvents,
+            entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateWorkFailed);
+        Assert.Equal(TranslationPipelineStage.Ocr, failure.FailureStage);
+        Assert.Equal(typeof(OcrEngineException).FullName, failure.FailureExceptionType);
+        Assert.Equal("Tesseract failed for the candidate crop", failure.FailureExceptionMessage);
+        Assert.Equal(typeof(DllNotFoundException).FullName, failure.FailureRootCauseType);
+        Assert.Equal("x64 native load failed", failure.FailureRootCauseMessage);
+        Assert.Equal(0, translator.CallCount);
     }
 
     [Fact]
-    public async Task LiveSession_WhenCandidateCaptureIsLost_RemovesPublishedOverlayAndInvalidatesReadiness()
+    public async Task LiveSession_WhenCandidateCaptureIsLost_RemovesPublishedOverlayWithoutBlockingFutureRefreshes()
     {
         var zone = CreateZone("zone-dialog", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
         var profile = CreateProfile(zone) with
@@ -1239,8 +1200,7 @@ public sealed class TranslationPipelineServiceTests
         using var session = service.CreateLiveSession(
             profile,
             new TranslationPipelineRunOptions(
-                enableCandidateDetectorPilot: true,
-                requireCandidateReadinessBarrier: true));
+                enableCandidateDetectorPilot: true));
 
         await session.RefreshAsync();
         await session.RefreshAsync();
@@ -1250,7 +1210,7 @@ public sealed class TranslationPipelineServiceTests
 
         var afterCaptureLoss = await session.RefreshAsync();
 
-        Assert.Equal(CandidatePipelineReadinessStatus.Degraded, afterCaptureLoss.CandidateReadiness.Status);
+        Assert.Equal(CandidatePipelineReadinessStatus.Ready, afterCaptureLoss.CandidateReadiness.Status);
         Assert.Empty(afterCaptureLoss.BatchResult.OverlaySnapshot.TextItems);
         Assert.Equal(new[] { "Show:1", "Show:0" }, overlay.Events);
     }
@@ -1313,27 +1273,27 @@ public sealed class TranslationPipelineServiceTests
         using var session = service.CreateLiveSession(
             profile,
             new TranslationPipelineRunOptions(
-                enableCandidateDetectorPilot: true,
-                requireCandidateReadinessBarrier: true,
-                candidatePrewarmInitialRetryDelay: TimeSpan.Zero));
+                enableCandidateDetectorPilot: true));
 
         await session.RefreshAsync();
         await session.RefreshAsync();
-        await session.RefreshAsync();
+        var detectorUnavailable = await session.RefreshAsync();
         await oldCandidateTranslationStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
-        var degraded = await session.RefreshAsync();
-        Assert.Equal(CandidatePipelineReadinessStatus.Degraded, degraded.CandidateReadiness.Status);
-        Assert.Contains(degraded.CancelledZoneIds, id => id.Contains(":candidate:", StringComparison.Ordinal));
+        Assert.Equal(CandidatePipelineReadinessStatus.Ready, detectorUnavailable.CandidateReadiness.Status);
+        Assert.Contains(detectorUnavailable.CancelledZoneIds, id => id.Contains(":candidate:", StringComparison.Ordinal));
+        Assert.Empty(detectorUnavailable.BatchResult.OverlaySnapshot.TextItems);
 
         releaseOldCandidateTranslation.TrySetResult(true);
-        var rewarming = await session.RefreshAsync();
-        Assert.Equal(CandidatePipelineReadinessStatus.Prewarming, rewarming.CandidateReadiness.Status);
-
         var recovered = await session.RefreshAsync();
         Assert.Equal(CandidatePipelineReadinessStatus.Ready, recovered.CandidateReadiness.Status);
-        Assert.Empty(recovered.BatchResult.OverlaySnapshot.TextItems);
-        Assert.DoesNotContain(overlay.Events, eventName => eventName == "Show:1");
+        for (var attempt = 0; attempt < 20 && overlay.CurrentSnapshot?.TextItems.Count != 1; attempt++)
+        {
+            await Task.Delay(10);
+            await session.RefreshAsync();
+        }
+
+        Assert.Single(overlay.CurrentSnapshot!.TextItems);
     }
 
     [Fact]
@@ -1431,7 +1391,7 @@ public sealed class TranslationPipelineServiceTests
     }
 
     [Fact]
-    public async Task RunAllZonesAsync_WhenAdr028ReadinessIsRequired_RequiresPersistentLiveSession()
+    public async Task RunAllZonesAsync_CandidatePipelineDoesNotRequireLivePreflight()
     {
         var zone = CreateZone("zone-dialog", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
         var service = CreateService(
@@ -1440,13 +1400,1046 @@ public sealed class TranslationPipelineServiceTests
             new FakeTranslatorProvider("GoogleWeb"),
             new FakeOverlayService());
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.RunAllZonesAsync(
+        var result = await service.RunAllZonesAsync(
             CreateProfile(zone),
             runOptions: new TranslationPipelineRunOptions(
-                enableCandidateDetectorPilot: true,
-                requireCandidateReadinessBarrier: true)));
+                enableCandidateDetectorPilot: true));
 
-        Assert.Contains("LiveTranslationSession", exception.Message, StringComparison.Ordinal);
+        var failure = Assert.Single(result.ZoneFailures);
+        Assert.Equal(TranslationPipelineStage.Ocr, failure.Stage);
+    }
+
+    [Fact]
+    public async Task RunAllZonesAsync_VerticalJapaneseCandidatePipeline_RejectsWideRepeatedOcrResult()
+    {
+        var zone = CreateZone("zone-dialog", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
+        var profile = CreateProfile(zone) with
+        {
+            TranslatorSettings = new TranslatorSettings
+            {
+                Provider = "Google",
+                SourceLanguage = "ja",
+                TargetLanguage = "ru",
+            },
+        };
+        var candidateBounds = new BoundingBox(8, 8, 80, 10);
+        var frameSource = new FakeCaptureFrameSource
+        {
+            PixelFrames = new[]
+            {
+                CreateCandidatePilotPixels(zone, frameMarker: 1, (candidateBounds, (byte)10)),
+            },
+        };
+        var repeatedBlocks = Enumerable.Range(0, 10)
+            .Select(index => new OcrTextBlock("字幕", new BoundingBox(index * 2, 0, 2, 8)))
+            .ToArray();
+        var ocrEngine = new FakeOcrEngine
+        {
+            EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = _ => repeatedBlocks,
+        };
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available(
+            "test-detector",
+            new[] { new TextCandidate(candidateBounds, 0.95) }));
+        var translator = new FakeTranslatorProvider("Google");
+        var service = CreateService(
+            frameSource,
+            ocrEngine,
+            translator,
+            new FakeOverlayService(),
+            candidateDetector: detector,
+            candidateRegionOcrOptions: new TextCandidateRegionOcrOptions
+            {
+                EnableCjkTargetPostFilter = true,
+            });
+
+        var result = await service.RunAllZonesAsync(
+            profile,
+            runOptions: new TranslationPipelineRunOptions(enableCandidateDetectorPilot: true));
+
+        Assert.Single(ocrEngine.Requests);
+        Assert.Equal(OcrOrientationMode.Vertical, ocrEngine.Requests[0].OrientationMode);
+        Assert.Equal(0, translator.CallCount);
+        Assert.Equal(0, result.RecognizedBlockCount);
+        Assert.Equal(0, result.TranslatedBlockCount);
+        Assert.Empty(result.OverlaySnapshot.TextItems);
+        Assert.Empty(result.ZoneFailures);
+    }
+
+    [Fact]
+    public async Task LiveSession_VerticalJapaneseCandidatePipeline_RejectsWideRepeatedOcrResult()
+    {
+        var zone = CreateZone("zone-dialog", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
+        var profile = CreateProfile(zone) with
+        {
+            TranslatorSettings = new TranslatorSettings
+            {
+                Provider = "Google",
+                SourceLanguage = "ja",
+                TargetLanguage = "ru",
+            },
+        };
+        var candidateBounds = new BoundingBox(8, 8, 80, 10);
+        var frameSource = new FakeCaptureFrameSource
+        {
+            PixelFrames = new[]
+            {
+                CreateCandidatePilotPixels(zone, frameMarker: 1, (candidateBounds, (byte)10)),
+            },
+        };
+        var repeatedBlocks = Enumerable.Range(0, 10)
+            .Select(index => new OcrTextBlock("字幕", new BoundingBox(index * 2, 0, 2, 8)))
+            .ToArray();
+        var ocrEngine = new FakeOcrEngine
+        {
+            EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = _ => repeatedBlocks,
+        };
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available(
+            "test-detector",
+            new[] { new TextCandidate(candidateBounds, 0.95) }));
+        var translator = new FakeTranslatorProvider("Google");
+        var service = CreateService(
+            frameSource,
+            ocrEngine,
+            translator,
+            new FakeOverlayService(),
+            candidateDetector: detector,
+            candidateRegionOcrOptions: new TextCandidateRegionOcrOptions
+            {
+                EnableCjkTargetPostFilter = true,
+            });
+
+        using var session = service.CreateLiveSession(
+            profile,
+            new TranslationPipelineRunOptions(enableCandidateDetectorPilot: true));
+        var update = await session.RefreshAsync();
+        if (!update.CandidateLifecycleEvents.Any(
+                entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateWorkCompleted))
+        {
+            await session.WaitForWorkCompletionAsync().WaitAsync(TimeSpan.FromSeconds(1));
+            update = await session.PublishCompletedWorkAsync();
+        }
+
+        Assert.Single(ocrEngine.Requests);
+        Assert.Equal(0, translator.CallCount);
+        Assert.Empty(update.BatchResult.OverlaySnapshot.TextItems);
+        Assert.Contains(
+            update.CandidateLifecycleEvents,
+            entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateWorkCompleted
+                && entry.RecognizedBlockCount == 0
+                && entry.TranslationInputBlockCount == 0
+                && entry.TranslatedBlockCount == 0);
+    }
+
+    [Fact]
+    public async Task LiveSession_VerticalJapaneseCandidate_WhenYandexRepeatsTranslation_PublishesCollapsedText()
+    {
+        const string sourceText = "\u3053\u306e\u30b2\u30fc\u30e0\u304c\u5927\u597d\u304d";
+        const string repeatedTranslation = "I love this game. I love this game. I love this game. I love this game. I love this game.";
+        var zone = CreateZone("zone-dialog", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
+        var profile = CreateProfile(zone) with
+        {
+            TranslatorSettings = new TranslatorSettings
+            {
+                Provider = "YandexWeb",
+                SourceLanguage = "ja",
+                TargetLanguage = "ru",
+            },
+        };
+        var candidateBounds = new BoundingBox(8, 5, 12, 30);
+        var frameSource = new FakeCaptureFrameSource
+        {
+            PixelFrames = new[]
+            {
+                CreateCandidatePilotPixels(zone, frameMarker: 1, (candidateBounds, (byte)10)),
+            },
+        };
+        var ocrEngine = new FakeOcrEngine
+        {
+            EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = _ => new[]
+            {
+                new OcrTextBlock(sourceText, new BoundingBox(0, 0, 12, 30)),
+            },
+        };
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available(
+            "test-detector",
+            new[] { new TextCandidate(candidateBounds, 0.95) }));
+        var translator = new FakeTranslatorProvider(
+            "YandexWeb",
+            translatedTexts: new[] { repeatedTranslation });
+        var overlay = new FakeOverlayService();
+        var service = CreateService(
+            frameSource,
+            ocrEngine,
+            translator,
+            overlay,
+            candidateDetector: detector,
+            candidateRegionOcrOptions: new TextCandidateRegionOcrOptions
+            {
+                EnableCjkTargetPostFilter = true,
+            });
+
+        using var session = service.CreateLiveSession(
+            profile,
+            new TranslationPipelineRunOptions(enableCandidateDetectorPilot: true));
+        var update = await session.RefreshAsync();
+        if (!update.CandidateLifecycleEvents.Any(
+                entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateWorkCompleted))
+        {
+            await session.WaitForWorkCompletionAsync().WaitAsync(TimeSpan.FromSeconds(1));
+            update = await session.PublishCompletedWorkAsync();
+        }
+
+        Assert.Equal(1, translator.CallCount);
+        Assert.Equal(
+            new[] { "I love this game." },
+            update.BatchResult.OverlaySnapshot.TextItems.Select(item => item.Text));
+        Assert.Contains(
+            update.CandidateLifecycleEvents,
+            entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateWorkCompleted
+                && entry.TranslationOutputSanitizedCount == 1);
+    }
+
+    [Fact]
+    public async Task LiveSession_VerticalJapaneseCandidate_OrdersOcrColumnsRightToLeftBeforeTranslation()
+    {
+        const string expectedSourceText = "\u3053\u306e\u30b2\u30fc\u30e0\u304c\u5927\u597d\u304d";
+        var zone = CreateZone("zone-dialog", "Dialog", new AbsoluteRectangle(10, 20, 100, 80));
+        var profile = CreateProfile(zone) with
+        {
+            TranslatorSettings = new TranslatorSettings
+            {
+                Provider = "Google",
+                SourceLanguage = "ja",
+                TargetLanguage = "ru",
+            },
+        };
+        var candidateBounds = new BoundingBox(8, 5, 36, 60);
+        var frameSource = new FakeCaptureFrameSource
+        {
+            PixelFrames = new[]
+            {
+                CreateCandidatePilotPixels(zone, frameMarker: 1, (candidateBounds, (byte)10)),
+            },
+        };
+        var ocrEngine = new FakeOcrEngine
+        {
+            EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = _ => new[]
+            {
+                new OcrTextBlock("\u5927\u597d\u304d", new BoundingBox(2, 4, 8, 30)),
+                new OcrTextBlock("\u3053\u306e", new BoundingBox(26, 4, 8, 30)),
+                new OcrTextBlock("\u30b2\u30fc\u30e0\u304c", new BoundingBox(14, 4, 8, 30)),
+            },
+        };
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available(
+            "test-detector",
+            new[] { new TextCandidate(candidateBounds, 0.95) },
+            new TextCandidateDetectionDiagnostics(
+                TextCandidateDetectorPreset.Standard,
+                TextCandidateDetectorPreset.Standard,
+                0.30,
+                0.60,
+                1.20,
+                1,
+                0.95,
+                0.95,
+                0.95)));
+        var translator = new FakeTranslatorProvider("Google");
+        var service = CreateService(
+            frameSource,
+            ocrEngine,
+            translator,
+            new FakeOverlayService(),
+            candidateDetector: detector,
+            candidateRegionOcrOptions: new TextCandidateRegionOcrOptions
+            {
+                EnableCjkTargetPostFilter = true,
+            });
+
+        using var session = service.CreateLiveSession(
+            profile,
+            new TranslationPipelineRunOptions(enableCandidateDetectorPilot: true));
+        var update = await session.RefreshAsync();
+        if (!update.CandidateLifecycleEvents.Any(
+                entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateWorkCompleted))
+        {
+            await session.WaitForWorkCompletionAsync().WaitAsync(TimeSpan.FromSeconds(1));
+            update = await session.PublishCompletedWorkAsync();
+        }
+
+        Assert.NotNull(translator.Request);
+        Assert.Equal(new[] { expectedSourceText }, translator.Request.Texts);
+        Assert.Equal(
+            new[] { $"Translated {expectedSourceText}" },
+            update.BatchResult.OverlaySnapshot.TextItems.Select(item => item.Text));
+        var completed = Assert.Single(
+            update.CandidateLifecycleEvents,
+            entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateWorkCompleted);
+        Assert.Equal(3, completed.RecognizedBlockCount);
+        Assert.Equal(1, completed.TranslationInputBlockCount);
+        Assert.Equal(1, completed.TranslatedBlockCount);
+        Assert.Equal(WritingSystemGroupingProfile.CjkVertical, completed.WritingSystemGroupingProfile);
+        Assert.Equal(OcrOrientationMode.Vertical, completed.OcrOrientationMode);
+        var detectionCompleted = Assert.Single(
+            update.CandidateLifecycleEvents,
+            entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateDetectionCompleted);
+        Assert.Equal(TextCandidateDetectorPreset.Standard, detectionCompleted.RequestedDetectorPreset);
+        Assert.Equal(TextCandidateDetectorPreset.Standard, detectionCompleted.EffectiveDetectorPreset);
+        Assert.Equal(0.60, detectionCompleted.DetectorBoxThreshold);
+        Assert.Equal(1, detectionCompleted.RawDetectorCandidateCount);
+        Assert.Equal(0.95, detectionCompleted.AverageDetectorConfidence);
+        Assert.Equal(
+            new[]
+            {
+                new BoundingBox(2, 4, 8, 30),
+                new BoundingBox(26, 4, 8, 30),
+                new BoundingBox(14, 4, 8, 30),
+            },
+            completed.OrderedOcrBlockBounds);
+        Assert.Equal(
+            new[]
+            {
+                new BoundingBox(26, 4, 8, 30),
+                new BoundingBox(14, 4, 8, 30),
+                new BoundingBox(2, 4, 8, 30),
+            },
+            completed.OrderedGroupedMemberBounds);
+        Assert.Equal(3, completed.OrderedOcrBlockBoundsCount);
+        Assert.Equal(3, completed.OrderedGroupedMemberBoundsCount);
+        Assert.NotNull(completed.OrderedOcrBlockBoundsFingerprint);
+        Assert.NotNull(completed.OrderedGroupedMemberBoundsFingerprint);
+        Assert.NotEqual(
+            completed.OrderedOcrBlockBoundsFingerprint,
+            completed.OrderedGroupedMemberBoundsFingerprint);
+    }
+
+    [Fact]
+    public void LiveCandidateLifecycleEvent_OrderedGeometryDiagnosticsAreBoundedAndFingerprintTheFullSequence()
+    {
+        var bounds = Enumerable.Range(0, 130)
+            .Select(index => new BoundingBox(index, index + 1, 8, 30))
+            .ToArray();
+
+        var lifecycleEvent = new LiveCandidateLifecycleEvent(
+            sequence: 1,
+            refreshSequence: 1,
+            occurredAt: DateTimeOffset.UnixEpoch,
+            kind: LiveCandidateLifecycleEventKind.CandidateWorkCompleted,
+            orderedOcrBlockBounds: bounds,
+            orderedGroupedMemberBounds: bounds.Reverse(),
+            writingSystemGroupingProfile: WritingSystemGroupingProfile.CjkVertical,
+            ocrOrientationMode: OcrOrientationMode.Vertical);
+
+        Assert.Equal(130, lifecycleEvent.OrderedOcrBlockBoundsCount);
+        Assert.Equal(128, lifecycleEvent.OrderedOcrBlockBounds.Count);
+        Assert.Equal(130, lifecycleEvent.OrderedGroupedMemberBoundsCount);
+        Assert.Equal(128, lifecycleEvent.OrderedGroupedMemberBounds.Count);
+        Assert.NotEqual(
+            lifecycleEvent.OrderedOcrBlockBoundsFingerprint,
+            lifecycleEvent.OrderedGroupedMemberBoundsFingerprint);
+    }
+
+    [Fact]
+    public void LiveCandidateLifecycleEvent_LocalTextDiagnosticsAreBoundedAndSingleLine()
+    {
+        var texts = Enumerable.Range(0, 18)
+            .Select(index => $"Entry {index}\r\n{new string('x', 600)}")
+            .ToArray();
+        texts[0] = $"{new string('x', 511)}\U0001F600tail";
+
+        var lifecycleEvent = new LiveCandidateLifecycleEvent(
+            sequence: 1,
+            refreshSequence: 1,
+            occurredAt: DateTimeOffset.UnixEpoch,
+            kind: LiveCandidateLifecycleEventKind.CandidateWorkCompleted,
+            ocrTexts: texts,
+            translationInputTexts: texts,
+            translatedTexts: texts);
+
+        Assert.Equal(18, lifecycleEvent.OcrTextCount);
+        Assert.Equal(16, lifecycleEvent.OcrTexts.Count);
+        Assert.Equal(18, lifecycleEvent.TranslationInputTextCount);
+        Assert.Equal(16, lifecycleEvent.TranslationInputTexts.Count);
+        Assert.Equal(18, lifecycleEvent.TranslatedTextCount);
+        Assert.Equal(16, lifecycleEvent.TranslatedTexts.Count);
+        Assert.All(
+            lifecycleEvent.OcrTexts
+                .Concat(lifecycleEvent.TranslationInputTexts)
+                .Concat(lifecycleEvent.TranslatedTexts),
+            text =>
+            {
+                Assert.DoesNotContain('\r', text);
+                Assert.DoesNotContain('\n', text);
+                Assert.True(text.Length <= 512);
+                Assert.False(char.IsHighSurrogate(text[^1]));
+            });
+    }
+
+    [Fact]
+    public async Task LiveSession_CandidateWorkStarted_IsRecordedBeforeOcrBegins()
+    {
+        var zone = CreateZone("zone-dialog", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
+        var candidateBounds = new BoundingBox(8, 8, 30, 12);
+        DateTimeOffset? ocrStartedAt = null;
+        var frameSource = new FakeCaptureFrameSource
+        {
+            PixelFrames = new[]
+            {
+                CreateCandidatePilotPixels(zone, frameMarker: 1, (candidateBounds, (byte)10)),
+            },
+        };
+        var ocrEngine = new FakeOcrEngine
+        {
+            EngineId = OcrSettings.TesseractEngineId,
+            OnRecognize = () => ocrStartedAt = DateTimeOffset.UtcNow,
+            BlocksFactory = _ => new[]
+            {
+                new OcrTextBlock("Candidate", new BoundingBox(0, 0, 20, 10)),
+            },
+        };
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available(
+            "test-detector",
+            new[] { new TextCandidate(candidateBounds, 0.95) }));
+        var service = CreateService(
+            frameSource,
+            ocrEngine,
+            new FakeTranslatorProvider("Google"),
+            new FakeOverlayService(),
+            candidateDetector: detector);
+
+        using var session = service.CreateLiveSession(
+            CreateProfile(zone),
+            new TranslationPipelineRunOptions(enableCandidateDetectorPilot: true));
+
+        var update = await session.RefreshAsync();
+
+        var startedEvent = Assert.Single(
+            update.CandidateLifecycleEvents,
+            entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateWorkStarted);
+        Assert.NotNull(ocrStartedAt);
+        Assert.True(startedEvent.OccurredAt <= ocrStartedAt.Value);
+    }
+
+    [Fact]
+    public async Task LiveSession_WhenCandidateCompletesBetweenDetectorPolls_PublishesFromCompletionSignal()
+    {
+        var zone = CreateZone("zone-dialog", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
+        var candidateBounds = new BoundingBox(8, 8, 30, 12);
+        var translationStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseTranslation = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var translator = new FakeTranslatorProvider(
+            "Google",
+            translateAsync: async (request, cancellationToken) =>
+            {
+                translationStarted.TrySetResult(true);
+                await releaseTranslation.Task.WaitAsync(cancellationToken);
+                return new TranslateResponse(new[] { $"Translated {Assert.Single(request.Texts)}" }, TranslatedAt);
+            });
+        var overlay = new FakeOverlayService();
+        var service = CreateCandidateLiveService(zone, candidateBounds, translator, overlay);
+
+        using var session = service.CreateLiveSession(
+            CreateProfile(zone),
+            new TranslationPipelineRunOptions(enableCandidateDetectorPilot: true));
+        var refreshUpdate = await session.RefreshAsync();
+        await translationStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        Assert.False(refreshUpdate.OverlayChanged);
+
+        releaseTranslation.TrySetResult(true);
+        await session.WaitForWorkCompletionAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        var completionUpdate = await session.PublishCompletedWorkAsync();
+
+        Assert.True(completionUpdate.OverlayChanged);
+        Assert.Equal(
+            new[] { "Translated Candidate" },
+            completionUpdate.BatchResult.OverlaySnapshot.TextItems.Select(item => item.Text));
+        var completedEvent = Assert.Single(
+            completionUpdate.CandidateLifecycleEvents,
+            entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateWorkCompleted);
+        Assert.Equal(new[] { "Candidate" }, completedEvent.OcrTexts);
+        Assert.Equal(new[] { "Candidate" }, completedEvent.TranslationInputTexts);
+        Assert.Equal(new[] { "Translated Candidate" }, completedEvent.TranslatedTexts);
+        Assert.Contains(
+            completionUpdate.CandidateLifecycleEvents,
+            entry => entry.Kind == LiveCandidateLifecycleEventKind.OverlaySnapshotPublished);
+    }
+
+    [Fact]
+    public async Task LiveSession_WhenRevisionChangesBeforeCompletedWorkIsPublished_DoesNotPublishStaleResult()
+    {
+        var zone = CreateZone("zone-dialog", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
+        var candidateBounds = new BoundingBox(8, 8, 30, 12);
+        var oldTranslationStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseOldTranslation = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseNewTranslation = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var frameSource = new FakeCaptureFrameSource
+        {
+            PixelFrames = new[]
+            {
+                CreateCandidatePilotPixels(zone, frameMarker: 1, (candidateBounds, (byte)10)),
+                CreateCandidatePilotPixels(zone, frameMarker: 2, (candidateBounds, (byte)30)),
+            },
+        };
+        var ocrEngine = new FakeOcrEngine
+        {
+            EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = request => new[]
+            {
+                new OcrTextBlock(
+                    request.Frame.PixelData.Span[0] == 10 ? "Old candidate" : "New candidate",
+                    new BoundingBox(0, 0, 20, 10)),
+            },
+        };
+        var translator = new FakeTranslatorProvider(
+            "Google",
+            translateAsync: async (request, cancellationToken) =>
+            {
+                var text = Assert.Single(request.Texts);
+                if (string.Equals(text, "Old candidate", StringComparison.Ordinal))
+                {
+                    oldTranslationStarted.TrySetResult(true);
+                    await releaseOldTranslation.Task;
+                }
+                else
+                {
+                    await releaseNewTranslation.Task.WaitAsync(cancellationToken);
+                }
+
+                return new TranslateResponse(new[] { $"Translated {text}" }, TranslatedAt);
+            });
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available(
+            "test-detector",
+            new[] { new TextCandidate(candidateBounds, 0.95) }));
+        var overlay = new FakeOverlayService();
+        var service = CreateService(
+            frameSource,
+            ocrEngine,
+            translator,
+            overlay,
+            candidateDetector: detector);
+        using var session = service.CreateLiveSession(
+            CreateProfile(zone),
+            new TranslationPipelineRunOptions(enableCandidateDetectorPilot: true));
+        await session.RefreshAsync();
+        await oldTranslationStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        var revisionUpdate = await session.RefreshAsync();
+        Assert.Contains(
+            revisionUpdate.CandidateLifecycleEvents,
+            entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateSourceChanged
+                && entry.CandidateRevision == 2);
+
+        releaseOldTranslation.TrySetResult(true);
+        await session.WaitForWorkCompletionAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        var staleCompletionUpdate = await session.PublishCompletedWorkAsync();
+
+        Assert.False(staleCompletionUpdate.OverlayChanged);
+        Assert.Empty(staleCompletionUpdate.BatchResult.OverlaySnapshot.TextItems);
+        Assert.DoesNotContain(
+            overlay.Events,
+            entry => string.Equals(entry, "Show:1", StringComparison.Ordinal));
+
+        releaseNewTranslation.TrySetResult(true);
+        await session.WaitForWorkCompletionAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        var currentCompletionUpdate = await session.PublishCompletedWorkAsync();
+        Assert.Equal(
+            new[] { "Translated New candidate" },
+            currentCompletionUpdate.BatchResult.OverlaySnapshot.TextItems.Select(item => item.Text));
+    }
+
+    [Fact]
+    public async Task LiveSession_WhenPublishedCandidateSourceChanges_KeepsOverlayUntilReplacementCompletes()
+    {
+        var zone = CreateZone("zone-dialog", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
+        var candidateBounds = new BoundingBox(8, 8, 30, 12);
+        var oldTranslationStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseOldTranslation = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var newTranslationStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseNewTranslation = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var frameSource = new FakeCaptureFrameSource
+        {
+            PixelFrames = new[]
+            {
+                CreateCandidatePilotPixels(zone, frameMarker: 1, (candidateBounds, (byte)10)),
+                CreateCandidatePilotPixels(zone, frameMarker: 2, (candidateBounds, (byte)30)),
+            },
+        };
+        var ocrEngine = new FakeOcrEngine
+        {
+            EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = request => new[]
+            {
+                new OcrTextBlock(
+                    request.Frame.PixelData.Span[0] == 10 ? "Old candidate" : "New candidate",
+                    new BoundingBox(0, 0, 20, 10)),
+            },
+        };
+        var translator = new FakeTranslatorProvider(
+            "Google",
+            translateAsync: async (request, cancellationToken) =>
+            {
+                var text = Assert.Single(request.Texts);
+                if (string.Equals(text, "Old candidate", StringComparison.Ordinal))
+                {
+                    oldTranslationStarted.TrySetResult(true);
+                    await releaseOldTranslation.Task.WaitAsync(cancellationToken);
+                }
+                else
+                {
+                    newTranslationStarted.TrySetResult(true);
+                    await releaseNewTranslation.Task.WaitAsync(cancellationToken);
+                }
+
+                return new TranslateResponse(new[] { $"Translated {text}" }, TranslatedAt);
+            });
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available(
+            "test-detector",
+            new[] { new TextCandidate(candidateBounds, 0.95) }));
+        var overlay = new FakeOverlayService();
+        var service = CreateService(
+            frameSource,
+            ocrEngine,
+            translator,
+            overlay,
+            candidateDetector: detector);
+        using var session = service.CreateLiveSession(
+            CreateProfile(zone),
+            new TranslationPipelineRunOptions(enableCandidateDetectorPilot: true));
+        await session.RefreshAsync();
+        await oldTranslationStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        releaseOldTranslation.TrySetResult(true);
+        await session.WaitForWorkCompletionAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        var oldCompletionUpdate = await session.PublishCompletedWorkAsync();
+        Assert.Equal(
+            new[] { "Translated Old candidate" },
+            oldCompletionUpdate.BatchResult.OverlaySnapshot.TextItems.Select(item => item.Text));
+
+        var revisionUpdate = await session.RefreshAsync();
+        await newTranslationStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.Contains(
+            revisionUpdate.CandidateLifecycleEvents,
+            entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateSourceChanged
+                && entry.CandidateRevision == 2);
+        Assert.Empty(revisionUpdate.BatchResult.OverlaySnapshot.TextItems);
+        Assert.False(revisionUpdate.OverlayChanged);
+        Assert.Equal(
+            new[] { "Translated Old candidate" },
+            overlay.CurrentSnapshot!.TextItems.Select(item => item.Text));
+        Assert.DoesNotContain(overlay.Events, entry => string.Equals(entry, "Show:0", StringComparison.Ordinal));
+
+        releaseNewTranslation.TrySetResult(true);
+        await session.WaitForWorkCompletionAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        var newCompletionUpdate = await session.PublishCompletedWorkAsync();
+
+        Assert.True(newCompletionUpdate.OverlayChanged);
+        Assert.Equal(
+            new[] { "Translated New candidate" },
+            overlay.CurrentSnapshot!.TextItems.Select(item => item.Text));
+        Assert.Equal(new[] { "Show:1", "Show:1" }, overlay.Events);
+    }
+
+    [Fact]
+    public async Task LiveSession_WhenBingReplacementTimesOut_KeepsPublishedOverlayAndReportsFailure()
+    {
+        var zone = CreateZone("zone-dialog", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
+        var candidateBounds = new BoundingBox(8, 8, 30, 12);
+        var oldTranslationStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseOldTranslation = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var replacementTranslationStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseReplacementFailure = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var frameSource = new FakeCaptureFrameSource
+        {
+            PixelFrames = new[]
+            {
+                CreateCandidatePilotPixels(zone, frameMarker: 1, (candidateBounds, (byte)10)),
+                CreateCandidatePilotPixels(zone, frameMarker: 2, (candidateBounds, (byte)30)),
+            },
+        };
+        var ocrEngine = new FakeOcrEngine
+        {
+            EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = request => new[]
+            {
+                new OcrTextBlock(
+                    request.Frame.PixelData.Span[0] == 10 ? "Old candidate" : "Replacement candidate",
+                    new BoundingBox(0, 0, 20, 10)),
+            },
+        };
+        var translator = new FakeTranslatorProvider(
+            "BingWeb",
+            translateAsync: async (request, cancellationToken) =>
+            {
+                var text = Assert.Single(request.Texts);
+                if (string.Equals(text, "Old candidate", StringComparison.Ordinal))
+                {
+                    oldTranslationStarted.TrySetResult(true);
+                    await releaseOldTranslation.Task.WaitAsync(cancellationToken);
+                    return new TranslateResponse(new[] { "Translated Old candidate" }, TranslatedAt, "BingWeb");
+                }
+
+                replacementTranslationStarted.TrySetResult(true);
+                await releaseReplacementFailure.Task.WaitAsync(cancellationToken);
+                throw new TranslatorProviderException(
+                    "BingWeb",
+                    TranslatorProviderFailureKind.Timeout,
+                    "BingWeb did not respond within 15 seconds.",
+                    consecutiveFailureCount: 1);
+            });
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available(
+            "test-detector",
+            new[] { new TextCandidate(candidateBounds, 0.95) }));
+        var overlay = new FakeOverlayService();
+        var service = CreateService(
+            frameSource,
+            ocrEngine,
+            translator,
+            overlay,
+            candidateDetector: detector);
+        var profile = CreateProfile(zone) with
+        {
+            TranslatorSettings = new TranslatorSettings
+            {
+                Provider = "BingWeb",
+                SourceLanguage = "en",
+                TargetLanguage = "ru",
+            },
+        };
+
+        using var session = service.CreateLiveSession(
+            profile,
+            new TranslationPipelineRunOptions(enableCandidateDetectorPilot: true));
+        await session.RefreshAsync();
+        await oldTranslationStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        releaseOldTranslation.TrySetResult(true);
+        await session.WaitForWorkCompletionAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await session.PublishCompletedWorkAsync();
+        Assert.Equal("Translated Old candidate", Assert.Single(overlay.CurrentSnapshot!.TextItems).Text);
+
+        var replacementUpdate = await session.RefreshAsync();
+        await replacementTranslationStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        Assert.False(replacementUpdate.OverlayChanged);
+        releaseReplacementFailure.TrySetResult(true);
+        await session.WaitForWorkCompletionAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        var failureUpdate = await session.PublishCompletedWorkAsync();
+
+        var failure = Assert.Single(failureUpdate.BatchResult.ZoneFailures);
+        Assert.Equal(TranslationPipelineStage.Translation, failure.Stage);
+        Assert.IsType<TranslatorProviderException>(failure.Exception.InnerException);
+        Assert.False(failureUpdate.OverlayChanged);
+        Assert.Equal("Translated Old candidate", Assert.Single(overlay.CurrentSnapshot!.TextItems).Text);
+        Assert.DoesNotContain(overlay.Events, entry => string.Equals(entry, "Show:0", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task LiveSession_WhenDeferredReplacementDisappears_PublishesConfirmedEmptyOverlay()
+    {
+        var zone = CreateZone("zone-dialog", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
+        var candidateBounds = new BoundingBox(8, 8, 30, 12);
+        var oldTranslationStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseOldTranslation = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var replacementTranslationStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var replacementTranslationCancelled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var frameSource = new FakeCaptureFrameSource
+        {
+            PixelFrames = new[]
+            {
+                CreateCandidatePilotPixels(zone, frameMarker: 1, (candidateBounds, (byte)10)),
+                CreateCandidatePilotPixels(zone, frameMarker: 2, (candidateBounds, (byte)30)),
+                CreateCandidatePilotPixels(zone, frameMarker: 3),
+            },
+        };
+        var ocrEngine = new FakeOcrEngine
+        {
+            EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = request => new[]
+            {
+                new OcrTextBlock(
+                    request.Frame.PixelData.Span[0] == 10 ? "Old candidate" : "Replacement candidate",
+                    new BoundingBox(0, 0, 20, 10)),
+            },
+        };
+        var translator = new FakeTranslatorProvider(
+            "Google",
+            translateAsync: async (request, cancellationToken) =>
+            {
+                var text = Assert.Single(request.Texts);
+                if (string.Equals(text, "Old candidate", StringComparison.Ordinal))
+                {
+                    oldTranslationStarted.TrySetResult(true);
+                    await releaseOldTranslation.Task.WaitAsync(cancellationToken);
+                }
+                else
+                {
+                    replacementTranslationStarted.TrySetResult(true);
+                    try
+                    {
+                        await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        replacementTranslationCancelled.TrySetResult(true);
+                        throw;
+                    }
+                }
+
+                return new TranslateResponse(new[] { $"Translated {text}" }, TranslatedAt);
+            });
+        var detectorCallCount = 0;
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available(
+            "test-detector",
+            Interlocked.Increment(ref detectorCallCount) <= 2
+                ? new[] { new TextCandidate(candidateBounds, 0.95) }
+                : Array.Empty<TextCandidate>()));
+        var overlay = new FakeOverlayService();
+        var service = CreateService(
+            frameSource,
+            ocrEngine,
+            translator,
+            overlay,
+            candidateDetector: detector);
+
+        using var session = service.CreateLiveSession(
+            CreateProfile(zone),
+            new TranslationPipelineRunOptions(enableCandidateDetectorPilot: true));
+        await session.RefreshAsync();
+        await oldTranslationStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        releaseOldTranslation.TrySetResult(true);
+        await session.WaitForWorkCompletionAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await session.PublishCompletedWorkAsync();
+
+        var replacementUpdate = await session.RefreshAsync();
+        await replacementTranslationStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        Assert.False(replacementUpdate.OverlayChanged);
+        Assert.Equal(
+            new[] { "Translated Old candidate" },
+            overlay.CurrentSnapshot!.TextItems.Select(item => item.Text));
+
+        var disappearanceUpdate = await session.RefreshAsync();
+        await replacementTranslationCancelled.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.True(disappearanceUpdate.OverlayChanged);
+        Assert.Empty(disappearanceUpdate.BatchResult.OverlaySnapshot.TextItems);
+        Assert.Empty(overlay.CurrentSnapshot!.TextItems);
+        Assert.Equal(new[] { "Show:1", "Show:0" }, overlay.Events);
+    }
+
+    [Fact]
+    public async Task LiveSession_WhenCandidateDisappearsBeforeLateCompletion_DoesNotRepublishIt()
+    {
+        var zone = CreateZone("zone-dialog", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
+        var candidateBounds = new BoundingBox(8, 8, 30, 12);
+        var translationStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseTranslation = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var frameSource = new FakeCaptureFrameSource
+        {
+            PixelFrames = new[]
+            {
+                CreateCandidatePilotPixels(zone, frameMarker: 1, (candidateBounds, (byte)10)),
+                CreateCandidatePilotPixels(zone, frameMarker: 2),
+            },
+        };
+        var ocrEngine = new FakeOcrEngine
+        {
+            EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = _ => new[]
+            {
+                new OcrTextBlock("Candidate", new BoundingBox(0, 0, 20, 10)),
+            },
+        };
+        var translator = new FakeTranslatorProvider(
+            "Google",
+            translateAsync: async (request, _) =>
+            {
+                translationStarted.TrySetResult(true);
+                await releaseTranslation.Task;
+                return new TranslateResponse(new[] { $"Translated {Assert.Single(request.Texts)}" }, TranslatedAt);
+            });
+        var detectorCallCount = 0;
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available(
+            "test-detector",
+            Interlocked.Increment(ref detectorCallCount) == 1
+                ? new[] { new TextCandidate(candidateBounds, 0.95) }
+                : Array.Empty<TextCandidate>()));
+        var overlay = new FakeOverlayService();
+        var service = CreateService(
+            frameSource,
+            ocrEngine,
+            translator,
+            overlay,
+            candidateDetector: detector);
+
+        using var session = service.CreateLiveSession(
+            CreateProfile(zone),
+            new TranslationPipelineRunOptions(enableCandidateDetectorPilot: true));
+        await session.RefreshAsync();
+        await translationStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        var disappearanceUpdate = await session.RefreshAsync();
+        Assert.Contains(
+            disappearanceUpdate.CandidateLifecycleEvents,
+            entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateRemoved
+                && entry.CancellationReason == LiveCandidateCancellationReason.CandidateDisappeared);
+
+        releaseTranslation.TrySetResult(true);
+        await session.WaitForWorkCompletionAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        var completionUpdate = await session.PublishCompletedWorkAsync();
+
+        Assert.False(completionUpdate.OverlayChanged);
+        Assert.Empty(completionUpdate.BatchResult.OverlaySnapshot.TextItems);
+        Assert.DoesNotContain(overlay.Events, entry => string.Equals(entry, "Show:1", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task LiveSession_WhenStoppedWhileWaitingForCompletion_CancelsTheWaitAndPublishesNothing()
+    {
+        var zone = CreateZone("zone-dialog", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
+        var candidateBounds = new BoundingBox(8, 8, 30, 12);
+        var translationStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseTranslation = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var translator = new FakeTranslatorProvider(
+            "Google",
+            translateAsync: async (request, _) =>
+            {
+                translationStarted.TrySetResult(true);
+                await releaseTranslation.Task;
+                return new TranslateResponse(new[] { $"Translated {Assert.Single(request.Texts)}" }, TranslatedAt);
+            });
+        var overlay = new FakeOverlayService();
+        var service = CreateCandidateLiveService(zone, candidateBounds, translator, overlay);
+        using var sessionCancellation = new CancellationTokenSource();
+        using var session = service.CreateLiveSession(
+            CreateProfile(zone),
+            new TranslationPipelineRunOptions(enableCandidateDetectorPilot: true),
+            sessionCancellation.Token);
+        await session.RefreshAsync();
+        await translationStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+        var completionWait = session.WaitForWorkCompletionAsync();
+        sessionCancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => completionWait);
+        Assert.Null(overlay.CurrentSnapshot);
+        releaseTranslation.TrySetResult(true);
+    }
+
+    [Fact]
+    public async Task LiveSession_WhenConcurrentCandidatesComplete_PublishesEachWithoutWaitingForItsSibling()
+    {
+        var zone = CreateZone("zone-dialog", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
+        var firstBounds = new BoundingBox(8, 8, 30, 12);
+        var secondBounds = new BoundingBox(55, 8, 30, 12);
+        var firstStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirst = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSecond = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var frameSource = new FakeCaptureFrameSource
+        {
+            PixelFrames = new[]
+            {
+                CreateCandidatePilotPixels(
+                    zone,
+                    frameMarker: 1,
+                    (firstBounds, (byte)10),
+                    (secondBounds, (byte)20)),
+            },
+        };
+        var ocrEngine = new FakeOcrEngine
+        {
+            EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = request => new[]
+            {
+                new OcrTextBlock(
+                    request.Frame.PixelData.Span[0] == 10 ? "First" : "Second",
+                    new BoundingBox(0, 0, 20, 10)),
+            },
+        };
+        var translator = new FakeTranslatorProvider(
+            "Google",
+            translateAsync: async (request, cancellationToken) =>
+            {
+                var text = Assert.Single(request.Texts);
+                if (string.Equals(text, "First", StringComparison.Ordinal))
+                {
+                    firstStarted.TrySetResult(true);
+                    await releaseFirst.Task.WaitAsync(cancellationToken);
+                }
+                else
+                {
+                    secondStarted.TrySetResult(true);
+                    await releaseSecond.Task.WaitAsync(cancellationToken);
+                }
+
+                return new TranslateResponse(new[] { $"Translated {text}" }, TranslatedAt);
+            });
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available(
+            "test-detector",
+            new[]
+            {
+                new TextCandidate(firstBounds, 0.95),
+                new TextCandidate(secondBounds, 0.90),
+            }));
+        var overlay = new FakeOverlayService();
+        var service = CreateService(
+            frameSource,
+            ocrEngine,
+            translator,
+            overlay,
+            candidateDetector: detector);
+
+        using var session = service.CreateLiveSession(
+            CreateProfile(zone),
+            new TranslationPipelineRunOptions(enableCandidateDetectorPilot: true));
+        await session.RefreshAsync();
+        await Task.WhenAll(
+            firstStarted.Task.WaitAsync(TimeSpan.FromSeconds(1)),
+            secondStarted.Task.WaitAsync(TimeSpan.FromSeconds(1)));
+
+        releaseSecond.TrySetResult(true);
+        await session.WaitForWorkCompletionAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        var secondCompletion = await session.PublishCompletedWorkAsync();
+        Assert.Equal(
+            new[] { "Translated Second" },
+            secondCompletion.BatchResult.OverlaySnapshot.TextItems.Select(item => item.Text));
+
+        releaseFirst.TrySetResult(true);
+        await session.WaitForWorkCompletionAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        var firstCompletion = await session.PublishCompletedWorkAsync();
+        Assert.Equal(
+            new[] { "Translated First", "Translated Second" },
+            firstCompletion.BatchResult.OverlaySnapshot.TextItems.Select(item => item.Text));
+    }
+
+    [Fact]
+    public void LiveSession_CandidateReconciliation_DoesNotCreateAFullZoneFingerprintCopy()
+    {
+        var source = File.ReadAllText(
+            Path.Combine(
+                RepositoryRoot.Find(),
+                "src",
+                "GameTranslator.Application",
+                "Pipeline",
+                "TranslationPipelineService.cs"));
+        var methodStart = source.IndexOf(
+            "private async Task<bool> ReconcileCandidateRegionsAsync",
+            StringComparison.Ordinal);
+        var methodEnd = source.IndexOf(
+            "private static LiveCandidateState? FindMatchingCandidateState",
+            methodStart,
+            StringComparison.Ordinal);
+
+        Assert.True(methodStart >= 0);
+        Assert.True(methodEnd > methodStart);
+        var candidateReconciliation = source[methodStart..methodEnd];
+        Assert.DoesNotContain(
+            "FrameFingerprint.FromFrame(capturedZone.Frame)",
+            candidateReconciliation,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "FrameFingerprint.FromFrame(region.Frame)",
+            candidateReconciliation,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1812,7 +2805,7 @@ public sealed class TranslationPipelineServiceTests
                 && entry.CandidateBounds == slowCandidateBounds
                 && entry.CancellationReason == LiveCandidateCancellationReason.CandidateDisappeared);
         Assert.Contains(
-            secondUpdate.CandidateLifecycleEvents,
+            firstUpdate.CandidateLifecycleEvents,
             entry => entry.Kind == LiveCandidateLifecycleEventKind.OverlaySnapshotPublished
                 && entry.OverlayTextItemCount == 1);
         Assert.Equal(
@@ -1933,6 +2926,461 @@ public sealed class TranslationPipelineServiceTests
         Assert.Equal(
             new[] { "Translated Replacement candidate", "Translated Ready candidate" },
             overlay.CurrentSnapshot!.TextItems.Select(item => item.Text));
+    }
+
+    [Fact]
+    public async Task LiveSession_WhenStableTextIsRequired_WaitsForASecondMatchingGroupingBeforeTranslation()
+    {
+        var zone = CreateZone("zone-dialog", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
+        var profile = CreateProfile(zone);
+        var partialBounds = new BoundingBox(8, 8, 20, 12);
+        var finalBounds = new BoundingBox(8, 8, 50, 12);
+        var detectorCallCount = 0;
+        var frameSource = new FakeCaptureFrameSource
+        {
+            PixelFrames = new[]
+            {
+                CreateCandidatePilotPixels(zone, frameMarker: 1, (partialBounds, (byte)10)),
+                CreateCandidatePilotPixels(zone, frameMarker: 2, (finalBounds, (byte)20)),
+                CreateCandidatePilotPixels(zone, frameMarker: 3, (finalBounds, (byte)20)),
+            },
+        };
+        var detector = new FakeCandidateDetector(_ =>
+        {
+            var bounds = Interlocked.Increment(ref detectorCallCount) == 1
+                ? partialBounds
+                : finalBounds;
+            return TextCandidateDetectionResult.Available(
+                "test-detector",
+                new[] { new TextCandidate(bounds, 0.95) });
+        });
+        var ocrEngine = new FakeOcrEngine
+        {
+            EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = request => new[]
+            {
+                new OcrTextBlock(
+                    request.Frame.PixelData.Span[0] == 20 ? "Final group" : "Partial group",
+                    new BoundingBox(0, 0, 20, 10)),
+            },
+        };
+        var translator = new FakeTranslatorProvider("Google");
+        var overlay = new FakeOverlayService();
+        var service = CreateService(
+            frameSource,
+            ocrEngine,
+            translator,
+            overlay,
+            candidateDetector: detector);
+
+        using var session = service.CreateLiveSession(
+            profile,
+            new TranslationPipelineRunOptions(
+                requireStableTextBeforeTranslation: true,
+                stableTextInterval: TimeSpan.Zero,
+                enableCandidateDetectorPilot: true));
+
+        var firstUpdate = await session.RefreshAsync();
+        var secondUpdate = await session.RefreshAsync();
+
+        Assert.Equal(0, translator.CallCount);
+        Assert.Contains(
+            firstUpdate.CandidateLifecycleEvents,
+            entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateGroupingAwaitingConfirmation
+                && entry.CandidateBounds == partialBounds);
+        Assert.Contains(
+            secondUpdate.CandidateLifecycleEvents,
+            entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateGroupingAwaitingConfirmation
+                && entry.CandidateBounds == finalBounds);
+
+        await session.RefreshAsync();
+        await WaitForConditionAsync(
+            () => translator.CallCount == 1 && overlay.CurrentSnapshot?.TextItems.Count == 1);
+
+        Assert.Equal(new[] { "Final group" }, translator.Request!.Texts);
+        Assert.Equal(
+            new[] { "Translated Final group" },
+            overlay.CurrentSnapshot!.TextItems.Select(item => item.Text));
+    }
+
+    [Fact]
+    public async Task LiveSession_WhenGroupingObservationsArriveFasterThanMinimumDuration_DelaysTranslation()
+    {
+        var zone = CreateZone("zone-dialog", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
+        var profile = CreateProfile(zone);
+        var candidateBounds = new BoundingBox(8, 8, 50, 12);
+        var frameSource = new FakeCaptureFrameSource
+        {
+            PixelFrames = Enumerable.Range(1, 4)
+                .Select(frameMarker => CreateCandidatePilotPixels(
+                    zone,
+                    (byte)frameMarker,
+                    (candidateBounds, (byte)20)))
+                .ToArray(),
+            CapturedAtFrames = new[]
+            {
+                FrameTime,
+                FrameTime.AddMilliseconds(50),
+                FrameTime.AddMilliseconds(199),
+                FrameTime.AddMilliseconds(200),
+            },
+        };
+        var detector = new FakeCandidateDetector(_ =>
+            TextCandidateDetectionResult.Available(
+                "test-detector",
+                new[] { new TextCandidate(candidateBounds, 0.95) }));
+        var ocrEngine = new FakeOcrEngine
+        {
+            EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = _ => new[]
+            {
+                new OcrTextBlock("Stable candidate", new BoundingBox(0, 0, 20, 10)),
+            },
+        };
+        var translator = new FakeTranslatorProvider("Google");
+        var service = CreateService(
+            frameSource,
+            ocrEngine,
+            translator,
+            new FakeOverlayService(),
+            candidateDetector: detector);
+        var options = new TranslationPipelineRunOptions(
+            requireStableTextBeforeTranslation: true,
+            stableTextInterval: TimeSpan.Zero,
+            enableCandidateDetectorPilot: true,
+            minimumCandidateGroupingObservations: 2,
+            minimumStableTextObservations: 1)
+        {
+            MinimumCandidateGroupingDuration = TimeSpan.FromMilliseconds(200),
+        };
+
+        using var session = service.CreateLiveSession(profile, options);
+        await session.RefreshAsync();
+        await session.RefreshAsync();
+        var justBeforeMinimumDuration = await session.RefreshAsync();
+
+        Assert.Equal(0, translator.CallCount);
+        Assert.Contains(
+            justBeforeMinimumDuration.CandidateLifecycleEvents,
+            entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateGroupingAwaitingConfirmation
+                && entry.GroupingObservationCount == 3
+                && entry.GroupingObservedDuration == TimeSpan.FromMilliseconds(199)
+                && entry.RequiredGroupingDuration == TimeSpan.FromMilliseconds(200));
+
+        var minimumDurationReached = await session.RefreshAsync();
+        await WaitForConditionAsync(() => translator.CallCount == 1);
+
+        Assert.Contains(
+            minimumDurationReached.CandidateLifecycleEvents,
+            entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateWorkStarted
+                && entry.GroupingObservationCount == 4
+                && entry.GroupingObservedDuration == TimeSpan.FromMilliseconds(200)
+                && entry.RequiredGroupingDuration == TimeSpan.FromMilliseconds(200));
+    }
+
+    [Fact]
+    public async Task LiveSession_WhenGroupingRevisionChanges_ResetsMinimumGroupingDuration()
+    {
+        var zone = CreateZone("zone-dialog", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
+        var profile = CreateProfile(zone);
+        var candidateBounds = new BoundingBox(8, 8, 50, 12);
+        var revisedMembers = new[]
+        {
+            new BoundingBox(8, 8, 24, 12),
+            new BoundingBox(34, 8, 24, 12),
+        };
+        var detectorCallCount = 0;
+        var frameSource = new FakeCaptureFrameSource
+        {
+            PixelFrames = Enumerable.Range(1, 5)
+                .Select(frameMarker => CreateCandidatePilotPixels(
+                    zone,
+                    (byte)frameMarker,
+                    (candidateBounds, (byte)20)))
+                .ToArray(),
+            CapturedAtFrames = new[]
+            {
+                FrameTime,
+                FrameTime.AddMilliseconds(150),
+                FrameTime.AddMilliseconds(200),
+                FrameTime.AddMilliseconds(350),
+                FrameTime.AddMilliseconds(400),
+            },
+        };
+        var detector = new FakeCandidateDetector(_ =>
+        {
+            var candidate = new TextCandidate(candidateBounds, 0.95);
+            if (Interlocked.Increment(ref detectorCallCount) >= 3)
+            {
+                candidate = new TextCandidate(candidateBounds, 0.95)
+                {
+                    SourceCandidateBounds = revisedMembers,
+                };
+            }
+
+            return TextCandidateDetectionResult.Available("test-detector", new[] { candidate });
+        });
+        var translator = new FakeTranslatorProvider("Google");
+        var service = CreateService(
+            frameSource,
+            new FakeOcrEngine
+            {
+                EngineId = OcrSettings.TesseractEngineId,
+                BlocksFactory = _ => new[]
+                {
+                    new OcrTextBlock("Revised candidate", new BoundingBox(0, 0, 20, 10)),
+                },
+            },
+            translator,
+            new FakeOverlayService(),
+            candidateDetector: detector);
+        var options = new TranslationPipelineRunOptions(
+            requireStableTextBeforeTranslation: true,
+            stableTextInterval: TimeSpan.Zero,
+            enableCandidateDetectorPilot: true,
+            minimumCandidateGroupingObservations: 2,
+            minimumStableTextObservations: 1)
+        {
+            MinimumCandidateGroupingDuration = TimeSpan.FromMilliseconds(200),
+        };
+
+        using var session = service.CreateLiveSession(profile, options);
+        await session.RefreshAsync();
+        await session.RefreshAsync();
+        var revisedGrouping = await session.RefreshAsync();
+        var revisedBeforeMinimumDuration = await session.RefreshAsync();
+
+        Assert.Equal(0, translator.CallCount);
+        Assert.Contains(
+            revisedGrouping.CandidateLifecycleEvents,
+            entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateGroupingChanged
+                && entry.CandidateRevision == 2
+                && entry.GroupingObservationCount == 1
+                && entry.GroupingObservedDuration == TimeSpan.Zero);
+        Assert.Contains(
+            revisedBeforeMinimumDuration.CandidateLifecycleEvents,
+            entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateGroupingAwaitingConfirmation
+                && entry.CandidateRevision == 2
+                && entry.GroupingObservationCount == 2
+                && entry.GroupingObservedDuration == TimeSpan.FromMilliseconds(150));
+
+        var revisedMinimumDurationReached = await session.RefreshAsync();
+        await WaitForConditionAsync(() => translator.CallCount == 1);
+
+        Assert.Contains(
+            revisedMinimumDurationReached.CandidateLifecycleEvents,
+            entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateWorkStarted
+                && entry.CandidateRevision == 2
+                && entry.GroupingObservationCount == 3
+                && entry.GroupingObservedDuration == TimeSpan.FromMilliseconds(200));
+    }
+
+    [Fact]
+    public async Task LiveSession_WhenGroupingRevisionChanges_ResetsMatchingOcrObservationCount()
+    {
+        var zone = CreateZone("zone-dialog", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
+        var profile = CreateProfile(zone);
+        var candidateBounds = new BoundingBox(8, 8, 50, 12);
+        var revisedMembers = new[]
+        {
+            new BoundingBox(8, 8, 24, 12),
+            new BoundingBox(34, 8, 24, 12),
+        };
+        var detectorCallCount = 0;
+        var frameSource = new FakeCaptureFrameSource
+        {
+            PixelFrames = Enumerable.Range(1, 6)
+                .Select(frameMarker => CreateCandidatePilotPixels(
+                    zone,
+                    (byte)frameMarker,
+                    (candidateBounds, (byte)20)))
+                .ToArray(),
+        };
+        var detector = new FakeCandidateDetector(_ =>
+        {
+            var candidate = new TextCandidate(candidateBounds, 0.95);
+            if (Interlocked.Increment(ref detectorCallCount) >= 3)
+            {
+                candidate = new TextCandidate(candidateBounds, 0.95)
+                {
+                    SourceCandidateBounds = revisedMembers,
+                };
+            }
+
+            return TextCandidateDetectionResult.Available("test-detector", new[] { candidate });
+        });
+        var ocrEngine = new FakeOcrEngine
+        {
+            EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = _ => new[]
+            {
+                new OcrTextBlock("Same OCR text", new BoundingBox(0, 0, 20, 10)),
+            },
+        };
+        var translator = new FakeTranslatorProvider("Google");
+        var overlay = new FakeOverlayService();
+        var service = CreateService(
+            frameSource,
+            ocrEngine,
+            translator,
+            overlay,
+            candidateDetector: detector);
+        var options = new TranslationPipelineRunOptions(
+            requireStableTextBeforeTranslation: true,
+            stableTextInterval: TimeSpan.Zero,
+            enableCandidateDetectorPilot: true,
+            minimumCandidateGroupingObservations: 2,
+            minimumStableTextObservations: 2);
+
+        using var session = service.CreateLiveSession(profile, options);
+        await session.RefreshAsync();
+        var firstOcrObservation = await session.RefreshAsync();
+        var revisedGrouping = await session.RefreshAsync();
+        var revisedFirstOcrObservation = await session.RefreshAsync();
+
+        Assert.Equal(0, translator.CallCount);
+        Assert.Contains(
+            firstOcrObservation.CandidateLifecycleEvents,
+            entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateWorkDeferredForStability
+                && entry.TextStability?.ObservationCount == 1);
+        Assert.Contains(
+            revisedGrouping.CandidateLifecycleEvents,
+            entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateGroupingChanged
+                && entry.CandidateRevision == 2);
+        Assert.Contains(
+            revisedFirstOcrObservation.CandidateLifecycleEvents,
+            entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateWorkDeferredForStability
+                && entry.CandidateRevision == 2
+                && entry.TextStability?.ObservationCount == 1);
+
+        await session.RefreshAsync();
+        await WaitForConditionAsync(() => translator.CallCount == 1);
+        Assert.Single(overlay.CurrentSnapshot!.TextItems);
+    }
+
+    [Fact]
+    public async Task LiveSession_WhenCandidateBoundsJitterWithinBound_KeepsTheCandidateIdentityAndDoesNotRetranslate()
+    {
+        var zone = CreateZone("zone-dialog", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
+        var profile = CreateProfile(zone);
+        var originalBounds = new BoundingBox(5, 8, 90, 12);
+        var jitteredBounds = new BoundingBox(7, 8, 90, 12);
+        var detectorRequestCount = 0;
+        var frameSource = new FakeCaptureFrameSource
+        {
+            PixelFrames = new[]
+            {
+                CreateCandidatePilotPixels(zone, frameMarker: 1, (originalBounds, (byte)10)),
+                CreateCandidatePilotPixels(zone, frameMarker: 2, (jitteredBounds, (byte)10)),
+            },
+        };
+        var ocrEngine = new FakeOcrEngine
+        {
+            EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = _ => new[]
+            {
+                new OcrTextBlock("Stable candidate", new BoundingBox(0, 0, 20, 10)),
+            },
+        };
+        var detector = new FakeCandidateDetector(_ =>
+        {
+            var bounds = Interlocked.Increment(ref detectorRequestCount) == 1
+                ? originalBounds
+                : jitteredBounds;
+            return TextCandidateDetectionResult.Available(
+                "test-detector",
+                new[] { new TextCandidate(bounds, 0.95) });
+        });
+        var translator = new FakeTranslatorProvider("Google");
+        var overlay = new FakeOverlayService();
+        var service = CreateService(
+            frameSource,
+            ocrEngine,
+            translator,
+            overlay,
+            candidateDetector: detector);
+
+        using var session = service.CreateLiveSession(
+            profile,
+            new TranslationPipelineRunOptions(enableCandidateDetectorPilot: true));
+        var firstUpdate = await session.RefreshAsync();
+        var secondUpdate = await session.RefreshAsync();
+
+        var originalCandidateId = $"{zone.Id}:candidate:{originalBounds.X}:{originalBounds.Y}:{originalBounds.Width}:{originalBounds.Height}";
+        Assert.True(firstUpdate.OverlayChanged);
+        Assert.False(secondUpdate.OverlayChanged);
+        Assert.Equal(1, translator.CallCount);
+        Assert.Contains(
+            secondUpdate.CandidateLifecycleEvents,
+            entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateGeometryJitterMatched
+                && entry.CandidateId == originalCandidateId
+                && entry.CandidateBounds == jitteredBounds);
+        Assert.DoesNotContain(
+            secondUpdate.CandidateLifecycleEvents.Where(entry => entry.RefreshSequence == 2),
+            entry => entry.Kind is LiveCandidateLifecycleEventKind.CandidateDiscovered
+                or LiveCandidateLifecycleEventKind.CandidateRemoved);
+        Assert.Equal(
+            new[] { "Translated Stable candidate" },
+            overlay.CurrentSnapshot!.TextItems.Select(item => item.Text));
+    }
+
+    [Fact]
+    public async Task LiveSession_WhenCandidateBoundsMoveBeyondJitterBound_TreatsTheCandidateAsNew()
+    {
+        var zone = CreateZone("zone-dialog", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
+        var profile = CreateProfile(zone);
+        var originalBounds = new BoundingBox(5, 8, 90, 12);
+        var movedBounds = new BoundingBox(10, 8, 90, 12);
+        var detectorRequestCount = 0;
+        var frameSource = new FakeCaptureFrameSource
+        {
+            PixelFrames = new[]
+            {
+                CreateCandidatePilotPixels(zone, frameMarker: 1, (originalBounds, (byte)10)),
+                CreateCandidatePilotPixels(zone, frameMarker: 2, (movedBounds, (byte)10)),
+            },
+        };
+        var ocrEngine = new FakeOcrEngine
+        {
+            EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = _ => new[]
+            {
+                new OcrTextBlock("Moved candidate", new BoundingBox(0, 0, 20, 10)),
+            },
+        };
+        var detector = new FakeCandidateDetector(_ =>
+        {
+            var bounds = Interlocked.Increment(ref detectorRequestCount) == 1
+                ? originalBounds
+                : movedBounds;
+            return TextCandidateDetectionResult.Available(
+                "test-detector",
+                new[] { new TextCandidate(bounds, 0.95) });
+        });
+        var service = CreateService(
+            frameSource,
+            ocrEngine,
+            new FakeTranslatorProvider("Google"),
+            new FakeOverlayService(),
+            candidateDetector: detector);
+
+        using var session = service.CreateLiveSession(
+            profile,
+            new TranslationPipelineRunOptions(enableCandidateDetectorPilot: true));
+        await session.RefreshAsync();
+        var secondUpdate = await session.RefreshAsync();
+
+        Assert.Contains(
+            secondUpdate.CandidateLifecycleEvents.Where(entry => entry.RefreshSequence == 2),
+            entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateDiscovered
+                && entry.CandidateBounds == movedBounds);
+        Assert.Contains(
+            secondUpdate.CandidateLifecycleEvents.Where(entry => entry.RefreshSequence == 2),
+            entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateRemoved
+                && entry.CandidateBounds == originalBounds);
+        Assert.DoesNotContain(
+            secondUpdate.CandidateLifecycleEvents.Where(entry => entry.RefreshSequence == 2),
+            entry => entry.Kind == LiveCandidateLifecycleEventKind.CandidateGeometryJitterMatched);
     }
 
     [Fact]
@@ -2140,7 +3588,8 @@ public sealed class TranslationPipelineServiceTests
         FakeOverlayService overlay,
         FakeCredentialStorage? credentialStorage = null,
         TranslationPipelineOptimizationOptions? optimizationOptions = null,
-        ITextCandidateDetector? candidateDetector = null)
+        ITextCandidateDetector? candidateDetector = null,
+        TextCandidateRegionOcrOptions? candidateRegionOcrOptions = null)
     {
         var ocrService = new OcrService(ocrEngine);
         return new TranslationPipelineService(
@@ -2154,7 +3603,40 @@ public sealed class TranslationPipelineServiceTests
             optimizationOptions ?? TranslationPipelineOptimizationOptions.Disabled,
             candidateDetector is null
                 ? null
-                : new TextCandidateRegionOcrService(candidateDetector, ocrService));
+                : new TextCandidateRegionOcrService(candidateDetector, ocrService, candidateRegionOcrOptions));
+    }
+
+    private static TranslationPipelineService CreateCandidateLiveService(
+        OcrZone zone,
+        BoundingBox candidateBounds,
+        FakeTranslatorProvider translator,
+        FakeOverlayService overlay)
+    {
+        var frameSource = new FakeCaptureFrameSource
+        {
+            PixelFrames = new[]
+            {
+                CreateCandidatePilotPixels(zone, frameMarker: 1, (candidateBounds, (byte)10)),
+            },
+        };
+        var ocrEngine = new FakeOcrEngine
+        {
+            EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = _ => new[]
+            {
+                new OcrTextBlock("Candidate", new BoundingBox(0, 0, 20, 10)),
+            },
+        };
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available(
+            "test-detector",
+            new[] { new TextCandidate(candidateBounds, 0.95) }));
+
+        return CreateService(
+            frameSource,
+            ocrEngine,
+            translator,
+            overlay,
+            candidateDetector: detector);
     }
 
     private static GameProfile CreateProfile(params OcrZone[] zones)
@@ -2317,6 +3799,8 @@ public sealed class TranslationPipelineServiceTests
 
         public Func<OcrRequest, Exception?>? FailureFactory { get; init; }
 
+        public Action? OnRecognize { get; init; }
+
         public IReadOnlyList<DateTimeOffset> RecognizedAtFrames { get; init; } = Array.Empty<DateTimeOffset>();
 
         public Task<OcrResult> RecognizeAsync(OcrRequest request, CancellationToken cancellationToken = default)
@@ -2328,6 +3812,8 @@ public sealed class TranslationPipelineServiceTests
                 recognitionIndex = recognitionCount++;
                 Requests.Add(request);
             }
+
+            OnRecognize?.Invoke();
 
             var failure = FailureFactory?.Invoke(request);
             if (failure is not null)

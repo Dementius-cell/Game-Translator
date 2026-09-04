@@ -62,15 +62,48 @@ public sealed class BingWebTranslatorProvider : ITranslatorProvider
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        ThrowIfPaused();
-
-        var translatedTexts = new List<string>(request.Texts.Count);
-        foreach (var text in request.Texts)
+        request.Diagnostics?.MarkProviderInvocationStarted(ProviderId, timeProvider.GetUtcNow());
+        try
         {
-            translatedTexts.Add(await TranslateTextAsync(request, text, cancellationToken));
-        }
+            ThrowIfPaused();
 
-        return new TranslateResponse(translatedTexts, DateTimeOffset.UtcNow, ProviderId);
+            var translatedTexts = new List<string>(request.Texts.Count);
+            foreach (var text in request.Texts)
+            {
+                translatedTexts.Add(await TranslateTextAsync(request, text, cancellationToken));
+            }
+
+            request.Diagnostics?.MarkProviderInvocationCompleted(
+                TranslationProviderInvocationOutcome.Succeeded,
+                timeProvider.GetUtcNow());
+            return new TranslateResponse(translatedTexts, DateTimeOffset.UtcNow, ProviderId);
+        }
+        catch (TranslatorProviderException exception)
+        {
+            var snapshot = request.Diagnostics?.CreateSnapshot();
+            request.Diagnostics?.MarkProviderInvocationCompleted(
+                snapshot?.WasNetworkRequestSent == true
+                    ? TranslationProviderInvocationOutcome.Failed
+                    : TranslationProviderInvocationOutcome.RejectedBeforeSend,
+                timeProvider.GetUtcNow(),
+                exception.FailureKind);
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            request.Diagnostics?.MarkProviderInvocationCompleted(
+                TranslationProviderInvocationOutcome.Cancelled,
+                timeProvider.GetUtcNow());
+            throw;
+        }
+        catch
+        {
+            request.Diagnostics?.MarkProviderInvocationCompleted(
+                TranslationProviderInvocationOutcome.Failed,
+                timeProvider.GetUtcNow(),
+                TranslatorProviderFailureKind.Unexpected);
+            throw;
+        }
     }
 
     private async Task<string> TranslateTextAsync(
@@ -86,7 +119,10 @@ public sealed class BingWebTranslatorProvider : ITranslatorProvider
                 "BingWeb accepts at most 1000 characters per direct translation request.");
         }
 
-        var credentialsSnapshot = await GetOrUpdateCredentialsAsync(request.Credentials.Endpoint, cancellationToken);
+        var credentialsSnapshot = await GetOrUpdateCredentialsAsync(
+            request.Credentials.Endpoint,
+            request.Diagnostics,
+            cancellationToken);
         using var httpRequest = new HttpRequestMessage(
             HttpMethod.Post,
             CreateTranslateUri(request.Credentials.Endpoint, credentialsSnapshot));
@@ -102,7 +138,11 @@ public sealed class BingWebTranslatorProvider : ITranslatorProvider
                 ["key"] = credentialsSnapshot.Key.ToString(CultureInfo.InvariantCulture),
             });
 
-        using var response = await SendWithTimeoutAsync(httpRequest, cancellationToken);
+        using var response = await SendWithTimeoutAsync(
+            httpRequest,
+            TranslationProviderNetworkRequestKind.Translation,
+            request.Diagnostics,
+            cancellationToken);
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
@@ -143,6 +183,7 @@ public sealed class BingWebTranslatorProvider : ITranslatorProvider
 
     private async Task<BingWebCredentials> GetOrUpdateCredentialsAsync(
         Uri endpoint,
+        TranslationProviderRequestDiagnostics? diagnostics,
         CancellationToken cancellationToken)
     {
         if (credentials is { ExpiresAt: var expiresAt } cached && expiresAt > timeProvider.GetUtcNow())
@@ -164,7 +205,11 @@ public sealed class BingWebTranslatorProvider : ITranslatorProvider
                 new Uri($"{endpoint.ToString().TrimEnd('/')}/translator"));
             AddBrowserHeaders(httpRequest);
 
-            using var response = await SendWithTimeoutAsync(httpRequest, cancellationToken);
+            using var response = await SendWithTimeoutAsync(
+                httpRequest,
+                TranslationProviderNetworkRequestKind.Credentials,
+                diagnostics,
+                cancellationToken);
             var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
@@ -233,19 +278,50 @@ public sealed class BingWebTranslatorProvider : ITranslatorProvider
 
     private async Task<HttpResponseMessage> SendWithTimeoutAsync(
         HttpRequestMessage request,
+        TranslationProviderNetworkRequestKind requestKind,
+        TranslationProviderRequestDiagnostics? diagnostics,
         CancellationToken cancellationToken)
     {
         ThrowIfPaused();
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutSource.CancelAfter(requestTimeout);
+        var attemptId = diagnostics?.MarkNetworkRequestStarted(requestKind, timeProvider.GetUtcNow());
         try
         {
-            return await httpClient.SendAsync(request, timeoutSource.Token);
+            var response = await httpClient.SendAsync(request, timeoutSource.Token);
+            diagnostics?.MarkNetworkRequestCompleted(
+                attemptId!,
+                response.IsSuccessStatusCode
+                    ? TranslationProviderNetworkRequestOutcome.Succeeded
+                    : TranslationProviderNetworkRequestOutcome.HttpError,
+                timeProvider.GetUtcNow(),
+                response.StatusCode);
+            return response;
         }
         catch (OperationCanceledException exception)
             when (!cancellationToken.IsCancellationRequested && timeoutSource.IsCancellationRequested)
         {
+            diagnostics?.MarkNetworkRequestCompleted(
+                attemptId!,
+                TranslationProviderNetworkRequestOutcome.Timeout,
+                timeProvider.GetUtcNow());
             throw RecordTimeout(exception);
+        }
+        catch (OperationCanceledException)
+        {
+            diagnostics?.MarkNetworkRequestCompleted(
+                attemptId!,
+                TranslationProviderNetworkRequestOutcome.Cancelled,
+                timeProvider.GetUtcNow());
+            throw;
+        }
+        catch
+        {
+            diagnostics?.MarkNetworkRequestCompleted(
+                attemptId!,
+                TranslationProviderNetworkRequestOutcome.Failed,
+                timeProvider.GetUtcNow());
+            throw;
         }
     }
 
@@ -342,7 +418,8 @@ public sealed class BingWebTranslatorProvider : ITranslatorProvider
                 TranslatorProviderFailureKind.Throttled,
                 $"{message} Retry after {FormatDuration(retryAfter)}.",
                 retryAfter: retryAfter,
-                consecutiveFailureCount: failureCount);
+                consecutiveFailureCount: failureCount,
+                nextRetryAt: cooldown.Until);
         }
     }
 
@@ -391,14 +468,16 @@ public sealed class BingWebTranslatorProvider : ITranslatorProvider
                 message,
                 innerException,
                 remaining,
-                activeCooldown.ConsecutiveFailureCount)
+                activeCooldown.ConsecutiveFailureCount,
+                activeCooldown.Until)
             : new TranslatorProviderException(
                 ProviderId,
                 activeCooldown.FailureKind,
                 message,
                 innerException,
                 remaining,
-                activeCooldown.ConsecutiveFailureCount);
+                activeCooldown.ConsecutiveFailureCount,
+                activeCooldown.Until);
     }
 
     private TimeSpan ResolveRetryAfter(HttpResponseMessage response)

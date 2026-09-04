@@ -128,6 +128,77 @@
             <Setter Property="Foreground" Value="#4B5865" />
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
+        <Style x:Key="ParameterInfoIconStyle" TargetType="ContentControl">
+            <Setter Property="Width" Value="16" />
+            <Setter Property="Height" Value="16" />
+            <Setter Property="Margin" Value="4,0,0,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Cursor" Value="Help" />
+            <Setter Property="AutomationProperties.Name" Value="Справка по параметру" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContentControl">
+                        <Grid>
+                            <Border
+                                x:Name="InfoCircle"
+                                Background="#F3F8F9"
+                                BorderBrush="#6C8790"
+                                BorderThickness="1"
+                                CornerRadius="8">
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    FontFamily="Segoe UI"
+                                    FontSize="11"
+                                    FontWeight="Bold"
+                                    Foreground="#365963"
+                                    Text="i" />
+                            </Border>
+                            <Popup
+                                AllowsTransparency="True"
+                                HorizontalOffset="6"
+                                IsHitTestVisible="False"
+                                IsOpen="{Binding IsMouseOver, ElementName=InfoCircle, Mode=OneWay}"
+                                Placement="Right"
+                                PlacementTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
+                                PopupAnimation="Fade"
+                                StaysOpen="False"
+                                VerticalOffset="-4">
+                                <Border
+                                    MaxWidth="380"
+                                    Padding="10,8"
+                                    Background="#FFFDFB"
+                                    BorderBrush="#9AAAB2"
+                                    BorderThickness="1"
+                                    CornerRadius="5"
+                                    SnapsToDevicePixels="True">
+                                    <Border.Effect>
+                                        <DropShadowEffect
+                                            BlurRadius="10"
+                                            Direction="315"
+                                            Opacity="0.22"
+                                            ShadowDepth="3" />
+                                    </Border.Effect>
+                                    <TextBlock
+                                        Foreground="#17212B"
+                                        LineHeight="18"
+                                        MaxWidth="356"
+                                        Text="{TemplateBinding Content}"
+                                        TextWrapping="Wrap" />
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="InfoCircle" Property="Background" Value="#DDEFF1" />
+                                <Setter TargetName="InfoCircle" Property="BorderBrush" Value="#087F8C" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="MutedTextStyle" TargetType="TextBlock">
             <Setter Property="Foreground" Value="#66727F" />
             <Setter Property="TextWrapping" Value="Wrap" />
@@ -281,6 +352,7 @@
                 </Grid.ColumnDefinitions>
 
                 <Border
+                    x:Name="ProfileRail"
                     Grid.Column="0"
                     Background="#F8FAFB"
                     BorderBrush="#DCE3E9"
@@ -462,6 +534,15 @@
                                     Orientation="Horizontal"
                                     VerticalAlignment="Center">
                                     <Button
+                                        x:Name="WelcomeTourHeaderButton"
+                                        MinWidth="56"
+                                        Margin="0,0,8,0"
+                                        AutomationProperties.Name="Открыть приветственный тур"
+                                        Command="{Binding ShowWelcomeTourCommand}"
+                                        Content="? Тур"
+                                        Style="{StaticResource CompactButtonStyle}"
+                                        ToolTip="Открыть приветственный тур по базовой настройке профиля." />
+                                    <Button
                                         MinWidth="78"
                                         Style="{StaticResource PrimaryButtonStyle}"
                                         Command="{Binding StartLiveTranslationCommand}"
@@ -529,25 +610,41 @@
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
 
-                                    <TextBlock
+                                    <StackPanel
                                         Grid.Row="0"
                                         Grid.Column="0"
                                         VerticalAlignment="Center"
-                                        Foreground="#253238"
-                                        Text="Name" />
+                                        Orientation="Horizontal">
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            Foreground="#253238"
+                                            Text="Name" />
+                                        <ContentControl
+                                            Style="{StaticResource ParameterInfoIconStyle}"
+                                            Tag="ProfileName"
+                                            Content="Имя профиля используется в списке и при сохранении. Поле обязательно; фиксированного ограничения длины нет." />
+                                    </StackPanel>
                                     <TextBox
                                         Grid.Row="0"
                                         Grid.Column="1"
                                         Padding="6,3"
                                         Text="{Binding ProfileName, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
 
-                                    <TextBlock
+                                    <StackPanel
                                         Grid.Row="1"
                                         Grid.Column="0"
                                         Margin="0,6,0,0"
                                         VerticalAlignment="Top"
-                                        Foreground="#253238"
-                                        Text="Description" />
+                                        Orientation="Horizontal">
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            Foreground="#253238"
+                                            Text="Description" />
+                                        <ContentControl
+                                            Style="{StaticResource ParameterInfoIconStyle}"
+                                            Tag="ProfileDescription"
+                                            Content="Необязательное описание назначения профиля. Допускается пустое значение; фиксированного ограничения длины нет." />
+                                    </StackPanel>
                                     <TextBox
                                         Grid.Row="1"
                                         Grid.Column="1"
@@ -621,14 +718,21 @@
                                         VerticalAlignment="Center"
                                         Foreground="#56616F"
                                         Text="{Binding OverlayPreviewStatus}" />
-                                    <CheckBox
+                                    <StackPanel
                                         Grid.Row="2"
                                         Grid.Column="0"
                                         Grid.ColumnSpan="2"
                                         Margin="0,6,0,0"
                                         VerticalAlignment="Center"
-                                        Content="Debug metrics"
-                                        IsChecked="{Binding IsDebugOverlayEnabled, Mode=TwoWay}" />
+                                        Orientation="Horizontal">
+                                        <CheckBox
+                                            Content="Debug metrics"
+                                            IsChecked="{Binding IsDebugOverlayEnabled, Mode=TwoWay}" />
+                                        <ContentControl
+                                            Style="{StaticResource ParameterInfoIconStyle}"
+                                            Tag="DebugOverlayEnabled"
+                                            Content="Показывает диагностические метрики поверх тестового оверлея. Значения: включено или выключено; настройка сохраняется локально." />
+                                    </StackPanel>
                                     <TextBlock
                                         Grid.Row="2"
                                         Grid.Column="2"
@@ -637,13 +741,21 @@
                                         Foreground="#56616F"
                                         Text="{Binding DebugOverlayStatus}"
                                         TextWrapping="Wrap" />
-                                    <TextBlock
+                                    <StackPanel
                                         Grid.Row="3"
                                         Grid.Column="0"
                                         Margin="0,6,0,0"
                                         VerticalAlignment="Center"
-                                        Foreground="#253238"
-                                        Text="Vertical width" />
+                                        Orientation="Horizontal">
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            Foreground="#253238"
+                                            Text="Vertical width" />
+                                        <ContentControl
+                                            Style="{StaticResource ParameterInfoIconStyle}"
+                                            Tag="DebugVerticalSourceWidthMultiplier"
+                                            Content="Начальная ширина перевода для вертикального исходного текста. Допустимый диапазон: 1,0–2,5×; стандартное значение 2,0×. Действует только в текущем сеансе." />
+                                    </StackPanel>
                                     <Grid
                                         Grid.Row="3"
                                         Grid.Column="1"
@@ -686,6 +798,7 @@
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -721,10 +834,18 @@
                                                         VerticalAlignment="Center"
                                                         Content="Enabled"
                                                         IsChecked="{Binding IsEnabled, Mode=TwoWay}" />
-                                                    <TextBox
+                                                    <DockPanel
                                                         Grid.Column="2"
-                                                        Padding="6,3"
-                                                        Text="{Binding GestureText, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+                                                        LastChildFill="True">
+                                                        <ContentControl
+                                                            DockPanel.Dock="Right"
+                                                            Style="{StaticResource ParameterInfoIconStyle}"
+                                                            Tag="GlobalHotkeys"
+                                                            Content="Флажок включает действие, поле задаёт сочетание клавиш. Формат: необязательные Ctrl, Alt, Shift или Win и одна клавиша, например Ctrl+Alt+T; функциональные клавиши: F1–F24." />
+                                                        <TextBox
+                                                            Padding="6,3"
+                                                            Text="{Binding GestureText, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+                                                    </DockPanel>
                                                 </Grid>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
@@ -768,6 +889,22 @@
                                         Padding="9,4"
                                         Command="{Binding CheckForUpdatesCommand}"
                                         Content="Check for updates" />
+                                    <TextBlock
+                                        Grid.Row="4"
+                                        Grid.Column="0"
+                                        Grid.ColumnSpan="2"
+                                        Margin="0,8,6,0"
+                                        VerticalAlignment="Center"
+                                        Foreground="#56616F"
+                                        Text="Повторно покажет базовую настройку профиля и типовых облачков."
+                                        TextWrapping="Wrap" />
+                                    <Button
+                                        Grid.Row="4"
+                                        Grid.Column="2"
+                                        Margin="4,8,0,0"
+                                        Padding="9,4"
+                                        Command="{Binding ShowWelcomeTourCommand}"
+                                        Content="Приветственный тур" />
                                 </Grid>
                             </Border>
 
@@ -886,13 +1023,18 @@
                                         Foreground="#56616F"
                                         Text="{Binding TranslatorSettingsSummary}" />
 
-                                    <TextBlock
+                                    <StackPanel
                                         Grid.Row="1"
                                         Grid.Column="0"
                                         Margin="0,6,0,0"
                                         VerticalAlignment="Center"
-                                        Foreground="#253238"
-                                        Text="Provider" />
+                                        Orientation="Horizontal">
+                                        <TextBlock VerticalAlignment="Center" Foreground="#253238" Text="Provider" />
+                                        <ContentControl
+                                            Style="{StaticResource ParameterInfoIconStyle}"
+                                            Tag="TranslatorProvider"
+                                            Content="Сервис, которому отправляется распознанный текст. Доступные варианты: Google, Azure, Yandex, GoogleWeb, BingWeb и YandexWeb. Автоматического переключения между провайдерами нет." />
+                                    </StackPanel>
                                     <ComboBox
                                         Grid.Row="1"
                                         Grid.Column="1"
@@ -902,13 +1044,18 @@
                                         ItemsSource="{Binding TranslatorProviderOptions}"
                                         Text="{Binding TranslatorProvider, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
 
-                                    <TextBlock
+                                    <StackPanel
                                         Grid.Row="2"
                                         Grid.Column="0"
                                         Margin="0,6,0,0"
                                         VerticalAlignment="Center"
-                                        Foreground="#253238"
-                                        Text="Source language" />
+                                        Orientation="Horizontal">
+                                        <TextBlock VerticalAlignment="Center" Foreground="#253238" Text="Source language" />
+                                        <ContentControl
+                                            Style="{StaticResource ParameterInfoIconStyle}"
+                                            Tag="SourceLanguage"
+                                            Content="Язык исходного текста для переводчика и базовый язык OCR. Поле обязательно; значение выбирается из списка поддерживаемых языков." />
+                                    </StackPanel>
                                     <ComboBox
                                         Grid.Row="2"
                                         Grid.Column="1"
@@ -922,13 +1069,18 @@
                                         SelectedValuePath="Code"
                                         TextSearch.TextPath="DisplayName" />
 
-                                    <TextBlock
+                                    <StackPanel
                                         Grid.Row="3"
                                         Grid.Column="0"
                                         Margin="0,6,0,0"
                                         VerticalAlignment="Center"
-                                        Foreground="#253238"
-                                        Text="Target language" />
+                                        Orientation="Horizontal">
+                                        <TextBlock VerticalAlignment="Center" Foreground="#253238" Text="Target language" />
+                                        <ContentControl
+                                            Style="{StaticResource ParameterInfoIconStyle}"
+                                            Tag="TargetLanguage"
+                                            Content="Язык, на который переводится распознанный текст. Поле обязательно; значение выбирается из списка поддерживаемых языков." />
+                                    </StackPanel>
                                     <ComboBox
                                         Grid.Row="3"
                                         Grid.Column="1"
@@ -942,14 +1094,23 @@
                                         SelectedValuePath="Code"
                                         TextSearch.TextPath="DisplayName" />
 
-                                    <TextBlock
+                                    <StackPanel
                                         Grid.Row="4"
                                         Grid.Column="0"
                                         Margin="0,6,0,0"
                                         VerticalAlignment="Center"
-                                        Foreground="#253238"
-                                        Text="Endpoint"
-                                        Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        Orientation="Horizontal"
+                                        Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            Foreground="#253238"
+                                            Text="Endpoint"
+                                            Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <ContentControl
+                                            Style="{StaticResource ParameterInfoIconStyle}"
+                                            Tag="TranslatorEndpoint"
+                                            Content="Полный адрес API официального провайдера. Формат и обязательность определяются выбранным сервисом; обычно используется HTTPS-адрес без дополнительных параметров запроса." />
+                                    </StackPanel>
                                     <TextBox
                                         Grid.Row="4"
                                         Grid.Column="1"
@@ -958,14 +1119,23 @@
                                         Text="{Binding TranslatorCredentialEndpoint, UpdateSourceTrigger=PropertyChanged}"
                                         Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
-                                    <TextBlock
+                                    <StackPanel
                                         Grid.Row="5"
                                         Grid.Column="0"
                                         Margin="0,6,0,0"
                                         VerticalAlignment="Center"
-                                        Foreground="#253238"
-                                        Text="Project / folder id"
-                                        Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        Orientation="Horizontal"
+                                        Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            Foreground="#253238"
+                                            Text="Project / folder id"
+                                            Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <ContentControl
+                                            Style="{StaticResource ParameterInfoIconStyle}"
+                                            Tag="TranslatorProjectId"
+                                            Content="Идентификатор проекта или каталога в учётной записи провайдера. Допустимый формат и обязательность зависят от выбранного официального сервиса." />
+                                    </StackPanel>
                                     <TextBox
                                         Grid.Row="5"
                                         Grid.Column="1"
@@ -974,14 +1144,23 @@
                                         Text="{Binding TranslatorCredentialProjectId, UpdateSourceTrigger=PropertyChanged}"
                                         Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
-                                    <TextBlock
+                                    <StackPanel
                                         Grid.Row="6"
                                         Grid.Column="0"
                                         Margin="0,6,0,0"
                                         VerticalAlignment="Center"
-                                        Foreground="#253238"
-                                        Text="Region / location"
-                                        Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        Orientation="Horizontal"
+                                        Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            Foreground="#253238"
+                                            Text="Region / location"
+                                            Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <ContentControl
+                                            Style="{StaticResource ParameterInfoIconStyle}"
+                                            Tag="TranslatorLocation"
+                                            Content="Регион или location ресурса переводчика. Допустимое значение задаётся провайдером; оставляйте поле пустым только когда выбранный сервис его не требует." />
+                                    </StackPanel>
                                     <TextBox
                                         Grid.Row="6"
                                         Grid.Column="1"
@@ -990,14 +1169,23 @@
                                         Text="{Binding TranslatorCredentialLocation, UpdateSourceTrigger=PropertyChanged}"
                                         Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
-                                    <TextBlock
+                                    <StackPanel
                                         Grid.Row="7"
                                         Grid.Column="0"
                                         Margin="0,6,0,0"
                                         VerticalAlignment="Center"
-                                        Foreground="#253238"
-                                        Text="API key / token"
-                                        Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        Orientation="Horizontal"
+                                        Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            Foreground="#253238"
+                                            Text="API key / token"
+                                            Visibility="{Binding RequiresStoredTranslatorCredentials, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <ContentControl
+                                            Style="{StaticResource ParameterInfoIconStyle}"
+                                            Tag="TranslatorSecret"
+                                            Content="Секретный API-ключ или токен официального провайдера. Длина и формат задаются сервисом. После сохранения секрет хранится только в Windows Credential Manager и не входит в профиль или логи." />
+                                    </StackPanel>
                                     <PasswordBox
                                         Grid.Row="7"
                                         Grid.Column="1"
@@ -1071,13 +1259,18 @@
                                         Style="{StaticResource SectionTitleStyle}"
                                         Text="Overlay settings" />
 
-                                    <TextBlock
+                                    <StackPanel
                                         Grid.Row="1"
                                         Grid.Column="0"
                                         Margin="0,6,0,0"
                                         VerticalAlignment="Center"
-                                        Foreground="#253238"
-                                        Text="Mask mode" />
+                                        Orientation="Horizontal">
+                                        <TextBlock VerticalAlignment="Center" Foreground="#253238" Text="Mask mode" />
+                                        <ContentControl
+                                            Style="{StaticResource ParameterInfoIconStyle}"
+                                            Tag="OverlayMaskMode"
+                                            Content="Способ скрытия исходного текста. Допустимые значения: Solid — сплошная заливка; Darken — затемнение исходного изображения." />
+                                    </StackPanel>
                                     <ComboBox
                                         Grid.Row="1"
                                         Grid.Column="1"
@@ -1086,13 +1279,18 @@
                                         ItemsSource="{Binding OverlayMaskModes}"
                                         SelectedItem="{Binding OverlayMaskMode}" />
 
-                                    <TextBlock
+                                    <StackPanel
                                         Grid.Row="2"
                                         Grid.Column="0"
                                         Margin="0,6,0,0"
                                         VerticalAlignment="Center"
-                                        Foreground="#253238"
-                                        Text="Mask color" />
+                                        Orientation="Horizontal">
+                                        <TextBlock VerticalAlignment="Center" Foreground="#253238" Text="Mask color" />
+                                        <ContentControl
+                                            Style="{StaticResource ParameterInfoIconStyle}"
+                                            Tag="OverlayMaskColor"
+                                            Content="Цвет маски в шестнадцатеричном формате. Допустимо #RRGGBB или #AARRGGBB, где AA задаёт альфа-канал." />
+                                    </StackPanel>
                                     <TextBox
                                         Grid.Row="2"
                                         Grid.Column="1"
@@ -1100,13 +1298,18 @@
                                         Padding="6,3"
                                         Text="{Binding OverlayMaskColor, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
 
-                                    <TextBlock
+                                    <StackPanel
                                         Grid.Row="3"
                                         Grid.Column="0"
                                         Margin="0,6,0,0"
                                         VerticalAlignment="Top"
-                                        Foreground="#253238"
-                                        Text="Opacity" />
+                                        Orientation="Horizontal">
+                                        <TextBlock VerticalAlignment="Center" Foreground="#253238" Text="Opacity" />
+                                        <ContentControl
+                                            Style="{StaticResource ParameterInfoIconStyle}"
+                                            Tag="OverlayOpacity"
+                                            Content="Непрозрачность маски: 0 делает её полностью прозрачной, 1 — полностью непрозрачной. Допустимый диапазон: 0–1 включительно." />
+                                    </StackPanel>
                                     <Grid Grid.Row="3" Grid.Column="1" Margin="0,6,0,0">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
@@ -1126,13 +1329,18 @@
                                             Padding="6,3"
                                             Text="{Binding OverlayOpacity, UpdateSourceTrigger=PropertyChanged, StringFormat=F2, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                     </Grid>
-                                    <TextBlock
+                                    <StackPanel
                                         Grid.Row="4"
                                         Grid.Column="0"
                                         Margin="0,6,0,0"
                                         VerticalAlignment="Top"
-                                        Foreground="#253238"
-                                        Text="Padding" />
+                                        Orientation="Horizontal">
+                                        <TextBlock VerticalAlignment="Center" Foreground="#253238" Text="Padding" />
+                                        <ContentControl
+                                            Style="{StaticResource ParameterInfoIconStyle}"
+                                            Tag="OverlayPadding"
+                                            Content="Дополнительный отступ маски вокруг исходного текста в пикселях. Допустимо 0 и выше; ползунок рассчитан на быстрый выбор 0–64." />
+                                    </StackPanel>
                                     <Grid Grid.Row="4" Grid.Column="1" Margin="0,6,0,0">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
@@ -1214,6 +1422,7 @@
                                             Command="{Binding RemoveSelectedZoneCommand}"
                                             Content="Remove zone" />
                                         <Button
+                                            x:Name="WelcomeTourPickScreenButton"
                                             DockPanel.Dock="Right"
                                             Margin="4,0,0,0"
                                             Padding="9,4"
@@ -1270,7 +1479,13 @@
                                                     Grid.Row="1"
                                                     Grid.Column="0"
                                                     Margin="0,4,6,0">
-                                                    <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="OCR engine" />
+                                                    <StackPanel Margin="0,0,0,2" Orientation="Horizontal">
+                                                        <TextBlock VerticalAlignment="Center" Foreground="#56616F" Text="OCR engine" />
+                                                        <ContentControl
+                                                            Style="{StaticResource ParameterInfoIconStyle}"
+                                                            Tag="OcrEngine"
+                                                            Content="OCR-движок профиля. Допустимые значения: Windows и Tesseract. Для вертикального текста и распознавания принятых candidate crop используется Tesseract." />
+                                                    </StackPanel>
                                                     <ComboBox
                                                         Padding="6,3"
                                                         BorderBrush="{Binding OcrEngineBorderBrush}"
@@ -1289,7 +1504,13 @@
                                                     Grid.Row="1"
                                                     Grid.Column="1"
                                                     Margin="0,4,6,0">
-                                                    <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Orientation" />
+                                                    <StackPanel Margin="0,0,0,2" Orientation="Horizontal">
+                                                        <TextBlock VerticalAlignment="Center" Foreground="#56616F" Text="Orientation" />
+                                                        <ContentControl
+                                                            Style="{StaticResource ParameterInfoIconStyle}"
+                                                            Tag="OcrOrientation"
+                                                            Content="Направление исходного текста. Допустимые значения: Auto, Horizontal и Vertical. Vertical доступен только для поддерживаемых японских и китайских языков." />
+                                                    </StackPanel>
                                                     <ComboBox
                                                         Padding="6,3"
                                                         IsEnabled="{Binding IsOcrOrientationSelectionEnabled}"
@@ -1301,7 +1522,13 @@
                                                     Grid.Row="1"
                                                     Grid.Column="2"
                                                     Margin="0,4,0,0">
-                                                    <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Image preprocessing" />
+                                                    <StackPanel Margin="0,0,0,2" Orientation="Horizontal">
+                                                        <TextBlock VerticalAlignment="Center" Foreground="#56616F" Text="Image preprocessing" />
+                                                        <ContentControl
+                                                            Style="{StaticResource ParameterInfoIconStyle}"
+                                                            Tag="OcrPreprocessingPreset"
+                                                            Content="Готовый набор обработки изображения: Custom, Off, Light 1,25×, Standard 1,5×, Strong 2× или Tiny source 3×. Выбор пресета заменяет ручные значения; ручная правка возвращает Custom." />
+                                                    </StackPanel>
                                                     <ComboBox
                                                         Padding="6,3"
                                                         ItemsSource="{Binding OcrPreprocessingPresets}"
@@ -1330,47 +1557,98 @@
                                                     Foreground="#56616F"
                                                     Text="{Binding OcrLanguagePackStatus}"
                                                     TextWrapping="Wrap" />
-                                                <CheckBox
+                                                <StackPanel
                                                     Grid.Row="3"
                                                     Grid.Column="0"
                                                     Margin="0,4,6,0"
-                                                    Content="Enabled"
-                                                    IsChecked="{Binding OcrPreprocessingEnabled, Mode=TwoWay}" />
-                                                <CheckBox
+                                                    Orientation="Horizontal">
+                                                    <CheckBox
+                                                        Content="Enabled"
+                                                        IsChecked="{Binding OcrPreprocessingEnabled, Mode=TwoWay}" />
+                                                    <ContentControl
+                                                        Style="{StaticResource ParameterInfoIconStyle}"
+                                                        Tag="OcrPreprocessingEnabled"
+                                                        Content="Включает применение выбранных параметров обработки перед OCR. Значения: включено или выключено; выключение передаёт исходный crop без этой обработки." />
+                                                </StackPanel>
+                                                <StackPanel
                                                     Grid.Row="3"
                                                     Grid.Column="1"
                                                     Margin="0,4,6,0"
-                                                    Content="Threshold"
-                                                    IsChecked="{Binding OcrPreprocessingThresholdingEnabled, Mode=TwoWay}" />
-                                                <CheckBox
+                                                    Orientation="Horizontal">
+                                                    <CheckBox
+                                                        Content="Threshold"
+                                                        IsChecked="{Binding OcrPreprocessingThresholdingEnabled, Mode=TwoWay}" />
+                                                    <ContentControl
+                                                        Style="{StaticResource ParameterInfoIconStyle}"
+                                                        Tag="OcrThresholdingEnabled"
+                                                        Content="Включает бинаризацию по заданному порогу Threshold. Значения: включено или выключено; числовой порог используется только во включённом состоянии." />
+                                                </StackPanel>
+                                                <StackPanel
                                                     Grid.Row="3"
                                                     Grid.Column="2"
                                                     Margin="0,4,0,0"
-                                                    Content="Noise reduction"
-                                                    IsChecked="{Binding OcrPreprocessingNoiseReductionEnabled, Mode=TwoWay}" />
+                                                    Orientation="Horizontal">
+                                                    <CheckBox
+                                                        Content="Noise reduction"
+                                                        IsChecked="{Binding OcrPreprocessingNoiseReductionEnabled, Mode=TwoWay}" />
+                                                    <ContentControl
+                                                        Style="{StaticResource ParameterInfoIconStyle}"
+                                                        Tag="OcrNoiseReductionEnabled"
+                                                        Content="Включает шумоподавление перед распознаванием. Значения: включено или выключено; может помочь на цветном фоне, но требует проверки на мелком тексте." />
+                                                </StackPanel>
                                                 <UniformGrid
                                                     Grid.Row="4"
                                                     Grid.ColumnSpan="3"
                                                     Margin="0,4,0,0"
                                                     Columns="5">
                                                     <StackPanel Margin="0,0,4,0">
-                                                        <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Contrast" />
+                                                        <StackPanel Margin="0,0,0,2" Orientation="Horizontal">
+                                                            <TextBlock VerticalAlignment="Center" Foreground="#56616F" Text="Contrast" />
+                                                            <ContentControl
+                                                                Style="{StaticResource ParameterInfoIconStyle}"
+                                                                Tag="OcrContrast"
+                                                                Content="Множитель контраста перед OCR. Допустимый диапазон: 0,5–3 включительно; 1 означает отсутствие изменения контраста." />
+                                                        </StackPanel>
                                                         <TextBox Padding="6,3" Text="{Binding OcrPreprocessingContrast, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                                     </StackPanel>
                                                     <StackPanel Margin="0,0,4,0">
-                                                        <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Brightness" />
+                                                        <StackPanel Margin="0,0,0,2" Orientation="Horizontal">
+                                                            <TextBlock VerticalAlignment="Center" Foreground="#56616F" Text="Brightness" />
+                                                            <ContentControl
+                                                                Style="{StaticResource ParameterInfoIconStyle}"
+                                                                Tag="OcrBrightness"
+                                                                Content="Смещение яркости изображения перед OCR. Допустимый диапазон: −100–100 включительно; 0 означает отсутствие изменения." />
+                                                        </StackPanel>
                                                         <TextBox Padding="6,3" Text="{Binding OcrPreprocessingBrightness, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                                     </StackPanel>
                                                     <StackPanel Margin="0,0,4,0">
-                                                        <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Sharpness" />
+                                                        <StackPanel Margin="0,0,0,2" Orientation="Horizontal">
+                                                            <TextBlock VerticalAlignment="Center" Foreground="#56616F" Text="Sharpness" />
+                                                            <ContentControl
+                                                                Style="{StaticResource ParameterInfoIconStyle}"
+                                                                Tag="OcrSharpness"
+                                                                Content="Интенсивность повышения резкости перед OCR. Допустимый диапазон: 0–2 включительно; 0 отключает усиление резкости." />
+                                                        </StackPanel>
                                                         <TextBox Padding="6,3" Text="{Binding OcrPreprocessingSharpness, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                                     </StackPanel>
                                                     <StackPanel Margin="0,0,4,0">
-                                                        <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Threshold" />
+                                                        <StackPanel Margin="0,0,0,2" Orientation="Horizontal">
+                                                            <TextBlock VerticalAlignment="Center" Foreground="#56616F" Text="Threshold" />
+                                                            <ContentControl
+                                                                Style="{StaticResource ParameterInfoIconStyle}"
+                                                                Tag="OcrThreshold"
+                                                                Content="Порог бинаризации яркости. Допустимый диапазон: 0–255 включительно; применяется только при включённом флажке Threshold." />
+                                                        </StackPanel>
                                                         <TextBox Padding="6,3" Text="{Binding OcrPreprocessingThreshold, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                                     </StackPanel>
                                                     <StackPanel>
-                                                        <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Scale" />
+                                                        <StackPanel Margin="0,0,0,2" Orientation="Horizontal">
+                                                            <TextBlock VerticalAlignment="Center" Foreground="#56616F" Text="Scale" />
+                                                            <ContentControl
+                                                                Style="{StaticResource ParameterInfoIconStyle}"
+                                                                Tag="OcrScale"
+                                                                Content="Масштабирование crop перед OCR. Допустимый диапазон: 1–3× включительно; больший масштаб помогает мелкому тексту, но увеличивает время обработки." />
+                                                        </StackPanel>
                                                         <TextBox Padding="6,3" Text="{Binding OcrPreprocessingScale, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                                     </StackPanel>
                                                 </UniformGrid>
@@ -1560,13 +1838,22 @@
                                                         <ColumnDefinition Width="*" />
                                                     </Grid.ColumnDefinitions>
 
-                                                <TextBlock
+                                                <StackPanel
                                                     Grid.Row="0"
                                                     Grid.Column="0"
                                                     VerticalAlignment="Center"
-                                                    Foreground="#253238"
-                                                    Text="Zone name"
-                                                    Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                    Orientation="Horizontal"
+                                                    Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <TextBlock
+                                                        VerticalAlignment="Center"
+                                                        Foreground="#253238"
+                                                        Text="Zone name"
+                                                        Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                    <ContentControl
+                                                        Style="{StaticResource ParameterInfoIconStyle}"
+                                                        Tag="ZoneName"
+                                                        Content="Имя выбранной OCR-зоны в профиле. Поле обязательно; фиксированного ограничения длины нет." />
+                                                </StackPanel>
                                                 <TextBox
                                                     Grid.Row="0"
                                                     Grid.Column="1"
@@ -1624,11 +1911,16 @@
                                                                 <ColumnDefinition Width="120" />
                                                                 <ColumnDefinition Width="*" />
                                                             </Grid.ColumnDefinitions>
-                                                            <TextBlock
+                                                            <StackPanel
                                                                 Grid.Column="0"
                                                                 VerticalAlignment="Center"
-                                                                Foreground="#253238"
-                                                                Text="OCR language" />
+                                                                Orientation="Horizontal">
+                                                                <TextBlock VerticalAlignment="Center" Foreground="#253238" Text="OCR language" />
+                                                                <ContentControl
+                                                                    Style="{StaticResource ParameterInfoIconStyle}"
+                                                                    Tag="ZoneOcrLanguage"
+                                                                    Content="Язык распознавания выбранной зоны. Значение выбирается из списка; пустой вариант наследует Source language. Для Tesseract должен быть установлен соответствующий traineddata." />
+                                                            </StackPanel>
                                                             <ComboBox
                                                                 Grid.Column="1"
                                                                 Padding="6,3"
@@ -1643,14 +1935,23 @@
                                                     </StackPanel>
                                                 </Border>
 
-                                                <TextBlock
+                                                <StackPanel
                                                     Grid.Row="2"
                                                     Grid.Column="0"
                                                     Margin="0,6,0,0"
                                                     VerticalAlignment="Top"
-                                                    Foreground="#253238"
-                                                    Text="Absolute bounds"
-                                                    Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                    Orientation="Horizontal"
+                                                    Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <TextBlock
+                                                        VerticalAlignment="Center"
+                                                        Foreground="#253238"
+                                                        Text="Absolute bounds"
+                                                        Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                    <ContentControl
+                                                        Style="{StaticResource ParameterInfoIconStyle}"
+                                                        Tag="AbsoluteBounds"
+                                                        Content="Координаты зоны в пикселях: X и Y задают левый верхний угол, W и H — ширину и высоту. X и Y — целые числа; W и H &gt; 0. Зоны не должны пересекаться." />
+                                                </StackPanel>
                                                 <UniformGrid
                                                     Grid.Row="2"
                                                     Grid.Column="1"
@@ -1675,14 +1976,23 @@
                                                     </StackPanel>
                                                 </UniformGrid>
 
-                                                <TextBlock
+                                                <StackPanel
                                                     Grid.Row="3"
                                                     Grid.Column="0"
                                                     Margin="0,6,0,0"
                                                     VerticalAlignment="Top"
-                                                    Foreground="#253238"
-                                                    Text="Relative bounds"
-                                                    Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                    Orientation="Horizontal"
+                                                    Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <TextBlock
+                                                        VerticalAlignment="Center"
+                                                        Foreground="#253238"
+                                                        Text="Relative bounds"
+                                                        Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                    <ContentControl
+                                                        Style="{StaticResource ParameterInfoIconStyle}"
+                                                        Tag="RelativeBounds"
+                                                        Content="Доли ширины и высоты экрана для переноса зоны между разрешениями. Границы: 0 ≤ X &lt; 1, 0 ≤ Y &lt; 1, W и H &gt; 0; X+W и Y+H должны быть не больше 1." />
+                                                </StackPanel>
                                                 <UniformGrid
                                                     Grid.Row="3"
                                                     Grid.Column="1"
@@ -1742,7 +2052,13 @@
                                                             Grid.Row="4"
                                                             Grid.Column="0"
                                                             Margin="0,6,4,0">
-                                                            <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Font" />
+                                                            <StackPanel Margin="0,0,0,2" Orientation="Horizontal">
+                                                                <TextBlock VerticalAlignment="Center" Foreground="#56616F" Text="Font" />
+                                                                <ContentControl
+                                                                    Style="{StaticResource ParameterInfoIconStyle}"
+                                                                    Tag="OverlayFontFamily"
+                                                                    Content="Шрифт перевода в выбранной зоне. Значение обязательно и выбирается из установленных в Windows семейств шрифтов." />
+                                                            </StackPanel>
                                                             <ComboBox
                                                                 Padding="6,3"
                                                                 ItemsSource="{Binding InstalledFontFamilies}"
@@ -1752,31 +2068,57 @@
                                                             Grid.Row="4"
                                                             Grid.Column="1"
                                                             Margin="0,6,4,0">
-                                                            <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Size" />
+                                                            <StackPanel Margin="0,0,0,2" Orientation="Horizontal">
+                                                                <TextBlock VerticalAlignment="Center" Foreground="#56616F" Text="Size" />
+                                                                <ContentControl
+                                                                    Style="{StaticResource ParameterInfoIconStyle}"
+                                                                    Tag="OverlayFontSize"
+                                                                    Content="Базовый размер шрифта перевода. Допустимый диапазон: 8–72 пунктов включительно; при нехватке места layout может уменьшить отображаемый размер." />
+                                                            </StackPanel>
                                                             <TextBox
                                                                 Padding="6,3"
                                                                 Text="{Binding SelectedZone.OverlayFontSize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
                                                         </StackPanel>
-                                                        <CheckBox
+                                                        <StackPanel
                                                             Grid.Row="4"
                                                             Grid.Column="2"
                                                             Margin="4,24,4,0"
                                                             VerticalAlignment="Top"
-                                                            Content="Bold"
-                                                            IsChecked="{Binding SelectedZone.OverlayIsBold, Mode=TwoWay}" />
-                                                        <CheckBox
+                                                            Orientation="Horizontal">
+                                                            <CheckBox
+                                                                Content="Bold"
+                                                                IsChecked="{Binding SelectedZone.OverlayIsBold, Mode=TwoWay}" />
+                                                            <ContentControl
+                                                                Style="{StaticResource ParameterInfoIconStyle}"
+                                                                Tag="OverlayBold"
+                                                                Content="Включает полужирное начертание перевода для выбранной зоны. Значения: включено или выключено." />
+                                                        </StackPanel>
+                                                        <StackPanel
                                                             Grid.Row="4"
                                                             Grid.Column="3"
                                                             Margin="4,24,0,0"
                                                             VerticalAlignment="Top"
-                                                            Content="Italic"
-                                                            IsChecked="{Binding SelectedZone.OverlayIsItalic, Mode=TwoWay}" />
+                                                            Orientation="Horizontal">
+                                                            <CheckBox
+                                                                Content="Italic"
+                                                                IsChecked="{Binding SelectedZone.OverlayIsItalic, Mode=TwoWay}" />
+                                                            <ContentControl
+                                                                Style="{StaticResource ParameterInfoIconStyle}"
+                                                                Tag="OverlayItalic"
+                                                                Content="Включает курсивное начертание перевода для выбранной зоны. Значения: включено или выключено." />
+                                                        </StackPanel>
                                                         <StackPanel
                                                             Grid.Row="1"
                                                             Grid.Column="0"
                                                             Grid.ColumnSpan="2"
                                                             Margin="0,6,4,0">
-                                                            <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Content layout mode" />
+                                                            <StackPanel Margin="0,0,0,2" Orientation="Horizontal">
+                                                                <TextBlock VerticalAlignment="Center" Foreground="#56616F" Text="Content layout mode" />
+                                                                <ContentControl
+                                                                    Style="{StaticResource ParameterInfoIconStyle}"
+                                                                    Tag="ContentLayoutMode"
+                                                                    Content="Политика группировки, размещения оверлея и обновления зоны. Сейчас допустим только Dialog / Comic; дополнительные режимы ещё не включены." />
+                                                            </StackPanel>
                                                             <ComboBox
                                                                 Padding="6,3"
                                                                 DisplayMemberPath="DisplayName"
@@ -1789,7 +2131,13 @@
                                                             Grid.Column="2"
                                                             Grid.ColumnSpan="2"
                                                             Margin="4,6,0,0">
-                                                            <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Detector preset" />
+                                                            <StackPanel Margin="0,0,0,2" Orientation="Horizontal">
+                                                                <TextBlock VerticalAlignment="Center" Foreground="#56616F" Text="Detector preset" />
+                                                                <ContentControl
+                                                                    Style="{StaticResource ParameterInfoIconStyle}"
+                                                                    Tag="DetectorPreset"
+                                                                    Content="Порог принятия Paddle-кандидатов: Standard 0,60; Chinese test 0,65; Chinese strict test 0,70. Китайские тестовые пресеты для других языков безопасно сводятся к Standard." />
+                                                            </StackPanel>
                                                             <ComboBox
                                                                 Padding="6,3"
                                                                 DisplayMemberPath="DisplayName"
@@ -1818,7 +2166,13 @@
                                                             Grid.ColumnSpan="4"
                                                             Margin="0,6,0,0"
                                                             Visibility="{Binding IsHorizontalOcrOrientation, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                            <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Candidate grouping - maximum horizontal lines" />
+                                                            <StackPanel Margin="0,0,0,2" Orientation="Horizontal">
+                                                                <TextBlock VerticalAlignment="Center" Foreground="#56616F" Text="Candidate grouping - maximum horizontal lines" />
+                                                                <ContentControl
+                                                                    Style="{StaticResource ParameterInfoIconStyle}"
+                                                                    Tag="HorizontalCandidateGrouping"
+                                                                    Content="Auto использует правила текущей письменности и продолжает только строго связанный горизонтальный блок; для SpacedLeftToRight фиксированного числа строк нет. Ручное значение задаёт жёсткий предел 1–12 строк." />
+                                                            </StackPanel>
                                                             <DockPanel LastChildFill="True">
                                                                 <CheckBox
                                                                     Margin="0,0,4,0"
@@ -1844,7 +2198,13 @@
                                                             Grid.ColumnSpan="4"
                                                             Margin="0,6,0,0"
                                                             Visibility="{Binding IsVerticalOcrOrientation, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                            <TextBlock Margin="0,0,0,2" Foreground="#56616F" Text="Candidate grouping - maximum vertical columns" />
+                                                            <StackPanel Margin="0,0,0,2" Orientation="Horizontal">
+                                                                <TextBlock VerticalAlignment="Center" Foreground="#56616F" Text="Candidate grouping - maximum vertical columns" />
+                                                                <ContentControl
+                                                                    Style="{StaticResource ParameterInfoIconStyle}"
+                                                                    Tag="VerticalCandidateGrouping"
+                                                                    Content="Auto определяет границу по геометрии; для вертикального CJK фиксированного числа колонок нет. Ручное значение задаёт жёсткий предел 1–12 колонок." />
+                                                            </StackPanel>
                                                             <DockPanel LastChildFill="True">
                                                                 <CheckBox
                                                                     Margin="0,0,4,0"
@@ -1877,6 +2237,7 @@
                                                     Visibility="{Binding IsZonesOcrTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
                                                 <Border
+                                                    x:Name="WelcomeTourLiveControls"
                                                     Grid.Row="6"
                                                     Grid.ColumnSpan="2"
                                                     Margin="0,6,0,0"
@@ -1963,13 +2324,18 @@
                                                             VerticalAlignment="Center"
                                                             Foreground="#56616F"
                                                             Text="{Binding OcrPreviewStatus}" />
-                                                        <TextBlock
+                                                        <StackPanel
                                                             Grid.Row="3"
                                                             Grid.Column="0"
                                                             Margin="0,6,0,0"
                                                             VerticalAlignment="Center"
-                                                            Foreground="#253238"
-                                                            Text="Live timing" />
+                                                            Orientation="Horizontal">
+                                                            <TextBlock VerticalAlignment="Center" Foreground="#253238" Text="Live timing" />
+                                                            <ContentControl
+                                                                Style="{StaticResource ParameterInfoIconStyle}"
+                                                                Tag="LiveTiming"
+                                                                Content="Баланс скорости и устойчивости live-режима. Fast: 100 мс, 2 наблюдения и 200 мс стабильности; Balanced: 125 мс, 3 и 250 мс; Conservative: 160 мс, 4 и 320 мс." />
+                                                        </StackPanel>
                                                         <ComboBox
                                                             Grid.Row="3"
                                                             Grid.Column="1"
@@ -2145,6 +2511,198 @@
                         </Border>
                     </ScrollViewer>
                 </Border>
+
+                <Grid
+                    x:Name="WelcomeTourOverlay"
+                    Grid.ColumnSpan="3"
+                    Panel.ZIndex="1000"
+                    Background="Transparent"
+                    IsVisibleChanged="OnWelcomeTourOverlayIsVisibleChanged"
+                    LayoutUpdated="OnWelcomeTourOverlayLayoutUpdated"
+                    Visibility="{Binding IsWelcomeTourVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Path
+                        x:Name="WelcomeTourDimmingPath"
+                        Panel.ZIndex="0"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch"
+                        Fill="#66192731"
+                        IsHitTestVisible="False"
+                        Stretch="None" />
+                    <Border
+                        x:Name="WelcomeTourSpotlightBorder"
+                        Panel.ZIndex="1"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Top"
+                        Background="#12FFFFFF"
+                        BorderBrush="#22D3C5"
+                        BorderThickness="3"
+                        CornerRadius="10"
+                        IsHitTestVisible="False"
+                        Visibility="Collapsed">
+                        <Border.Effect>
+                            <DropShadowEffect
+                                BlurRadius="18"
+                                Color="#0AA6A6"
+                                Opacity="0.9"
+                                ShadowDepth="0" />
+                        </Border.Effect>
+                    </Border>
+                    <Border
+                        x:Name="WelcomeTourCard"
+                        Panel.ZIndex="2"
+                        Width="620"
+                        Margin="24"
+                        Padding="22"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        AutomationProperties.Name="Приветственный тур по Game Translator"
+                        Background="#FFFFFF"
+                        BorderBrush="#B7C4CC"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                        <Border.Effect>
+                            <DropShadowEffect
+                                BlurRadius="24"
+                                Direction="270"
+                                Opacity="0.32"
+                                ShadowDepth="8" />
+                        </Border.Effect>
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    FontSize="13"
+                                    FontWeight="SemiBold"
+                                    Foreground="#087F8C"
+                                    Text="Быстрый старт" />
+                                <Button
+                                    Grid.Column="1"
+                                    Width="30"
+                                    Height="30"
+                                    MinHeight="30"
+                                    Padding="0"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Top"
+                                    AutomationProperties.Name="Закрыть приветственный тур"
+                                    Command="{Binding CloseWelcomeTourCommand}"
+                                    Content="×"
+                                    FontSize="20"
+                                    FontWeight="Normal"
+                                    ToolTip="Закрыть приветственный тур" />
+                            </Grid>
+
+                            <Grid Grid.Row="1" Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock
+                                    Margin="0,0,10,0"
+                                    VerticalAlignment="Center"
+                                    Foreground="#56616F"
+                                    Text="{Binding WelcomeTourStepIndicator}" />
+                                <ProgressBar
+                                    Grid.Column="1"
+                                    Height="6"
+                                    VerticalAlignment="Center"
+                                    Maximum="{Binding WelcomeTourStepCount}"
+                                    Minimum="0"
+                                    Value="{Binding WelcomeTourProgress, Mode=OneWay}" />
+                            </Grid>
+
+                            <TextBlock
+                                Grid.Row="2"
+                                Margin="0,18,0,0"
+                                FontSize="23"
+                                FontWeight="SemiBold"
+                                Foreground="#17212B"
+                                Text="{Binding WelcomeTourTitle}"
+                                TextWrapping="Wrap" />
+
+                            <TextBlock
+                                Grid.Row="3"
+                                Margin="0,12,0,0"
+                                FontSize="14"
+                                Foreground="#33414E"
+                                LineHeight="21"
+                                Text="{Binding WelcomeTourBody}"
+                                TextWrapping="Wrap" />
+
+                            <Border
+                                Grid.Row="4"
+                                Margin="0,16,0,0"
+                                Padding="12,10"
+                                Background="#EDF7F8"
+                                BorderBrush="#B9DCDD"
+                                BorderThickness="1"
+                                CornerRadius="5">
+                                <DockPanel>
+                                    <Border
+                                        Width="20"
+                                        Height="20"
+                                        Margin="0,0,8,0"
+                                        VerticalAlignment="Top"
+                                        Background="#087F8C"
+                                        CornerRadius="10">
+                                        <TextBlock
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            FontSize="12"
+                                            FontWeight="Bold"
+                                            Foreground="#FFFFFF"
+                                            Text="i" />
+                                    </Border>
+                                    <TextBlock
+                                        VerticalAlignment="Center"
+                                        Foreground="#254B52"
+                                        LineHeight="19"
+                                        Text="{Binding WelcomeTourGuidance}"
+                                        TextWrapping="Wrap" />
+                                </DockPanel>
+                            </Border>
+
+                            <Grid Grid.Row="5" Margin="0,20,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    Foreground="#66727F"
+                                    Text="Тур ничего не меняет автоматически."
+                                    TextWrapping="Wrap" />
+                                <Button
+                                    Grid.Column="1"
+                                    MinWidth="88"
+                                    Margin="8,0,0,0"
+                                    Command="{Binding PreviousWelcomeTourStepCommand}"
+                                    Content="Назад"
+                                    IsEnabled="{Binding WelcomeTourCanGoBack}" />
+                                <Button
+                                    Grid.Column="2"
+                                    MinWidth="104"
+                                    Margin="6,0,0,0"
+                                    Style="{StaticResource PrimaryButtonStyle}"
+                                    Command="{Binding NextWelcomeTourStepCommand}"
+                                    Content="{Binding WelcomeTourPrimaryActionText}" />
+                            </Grid>
+                        </Grid>
+                    </Border>
+                </Grid>
             </Grid>
         </DataTemplate>
     </UserControl.Resources>

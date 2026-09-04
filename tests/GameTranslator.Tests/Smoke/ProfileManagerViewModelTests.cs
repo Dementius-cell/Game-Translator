@@ -6,6 +6,7 @@ using System.Runtime.Loader;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using GameTranslator.Application.Abstractions;
@@ -52,6 +53,90 @@ public sealed class ProfileManagerViewModelTests
         SetPropertyValue(viewModel, "SelectedWorkspaceTabIndex", 5);
         Assert.False(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsOcrPacksTabSelected")));
         Assert.True(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsHotkeysSettingsTabSelected")));
+    }
+
+    [Fact]
+    public async Task LoadAsync_FirstRunShowsWelcomeTourAndClosePersistsDismissal()
+    {
+        var repository = new InMemoryProfileRepository();
+        var settings = new TestSettingsService();
+        var viewModel = CreateMainViewModel(repository, settings);
+
+        await InvokeTaskMethodAsync(viewModel, "LoadAsync");
+
+        Assert.True(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsWelcomeTourVisible")));
+        Assert.Equal(1, GetPropertyValue(viewModel, "WelcomeTourStepNumber"));
+        Assert.Equal(7, GetPropertyValue(viewModel, "WelcomeTourStepCount"));
+        Assert.Contains("Добро пожаловать", Assert.IsType<string>(GetPropertyValue(viewModel, "WelcomeTourTitle")));
+
+        ExecuteCommand(viewModel, "CloseWelcomeTourCommand");
+
+        Assert.False(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsWelcomeTourVisible")));
+        Assert.True(settings.GetValue<bool>("shell.welcomeTour.completed.v1"));
+
+        var restartedViewModel = CreateMainViewModel(repository, settings);
+        await InvokeTaskMethodAsync(restartedViewModel, "LoadAsync");
+
+        Assert.False(Assert.IsType<bool>(GetPropertyValue(restartedViewModel, "IsWelcomeTourVisible")));
+    }
+
+    [Fact]
+    public void WelcomeTour_NavigationSelectsRelevantTabsAndCompletionPersists()
+    {
+        var settings = new TestSettingsService();
+        var viewModel = CreateMainViewModel(new InMemoryProfileRepository(), settings);
+
+        ExecuteCommand(viewModel, "ShowWelcomeTourCommand");
+
+        Assert.True(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsWelcomeTourVisible")));
+        Assert.Equal(0, GetPropertyValue(viewModel, "SelectedWorkspaceTabIndex"));
+        Assert.False(Assert.IsType<bool>(GetPropertyValue(viewModel, "WelcomeTourCanGoBack")));
+        Assert.Equal("Далее", GetPropertyValue(viewModel, "WelcomeTourPrimaryActionText"));
+        Assert.Equal("WorkspaceHeaderActions", GetPropertyValue(viewModel, "WelcomeTourTargetElementName"));
+
+        ExecuteCommand(viewModel, "NextWelcomeTourStepCommand");
+        Assert.Equal(2, GetPropertyValue(viewModel, "WelcomeTourStepNumber"));
+        Assert.Equal(0, GetPropertyValue(viewModel, "SelectedWorkspaceTabIndex"));
+        Assert.True(Assert.IsType<bool>(GetPropertyValue(viewModel, "WelcomeTourCanGoBack")));
+        Assert.Equal("ProfileRail", GetPropertyValue(viewModel, "WelcomeTourTargetElementName"));
+
+        ExecuteCommand(viewModel, "NextWelcomeTourStepCommand");
+        Assert.Equal(3, GetPropertyValue(viewModel, "WelcomeTourStepNumber"));
+        Assert.Equal(1, GetPropertyValue(viewModel, "SelectedWorkspaceTabIndex"));
+        Assert.Equal("TranslationSettingsCard", GetPropertyValue(viewModel, "WelcomeTourTargetElementName"));
+
+        ExecuteCommand(viewModel, "PreviousWelcomeTourStepCommand");
+        Assert.Equal(2, GetPropertyValue(viewModel, "WelcomeTourStepNumber"));
+        Assert.Equal(0, GetPropertyValue(viewModel, "SelectedWorkspaceTabIndex"));
+        Assert.Equal("ProfileRail", GetPropertyValue(viewModel, "WelcomeTourTargetElementName"));
+
+        for (var step = 2; step < 7; step++)
+        {
+            ExecuteCommand(viewModel, "NextWelcomeTourStepCommand");
+            if (step == 4)
+            {
+                Assert.Equal(5, GetPropertyValue(viewModel, "WelcomeTourStepNumber"));
+                Assert.Contains(
+                    "Check OCR language",
+                    Assert.IsType<string>(GetPropertyValue(viewModel, "WelcomeTourBody")),
+                    StringComparison.Ordinal);
+                var ocrGuidance = Assert.IsType<string>(GetPropertyValue(viewModel, "WelcomeTourGuidance"));
+                Assert.Contains("Missing", ocrGuidance, StringComparison.Ordinal);
+                Assert.Contains("Install OCR language", ocrGuidance, StringComparison.Ordinal);
+                Assert.Contains("снова нажмите Check OCR language", ocrGuidance, StringComparison.Ordinal);
+            }
+        }
+
+        Assert.True(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsWelcomeTourVisible")));
+        Assert.Equal(7, GetPropertyValue(viewModel, "WelcomeTourStepNumber"));
+        Assert.Equal(3, GetPropertyValue(viewModel, "SelectedWorkspaceTabIndex"));
+        Assert.Equal("Готово", GetPropertyValue(viewModel, "WelcomeTourPrimaryActionText"));
+        Assert.Equal("WelcomeTourLiveControls", GetPropertyValue(viewModel, "WelcomeTourTargetElementName"));
+
+        ExecuteCommand(viewModel, "NextWelcomeTourStepCommand");
+
+        Assert.False(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsWelcomeTourVisible")));
+        Assert.True(settings.GetValue<bool>("shell.welcomeTour.completed.v1"));
     }
 
     [Fact]
@@ -2312,7 +2397,43 @@ public sealed class ProfileManagerViewModelTests
             rawDetectorCandidateCount: 7,
             minimumDetectorConfidence: 0.66,
             maximumDetectorConfidence: 0.94,
-            averageDetectorConfidence: 0.81));
+            averageDetectorConfidence: 0.81,
+            candidateConfidence: 0.91));
+        var nextRetryAt = new DateTimeOffset(2026, 9, 2, 18, 30, 0, TimeSpan.Zero);
+        lifecycleEvents.Add(new LiveCandidateLifecycleEvent(
+            sequence: 2,
+            refreshSequence: 2,
+            occurredAt: nextRetryAt - TimeSpan.FromSeconds(60),
+            kind: LiveCandidateLifecycleEventKind.CandidateWorkFailed,
+            failureStage: TranslationPipelineStage.Translation,
+            failureProviderId: "BingWeb",
+            failureProviderKind: TranslatorProviderFailureKind.Throttled,
+            failureProviderHttpStatusCode: 429,
+            failureProviderPaused: true,
+            failureProviderRetryAfter: TimeSpan.FromSeconds(60),
+            failureProviderNextRetryAt: nextRetryAt,
+            failureProviderConsecutiveFailureCount: 2));
+        var providerQueuedAt = nextRetryAt.AddSeconds(-3);
+        var providerStartedAt = nextRetryAt.AddSeconds(-2);
+        var networkStartedAt = nextRetryAt.AddSeconds(-1);
+        lifecycleEvents.Add(new LiveCandidateLifecycleEvent(
+            sequence: 3,
+            refreshSequence: 2,
+            occurredAt: nextRetryAt,
+            kind: LiveCandidateLifecycleEventKind.CandidateProviderRequestObserved,
+            providerDiagnosticRequestId: "request-1",
+            providerRequestQueuedAt: providerQueuedAt,
+            providerInvocationStartedAt: providerStartedAt,
+            providerInvocationCompletedAt: nextRetryAt,
+            providerInvocationOutcome: TranslationProviderInvocationOutcome.Failed,
+            providerNetworkAttemptId: "request-1:1",
+            providerNetworkRequestKind: TranslationProviderNetworkRequestKind.Translation,
+            providerNetworkRequestSent: true,
+            providerNetworkRequestStartedAt: networkStartedAt,
+            providerNetworkRequestCompletedAt: nextRetryAt,
+            providerNetworkRequestOutcome: TranslationProviderNetworkRequestOutcome.HttpError,
+            providerNetworkHttpStatusCode: 429,
+            translationInputTexts: new[] { "bounded local input" }));
         var appendMethod = viewModel.GetType().GetMethod(
             "AppendLiveCandidateLifecycleDebugInfo",
             BindingFlags.NonPublic | BindingFlags.Instance)
@@ -2333,6 +2454,7 @@ public sealed class ProfileManagerViewModelTests
         Assert.Contains("DetectorConfidenceMin=0.66", report, StringComparison.Ordinal);
         Assert.Contains("DetectorConfidenceMax=0.94", report, StringComparison.Ordinal);
         Assert.Contains("DetectorConfidenceAverage=0.81", report, StringComparison.Ordinal);
+        Assert.Contains("CandidateConfidence=0.91", report, StringComparison.Ordinal);
         Assert.Contains("OrderedOcrBlocks=2", report, StringComparison.Ordinal);
         Assert.Contains("OrderedOcrBounds=X2,Y4,W8,H30;X26,Y4,W8,H30", report, StringComparison.Ordinal);
         Assert.Contains("OrderedGroupedMembers=2", report, StringComparison.Ordinal);
@@ -2345,7 +2467,40 @@ public sealed class ProfileManagerViewModelTests
         Assert.Contains("TranslationInputText=\"Second source First source\"", report, StringComparison.Ordinal);
         Assert.Contains("TranslatedTextEntries=1", report, StringComparison.Ordinal);
         Assert.Contains("TranslatedText=\"Translated \\\"value\\\"\"", report, StringComparison.Ordinal);
+        Assert.Contains("FailureProvider=BingWeb", report, StringComparison.Ordinal);
+        Assert.Contains("FailureProviderKind=Throttled", report, StringComparison.Ordinal);
+        Assert.Contains("FailureHttpStatus=429", report, StringComparison.Ordinal);
+        Assert.Contains("FailureProviderPaused=True", report, StringComparison.Ordinal);
+        Assert.Contains("FailureProviderRetryAfterMs=60000.0", report, StringComparison.Ordinal);
+        Assert.Contains($"FailureProviderNextRetryAt={nextRetryAt:O}", report, StringComparison.Ordinal);
+        Assert.Contains("FailureProviderConsecutiveFailures=2", report, StringComparison.Ordinal);
+        Assert.Contains("ProviderDiagnosticRequestId=request-1", report, StringComparison.Ordinal);
+        Assert.Contains($"ProviderRequestQueuedAt={providerQueuedAt:O}", report, StringComparison.Ordinal);
+        Assert.Contains("ProviderQueueWaitMs=1000.0", report, StringComparison.Ordinal);
+        Assert.Contains("ProviderInvocationOutcome=Failed", report, StringComparison.Ordinal);
+        Assert.Contains("ProviderNetworkAttemptId=request-1:1", report, StringComparison.Ordinal);
+        Assert.Contains("ProviderNetworkKind=Translation", report, StringComparison.Ordinal);
+        Assert.Contains("ProviderNetworkRequestSent=True", report, StringComparison.Ordinal);
+        Assert.Contains("ProviderNetworkOutcome=HttpError", report, StringComparison.Ordinal);
+        Assert.Contains("ProviderNetworkHttpStatus=429", report, StringComparison.Ordinal);
         Assert.Contains("Storage: local files only; no diagnostics upload is performed.", report, StringComparison.Ordinal);
+
+        var providerHealthAppendMethod = viewModel.GetType().GetMethod(
+            "AppendLiveTranslatorProviderFailureDebugInfo",
+            BindingFlags.NonPublic | BindingFlags.Instance)
+            ?? throw new InvalidOperationException("Provider failure report formatter was not found.");
+        var providerHealthBuilder = new StringBuilder();
+
+        providerHealthAppendMethod.Invoke(
+            viewModel,
+            new object[] { providerHealthBuilder, nextRetryAt - TimeSpan.FromSeconds(30) });
+
+        var providerHealthReport = providerHealthBuilder.ToString();
+        Assert.Contains("Live translator provider failure", providerHealthReport, StringComparison.Ordinal);
+        Assert.Contains("StateAtReport: Paused", providerHealthReport, StringComparison.Ordinal);
+        Assert.Contains("FailureKind: Throttled", providerHealthReport, StringComparison.Ordinal);
+        Assert.Contains("HttpStatus: 429", providerHealthReport, StringComparison.Ordinal);
+        Assert.Contains($"NextRetryAt: {nextRetryAt:O}", providerHealthReport, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -3243,6 +3398,13 @@ public sealed class ProfileManagerViewModelTests
     private static object? GetPropertyValue(object instance, string propertyName)
     {
         return instance.GetType().GetProperty(propertyName)?.GetValue(instance);
+    }
+
+    private static void ExecuteCommand(object instance, string propertyName)
+    {
+        var command = Assert.IsAssignableFrom<ICommand>(GetPropertyValue(instance, propertyName));
+        Assert.True(command.CanExecute(null));
+        command.Execute(null);
     }
 
     private static bool IsLanguageOption(object instance, string code, string displayName)

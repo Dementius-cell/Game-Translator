@@ -2,6 +2,7 @@ using System.IO;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media;
 using GameTranslator.Application.Cache;
 using GameTranslator.Application.Abstractions;
@@ -11,6 +12,7 @@ using GameTranslator.Application.Profiles;
 using GameTranslator.Application.Settings;
 using GameTranslator.Application.Updates;
 using Microsoft.Extensions.DependencyInjection;
+using WpfPath = System.Windows.Shapes.Path;
 
 namespace GameTranslator.Tests.Smoke;
 
@@ -121,9 +123,22 @@ public sealed class PresentationCompositionTests
                     throwOnError: true)
                     ?? throw new InvalidOperationException("ShellView type was not found.");
                 var shell = Assert.IsAssignableFrom<FrameworkElement>(provider.GetRequiredService(shellType));
+                var resetWelcomeTourSpotlightMethod = shellType.GetMethod(
+                    "ResetWelcomeTourSpotlight",
+                    BindingFlags.Instance | BindingFlags.NonPublic)
+                    ?? throw new InvalidOperationException("Welcome tour spotlight reset method was not found.");
+                var earlyTemplateResetException = Record.Exception(
+                    () => resetWelcomeTourSpotlightMethod.Invoke(shell, null));
+                Assert.Null(earlyTemplateResetException?.InnerException ?? earlyTemplateResetException);
                 var navigation = shell.DataContext!.GetType().GetProperty("Navigation")!.GetValue(shell.DataContext)!;
                 var currentViewModel = navigation.GetType().GetProperty("CurrentViewModel")!.GetValue(navigation)!;
                 var selectedTabProperty = currentViewModel.GetType().GetProperty("SelectedWorkspaceTabIndex")!;
+                var showWelcomeTourCommand = Assert.IsAssignableFrom<ICommand>(
+                    currentViewModel.GetType().GetProperty("ShowWelcomeTourCommand")!.GetValue(currentViewModel));
+                var closeWelcomeTourCommand = Assert.IsAssignableFrom<ICommand>(
+                    currentViewModel.GetType().GetProperty("CloseWelcomeTourCommand")!.GetValue(currentViewModel));
+                var nextWelcomeTourStepCommand = Assert.IsAssignableFrom<ICommand>(
+                    currentViewModel.GetType().GetProperty("NextWelcomeTourStepCommand")!.GetValue(currentViewModel));
                 var tabCards = new Dictionary<int, string[]>
                 {
                     [0] = new[] { "ZoneLiveWorkspaceCard" },
@@ -185,6 +200,55 @@ public sealed class PresentationCompositionTests
                     AssertFitsHorizontally(shell, preprocessingCard!, size.Width);
                     AssertFitsHorizontally(shell, parametersPanel!, size.Width);
                     AssertFitsHorizontally(shell, headerActions!, size.Width);
+
+                    showWelcomeTourCommand.Execute(null);
+                    for (var welcomeTourStep = 1; welcomeTourStep <= 7; welcomeTourStep++)
+                    {
+                        shell.Measure(size);
+                        shell.Arrange(new Rect(new Point(0, 0), size));
+                        shell.UpdateLayout();
+
+                        var welcomeTourOverlay = FindVisualDescendantByName<FrameworkElement>(shell, "WelcomeTourOverlay");
+                        var welcomeTourCard = FindVisualDescendantByName<FrameworkElement>(shell, "WelcomeTourCard");
+                        var welcomeTourDimmingPath = FindVisualDescendantByName<WpfPath>(shell, "WelcomeTourDimmingPath");
+                        var welcomeTourSpotlight = FindVisualDescendantByName<FrameworkElement>(shell, "WelcomeTourSpotlightBorder");
+                        var targetElementName = Assert.IsType<string>(
+                            currentViewModel.GetType().GetProperty("WelcomeTourTargetElementName")!.GetValue(currentViewModel));
+                        var targetElement = FindVisualDescendantByName<FrameworkElement>(shell, targetElementName);
+                        Assert.NotNull(welcomeTourOverlay);
+                        Assert.NotNull(welcomeTourCard);
+                        Assert.NotNull(welcomeTourDimmingPath);
+                        Assert.NotNull(welcomeTourSpotlight);
+                        Assert.NotNull(targetElement);
+                        Assert.Equal(Visibility.Visible, welcomeTourOverlay!.Visibility);
+                        var dimmingGeometry = Assert.IsType<CombinedGeometry>(welcomeTourDimmingPath!.Data);
+                        Assert.Equal(GeometryCombineMode.Exclude, dimmingGeometry.GeometryCombineMode);
+                        Assert.Equal(Visibility.Visible, welcomeTourSpotlight!.Visibility);
+                        Assert.True(welcomeTourSpotlight.ActualWidth > 0);
+                        Assert.True(welcomeTourSpotlight.ActualHeight > 0);
+                        AssertFitsHorizontally(shell, welcomeTourCard!, size.Width);
+                        var welcomeTourTop = welcomeTourCard.TransformToAncestor(shell).Transform(new Point()).Y;
+                        Assert.InRange(welcomeTourTop, 0, size.Height);
+                        Assert.True(
+                            welcomeTourTop + welcomeTourCard.ActualHeight <= size.Height + 1,
+                            $"Welcome tour step {welcomeTourStep} exceeded {size.Width}x{size.Height}.");
+
+                        var targetBounds = targetElement!.TransformToAncestor(shell).TransformBounds(
+                            new Rect(0, 0, targetElement.ActualWidth, targetElement.ActualHeight));
+                        targetBounds.Intersect(new Rect(0, 0, size.Width, size.Height));
+                        var spotlightBounds = welcomeTourSpotlight.TransformToAncestor(shell).TransformBounds(
+                            new Rect(0, 0, welcomeTourSpotlight.ActualWidth, welcomeTourSpotlight.ActualHeight));
+                        Assert.True(
+                            spotlightBounds.IntersectsWith(targetBounds),
+                            $"Welcome tour step {welcomeTourStep} did not spotlight {targetElementName} at {size.Width}x{size.Height}.");
+
+                        if (welcomeTourStep < 7)
+                        {
+                            nextWelcomeTourStepCommand.Execute(null);
+                        }
+                    }
+
+                    closeWelcomeTourCommand.Execute(null);
 
                     var surfaceTop = surfaceCard!.TransformToAncestor(shell).Transform(new Point()).Y;
                     var preprocessingTop = preprocessingCard!.TransformToAncestor(shell).Transform(new Point()).Y;

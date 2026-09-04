@@ -14,9 +14,11 @@ public sealed class BoundedTextCandidateGroupingService
     private const int MaximumVerticalGroupMembers = 4;
     private const int MaximumHorizontalStackGroupMembers = 6;
     private const int MaximumComplexSouthEastAsianHorizontalStackGroupMembers = 8;
-    private const int MaximumAutomaticHorizontalStackGroupMembers = 10;
+    private const int AutomaticHorizontalStackSafetyLimit = 10;
     private const double MinimumStrictContinuationHorizontalOverlapRatio = 0.8d;
     private const int MaximumStrictContinuationVerticalGap = 12;
+    private const int MinimumSignificantVerticalGapIncrease = 4;
+    private const double MaximumNormalizedVerticalGapIncrease = 0.2d;
     private const double MinimumAdaptiveColumnWidthRatio = 0.5d;
     private const double MaximumAdaptiveColumnWidthRatio = 2d;
     private const double MaximumNormalizedTopOffset = 0.5d;
@@ -153,15 +155,25 @@ public sealed class BoundedTextCandidateGroupingService
             var group = new List<TextCandidate> { horizontalCandidates[0] };
             horizontalCandidates.RemoveAt(0);
             var automaticPrimaryLimit = GetMaximumHorizontalStackGroupMembers(groupingProfile);
-            var maximumHorizontalGroupMembers = groupingSettings.MaximumHorizontalLines
-                ?? MaximumAutomaticHorizontalStackGroupMembers;
-            while (group.Count < maximumHorizontalGroupMembers)
+            var usesAdaptiveSpacedHorizontalAuto = groupingProfile is WritingSystemGroupingProfile.SpacedLeftToRight
+                && groupingSettings.MaximumHorizontalLines is null;
+            var maximumHorizontalGroupMembers = groupingSettings.MaximumHorizontalLines;
+            if (maximumHorizontalGroupMembers is null && !usesAdaptiveSpacedHorizontalAuto)
+            {
+                maximumHorizontalGroupMembers = AutomaticHorizontalStackSafetyLimit;
+            }
+
+            while (maximumHorizontalGroupMembers is null
+                || group.Count < maximumHorizontalGroupMembers.Value)
             {
                 var next = horizontalCandidates
                     .Where(candidate => CanExtendVerticalStack(group, candidate, groupingProfile))
                     .Where(candidate => groupingSettings.MaximumHorizontalLines is not null
                         || group.Count < automaticPrimaryLimit
-                        || CanStrictlyExtendAutomaticVerticalStack(group, candidate))
+                        || (CanStrictlyExtendAutomaticVerticalStack(group, candidate)
+                            && (!usesAdaptiveSpacedHorizontalAuto
+                                || group.Count < AutomaticHorizontalStackSafetyLimit
+                                || !HasSignificantAutomaticVerticalGapIncrease(group, candidate))))
                     .OrderBy(candidate => group.Min(member => VerticalGap(member.Bounds, candidate.Bounds)))
                     .ThenBy(candidate => candidate.Bounds.Y)
                     .ThenBy(candidate => candidate.Bounds.X)
@@ -356,6 +368,36 @@ public sealed class BoundedTextCandidateGroupingService
             .First();
         return candidate.Bounds.Y >= last.Bounds.Y
             && VerticalGap(last.Bounds, candidate.Bounds) <= MaximumStrictContinuationVerticalGap;
+    }
+
+    private static bool HasSignificantAutomaticVerticalGapIncrease(
+        IReadOnlyList<TextCandidate> group,
+        TextCandidate candidate)
+    {
+        if (group.Count < 2)
+        {
+            return false;
+        }
+
+        var ordered = group
+            .OrderBy(member => member.Bounds.Y)
+            .ThenBy(member => member.Bounds.X)
+            .ToArray();
+        var previousGaps = Enumerable.Range(1, ordered.Length - 1)
+            .Select(index => VerticalGap(ordered[index - 1].Bounds, ordered[index].Bounds));
+        var medianPreviousGap = Median(previousGaps);
+        var last = ordered
+            .OrderByDescending(member => member.Bounds.Bottom)
+            .ThenByDescending(member => member.Bounds.Y)
+            .First();
+        var adjacentGap = VerticalGap(last.Bounds, candidate.Bounds);
+        var medianLineHeight = Median(group
+            .Append(candidate)
+            .Select(member => member.Bounds.Height));
+        var normalizedGapIncrease = (adjacentGap - medianPreviousGap) / medianLineHeight;
+
+        return adjacentGap - medianPreviousGap > MinimumSignificantVerticalGapIncrease
+            && normalizedGapIncrease > MaximumNormalizedVerticalGapIncrease;
     }
 
     private static bool IsDenseTopAlignedLayout(

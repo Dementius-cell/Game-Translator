@@ -19,7 +19,8 @@ public sealed class TranslatorManager
         TranslatorSettings settings,
         IEnumerable<string> texts,
         TranslatorCredentials credentials,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        TranslationProviderRequestDiagnostics? diagnostics = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(texts);
@@ -30,7 +31,8 @@ public sealed class TranslatorManager
             texts,
             settings.SourceLanguage,
             settings.TargetLanguage,
-            credentials);
+            credentials,
+            diagnostics);
 
         try
         {

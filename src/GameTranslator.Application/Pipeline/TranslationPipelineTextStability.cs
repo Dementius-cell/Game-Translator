@@ -12,7 +12,9 @@ public sealed class TranslationPipelineTextStability
         firstObservedAt: null,
         lastObservedAt: null,
         observationCount: 0,
-        requiredObservationCount: 0);
+        requiredObservationCount: 0,
+        requiredDuration: TimeSpan.Zero,
+        typewriterGrowthGuardApplied: false);
 
     public TranslationPipelineTextStability(
         bool isRequired,
@@ -20,7 +22,9 @@ public sealed class TranslationPipelineTextStability
         DateTimeOffset? firstObservedAt,
         DateTimeOffset? lastObservedAt,
         int observationCount = 0,
-        int requiredObservationCount = 0)
+        int requiredObservationCount = 0,
+        TimeSpan? requiredDuration = null,
+        bool typewriterGrowthGuardApplied = false)
     {
         if (firstObservedAt is null != lastObservedAt is null)
         {
@@ -41,6 +45,11 @@ public sealed class TranslationPipelineTextStability
                 observationCount < 0 ? nameof(observationCount) : nameof(requiredObservationCount));
         }
 
+        if (requiredDuration < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(requiredDuration));
+        }
+
         if (observationCount > 0 && firstObservedAt is null)
         {
             throw new ArgumentException(
@@ -54,6 +63,8 @@ public sealed class TranslationPipelineTextStability
         LastObservedAt = lastObservedAt;
         ObservationCount = observationCount;
         RequiredObservationCount = requiredObservationCount;
+        RequiredDuration = requiredDuration ?? TimeSpan.Zero;
+        TypewriterGrowthGuardApplied = typewriterGrowthGuardApplied;
     }
 
     public bool IsRequired { get; }
@@ -67,6 +78,10 @@ public sealed class TranslationPipelineTextStability
     public int ObservationCount { get; }
 
     public int RequiredObservationCount { get; }
+
+    public TimeSpan RequiredDuration { get; }
+
+    public bool TypewriterGrowthGuardApplied { get; }
 
     public TimeSpan? ObservedDuration => FirstObservedAt is { } first && LastObservedAt is { } last
         ? last - first

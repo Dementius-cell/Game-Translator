@@ -6,7 +6,8 @@ public sealed class TranslateRequest
         IEnumerable<string> texts,
         string sourceLanguage,
         string targetLanguage,
-        TranslatorCredentials credentials)
+        TranslatorCredentials credentials,
+        TranslationProviderRequestDiagnostics? diagnostics = null)
     {
         ArgumentNullException.ThrowIfNull(texts);
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceLanguage);
@@ -28,6 +29,7 @@ public sealed class TranslateRequest
         SourceLanguage = sourceLanguage.Trim();
         TargetLanguage = targetLanguage.Trim();
         Credentials = credentials;
+        Diagnostics = diagnostics;
     }
 
     public IReadOnlyList<string> Texts { get; }
@@ -37,6 +39,8 @@ public sealed class TranslateRequest
     public string TargetLanguage { get; }
 
     public TranslatorCredentials Credentials { get; }
+
+    public TranslationProviderRequestDiagnostics? Diagnostics { get; }
 
     public override string ToString()
     {

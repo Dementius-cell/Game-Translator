@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using GameTranslator.Application.Cache;
 using GameTranslator.Application.Capture;
@@ -12,6 +13,8 @@ namespace GameTranslator.Application.Pipeline;
 
 public sealed class TranslationPipelineService
 {
+    private static readonly TimeSpan CjkVerticalTypewriterGrowthAdditionalQuietInterval =
+        TimeSpan.FromMilliseconds(300);
     private readonly CaptureService captureService;
     private readonly OcrService ocrService;
     private readonly TranslatorManager translatorManager;
@@ -21,6 +24,7 @@ public sealed class TranslationPipelineService
     private readonly IOverlayService overlayService;
     private readonly TranslationPipelineOptimizationOptions optimizationOptions;
     private readonly TextCandidateRegionOcrService candidateRegionOcrService;
+    private readonly TimeProvider timeProvider;
     private readonly object optimizationStateLock = new();
     private readonly object textStabilityStateLock = new();
     private readonly Dictionary<PipelineFrameStateKey, PipelineFrameState> optimizationStates = new();
@@ -35,7 +39,8 @@ public sealed class TranslationPipelineService
         OverlayPositioningService overlayPositioningService,
         IOverlayService overlayService,
         TranslationPipelineOptimizationOptions? optimizationOptions = null,
-        TextCandidateRegionOcrService? candidateRegionOcrService = null)
+        TextCandidateRegionOcrService? candidateRegionOcrService = null,
+        TimeProvider? timeProvider = null)
     {
         this.captureService = captureService ?? throw new ArgumentNullException(nameof(captureService));
         this.ocrService = ocrService ?? throw new ArgumentNullException(nameof(ocrService));
@@ -47,6 +52,7 @@ public sealed class TranslationPipelineService
         this.optimizationOptions = optimizationOptions ?? new TranslationPipelineOptimizationOptions();
         this.candidateRegionOcrService = candidateRegionOcrService
             ?? new TextCandidateRegionOcrService(new UnavailableTextCandidateDetector(), this.ocrService);
+        this.timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public Task<TranslationPipelineResult> RunAsync(
@@ -324,7 +330,8 @@ public sealed class TranslationPipelineService
         TimeSpan? capturedFrameElapsed = null,
         OverlayPlacementConstraints? overlayPlacementConstraints = null,
         SemaphoreSlim? candidateTranslationLimiter = null,
-        CandidateRecognitionContext? candidateRecognitionContext = null)
+        CandidateRecognitionContext? candidateRecognitionContext = null,
+        ProviderRequestDiagnosticsCollector? providerRequestDiagnosticsCollector = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(zone);
@@ -470,10 +477,21 @@ public sealed class TranslationPipelineService
             () => Task.FromResult(TranslationTextGroupingService.CreateTranslationSourceResult(sourceResult, zone)));
         var translationSourceResult = groupingMeasurement.Value;
 
+        var currentTextSignature = CreateTextSignature(translationSourceResult);
+        var typewriterGrowthGuardApplied = ShouldApplyCjkVerticalTypewriterGrowthGuard(
+            translationSourceResult,
+            candidateRecognitionContext,
+            currentTextSignature);
+        var requiredStableTextDuration = runOptions.StableTextInterval
+            + (typewriterGrowthGuardApplied
+                ? CjkVerticalTypewriterGrowthAdditionalQuietInterval
+                : TimeSpan.Zero);
         var textStability = EvaluateTextStability(
             optimizationContext.StateKey,
             translationSourceResult,
-            runOptions);
+            runOptions,
+            requiredStableTextDuration,
+            typewriterGrowthGuardApplied);
         if (!textStability.IsStable)
         {
             var pendingSnapshot = runOptions.PreservePreviousOverlayWhileWaitingForStableText
@@ -524,6 +542,14 @@ public sealed class TranslationPipelineService
                     texts,
                     async missingTexts =>
                     {
+                        var providerRequestDiagnostics = string.Equals(
+                            profile.TranslatorSettings.Provider,
+                            "BingWeb",
+                            StringComparison.OrdinalIgnoreCase)
+                                ? providerRequestDiagnosticsCollector?.Begin(
+                                    missingTexts,
+                                    timeProvider.GetUtcNow())
+                            : null;
                         var acquiredCandidateTranslationSlot = false;
                         if (candidateTranslationLimiter is not null)
                         {
@@ -540,7 +566,12 @@ public sealed class TranslationPipelineService
 
                             var translationMeasurement = await RunTimedStageAsync(
                                 TranslationPipelineStage.Translation,
-                                () => translatorManager.TranslateAsync(profile.TranslatorSettings, missingTexts, credentialsMeasurement.Value, cancellationToken));
+                                () => translatorManager.TranslateAsync(
+                                    profile.TranslatorSettings,
+                                    missingTexts,
+                                    credentialsMeasurement.Value,
+                                    cancellationToken,
+                                    providerRequestDiagnostics));
                             translationElapsed += translationMeasurement.Elapsed;
 
                             return translationMeasurement.Value;
@@ -628,7 +659,8 @@ public sealed class TranslationPipelineService
         CancellationToken cancellationToken,
         OverlayPlacementConstraints? overlayPlacementConstraints = null,
         SemaphoreSlim? candidateTranslationLimiter = null,
-        CandidateRecognitionContext? candidateRecognitionContext = null)
+        CandidateRecognitionContext? candidateRecognitionContext = null,
+        ProviderRequestDiagnosticsCollector? providerRequestDiagnosticsCollector = null)
     {
         return RunZoneAsync(
             profile,
@@ -642,7 +674,8 @@ public sealed class TranslationPipelineService
             capturedFrameElapsed: captureElapsed,
             overlayPlacementConstraints: overlayPlacementConstraints,
             candidateTranslationLimiter: candidateTranslationLimiter,
-            candidateRecognitionContext: candidateRecognitionContext);
+            candidateRecognitionContext: candidateRecognitionContext,
+            providerRequestDiagnosticsCollector: providerRequestDiagnosticsCollector);
     }
 
     private async Task<OcrResult> RecognizeCandidateRegionsAsync(
@@ -912,7 +945,9 @@ public sealed class TranslationPipelineService
     private TranslationPipelineTextStability EvaluateTextStability(
         PipelineFrameStateKey stateKey,
         OcrResult sourceResult,
-        TranslationPipelineRunOptions runOptions)
+        TranslationPipelineRunOptions runOptions,
+        TimeSpan requiredStableTextDuration,
+        bool typewriterGrowthGuardApplied)
     {
         if (!runOptions.RequireStableTextBeforeTranslation)
         {
@@ -929,7 +964,9 @@ public sealed class TranslationPipelineService
                 firstObservedAt: null,
                 lastObservedAt: null,
                 observationCount: 0,
-                requiredObservationCount: runOptions.MinimumStableTextObservations);
+                requiredObservationCount: runOptions.MinimumStableTextObservations,
+                requiredDuration: requiredStableTextDuration,
+                typewriterGrowthGuardApplied: typewriterGrowthGuardApplied);
         }
 
         lock (textStabilityStateLock)
@@ -945,12 +982,14 @@ public sealed class TranslationPipelineService
 
                 return new TranslationPipelineTextStability(
                     isRequired: true,
-                    isStable: runOptions.StableTextInterval == TimeSpan.Zero
+                    isStable: requiredStableTextDuration == TimeSpan.Zero
                         && runOptions.MinimumStableTextObservations <= 1,
                     firstObservedAt: sourceResult.RecognizedAt,
                     lastObservedAt: sourceResult.RecognizedAt,
                     observationCount: 1,
-                    requiredObservationCount: runOptions.MinimumStableTextObservations);
+                    requiredObservationCount: runOptions.MinimumStableTextObservations,
+                    requiredDuration: requiredStableTextDuration,
+                    typewriterGrowthGuardApplied: typewriterGrowthGuardApplied);
             }
 
             var observationCount = checked(state.ObservationCount + 1);
@@ -963,12 +1002,38 @@ public sealed class TranslationPipelineService
             return new TranslationPipelineTextStability(
                 isRequired: true,
                 isStable: observationCount >= runOptions.MinimumStableTextObservations
-                    && CalculateElapsed(state.FirstSeenAt, sourceResult.RecognizedAt) >= runOptions.StableTextInterval,
+                    && CalculateElapsed(state.FirstSeenAt, sourceResult.RecognizedAt) >= requiredStableTextDuration,
                 firstObservedAt: state.FirstSeenAt,
                 lastObservedAt: sourceResult.RecognizedAt,
                 observationCount: observationCount,
-                requiredObservationCount: runOptions.MinimumStableTextObservations);
+                requiredObservationCount: runOptions.MinimumStableTextObservations,
+                requiredDuration: requiredStableTextDuration,
+                typewriterGrowthGuardApplied: typewriterGrowthGuardApplied);
         }
+    }
+
+    private static bool ShouldApplyCjkVerticalTypewriterGrowthGuard(
+        OcrResult sourceResult,
+        CandidateRecognitionContext? candidateRecognitionContext,
+        string currentTextSignature)
+    {
+        if (candidateRecognitionContext is not { } context
+            || WritingSystemGroupingProfileResolver.Resolve(
+                sourceResult.Request.Language,
+                sourceResult.Request.OrientationMode) != WritingSystemGroupingProfile.CjkVertical)
+        {
+            return false;
+        }
+
+        return context.TypewriterGrowthGuardActive
+            || IsMonotonicPrefixGrowth(context.PreviousTranslationInputSignature, currentTextSignature);
+    }
+
+    private static bool IsMonotonicPrefixGrowth(string? previousTextSignature, string currentTextSignature)
+    {
+        return !string.IsNullOrWhiteSpace(previousTextSignature)
+            && currentTextSignature.Length > previousTextSignature.Length
+            && currentTextSignature.StartsWith(previousTextSignature, StringComparison.Ordinal);
     }
 
     private void ClearTextStabilityState(PipelineFrameStateKey stateKey)
@@ -1385,7 +1450,9 @@ public sealed class TranslationPipelineService
 
     private readonly record struct CandidateRecognitionContext(
         TextCandidate Candidate,
-        int SourceZoneHeight);
+        int SourceZoneHeight,
+        string? PreviousTranslationInputSignature = null,
+        bool TypewriterGrowthGuardActive = false);
 
     private sealed record PipelineZoneTask(
         int Index,
@@ -1419,6 +1486,47 @@ public sealed class TranslationPipelineService
         DateTimeOffset LastSeenAt,
         int ObservationCount);
 
+    private sealed class ProviderRequestDiagnosticsCollector
+    {
+        private readonly object syncRoot = new();
+        private readonly List<TranslationProviderRequestDiagnostics> requests = new();
+
+        public TranslationProviderRequestDiagnostics Begin(
+            IEnumerable<string> inputTexts,
+            DateTimeOffset queuedAt)
+        {
+            var request = new TranslationProviderRequestDiagnostics(inputTexts, queuedAt);
+            lock (syncRoot)
+            {
+                requests.Add(request);
+            }
+
+            return request;
+        }
+
+        public IReadOnlyList<TranslationProviderRequestDiagnosticsSnapshot> CreateSnapshots()
+        {
+            lock (syncRoot)
+            {
+                return requests.Select(request => request.CreateSnapshot()).ToArray();
+            }
+        }
+
+        public void MarkPendingRequestsCancelled(DateTimeOffset completedAt)
+        {
+            lock (syncRoot)
+            {
+                foreach (var request in requests.Where(request =>
+                             request.CreateSnapshot().Outcome == TranslationProviderInvocationOutcome.Pending))
+                {
+                    request.MarkProviderInvocationCompleted(
+                        TranslationProviderInvocationOutcome.Cancelled,
+                        completedAt);
+                }
+            }
+        }
+    }
+
     public sealed class LiveTranslationSession : IDisposable
     {
         // The trace remains in memory only for the duration of a live session. The automatic
@@ -1436,6 +1544,7 @@ public sealed class TranslationPipelineService
         private readonly SemaphoreSlim stateAuthority = new(initialCount: 1, maxCount: 1);
         private readonly object workCompletionSignalSyncRoot = new();
         private readonly Queue<LiveCandidateLifecycleEvent> candidateLifecycleEvents = new();
+        private readonly ConcurrentQueue<RetiredCandidateProviderDiagnostics> retiredCandidateProviderDiagnostics = new();
         private List<LiveCandidateLifecycleEvent> candidateLifecycleEventsSinceLastUpdate = new();
         private TaskCompletionSource<bool> workCompletionSignal = CreateWorkCompletionSignal();
         private CandidatePipelineReadiness candidateReadiness = CandidatePipelineReadiness.Disabled;
@@ -1443,6 +1552,8 @@ public sealed class TranslationPipelineService
         private long candidateLifecycleEventSequence;
         private long refreshSequence;
         private bool hasDeferredOverlayPublication;
+        private TransientEmptyOverlayRetention? transientEmptyOverlayRetention;
+        private bool forceImmediateEmptyOverlayPublication;
         private bool disposed;
 
         internal LiveTranslationSession(
@@ -1609,6 +1720,13 @@ public sealed class TranslationPipelineService
 
             hasDeferredOverlayPublication = false;
             service.overlayService.Show(batchResult.OverlaySnapshot);
+            if (batchResult.OverlaySnapshot.TextItems.Count > 0)
+            {
+                MarkCandidateResultsPublished(service.timeProvider.GetUtcNow());
+            }
+
+            ClearTransientEmptyOverlayRetention();
+            forceImmediateEmptyOverlayPublication = false;
             RecordOverlaySnapshotPublished(batchResult.OverlaySnapshot);
             return true;
         }
@@ -1622,6 +1740,22 @@ public sealed class TranslationPipelineService
                 return false;
             }
 
+            if (forceImmediateEmptyOverlayPublication)
+            {
+                return false;
+            }
+
+            if (transientEmptyOverlayRetention is { } retention)
+            {
+                if (service.timeProvider.GetUtcNow() < retention.RetainUntil)
+                {
+                    return true;
+                }
+
+                ClearTransientEmptyOverlayRetention();
+                return false;
+            }
+
             return zoneStates.Values
                 .SelectMany(state => state.CandidateStates.Values)
                 .Any(candidateState =>
@@ -1629,6 +1763,86 @@ public sealed class TranslationPipelineService
                         ? candidateState.Result is null
                             || candidateState.Result.Optimization.TranslationSkipped
                         : IsRetainableBingWebFailure(candidateState.Failure));
+        }
+
+        private void MarkCandidateResultsPublished(DateTimeOffset publishedAt)
+        {
+            foreach (var candidateState in zoneStates.Values
+                         .SelectMany(state => state.CandidateStates.Values)
+                         .Where(candidateState => candidateState.ResultPublishedAt is null
+                             && candidateState.Result?.OverlaySnapshot.TextItems.Count > 0))
+            {
+                candidateState.ResultPublishedAt = publishedAt;
+            }
+        }
+
+        private void RegisterTransientEmptyOverlayRetention(LiveCandidateState candidateState)
+        {
+            if (runOptions.MinimumCandidateOverlayVisibleDuration <= TimeSpan.Zero
+                || candidateState.ResultPublishedAt is not { } publishedAt)
+            {
+                return;
+            }
+
+            var retainUntil = publishedAt + runOptions.MinimumCandidateOverlayVisibleDuration;
+            if (retainUntil <= service.timeProvider.GetUtcNow())
+            {
+                return;
+            }
+
+            transientEmptyOverlayRetention ??= new TransientEmptyOverlayRetention(retainUntil);
+            if (retainUntil > transientEmptyOverlayRetention.RetainUntil)
+            {
+                transientEmptyOverlayRetention.RetainUntil = retainUntil;
+            }
+
+            transientEmptyOverlayRetention.RetainedCandidates[candidateState.Id] =
+                new RetainedCandidateSource(candidateState.SourceZoneId, candidateState.SourceIdentity);
+        }
+
+        private void ValidateTransientEmptyOverlayRetention(
+            LiveZoneState sourceState,
+            IReadOnlyList<TextCandidateRegion> regions)
+        {
+            if (transientEmptyOverlayRetention is not { } retention
+                || regions.Count == 0)
+            {
+                return;
+            }
+
+            var retainedForZone = retention.RetainedCandidates
+                .Where(entry => string.Equals(
+                    entry.Value.SourceZoneId,
+                    sourceState.Zone.Id,
+                    StringComparison.Ordinal))
+                .ToArray();
+            if (retainedForZone.Length == 0)
+            {
+                return;
+            }
+
+            var regionsById = regions.ToDictionary(
+                region => CreateCandidateId(sourceState.Zone, region.Candidate.Bounds),
+                StringComparer.Ordinal);
+            var allSourcesStillMatch = retainedForZone.All(entry =>
+                regionsById.TryGetValue(entry.Key, out var region)
+                    && entry.Value.SourceIdentity.Matches(region.Frame));
+            if (!allSourcesStillMatch)
+            {
+                ClearTransientEmptyOverlayRetention();
+                forceImmediateEmptyOverlayPublication = true;
+            }
+        }
+
+        private void InvalidateTransientEmptyOverlayRetention()
+        {
+            forceImmediateEmptyOverlayPublication |= transientEmptyOverlayRetention is not null;
+            ClearTransientEmptyOverlayRetention();
+        }
+
+        private void ClearTransientEmptyOverlayRetention()
+        {
+            transientEmptyOverlayRetention = null;
         }
 
         private static bool IsRetainableBingWebFailure(TranslationPipelineZoneFailure failure)
@@ -1676,6 +1890,7 @@ public sealed class TranslationPipelineService
             string unavailableReason,
             ICollection<string> cancelledZoneIds)
         {
+            InvalidateTransientEmptyOverlayRetention();
             var overlayChanged = false;
             foreach (var state in zoneStates.Values)
             {
@@ -1829,6 +2044,7 @@ public sealed class TranslationPipelineService
 
             if (detection.Availability != TextCandidateDetectorAvailability.Available)
             {
+                InvalidateTransientEmptyOverlayRetention();
                 foreach (var candidateState in state.CandidateStates.Values.ToArray())
                 {
                     overlayChanged |= CancelAndRemoveCandidate(
@@ -1843,6 +2059,7 @@ public sealed class TranslationPipelineService
 
             var matchedCandidateIds = new HashSet<string>(StringComparer.Ordinal);
             var orderedRegions = OrderCandidateRegions(detection.Regions);
+            ValidateTransientEmptyOverlayRetention(state, orderedRegions);
             foreach (var region in orderedRegions)
             {
                 var candidateId = CreateCandidateId(state.Zone, region.Candidate.Bounds);
@@ -1926,6 +2143,7 @@ public sealed class TranslationPipelineService
                         capturedZone.Frame.CapturedAt);
                     candidateState.SourceIdentity = FrameFingerprint.FromFrame(region.Frame);
                     candidateState.Result = null;
+                    candidateState.ResultPublishedAt = null;
                     candidateState.Failure = null;
                     candidateState.Revision = checked(candidateState.Revision + 1);
                     ClearCandidateTextStability(candidateState);
@@ -1980,6 +2198,7 @@ public sealed class TranslationPipelineService
                     candidateState.Region = region;
                     candidateState.SourceIdentity = FrameFingerprint.FromFrame(region.Frame);
                     candidateState.Result = null;
+                    candidateState.ResultPublishedAt = null;
                     candidateState.Failure = null;
                     candidateState.Revision = checked(candidateState.Revision + 1);
                     ClearCandidateTextStability(candidateState);
@@ -2027,7 +2246,8 @@ public sealed class TranslationPipelineService
                     state,
                     candidateState,
                     cancelledZoneIds,
-                    LiveCandidateCancellationReason.CandidateDisappeared);
+                    LiveCandidateCancellationReason.CandidateDisappeared,
+                    allowTransientOverlayRetention: orderedRegions.Count == 0);
             }
 
             return overlayChanged;
@@ -2144,9 +2364,16 @@ public sealed class TranslationPipelineService
             LiveZoneState sourceState,
             LiveCandidateState candidateState,
             ICollection<string> cancelledZoneIds,
-            LiveCandidateCancellationReason cancellationReason)
+            LiveCandidateCancellationReason cancellationReason,
+            bool allowTransientOverlayRetention = false)
         {
             var hadPublishedResult = candidateState.Result is not null || candidateState.Failure is not null;
+            if (allowTransientOverlayRetention
+                && cancellationReason == LiveCandidateCancellationReason.CandidateDisappeared)
+            {
+                RegisterTransientEmptyOverlayRetention(candidateState);
+            }
+
             if (candidateState.ActiveWork is not null)
             {
                 cancelledZoneIds.Add(candidateState.Id);
@@ -2172,6 +2399,7 @@ public sealed class TranslationPipelineService
             OverlayPlacementConstraints overlayPlacementConstraints)
         {
             var candidateCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationSource.Token);
+            var providerRequestDiagnostics = new ProviderRequestDiagnosticsCollector();
             candidateState.WorkAttempt = checked(candidateState.WorkAttempt + 1);
             RecordCandidateLifecycleEvent(
                 LiveCandidateLifecycleEventKind.CandidateWorkStarted,
@@ -2191,10 +2419,14 @@ public sealed class TranslationPipelineService
                     candidateTranslationLimiter,
                     new CandidateRecognitionContext(
                         candidateState.Region.Candidate,
-                        zoneStates[candidateState.SourceZoneId].Zone.AbsoluteBounds.Height)),
+                        zoneStates[candidateState.SourceZoneId].Zone.AbsoluteBounds.Height,
+                        candidateState.LastObservedTranslationInputSignature,
+                        candidateState.TypewriterGrowthGuardActive),
+                    providerRequestDiagnostics),
                 candidateState.Revision,
                 candidateState.GeometrySignature,
-                candidateState.SourceIdentity);
+                candidateState.SourceIdentity,
+                providerRequestDiagnostics);
             candidateState.ActiveWork = candidateWork;
             SignalWhenWorkCompletes(candidateWork.Task);
         }
@@ -2340,6 +2572,17 @@ public sealed class TranslationPipelineService
         private async Task<bool> CollectCompletedWorkAsync()
         {
             var overlayChanged = false;
+            while (retiredCandidateProviderDiagnostics.TryDequeue(out var retiredDiagnostics))
+            {
+                RecordCandidateProviderRequestDiagnostics(
+                    retiredDiagnostics.SourceZoneId,
+                    retiredDiagnostics.CandidateId,
+                    retiredDiagnostics.CandidateBounds,
+                    retiredDiagnostics.CandidateRevision,
+                    retiredDiagnostics.WorkAttempt,
+                    retiredDiagnostics.Requests);
+            }
+
             foreach (var state in zoneStates.Values)
             {
                 var work = state.ActiveWork;
@@ -2395,6 +2638,8 @@ public sealed class TranslationPipelineService
                         }
 
                         candidateState.Result = completedResult;
+                        UpdateCandidateTypewriterGrowthState(candidateState, completedResult);
+                        candidateState.ResultPublishedAt = null;
                         candidateState.Failure = null;
                         RecordCandidateLifecycleEvent(
                             completedResult.Optimization.TranslationSkipped
@@ -2411,8 +2656,10 @@ public sealed class TranslationPipelineService
                     catch (TranslationPipelineException exception)
                     {
                         candidateState.Result = null;
+                        candidateState.ResultPublishedAt = null;
                         candidateState.Failure = CreateZoneFailure(candidateState.Zone, exception);
                         var failureDiagnostics = CreateOcrFailureDiagnostics(exception);
+                        var providerFailureDiagnostics = CreateProviderFailureDiagnostics(exception);
                         RecordCandidateLifecycleEvent(
                             LiveCandidateLifecycleEventKind.CandidateWorkFailed,
                             candidateState,
@@ -2420,17 +2667,118 @@ public sealed class TranslationPipelineService
                             failureExceptionType: failureDiagnostics.ExceptionType,
                             failureExceptionMessage: failureDiagnostics.ExceptionMessage,
                             failureRootCauseType: failureDiagnostics.RootCauseType,
-                            failureRootCauseMessage: failureDiagnostics.RootCauseMessage);
+                            failureRootCauseMessage: failureDiagnostics.RootCauseMessage,
+                            failureProviderId: providerFailureDiagnostics.ProviderId,
+                            failureProviderKind: providerFailureDiagnostics.FailureKind,
+                            failureProviderHttpStatusCode: providerFailureDiagnostics.HttpStatusCode,
+                            failureProviderPaused: providerFailureDiagnostics.Paused,
+                            failureProviderRetryAfter: providerFailureDiagnostics.RetryAfter,
+                            failureProviderNextRetryAt: providerFailureDiagnostics.NextRetryAt,
+                            failureProviderConsecutiveFailureCount: providerFailureDiagnostics.ConsecutiveFailureCount);
                         overlayChanged = true;
                     }
                     finally
                     {
+                        RecordCandidateProviderRequestDiagnostics(candidateState, candidateWork);
                         candidateWork.Cancellation.Dispose();
                     }
                 }
             }
 
             return overlayChanged;
+        }
+
+        private static void UpdateCandidateTypewriterGrowthState(
+            LiveCandidateState candidateState,
+            TranslationPipelineResult result)
+        {
+            var translationSourceResult = TranslationTextGroupingService.CreateTranslationSourceResult(
+                result.SourceOcrResult,
+                candidateState.Zone);
+            var currentTextSignature = CreateTextSignature(translationSourceResult);
+            if (string.IsNullOrWhiteSpace(currentTextSignature))
+            {
+                return;
+            }
+
+            candidateState.LastObservedTranslationInputSignature = currentTextSignature;
+            candidateState.TypewriterGrowthGuardActive =
+                result.TextStability.TypewriterGrowthGuardApplied && !result.TextStability.IsStable;
+        }
+
+        private void RecordCandidateProviderRequestDiagnostics(
+            LiveCandidateState candidateState,
+            LiveZoneWork candidateWork)
+        {
+            if (candidateWork.ProviderRequestDiagnostics is null)
+            {
+                return;
+            }
+
+            RecordCandidateProviderRequestDiagnostics(
+                candidateState.SourceZoneId,
+                candidateState.Id,
+                candidateState.Region.Candidate.Bounds,
+                candidateWork.CandidateRevision,
+                candidateState.WorkAttempt,
+                candidateWork.ProviderRequestDiagnostics.CreateSnapshots());
+        }
+
+        private void RecordCandidateProviderRequestDiagnostics(
+            string sourceZoneId,
+            string candidateId,
+            BoundingBox candidateBounds,
+            int candidateRevision,
+            int workAttempt,
+            IReadOnlyList<TranslationProviderRequestDiagnosticsSnapshot> requests)
+        {
+            foreach (var request in requests)
+            {
+                if (request.NetworkAttempts.Count == 0)
+                {
+                    RecordLifecycleEvent(
+                        LiveCandidateLifecycleEventKind.CandidateProviderRequestObserved,
+                        zoneId: sourceZoneId,
+                        candidateId: candidateId,
+                        candidateBounds: candidateBounds,
+                        candidateRevision: candidateRevision,
+                        workAttempt: workAttempt,
+                        providerDiagnosticRequestId: request.RequestId,
+                        providerRequestQueuedAt: request.QueuedAt,
+                        providerInvocationStartedAt: request.ProviderInvocationStartedAt,
+                        providerInvocationCompletedAt: request.ProviderInvocationCompletedAt,
+                        providerInvocationOutcome: request.Outcome,
+                        providerNetworkRequestSent: false,
+                        translationInputTexts: request.InputTexts);
+                    continue;
+                }
+
+                foreach (var attempt in request.NetworkAttempts)
+                {
+                    RecordLifecycleEvent(
+                        LiveCandidateLifecycleEventKind.CandidateProviderRequestObserved,
+                        zoneId: sourceZoneId,
+                        candidateId: candidateId,
+                        candidateBounds: candidateBounds,
+                        candidateRevision: candidateRevision,
+                        workAttempt: workAttempt,
+                        providerDiagnosticRequestId: request.RequestId,
+                        providerRequestQueuedAt: request.QueuedAt,
+                        providerInvocationStartedAt: request.ProviderInvocationStartedAt,
+                        providerInvocationCompletedAt: request.ProviderInvocationCompletedAt,
+                        providerInvocationOutcome: request.Outcome,
+                        providerNetworkAttemptId: attempt.AttemptId,
+                        providerNetworkRequestKind: attempt.Kind,
+                        providerNetworkRequestSent: attempt.WasSent,
+                        providerNetworkRequestStartedAt: attempt.StartedAt,
+                        providerNetworkRequestCompletedAt: attempt.CompletedAt,
+                        providerNetworkRequestOutcome: attempt.Outcome,
+                        providerNetworkHttpStatusCode: attempt.StatusCode is { } statusCode
+                            ? (int)statusCode
+                            : null,
+                        translationInputTexts: request.InputTexts);
+                }
+            }
         }
 
         private TranslationPipelineBatchResult CreateBatchResult()
@@ -2492,7 +2840,7 @@ public sealed class TranslationPipelineService
             CancelWork(work);
         }
 
-        private static void CancelActiveWork(LiveCandidateState state)
+        private void CancelActiveWork(LiveCandidateState state)
         {
             var work = state.ActiveWork;
             if (work is null)
@@ -2501,7 +2849,37 @@ public sealed class TranslationPipelineService
             }
 
             state.ActiveWork = null;
-            CancelWork(work);
+            var sourceZoneId = state.SourceZoneId;
+            var candidateId = state.Id;
+            var candidateBounds = state.Region.Candidate.Bounds;
+            var candidateRevision = work.CandidateRevision;
+            var workAttempt = state.WorkAttempt;
+            work.Cancellation.Cancel();
+            _ = work.Task.ContinueWith(
+                task =>
+                {
+                    _ = task.Exception;
+                    if (work.ProviderRequestDiagnostics is { } diagnostics)
+                    {
+                        if (task.IsCanceled)
+                        {
+                            diagnostics.MarkPendingRequestsCancelled(service.timeProvider.GetUtcNow());
+                        }
+
+                        retiredCandidateProviderDiagnostics.Enqueue(new RetiredCandidateProviderDiagnostics(
+                            sourceZoneId,
+                            candidateId,
+                            candidateBounds,
+                            candidateRevision,
+                            workAttempt,
+                            diagnostics.CreateSnapshots()));
+                    }
+
+                    work.Cancellation.Dispose();
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
         }
 
         private static void CancelWork(LiveZoneWork work)
@@ -2537,6 +2915,13 @@ public sealed class TranslationPipelineService
             string? failureExceptionMessage = null,
             string? failureRootCauseType = null,
             string? failureRootCauseMessage = null,
+            string? failureProviderId = null,
+            TranslatorProviderFailureKind? failureProviderKind = null,
+            int? failureProviderHttpStatusCode = null,
+            bool? failureProviderPaused = null,
+            TimeSpan? failureProviderRetryAfter = null,
+            DateTimeOffset? failureProviderNextRetryAt = null,
+            int? failureProviderConsecutiveFailureCount = null,
             LiveCandidateCancellationReason cancellationReason = LiveCandidateCancellationReason.None)
         {
             ArgumentNullException.ThrowIfNull(candidateState);
@@ -2590,6 +2975,13 @@ public sealed class TranslationPipelineService
                 failureExceptionMessage: failureExceptionMessage,
                 failureRootCauseType: failureRootCauseType,
                 failureRootCauseMessage: failureRootCauseMessage,
+                failureProviderId: failureProviderId,
+                failureProviderKind: failureProviderKind,
+                failureProviderHttpStatusCode: failureProviderHttpStatusCode,
+                failureProviderPaused: failureProviderPaused,
+                failureProviderRetryAfter: failureProviderRetryAfter,
+                failureProviderNextRetryAt: failureProviderNextRetryAt,
+                failureProviderConsecutiveFailureCount: failureProviderConsecutiveFailureCount,
                 cancellationReason: cancellationReason,
                 orderedOcrBlockBounds: sourceOcrResult?.TextBlocks.Select(block => block.Bounds),
                 orderedGroupedMemberBounds: sourceOcrResult is null
@@ -2597,6 +2989,7 @@ public sealed class TranslationPipelineService
                     : TranslationTextGroupingService.ResolveOrderedMemberBoundsForDiagnostics(sourceOcrResult),
                 writingSystemGroupingProfile: writingSystemGroupingProfile,
                 ocrOrientationMode: sourceOcrResult?.Request.OrientationMode,
+                candidateConfidence: candidateState.Region.Candidate.Confidence,
                 ocrTexts: sourceOcrResult?.TextBlocks.Select(block => block.Text),
                 translationInputTexts: translationInputTexts,
                 translatedTexts: result?.TranslateResponse?.TranslatedTexts);
@@ -2629,6 +3022,18 @@ public sealed class TranslationPipelineService
             string? translationProviderId = null,
             DateTimeOffset? providerRequestStartedAt = null,
             DateTimeOffset? providerRequestCompletedAt = null,
+            string? providerDiagnosticRequestId = null,
+            DateTimeOffset? providerRequestQueuedAt = null,
+            DateTimeOffset? providerInvocationStartedAt = null,
+            DateTimeOffset? providerInvocationCompletedAt = null,
+            TranslationProviderInvocationOutcome? providerInvocationOutcome = null,
+            string? providerNetworkAttemptId = null,
+            TranslationProviderNetworkRequestKind? providerNetworkRequestKind = null,
+            bool? providerNetworkRequestSent = null,
+            DateTimeOffset? providerNetworkRequestStartedAt = null,
+            DateTimeOffset? providerNetworkRequestCompletedAt = null,
+            TranslationProviderNetworkRequestOutcome? providerNetworkRequestOutcome = null,
+            int? providerNetworkHttpStatusCode = null,
             int? overlayTextItemCount = null,
             int? overlayMaskItemCount = null,
             TranslationPipelineStage? failureStage = null,
@@ -2636,6 +3041,13 @@ public sealed class TranslationPipelineService
             string? failureExceptionMessage = null,
             string? failureRootCauseType = null,
             string? failureRootCauseMessage = null,
+            string? failureProviderId = null,
+            TranslatorProviderFailureKind? failureProviderKind = null,
+            int? failureProviderHttpStatusCode = null,
+            bool? failureProviderPaused = null,
+            TimeSpan? failureProviderRetryAfter = null,
+            DateTimeOffset? failureProviderNextRetryAt = null,
+            int? failureProviderConsecutiveFailureCount = null,
             LiveCandidateCancellationReason cancellationReason = LiveCandidateCancellationReason.None,
             int? translationOutputSanitizedCount = null,
             IEnumerable<BoundingBox>? orderedOcrBlockBounds = null,
@@ -2651,6 +3063,7 @@ public sealed class TranslationPipelineService
             double? minimumDetectorConfidence = null,
             double? maximumDetectorConfidence = null,
             double? averageDetectorConfidence = null,
+            double? candidateConfidence = null,
             IEnumerable<string>? ocrTexts = null,
             IEnumerable<string>? translationInputTexts = null,
             IEnumerable<string>? translatedTexts = null)
@@ -2696,6 +3109,18 @@ public sealed class TranslationPipelineService
                 translationProviderId: translationProviderId,
                 providerRequestStartedAt: providerRequestStartedAt,
                 providerRequestCompletedAt: providerRequestCompletedAt,
+                providerDiagnosticRequestId: providerDiagnosticRequestId,
+                providerRequestQueuedAt: providerRequestQueuedAt,
+                providerInvocationStartedAt: providerInvocationStartedAt,
+                providerInvocationCompletedAt: providerInvocationCompletedAt,
+                providerInvocationOutcome: providerInvocationOutcome,
+                providerNetworkAttemptId: providerNetworkAttemptId,
+                providerNetworkRequestKind: providerNetworkRequestKind,
+                providerNetworkRequestSent: providerNetworkRequestSent,
+                providerNetworkRequestStartedAt: providerNetworkRequestStartedAt,
+                providerNetworkRequestCompletedAt: providerNetworkRequestCompletedAt,
+                providerNetworkRequestOutcome: providerNetworkRequestOutcome,
+                providerNetworkHttpStatusCode: providerNetworkHttpStatusCode,
                 overlayTextItemCount: overlayTextItemCount,
                 overlayMaskItemCount: overlayMaskItemCount,
                 failureStage: failureStage,
@@ -2703,6 +3128,13 @@ public sealed class TranslationPipelineService
                 failureExceptionMessage: failureExceptionMessage,
                 failureRootCauseType: failureRootCauseType,
                 failureRootCauseMessage: failureRootCauseMessage,
+                failureProviderId: failureProviderId,
+                failureProviderKind: failureProviderKind,
+                failureProviderHttpStatusCode: failureProviderHttpStatusCode,
+                failureProviderPaused: failureProviderPaused,
+                failureProviderRetryAfter: failureProviderRetryAfter,
+                failureProviderNextRetryAt: failureProviderNextRetryAt,
+                failureProviderConsecutiveFailureCount: failureProviderConsecutiveFailureCount,
                 cancellationReason: cancellationReason,
                 translationOutputSanitizedCount: translationOutputSanitizedCount,
                 orderedOcrBlockBounds: orderedOcrBlockBounds,
@@ -2718,6 +3150,7 @@ public sealed class TranslationPipelineService
                 minimumDetectorConfidence: minimumDetectorConfidence,
                 maximumDetectorConfidence: maximumDetectorConfidence,
                 averageDetectorConfidence: averageDetectorConfidence,
+                candidateConfidence: candidateConfidence,
                 ocrTexts: ocrTexts,
                 translationInputTexts: translationInputTexts,
                 translatedTexts: translatedTexts);
@@ -2744,6 +3177,31 @@ public sealed class TranslationPipelineService
                 rootCause.Message);
         }
 
+        private static ProviderFailureDiagnostics CreateProviderFailureDiagnostics(
+            TranslationPipelineException exception)
+        {
+            ArgumentNullException.ThrowIfNull(exception);
+
+            for (Exception? current = exception; current is not null; current = current.InnerException)
+            {
+                if (current is not TranslatorProviderException providerException)
+                {
+                    continue;
+                }
+
+                return new ProviderFailureDiagnostics(
+                    providerException.ProviderId,
+                    providerException.FailureKind,
+                    providerException.StatusCode is { } statusCode ? (int)statusCode : null,
+                    providerException.NextRetryAt.HasValue,
+                    providerException.RetryAfter,
+                    providerException.NextRetryAt,
+                    providerException.ConsecutiveFailureCount);
+            }
+
+            return ProviderFailureDiagnostics.Empty;
+        }
+
         private static string CreateCandidateGeometrySignature(TextCandidate candidate)
         {
             ArgumentNullException.ThrowIfNull(candidate);
@@ -2765,6 +3223,19 @@ public sealed class TranslationPipelineService
             string? RootCauseMessage)
         {
             public static OcrFailureDiagnostics Empty { get; } = new(null, null, null, null);
+        }
+
+        private sealed record ProviderFailureDiagnostics(
+            string? ProviderId,
+            TranslatorProviderFailureKind? FailureKind,
+            int? HttpStatusCode,
+            bool? Paused,
+            TimeSpan? RetryAfter,
+            DateTimeOffset? NextRetryAt,
+            int? ConsecutiveFailureCount)
+        {
+            public static ProviderFailureDiagnostics Empty { get; } =
+                new(null, null, null, null, null, null, null);
         }
 
         private void ThrowIfDisposed()
@@ -2852,9 +3323,15 @@ public sealed class TranslationPipelineService
 
             public TranslationPipelineResult? Result { get; set; }
 
+            public DateTimeOffset? ResultPublishedAt { get; set; }
+
             public TranslationPipelineZoneFailure? Failure { get; set; }
 
             public LiveZoneWork? ActiveWork { get; set; }
+
+            public string? LastObservedTranslationInputSignature { get; set; }
+
+            public bool TypewriterGrowthGuardActive { get; set; }
         }
 
         private sealed record LiveZoneWork(
@@ -2862,7 +3339,8 @@ public sealed class TranslationPipelineService
             Task<TranslationPipelineResult> Task,
             int CandidateRevision = 0,
             string? CandidateGeometrySignature = null,
-            FrameFingerprint? CandidateSourceIdentity = null);
+            FrameFingerprint? CandidateSourceIdentity = null,
+            ProviderRequestDiagnosticsCollector? ProviderRequestDiagnostics = null);
 
         private sealed record LiveCapturedZone(
             OcrZone Zone,
@@ -2872,6 +3350,31 @@ public sealed class TranslationPipelineService
         private sealed record LivePublishedState(
             TranslationPipelineResult? Result,
             TranslationPipelineZoneFailure? Failure);
+
+        private sealed class TransientEmptyOverlayRetention
+        {
+            public TransientEmptyOverlayRetention(DateTimeOffset retainUntil)
+            {
+                RetainUntil = retainUntil;
+            }
+
+            public DateTimeOffset RetainUntil { get; set; }
+
+            public Dictionary<string, RetainedCandidateSource> RetainedCandidates { get; } =
+                new(StringComparer.Ordinal);
+        }
+
+        private sealed record RetainedCandidateSource(
+            string SourceZoneId,
+            FrameFingerprint SourceIdentity);
+
+        private sealed record RetiredCandidateProviderDiagnostics(
+            string SourceZoneId,
+            string CandidateId,
+            BoundingBox CandidateBounds,
+            int CandidateRevision,
+            int WorkAttempt,
+            IReadOnlyList<TranslationProviderRequestDiagnosticsSnapshot> Requests);
     }
 
     private sealed class FrameFingerprint

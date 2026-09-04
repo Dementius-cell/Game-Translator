@@ -117,6 +117,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private const string DraftSelectedZoneIdSettingKey = "shell.draft.selectedZoneId";
     private const string DebugOverlayEnabledSettingKey = "debug.overlay.enabled";
     private const string LiveTranslationTimingPresetSettingKey = "shell.live.translationTimingPreset";
+    private const string WelcomeTourCompletedSettingKey = "shell.welcomeTour.completed.v1";
     private static readonly Regex HexColorPattern = new("^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$", RegexOptions.Compiled);
     private static readonly string[] SupportedOcrEngines =
     {
@@ -233,6 +234,45 @@ public sealed class MainViewModel : ValidatableObservableObject
         LiveTranslationTimingPreset.Fast,
         LiveTranslationTimingPreset.Balanced,
         LiveTranslationTimingPreset.Conservative,
+    };
+
+    private static readonly WelcomeTourStepDefinition[] WelcomeTourSteps =
+    {
+        new(
+            "Добро пожаловать в Game Translator",
+            "Приложение захватывает выбранную область экрана, находит текст, распознаёт его, переводит и показывает перевод поверх оригинала. Сам тур не запускает захват и ничего не отправляет переводчику.",
+            "Нажимайте «Далее»: нужная рабочая вкладка под этой карточкой будет открываться автоматически.",
+            ZonesOcrWorkspaceTabIndex),
+        new(
+            "1. Создайте профиль игры",
+            "Нажмите New, задайте понятное имя и при необходимости описание. Один профиль хранит зоны, языки, переводчик, OCR и внешний вид оверлея для конкретной игры или типа страниц.",
+            "После настройки нажмите Save profile. Несохранённый черновик также хранится локально, но для постоянной работы лучше сохранить профиль.",
+            ZonesOcrWorkspaceTabIndex),
+        new(
+            "2. Выберите переводчик и языки",
+            "Во вкладке Translation выберите Provider, Source language и Target language. Официальным Google, Azure и Yandex нужны credentials; диагностические GoogleWeb, BingWeb и YandexWeb работают без сохранённых ключей.",
+            "Провайдеры не переключаются автоматически. Проверьте правильность исходного языка: от него также зависит выбор OCR-настроек по умолчанию.",
+            TranslationWorkspaceTabIndex),
+        new(
+            "3. Выделите OCR-зону",
+            "Вернитесь в Zones & OCR и нажмите Pick screen. Для типовых облачков выделите область игры или страницы, где они появляются: оставьте небольшой запас по краям, но не захватывайте лишние панели и декоративный текст.",
+            "Если текст появляется в нескольких постоянных местах, создайте отдельные зоны. Сохранённые зоны не должны пересекаться; внутри зоны detector сам найдёт текущие облачка.",
+            ZonesOcrWorkspaceTabIndex),
+        new(
+            "4. Настройте OCR для облачков",
+            "Для зоны выберите OCR language и Orientation. При первом выборе языка нажмите Check OCR language, чтобы проверить наличие локального языкового пакета. Horizontal подходит обычным горизонтальным репликам; Vertical — вертикальному японскому или китайскому тексту; Auto оставьте, когда направление должен определить профиль.",
+            "Если проверка показала Missing, нажмите Install OCR language, дождитесь завершения установки и снова нажмите Check OCR language. Безопасная отправная точка: Detector preset = Standard, candidate grouping = Auto, preprocessing = Light 1,25× или Standard 1,5×. Ручные лимиты и строгие китайские пресеты нужны только для сравнительного теста.",
+            ZonesOcrWorkspaceTabIndex),
+        new(
+            "5. Проверьте маску и читаемость",
+            "Во вкладке Overlay выберите Solid или Darken, цвет и непрозрачность маски. Для каждой зоны можно выбрать шрифт, размер, жирность и курсив. Show test overlay показывает результат без запуска live-перевода.",
+            "Маска должна полностью закрывать оригинал, а перевод — читаться на фоне игры. Для начала используйте непрозрачность 1 и умеренный Padding.",
+            OverlayWorkspaceTabIndex),
+        new(
+            "6. Сохраните профиль и запустите live",
+            "Нажмите Save profile, затем откройте Live & Diagnostics и выберите Start live. Готовые стабильные текстовые регионы будут переводиться независимо; Stop live завершает сеанс и сохраняет локальный отчёт.",
+            "Если перевод не появился, сначала проверьте Pipeline status, OCR language packs и Open live reports. Отчёты автоматически не загружаются в интернет.",
+            LiveDiagnosticsWorkspaceTabIndex),
     };
 
     private static readonly TranslationGroupingModeOption[] SupportedTranslationGroupingModeOptions =
@@ -502,6 +542,8 @@ public sealed class MainViewModel : ValidatableObservableObject
     private bool isDebugOverlayEnabled;
     private double debugVerticalSourceWidthMultiplier = 2;
     private LiveTranslationTimingPreset liveTranslationTimingPreset = LiveTranslationTimingPreset.Balanced;
+    private bool isWelcomeTourVisible;
+    private int welcomeTourStepIndex;
     private bool suppressDraftStatePersistence;
     private bool isZoneSelectionActive;
     private bool isZoneResizeActive;
@@ -705,6 +747,10 @@ public sealed class MainViewModel : ValidatableObservableObject
         SaveTranslatorCredentialsCommand = new AsyncRelayCommand(SaveTranslatorCredentialsAsync, CanSaveTranslatorCredentials);
         ValidateTranslatorCredentialsCommand = new AsyncRelayCommand(ValidateTranslatorCredentialsAsync, CanSelectTranslatorProvider);
         DeleteTranslatorCredentialsCommand = new AsyncRelayCommand(DeleteTranslatorCredentialsAsync, CanSelectTranslatorProvider);
+        ShowWelcomeTourCommand = new RelayCommand(ShowWelcomeTour);
+        CloseWelcomeTourCommand = new RelayCommand(CloseWelcomeTour);
+        PreviousWelcomeTourStepCommand = new RelayCommand(PreviousWelcomeTourStep);
+        NextWelcomeTourStepCommand = new RelayCommand(NextWelcomeTourStep);
 
         BeginCreateProfile();
         StatusMessage = "Ready to manage game profiles.";
@@ -935,6 +981,44 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public bool IsZonesOcrOrLiveDiagnosticsTabSelected =>
         IsZonesOcrTabSelected || IsLiveDiagnosticsTabSelected;
+
+    public bool IsWelcomeTourVisible
+    {
+        get => isWelcomeTourVisible;
+        private set => SetProperty(ref isWelcomeTourVisible, value);
+    }
+
+    public int WelcomeTourStepIndex => welcomeTourStepIndex;
+
+    public int WelcomeTourStepNumber => welcomeTourStepIndex + 1;
+
+    public int WelcomeTourStepCount => WelcomeTourSteps.Length;
+
+    public double WelcomeTourProgress => WelcomeTourStepNumber;
+
+    public string WelcomeTourStepIndicator => $"Шаг {WelcomeTourStepNumber} из {WelcomeTourStepCount}";
+
+    public string WelcomeTourTitle => CurrentWelcomeTourStep.Title;
+
+    public string WelcomeTourBody => CurrentWelcomeTourStep.Body;
+
+    public string WelcomeTourGuidance => CurrentWelcomeTourStep.Guidance;
+
+    public string WelcomeTourTargetElementName => welcomeTourStepIndex switch
+    {
+        0 => "WorkspaceHeaderActions",
+        1 => "ProfileRail",
+        2 => "TranslationSettingsCard",
+        3 => "WelcomeTourPickScreenButton",
+        4 => "OcrPreprocessingCard",
+        5 => "OverlaySettingsCard",
+        _ => "WelcomeTourLiveControls",
+    };
+
+    public bool WelcomeTourCanGoBack => welcomeTourStepIndex > 0;
+
+    public string WelcomeTourPrimaryActionText =>
+        welcomeTourStepIndex == WelcomeTourSteps.Length - 1 ? "Готово" : "Далее";
 
     public LiveTranslationTimingPreset LiveTranslationTimingPreset
     {
@@ -1563,6 +1647,14 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public ICommand DeleteTranslatorCredentialsCommand { get; }
 
+    public ICommand ShowWelcomeTourCommand { get; }
+
+    public ICommand CloseWelcomeTourCommand { get; }
+
+    public ICommand PreviousWelcomeTourStepCommand { get; }
+
+    public ICommand NextWelcomeTourStepCommand { get; }
+
     public async Task SaveTranslatorCredentialsAsync()
     {
         if (!CanSelectTranslatorProvider())
@@ -1755,7 +1847,73 @@ public sealed class MainViewModel : ValidatableObservableObject
         LoadHotkeyBindings(globalHotkeyService.LoadConfiguredHotkeys());
         UpdateGlobalHotkeyStatus(globalHotkeyService.RegisterConfiguredHotkeys());
         await RefreshProfilesAsync();
+        if (!(settings.GetValue<bool?>(WelcomeTourCompletedSettingKey) ?? false))
+        {
+            ShowWelcomeTour();
+        }
+
         _ = CheckForUpdatesOnStartupAsync();
+    }
+
+    private WelcomeTourStepDefinition CurrentWelcomeTourStep => WelcomeTourSteps[welcomeTourStepIndex];
+
+    private void ShowWelcomeTour()
+    {
+        SetWelcomeTourStep(0);
+        IsWelcomeTourVisible = true;
+    }
+
+    private void CloseWelcomeTour()
+    {
+        IsWelcomeTourVisible = false;
+        settings.SetValue(WelcomeTourCompletedSettingKey, true);
+    }
+
+    private void PreviousWelcomeTourStep()
+    {
+        if (!IsWelcomeTourVisible || welcomeTourStepIndex == 0)
+        {
+            return;
+        }
+
+        SetWelcomeTourStep(welcomeTourStepIndex - 1);
+    }
+
+    private void NextWelcomeTourStep()
+    {
+        if (!IsWelcomeTourVisible)
+        {
+            return;
+        }
+
+        if (welcomeTourStepIndex == WelcomeTourSteps.Length - 1)
+        {
+            CloseWelcomeTour();
+            return;
+        }
+
+        SetWelcomeTourStep(welcomeTourStepIndex + 1);
+    }
+
+    private void SetWelcomeTourStep(int stepIndex)
+    {
+        var normalizedStepIndex = Math.Clamp(stepIndex, 0, WelcomeTourSteps.Length - 1);
+        if (welcomeTourStepIndex != normalizedStepIndex)
+        {
+            welcomeTourStepIndex = normalizedStepIndex;
+            OnPropertyChanged(nameof(WelcomeTourStepIndex));
+            OnPropertyChanged(nameof(WelcomeTourStepNumber));
+            OnPropertyChanged(nameof(WelcomeTourProgress));
+            OnPropertyChanged(nameof(WelcomeTourStepIndicator));
+            OnPropertyChanged(nameof(WelcomeTourTitle));
+            OnPropertyChanged(nameof(WelcomeTourBody));
+            OnPropertyChanged(nameof(WelcomeTourGuidance));
+            OnPropertyChanged(nameof(WelcomeTourTargetElementName));
+            OnPropertyChanged(nameof(WelcomeTourCanGoBack));
+            OnPropertyChanged(nameof(WelcomeTourPrimaryActionText));
+        }
+
+        SelectedWorkspaceTabIndex = CurrentWelcomeTourStep.WorkspaceTabIndex;
     }
 
     public void SelectZone(string zoneId)
@@ -5400,6 +5558,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         AppendCandidateGroupingDebugInfo(builder);
 
         AppendLiveCandidateReadinessDebugInfo(builder);
+        AppendLiveTranslatorProviderFailureDebugInfo(builder, generatedAt);
         AppendLiveCandidateLifecycleDebugInfo(builder);
         AppendOverlaySnapshotDebugInfo(builder);
 
@@ -5474,6 +5633,8 @@ public sealed class MainViewModel : ValidatableObservableObject
             {
                 AppendLifecycleField(builder, "CandidateBounds", FormatBounds(candidateBounds));
             }
+
+            AppendLifecycleField(builder, "CandidateConfidence", FormatDiagnosticDouble(entry.CandidateConfidence));
 
             if (entry.SourceCandidateBounds.Count > 0)
             {
@@ -5608,6 +5769,14 @@ public sealed class MainViewModel : ValidatableObservableObject
                 AppendLifecycleField(builder, "StabilitySatisfied", textStability.IsStable.ToString());
                 AppendLifecycleField(builder, "OcrObservations", textStability.ObservationCount.ToString());
                 AppendLifecycleField(builder, "RequiredOcrObservations", textStability.RequiredObservationCount.ToString());
+                AppendLifecycleField(
+                    builder,
+                    "RequiredStabilityDurationMs",
+                    textStability.RequiredDuration.TotalMilliseconds.ToString("F1", CultureInfo.InvariantCulture));
+                AppendLifecycleField(
+                    builder,
+                    "TypewriterGrowthGuardApplied",
+                    textStability.TypewriterGrowthGuardApplied.ToString());
                 if (textStability.FirstObservedAt is { } firstObservedAt)
                 {
                     AppendLifecycleField(builder, "StabilityFirstObservedAt", firstObservedAt.ToString("O"));
@@ -5632,6 +5801,33 @@ public sealed class MainViewModel : ValidatableObservableObject
             AppendLifecycleField(builder, "TranslationProvider", entry.TranslationProviderId);
             AppendLifecycleField(builder, "ProviderRequestStartedAt", entry.ProviderRequestStartedAt?.ToString("O"));
             AppendLifecycleField(builder, "ProviderRequestCompletedAt", entry.ProviderRequestCompletedAt?.ToString("O"));
+            AppendLifecycleField(builder, "ProviderDiagnosticRequestId", entry.ProviderDiagnosticRequestId);
+            AppendLifecycleField(builder, "ProviderRequestQueuedAt", entry.ProviderRequestQueuedAt?.ToString("O"));
+            AppendLifecycleField(builder, "ProviderInvocationStartedAt", entry.ProviderInvocationStartedAt?.ToString("O"));
+            AppendLifecycleField(builder, "ProviderInvocationCompletedAt", entry.ProviderInvocationCompletedAt?.ToString("O"));
+            if (entry.ProviderRequestQueuedAt is { } queuedAt
+                && entry.ProviderInvocationStartedAt is { } invocationStartedAt)
+            {
+                var queueWait = invocationStartedAt >= queuedAt
+                    ? invocationStartedAt - queuedAt
+                    : TimeSpan.Zero;
+                AppendLifecycleField(
+                    builder,
+                    "ProviderQueueWaitMs",
+                    queueWait.TotalMilliseconds.ToString("F1", CultureInfo.InvariantCulture));
+            }
+
+            AppendLifecycleField(builder, "ProviderInvocationOutcome", entry.ProviderInvocationOutcome?.ToString());
+            AppendLifecycleField(builder, "ProviderNetworkAttemptId", entry.ProviderNetworkAttemptId);
+            AppendLifecycleField(builder, "ProviderNetworkKind", entry.ProviderNetworkRequestKind?.ToString());
+            AppendLifecycleField(builder, "ProviderNetworkRequestSent", entry.ProviderNetworkRequestSent?.ToString());
+            AppendLifecycleField(builder, "ProviderNetworkStartedAt", entry.ProviderNetworkRequestStartedAt?.ToString("O"));
+            AppendLifecycleField(builder, "ProviderNetworkCompletedAt", entry.ProviderNetworkRequestCompletedAt?.ToString("O"));
+            AppendLifecycleField(builder, "ProviderNetworkOutcome", entry.ProviderNetworkRequestOutcome?.ToString());
+            AppendLifecycleField(
+                builder,
+                "ProviderNetworkHttpStatus",
+                entry.ProviderNetworkHttpStatusCode?.ToString(CultureInfo.InvariantCulture));
 
             AppendLifecycleField(builder, "OverlayTextItems", entry.OverlayTextItemCount?.ToString());
             AppendLifecycleField(builder, "OverlayMaskItems", entry.OverlayMaskItemCount?.ToString());
@@ -5642,6 +5838,25 @@ public sealed class MainViewModel : ValidatableObservableObject
                 AppendLifecycleQuotedField(builder, "FailureExceptionMessage", entry.FailureExceptionMessage);
                 AppendLifecycleField(builder, "FailureRootCauseType", entry.FailureRootCauseType);
                 AppendLifecycleQuotedField(builder, "FailureRootCauseMessage", entry.FailureRootCauseMessage);
+                AppendLifecycleField(builder, "FailureProvider", entry.FailureProviderId);
+                AppendLifecycleField(builder, "FailureProviderKind", entry.FailureProviderKind?.ToString());
+                AppendLifecycleField(
+                    builder,
+                    "FailureHttpStatus",
+                    entry.FailureProviderHttpStatusCode?.ToString(CultureInfo.InvariantCulture));
+                AppendLifecycleField(builder, "FailureProviderPaused", entry.FailureProviderPaused?.ToString());
+                AppendLifecycleField(
+                    builder,
+                    "FailureProviderRetryAfterMs",
+                    entry.FailureProviderRetryAfter?.TotalMilliseconds.ToString("F1", CultureInfo.InvariantCulture));
+                AppendLifecycleField(
+                    builder,
+                    "FailureProviderNextRetryAt",
+                    entry.FailureProviderNextRetryAt?.ToString("O"));
+                AppendLifecycleField(
+                    builder,
+                    "FailureProviderConsecutiveFailures",
+                    entry.FailureProviderConsecutiveFailureCount?.ToString(CultureInfo.InvariantCulture));
             }
 
             if (entry.CancellationReason != LiveCandidateCancellationReason.None)
@@ -5651,6 +5866,65 @@ public sealed class MainViewModel : ValidatableObservableObject
 
             builder.AppendLine();
         }
+    }
+
+    private void AppendLiveTranslatorProviderFailureDebugInfo(
+        StringBuilder builder,
+        DateTimeOffset observedAt)
+    {
+        builder.AppendLine();
+        builder.AppendLine("Live translator provider failure");
+        var latestFailure = latestCandidateLifecycleEvents.LastOrDefault(entry =>
+            entry.FailureProviderKind.HasValue
+            && !string.IsNullOrWhiteSpace(entry.FailureProviderId));
+        if (latestFailure is null)
+        {
+            builder.AppendLine("  none observed");
+            return;
+        }
+
+        var recoveredAfterNetworkSuccess = latestCandidateLifecycleEvents.Any(entry =>
+            entry.Sequence > latestFailure.Sequence
+            && entry.Kind == LiveCandidateLifecycleEventKind.CandidateWorkCompleted
+            && entry.ProviderRequestCompletedAt.HasValue
+            && string.Equals(
+                entry.TranslationProviderId,
+                latestFailure.FailureProviderId,
+                StringComparison.OrdinalIgnoreCase));
+        var stateAtReport = recoveredAfterNetworkSuccess
+            ? "RecoveredAfterNetworkSuccess"
+            : latestFailure.FailureProviderPaused == true
+                && latestFailure.FailureProviderNextRetryAt is { } nextRetryAt
+                && nextRetryAt > observedAt
+                    ? "Paused"
+                    : "RetryAllowed";
+
+        AppendDebugLine(builder, "Provider", latestFailure.FailureProviderId!);
+        AppendDebugLine(builder, "ObservedAt", latestFailure.OccurredAt.ToString("O"));
+        AppendDebugLine(builder, "FailureKind", latestFailure.FailureProviderKind!.Value.ToString());
+        AppendDebugLine(
+            builder,
+            "HttpStatus",
+            latestFailure.FailureProviderHttpStatusCode?.ToString(CultureInfo.InvariantCulture) ?? "(none)");
+        AppendDebugLine(
+            builder,
+            "PausedAtFailure",
+            latestFailure.FailureProviderPaused?.ToString() ?? "(none)");
+        AppendDebugLine(
+            builder,
+            "RetryAfterMs",
+            latestFailure.FailureProviderRetryAfter?.TotalMilliseconds.ToString("F1", CultureInfo.InvariantCulture)
+                ?? "(none)");
+        AppendDebugLine(
+            builder,
+            "NextRetryAt",
+            latestFailure.FailureProviderNextRetryAt?.ToString("O") ?? "(none)");
+        AppendDebugLine(
+            builder,
+            "ConsecutiveFailures",
+            latestFailure.FailureProviderConsecutiveFailureCount?.ToString(CultureInfo.InvariantCulture)
+                ?? "(none)");
+        AppendDebugLine(builder, "StateAtReport", stateAtReport);
     }
 
     private static string? FormatDiagnosticDouble(double? value)
@@ -5875,6 +6149,12 @@ public sealed class MainViewModel : ValidatableObservableObject
             return new[] { OcrZoneTextStyle.DefaultFontFamily };
         }
     }
+
+    private sealed record WelcomeTourStepDefinition(
+        string Title,
+        string Body,
+        string Guidance,
+        int WorkspaceTabIndex);
 
     private sealed class UnavailableScreenRegionPickerService : IScreenRegionPickerService
     {

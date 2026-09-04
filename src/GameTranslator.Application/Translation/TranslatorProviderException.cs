@@ -15,7 +15,8 @@ public sealed class TranslatorProviderException : Exception
         string message,
         Exception? innerException = null,
         TimeSpan? retryAfter = null,
-        int consecutiveFailureCount = 0)
+        int consecutiveFailureCount = 0,
+        DateTimeOffset? nextRetryAt = null)
         : base(message, innerException)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(providerId);
@@ -35,6 +36,7 @@ public sealed class TranslatorProviderException : Exception
             : TranslatorProviderFailureKind.Unknown;
         RetryAfter = retryAfter;
         ConsecutiveFailureCount = consecutiveFailureCount;
+        NextRetryAt = nextRetryAt;
     }
 
     public TranslatorProviderException(
@@ -53,14 +55,16 @@ public sealed class TranslatorProviderException : Exception
         string message,
         Exception? innerException = null,
         TimeSpan? retryAfter = null,
-        int consecutiveFailureCount = 0)
+        int consecutiveFailureCount = 0,
+        DateTimeOffset? nextRetryAt = null)
         : this(
             providerId,
             failureKind,
             message,
             innerException,
             retryAfter,
-            consecutiveFailureCount)
+            consecutiveFailureCount,
+            nextRetryAt)
     {
         StatusCode = statusCode;
     }
@@ -74,6 +78,12 @@ public sealed class TranslatorProviderException : Exception
     public TimeSpan? RetryAfter { get; }
 
     public int ConsecutiveFailureCount { get; }
+
+    /// <summary>
+    /// Absolute provider-local retry boundary when the failure opened or observed an active pause.
+    /// Null means that the provider did not report an active pause for this failure.
+    /// </summary>
+    public DateTimeOffset? NextRetryAt { get; }
 
     private static TranslatorProviderFailureKind ClassifyStatusCode(HttpStatusCode statusCode)
     {

@@ -196,6 +196,107 @@ public sealed class BoundedTextCandidateGroupingServiceTests
     }
 
     [Fact]
+    public void Group_SpacedProfile_AutoKeepsConfirmedElevenLineEnglishBubbleTogether()
+    {
+        var service = new BoundedTextCandidateGroupingService();
+        var candidates = new[]
+        {
+            Candidate(347, 70, 50, 17),
+            Candidate(335, 89, 64, 20),
+            Candidate(330, 111, 77, 19),
+            Candidate(354, 131, 30, 18),
+            Candidate(339, 152, 58, 17),
+            Candidate(345, 173, 48, 17),
+            Candidate(325, 193, 87, 16),
+            Candidate(341, 215, 55, 16),
+            Candidate(317, 235, 101, 15),
+            Candidate(318, 255, 101, 16),
+            Candidate(342, 274, 61, 20),
+        };
+
+        var result = service.Group(
+            candidates,
+            zoneHeight: 976,
+            WritingSystemGroupingProfile.SpacedLeftToRight);
+
+        var grouped = Assert.Single(result);
+        Assert.Equal(new BoundingBox(317, 70, 102, 224), grouped.Bounds);
+        Assert.Equal(11, grouped.SourceCandidateBounds.Count);
+    }
+
+    [Fact]
+    public void Group_SpacedProfile_AutoHasNoFixedLineCapForAConsistentlyAlignedBubble()
+    {
+        var service = new BoundedTextCandidateGroupingService();
+        var candidates = Enumerable.Range(0, 23)
+            .Select(index => Candidate(100 + (index % 3) * 2, 100 + index * 22, 50, 16));
+
+        var result = service.Group(
+            candidates,
+            zoneHeight: 900,
+            WritingSystemGroupingProfile.SpacedLeftToRight);
+
+        var grouped = Assert.Single(result);
+        Assert.Equal(new BoundingBox(100, 100, 54, 500), grouped.Bounds);
+        Assert.Equal(23, grouped.SourceCandidateBounds.Count);
+    }
+
+    [Fact]
+    public void Group_SpacedProfile_AutoStopsAfterTenWhenTheNextAlignedLineHasASignificantGapJump()
+    {
+        var service = new BoundedTextCandidateGroupingService();
+        var candidates = new[]
+        {
+            Candidate(347, 70, 50, 17),
+            Candidate(335, 89, 64, 20),
+            Candidate(330, 111, 77, 19),
+            Candidate(354, 131, 30, 18),
+            Candidate(339, 152, 58, 17),
+            Candidate(345, 173, 48, 17),
+            Candidate(325, 193, 87, 16),
+            Candidate(341, 215, 55, 16),
+            Candidate(317, 235, 101, 15),
+            Candidate(318, 255, 101, 16),
+            Candidate(342, 281, 61, 20),
+        };
+
+        var result = service.Group(
+            candidates,
+            zoneHeight: 976,
+            WritingSystemGroupingProfile.SpacedLeftToRight);
+
+        Assert.Equal(
+            new[]
+            {
+                new BoundingBox(317, 70, 102, 201),
+                new BoundingBox(342, 281, 61, 20),
+            },
+            result.Select(candidate => candidate.Bounds));
+    }
+
+    [Theory]
+    [InlineData(WritingSystemGroupingProfile.CjkHorizontalOrHybrid)]
+    [InlineData(WritingSystemGroupingProfile.CjkVertical)]
+    [InlineData(WritingSystemGroupingProfile.ComplexSouthEastAsian)]
+    [InlineData(WritingSystemGroupingProfile.BrahmicIndic)]
+    [InlineData(WritingSystemGroupingProfile.RightToLeftHebrew)]
+    [InlineData(WritingSystemGroupingProfile.RightToLeftArabicDerived)]
+    public void Group_NonSpacedProfile_AutoRetainsTheTenLineSafetyLimit(
+        WritingSystemGroupingProfile groupingProfile)
+    {
+        var service = new BoundedTextCandidateGroupingService();
+        var candidates = Enumerable.Range(0, 11)
+            .Select(index => Candidate(100 + (index % 2) * 4, 100 + index * 22, 50, 16));
+
+        var result = service.Group(
+            candidates,
+            zoneHeight: 400,
+            groupingProfile);
+
+        Assert.Equal(new[] { 10, 1 }, result.Select(candidate => candidate.SourceCandidateBounds.Count));
+    }
+
+    [Fact]
     public void Group_SpacedProfile_CustomSixLineLimitRemainsAHardBoundary()
     {
         var service = new BoundedTextCandidateGroupingService();

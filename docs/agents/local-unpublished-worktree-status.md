@@ -26,7 +26,7 @@ The chronological evidence remains in [OCR/overlay work status](ocr-overlay-work
 ### 2.2 OCR grouping, reading order and filtering
 
 - Per-zone candidate grouping settings preserve schema `1.0` Auto defaults and explicit `1..12` hard overrides.
-- Horizontal Auto keeps existing writing-system limits with a narrow strictly aligned continuation up to ten lines.
+- `SpacedLeftToRight` Horizontal Auto has no fixed line count: after ten lines it continues only with the existing strict `0.8` horizontal overlap and `12 px` maximum gap plus no significant median line-gap increase. Explicit `MaximumHorizontalLines` remains a hard override; every non-spaced writing-system profile retains the ten-line automatic safety limit.
 - `CjkVertical` Auto has no fixed column count. It evaluates immediate columns right-to-left and cuts on local gap plus whole-group width/alignment/overlap coherence, preventing transitive page-wide creep.
 - Explicit `MaximumVerticalColumns` remains the old hard-limit path; every non-`CjkVertical` writing-system profile preserves its prior behavior.
 - A tightly gated ragged-bottom allowance accepts proven three-column live geometry only with shared overlap at least `0.95`, normalized top offset at most `0.05`, normalized bottom offset at most `1.0`, and every adjacent gap at most `2 px`.
@@ -42,7 +42,8 @@ The chronological evidence remains in [OCR/overlay work status](ocr-overlay-work
 - YandexWeb uses one direct Android-form request. Its narrow output sanitizer repairs only proven pathological provider repetitions on misses and old/new cache hits; intentionally repeated source text, short repetitions and other providers are unchanged.
 - BingWeb uses one direct request, a provider-local `15 s` timeout, a warning on the first consecutive timeout, a `60 s` pause after the second, and an immediate pause for HTTP `429` with a longer valid `Retry-After` honored. Success resets the counter.
 - Bing does not immediately retry the same text or switch providers. An authoritative timeout/throttle keeps a previously published overlay visible without republishing its stale revision.
-- Provider exceptions carry failure kind, retry interval and consecutive count for UI status. The current stopped-session lifecycle report can lose the detailed timeout/429 kind after recovery even though it retains translation-stage failure events.
+- Provider exceptions carry failure kind, retry interval and consecutive count for UI status. The stopped-session report retains the detailed timeout/429 kind and cooldown boundary after recovery, and Bing live cache misses now distinguish limiter queue time, provider invocation, credential/translation HTTP attempts and paused/cancelled no-send outcomes.
+- A live-only `CjkVertical` typewriter guard adds `300 ms` to the selected stability interval after strict normalized prefix growth of the same candidate input. Initial/static text, non-prefix OCR correction and every Horizontal/non-CJK path retain their existing timing.
 
 ### 2.4 Chinese detector presets and recognizer research
 
@@ -63,7 +64,7 @@ The chronological evidence remains in [OCR/overlay work status](ocr-overlay-work
 
 ### 2.6 Diagnostics and privacy boundary
 
-- Candidate diagnostics include grouping/stability counts and durations, cache counters, provider timestamps, ordered OCR/group-member bounds, bounded geometry fingerprints, resolved writing-system/orientation and detector-preset metrics.
+- Candidate diagnostics include grouping/stability counts and durations, typewriter-guard state, cache counters, provider queue/invocation/actual-network timestamps and outcomes, ordered OCR/group-member bounds, bounded geometry fingerprints, resolved writing-system/orientation and detector-preset metrics.
 - By explicit owner decision, automatic local live reports may also retain ordered OCR text, actual translation inputs and final translated output. Each category is limited to `16` entries; each entry is normalized to one line and limited to `512` UTF-16 code units without splitting a surrogate pair.
 - The report is capped at `99,000,000` UTF-8 bytes and preserves its header plus newest tail when truncated.
 - Raw HTTP/provider responses, credentials and frame pixels are excluded. The application has no diagnostic upload path. These reports are local-only and must not be uploaded or copied into tracked evidence.
@@ -71,17 +72,26 @@ The chronological evidence remains in [OCR/overlay work status](ocr-overlay-work
 
 ### 2.7 Portable packaging hardening
 
-- Portable output is self-contained for `.NET 9`/WindowsDesktop and includes the pinned Paddle runtime/model plus exactly `chi_sim`, `eng`, `jpn`, `jpn_vert`, and `tha` Tesseract packs.
+- Portable output is self-contained for `.NET 9`/WindowsDesktop and includes the pinned Paddle runtime/model plus exactly `chi_sim`, `chi_sim_vert`, `eng`, `jpn`, `jpn_vert`, and `tha` Tesseract packs.
 - Packaging preserves correct WPF runtime assemblies, validates the Infrastructure direct-reference closure, keeps Tesseract native binaries in `x64`/`x86`, rejects root-level duplicates and runs a hidden packaged OCR smoke.
 - Worker IPC is explicit UTF-8 without preamble; the Python worker defensively accepts the known BOM/mojibake first-request variants.
 - The release verifier sends the complete Standard detector request and checks runtime/model/language-pack paths, manifest safety and hashes.
-- Current ignored/local-only candidates are r34, r35, r36, r37, r38 and r39. r35 and r34 have archives recorded in the chronological status; r36-r39 are unpacked candidates without a generated transfer archive.
-- r39 is the newest owner-smoke candidate. It is not signed, committed, pushed or published.
+- The current ignored/local-only candidates are r42 and r43. Owner-authorized disk cleanup permanently removed r34-r41, two old reproducibility clean clones and the obsolete same-host bootstrap clean-root while retaining the pinned packaging runtime, local logs and research/calibration evidence.
+- r43 is the newest unpacked owner-smoke candidate. It is not archived, signed, committed, pushed or published.
 
 ## 3. Verification and owner-live evidence
 
-- Latest source gate before r39: focused candidate-region tests `16/16`; focused OCR/grouping/pipeline tests `111/111`; Release build with zero warnings/errors; full Release suite `625/625`; docs mini-check clean; `git diff --check` clean apart from line-ending notices.
-- r39 manifest independently rehashed `30,728` entries with no malformed, duplicate, unsafe, missing, mismatched or extra file. Packaged Tesseract and Paddle hidden smokes passed.
+- Latest source gate before r40: focused transient-dropout safety tests `6/6`; all pipeline service tests `67/67`; lifecycle/local-report tests `3/3`; Release build with zero warnings/errors; full Release suite `629/629`; docs mini-check clean; `git diff --check` clean apart from line-ending notices.
+- r40 manifest independently rehashed `30,729` entries with no malformed, duplicate, unsafe, missing, mismatched or extra file. Packaged Tesseract and Paddle hidden smokes passed; all four product assemblies match the current applicable Release outputs and the packaged worker matches source after expected UTF-8 BOM/line-ending normalization.
+- Post-r40 source work adds local-only BingWeb failure and actual-attempt observability: exact provider failure/cooldown state plus queue, invocation and credential/translation HTTP attempts are retained in candidate lifecycle events and summarized in the stopped-session report. Paused fast-fail and cancellation explicitly differ from a sent request. A narrow `CjkVertical` prefix-growth guard adds `300 ms` after detected typewriter growth. The request timeout, retry/cooldown, cache key, overlay-retention, provider selection/fallback and all Horizontal/non-CJK behavior are unchanged. Focused provider/pipeline/UI tests passed `167/167`; Release build completed with zero warnings/errors and the full Release suite passed `632/632`; docs mini-check and `git diff --check` are clean apart from line-ending notices.
+- r41 unpacked portable `work/release-hardening/release-candidates/v0.1.0-pre.20260903-bing-attempt-cjk-typewriter-r41` packages that source as self-contained win-x64 with the locked Paddle runtime/model and all six Tesseract packs. Hidden Tesseract smoke passed in `286.6 ms`; packaged Paddle reached Ready in `2955.5 ms` and returned `24` Standard-preset candidates in `4007.1 ms`. Independent rehash passed `30,729` manifest records with no malformed, duplicate, unsafe, missing, mismatched or extra file; all four product assemblies match their applicable Release outputs, the three model files and six traineddata files match the runtime lock, and worker text matches source. The candidate has `30,730` files / `5.020 GiB`; no r41 release archive or packaged process remains. The eight embedded CPython test ZIP fixtures are the same runtime payload as r40 and are not a generated release archive. The local pre-existing root `chi_sim_vert` was restored to SHA-256 `ea672a78157199c333aa12ec4e74550077689b545df5fc770903716850c8b2e5` after packaging.
+- Post-r41 source work corrects the confirmed long-English `10 + remainder` split only for `SpacedLeftToRight` Auto. The exact eleven-line live geometry and a coherent 23-line stack remain one candidate; a significant-gap counterexample remains split, explicit horizontal limits remain hard, and all six non-spaced profiles retain the old ten-line safety cap. Grouping tests passed `40/40`, focused OCR/grouping/architecture tests passed `148/148`, Release build completed with zero warnings/errors and the full Release suite passed `641/641`.
+- r42 unpacked portable `work/release-hardening/release-candidates/v0.1.0-pre.20260903-adaptive-spaced-horizontal-r42` packages the post-r41 correction as self-contained win-x64 with the locked Paddle runtime/model and all six Tesseract packs. Hidden Tesseract smoke passed in `296.2 ms`; packaged Paddle reached Ready in `2876.8 ms` and returned `28` Standard-preset candidates in `3923.2 ms`. Independent rehash passed all `30,729` manifest records with no malformed, duplicate, unsafe, missing, mismatched or extra file; all four product assemblies match applicable Release outputs and the three model files plus six traineddata files match the runtime lock. The candidate has `30,730` files / `5.020 GiB`, no release archive and no packaged process. The eight embedded CPython test ZIP fixtures are runtime payload, not a generated release archive. The pre-existing root `chi_sim_vert` was restored to SHA-256 `ea672a78157199c333aa12ec4e74550077689b545df5fc770903716850c8b2e5` after packaging.
+- r43 unpacked portable `work/release-hardening/release-candidates/v0.1.0-pre.20260904-welcome-tour-parameter-help-r43` packages r42 plus compact hover help for manually editable parameters and the local seven-step Russian welcome tour. The tour changes only its selected workspace tab while visible; it does not mutate profile settings, start capture or contact a provider. Hidden Tesseract smoke passed in `292.3 ms`; packaged Paddle reached Ready in `2749.8 ms` and returned `28` Standard-preset candidates in `3780.2 ms`. Independent verification rehashed all `30,729` manifest records with no malformed, duplicate, unsafe, missing, mismatched or extra file; all four product assemblies match applicable Release outputs, and the three model files plus six traineddata files match the runtime lock. The candidate has `30,730` files / `5.020 GiB`, no release archive and no packaged process. The pre-existing root `chi_sim_vert` was restored to SHA-256 `ea672a78157199c333aa12ec4e74550077689b545df5fc770903716850c8b2e5` after packaging. The immediately preceding source verification is Release build with zero warnings/errors, focused welcome-tour tests `4/4`, full Release suite `645/645`, clean docs mini-check and clean `git diff --check` apart from line-ending notices.
+- Post-r43 source work corrects two owner-reported UI regressions that r43 still contains. The welcome tour now spotlights a real target control on every step through an `Exclude` dimming geometry, scrolls that target into view and places the instruction card in the least-overlapping corner. Parameter-help popup visibility is bound to the icon circle rather than the containing control, so moving the pointer onto the popup cannot keep it open. Focused source/UI tests passed `4/4` across all seven tour steps and window sizes `1024x640` through `2560x1440`; Release build completed with zero warnings/errors and the full suite passed `645/645`. A replacement portable has not yet been requested or assembled.
+- The owner's first direct launch of that post-r43 Release output exposed a startup-only WPF ordering regression not reached by the original detached visual-tree measurement: `IsVisibleChanged` can run while the welcome-tour `DataTemplate` is still creating its children. Windows `.NET Runtime` event `1026` recorded `XamlParseException` because the early hidden-state reset tried to resolve `WelcomeTourDimmingPath` before it existed. A failing-first headless regression now invokes the reset before template materialization, and the reset touches only already-cached children. The corrected Release output rebuilt with zero warnings/errors; focused UI/startup tests passed `4/4` and the full suite passed `645/645`. No visible post-fix launch or replacement portable has been performed yet.
+- A follow-up discoverability correction keeps the existing restart action in `Hotkeys & Settings` and adds a compact persistent `? Тур` action to the workspace header immediately before `Start live`. Focused XAML and supported-window-size checks passed `2/2`; the replacement portable remains unassembled.
+- The OCR welcome-tour step now explicitly directs the first language selection through `Check OCR language`; a `Missing` result requires `Install OCR language`, completion of installation and a repeated check. Focused content/navigation and all-size card-layout tests passed `2/2`; this text is source-only and is not present in r43.
 - Owner r39 live smoke retained `41` wide multi-member CJK completions: `12` two-column, `19` three-column and `10` four-column. `33` reached non-empty OCR/translation; `8` were OCR-empty.
 - The exact four-column `115x101` case completed as one candidate, four OCR blocks and one translation request/output. No group exceeded four members in this run and no adjacent-bubble/page-wide merge was observed.
 - Chinese translations contained no run of three or more consecutive identical words. No rapid non-empty → empty → non-empty publication gap under one second was found.
@@ -90,10 +100,10 @@ The chronological evidence remains in [OCR/overlay work status](ocr-overlay-work
 
 ## 4. Known limits and deferred work
 
-- Do not tune grouping further from the accepted r39 evidence unless a future report shows a concrete neighbor-bubble merge or new failing geometry.
+- Owner live smoke is required for the post-r41 adaptive spaced-horizontal path, especially on vertically adjacent English bubbles. Do not widen its overlap/gap-discontinuity gates without concrete new split geometry or a confirmed neighbor-bubble merge.
 - Yandex translation quality/repetition beyond the existing narrow sanitizer is separate from candidate grouping.
 - Chinese SFX noise and slower perceived Chinese OCR remain open quality/performance observations; no SFX classifier or PP-OCR recognizer is in production.
-- The stopped-session report should retain explicit Bing timeout/throttle kind and cooldown state if UI-state proof becomes required; current evidence proves translation-stage failures and timing, not the exact warning/error presentation after recovery.
+- Owner live smoke is still required to confirm whether the new actual-attempt evidence explains the observed Bing timeout/429 clusters and whether the narrow CJK prefix-growth window suppresses partial-replica requests without visible latency regression.
 - Roadmap 18.1 items 4-5 remain out of scope.
 - Local calibration PNG/JSON changes and ignored OCR-text research evidence require explicit owner review before any future staging or publication.
 
@@ -142,9 +152,10 @@ Tracked tests (`19`) cover Application grouping/OCR/cache/pipeline/provider beha
 
 Tracked release tooling changes (`3`): `tools/build-track-d-opt-in-release.ps1`, `tools/finalize-track-d-opt-in-release.ps1`, `tools/verify-track-d-opt-in-release.ps1`.
 
-Untracked source/document files (`8`, including this inventory):
+Untracked source/document files (`9`, including this inventory):
 
 - `src/GameTranslator.Application/Translation/TranslationOutputSanitizer.cs`
+- `src/GameTranslator.Application/Translation/TranslationProviderRequestDiagnostics.cs`
 - `src/GameTranslator.Domain/Profiles/OcrCandidateGroupingSettings.cs`
 - `src/GameTranslator.Domain/Profiles/TextCandidateDetectorPreset.cs`
 - `src/GameTranslator.Infrastructure/Ocr/BoundedNativeOcrExecutor.cs`
@@ -153,7 +164,7 @@ Untracked source/document files (`8`, including this inventory):
 - `src/GameTranslator.UI/Diagnostics/PortableOcrSmokeRunner.cs`
 - `docs/agents/local-unpublished-worktree-status.md`
 
-Ignored/local-only evidence and build outputs include the adaptive-CJK handoff, writing-system smoke workspaces, Chinese detector/PP-OCRv5 benchmark workspace, AppData live reports and r34-r39 candidate directories. They are not deterministic clean-checkout inputs and must remain outside normal staging unless the owner explicitly promotes a specific artifact.
+Ignored/local-only evidence and build outputs include the adaptive-CJK handoff, writing-system smoke workspaces, Chinese detector/PP-OCRv5 benchmark workspace, AppData live reports and the r42/r43 candidate directories. They are not deterministic clean-checkout inputs and must remain outside normal staging unless the owner explicitly promotes a specific artifact.
 
 ## 6. GitHub sync boundary
 

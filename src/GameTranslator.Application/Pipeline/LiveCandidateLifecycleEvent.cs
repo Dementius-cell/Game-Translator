@@ -1,4 +1,5 @@
 using GameTranslator.Application.Ocr;
+using GameTranslator.Application.Translation;
 using GameTranslator.Domain.Profiles;
 using System.Security.Cryptography;
 using System.Text;
@@ -46,6 +47,18 @@ public sealed class LiveCandidateLifecycleEvent
         string? translationProviderId = null,
         DateTimeOffset? providerRequestStartedAt = null,
         DateTimeOffset? providerRequestCompletedAt = null,
+        string? providerDiagnosticRequestId = null,
+        DateTimeOffset? providerRequestQueuedAt = null,
+        DateTimeOffset? providerInvocationStartedAt = null,
+        DateTimeOffset? providerInvocationCompletedAt = null,
+        TranslationProviderInvocationOutcome? providerInvocationOutcome = null,
+        string? providerNetworkAttemptId = null,
+        TranslationProviderNetworkRequestKind? providerNetworkRequestKind = null,
+        bool? providerNetworkRequestSent = null,
+        DateTimeOffset? providerNetworkRequestStartedAt = null,
+        DateTimeOffset? providerNetworkRequestCompletedAt = null,
+        TranslationProviderNetworkRequestOutcome? providerNetworkRequestOutcome = null,
+        int? providerNetworkHttpStatusCode = null,
         int? overlayTextItemCount = null,
         int? overlayMaskItemCount = null,
         TranslationPipelineStage? failureStage = null,
@@ -53,6 +66,13 @@ public sealed class LiveCandidateLifecycleEvent
         string? failureExceptionMessage = null,
         string? failureRootCauseType = null,
         string? failureRootCauseMessage = null,
+        string? failureProviderId = null,
+        TranslatorProviderFailureKind? failureProviderKind = null,
+        int? failureProviderHttpStatusCode = null,
+        bool? failureProviderPaused = null,
+        TimeSpan? failureProviderRetryAfter = null,
+        DateTimeOffset? failureProviderNextRetryAt = null,
+        int? failureProviderConsecutiveFailureCount = null,
         LiveCandidateCancellationReason cancellationReason = LiveCandidateCancellationReason.None,
         int? translationOutputSanitizedCount = null,
         IEnumerable<BoundingBox>? orderedOcrBlockBounds = null,
@@ -68,6 +88,7 @@ public sealed class LiveCandidateLifecycleEvent
         double? minimumDetectorConfidence = null,
         double? maximumDetectorConfidence = null,
         double? averageDetectorConfidence = null,
+        double? candidateConfidence = null,
         IEnumerable<string>? ocrTexts = null,
         IEnumerable<string>? translationInputTexts = null,
         IEnumerable<string>? translatedTexts = null)
@@ -119,8 +140,51 @@ public sealed class LiveCandidateLifecycleEvent
         ValidateNonNegative(translationCacheMissCount, nameof(translationCacheMissCount));
         ValidateNonNegative(translationCacheStoredCount, nameof(translationCacheStoredCount));
         ValidateNonNegative(translationOutputSanitizedCount, nameof(translationOutputSanitizedCount));
+        ValidateOptionalEnum(providerInvocationOutcome, nameof(providerInvocationOutcome));
+        ValidateOptionalEnum(providerNetworkRequestKind, nameof(providerNetworkRequestKind));
+        ValidateOptionalEnum(providerNetworkRequestOutcome, nameof(providerNetworkRequestOutcome));
+        if (providerNetworkHttpStatusCode is < 100 or > 599)
+        {
+            throw new ArgumentOutOfRangeException(nameof(providerNetworkHttpStatusCode));
+        }
+
+        if (providerNetworkRequestSent == false
+            && (providerNetworkRequestStartedAt is not null || providerNetworkRequestCompletedAt is not null))
+        {
+            throw new ArgumentException(
+                "A provider request that was not sent cannot have network timestamps.",
+                nameof(providerNetworkRequestSent));
+        }
         ValidateNonNegative(overlayTextItemCount, nameof(overlayTextItemCount));
         ValidateNonNegative(overlayMaskItemCount, nameof(overlayMaskItemCount));
+        ValidateOptionalEnum(failureProviderKind, nameof(failureProviderKind));
+        if (failureProviderHttpStatusCode is < 100 or > 599)
+        {
+            throw new ArgumentOutOfRangeException(nameof(failureProviderHttpStatusCode));
+        }
+
+        if (failureProviderRetryAfter <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(failureProviderRetryAfter));
+        }
+
+        ValidateNonNegative(
+            failureProviderConsecutiveFailureCount,
+            nameof(failureProviderConsecutiveFailureCount));
+        if (failureProviderPaused == true && failureProviderNextRetryAt is null)
+        {
+            throw new ArgumentException(
+                "A paused provider failure must include the absolute next retry time.",
+                nameof(failureProviderNextRetryAt));
+        }
+
+        if (failureProviderPaused == false && failureProviderNextRetryAt is not null)
+        {
+            throw new ArgumentException(
+                "A non-paused provider failure cannot include an absolute next retry time.",
+                nameof(failureProviderNextRetryAt));
+        }
+
         if (writingSystemGroupingProfile is { } groupingProfile && !Enum.IsDefined(groupingProfile))
         {
             throw new ArgumentOutOfRangeException(nameof(writingSystemGroupingProfile));
@@ -140,6 +204,7 @@ public sealed class LiveCandidateLifecycleEvent
         ValidateConfidence(minimumDetectorConfidence, nameof(minimumDetectorConfidence));
         ValidateConfidence(maximumDetectorConfidence, nameof(maximumDetectorConfidence));
         ValidateConfidence(averageDetectorConfidence, nameof(averageDetectorConfidence));
+        ValidateConfidence(candidateConfidence, nameof(candidateConfidence));
 
         var orderedOcrGeometry = CreateBoundedGeometryDiagnostics(orderedOcrBlockBounds);
         var orderedGroupedGeometry = CreateBoundedGeometryDiagnostics(orderedGroupedMemberBounds);
@@ -177,6 +242,18 @@ public sealed class LiveCandidateLifecycleEvent
         TranslationProviderId = NormalizeDiagnosticValue(translationProviderId, maximumLength: 128);
         ProviderRequestStartedAt = providerRequestStartedAt;
         ProviderRequestCompletedAt = providerRequestCompletedAt;
+        ProviderDiagnosticRequestId = NormalizeDiagnosticValue(providerDiagnosticRequestId, maximumLength: 128);
+        ProviderRequestQueuedAt = providerRequestQueuedAt;
+        ProviderInvocationStartedAt = providerInvocationStartedAt;
+        ProviderInvocationCompletedAt = providerInvocationCompletedAt;
+        ProviderInvocationOutcome = providerInvocationOutcome;
+        ProviderNetworkAttemptId = NormalizeDiagnosticValue(providerNetworkAttemptId, maximumLength: 160);
+        ProviderNetworkRequestKind = providerNetworkRequestKind;
+        ProviderNetworkRequestSent = providerNetworkRequestSent;
+        ProviderNetworkRequestStartedAt = providerNetworkRequestStartedAt;
+        ProviderNetworkRequestCompletedAt = providerNetworkRequestCompletedAt;
+        ProviderNetworkRequestOutcome = providerNetworkRequestOutcome;
+        ProviderNetworkHttpStatusCode = providerNetworkHttpStatusCode;
         OverlayTextItemCount = overlayTextItemCount;
         OverlayMaskItemCount = overlayMaskItemCount;
         FailureStage = failureStage;
@@ -184,6 +261,13 @@ public sealed class LiveCandidateLifecycleEvent
         FailureExceptionMessage = NormalizeDiagnosticValue(failureExceptionMessage, maximumLength: 1_024);
         FailureRootCauseType = NormalizeDiagnosticValue(failureRootCauseType, maximumLength: 256);
         FailureRootCauseMessage = NormalizeDiagnosticValue(failureRootCauseMessage, maximumLength: 1_024);
+        FailureProviderId = NormalizeDiagnosticValue(failureProviderId, maximumLength: 128);
+        FailureProviderKind = failureProviderKind;
+        FailureProviderHttpStatusCode = failureProviderHttpStatusCode;
+        FailureProviderPaused = failureProviderPaused;
+        FailureProviderRetryAfter = failureProviderRetryAfter;
+        FailureProviderNextRetryAt = failureProviderNextRetryAt;
+        FailureProviderConsecutiveFailureCount = failureProviderConsecutiveFailureCount;
         CancellationReason = cancellationReason;
         OrderedOcrBlockBounds = orderedOcrGeometry.Bounds;
         OrderedOcrBlockBoundsCount = orderedOcrGeometry.Count;
@@ -202,6 +286,7 @@ public sealed class LiveCandidateLifecycleEvent
         MinimumDetectorConfidence = minimumDetectorConfidence;
         MaximumDetectorConfidence = maximumDetectorConfidence;
         AverageDetectorConfidence = averageDetectorConfidence;
+        CandidateConfidence = candidateConfidence;
         OcrTexts = boundedOcrTexts.Values;
         OcrTextCount = boundedOcrTexts.Count;
         TranslationInputTexts = boundedTranslationInputTexts.Values;
@@ -275,6 +360,30 @@ public sealed class LiveCandidateLifecycleEvent
 
     public DateTimeOffset? ProviderRequestCompletedAt { get; }
 
+    public string? ProviderDiagnosticRequestId { get; }
+
+    public DateTimeOffset? ProviderRequestQueuedAt { get; }
+
+    public DateTimeOffset? ProviderInvocationStartedAt { get; }
+
+    public DateTimeOffset? ProviderInvocationCompletedAt { get; }
+
+    public TranslationProviderInvocationOutcome? ProviderInvocationOutcome { get; }
+
+    public string? ProviderNetworkAttemptId { get; }
+
+    public TranslationProviderNetworkRequestKind? ProviderNetworkRequestKind { get; }
+
+    public bool? ProviderNetworkRequestSent { get; }
+
+    public DateTimeOffset? ProviderNetworkRequestStartedAt { get; }
+
+    public DateTimeOffset? ProviderNetworkRequestCompletedAt { get; }
+
+    public TranslationProviderNetworkRequestOutcome? ProviderNetworkRequestOutcome { get; }
+
+    public int? ProviderNetworkHttpStatusCode { get; }
+
     public int? OverlayTextItemCount { get; }
 
     public int? OverlayMaskItemCount { get; }
@@ -292,6 +401,20 @@ public sealed class LiveCandidateLifecycleEvent
     public string? FailureRootCauseType { get; }
 
     public string? FailureRootCauseMessage { get; }
+
+    public string? FailureProviderId { get; }
+
+    public TranslatorProviderFailureKind? FailureProviderKind { get; }
+
+    public int? FailureProviderHttpStatusCode { get; }
+
+    public bool? FailureProviderPaused { get; }
+
+    public TimeSpan? FailureProviderRetryAfter { get; }
+
+    public DateTimeOffset? FailureProviderNextRetryAt { get; }
+
+    public int? FailureProviderConsecutiveFailureCount { get; }
 
     public LiveCandidateCancellationReason CancellationReason { get; }
 
@@ -328,6 +451,8 @@ public sealed class LiveCandidateLifecycleEvent
     public double? MaximumDetectorConfidence { get; }
 
     public double? AverageDetectorConfidence { get; }
+
+    public double? CandidateConfidence { get; }
 
     public IReadOnlyList<string> OcrTexts { get; }
 
@@ -456,6 +581,7 @@ public enum LiveCandidateLifecycleEventKind
     CandidateGroupingAwaitingConfirmation,
     CandidateSourceChanged,
     CandidateWorkStarted,
+    CandidateProviderRequestObserved,
     CandidateWorkCompleted,
     CandidateWorkDeferredForStability,
     CandidateWorkFailed,

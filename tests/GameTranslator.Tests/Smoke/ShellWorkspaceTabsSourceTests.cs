@@ -197,6 +197,173 @@ public sealed class ShellWorkspaceTabsSourceTests
     }
 
     [Fact]
+    public void ShellView_ProvidesHoverOnlyRussianHelpForEveryManualParameterGroup()
+    {
+        var document = LoadShellView();
+        var resources = document.Root!.Element(Wpf + "UserControl.Resources")!;
+        var infoStyle = resources
+            .Elements(Wpf + "Style")
+            .Single(style => (string?)style.Attribute(Xaml + "Key") == "ParameterInfoIconStyle");
+        var popup = infoStyle
+            .Descendants(Wpf + "Popup")
+            .Single();
+
+        Assert.Equal(
+            "{Binding IsMouseOver, ElementName=InfoCircle, Mode=OneWay}",
+            (string?)popup.Attribute("IsOpen"));
+        Assert.Equal("False", (string?)popup.Attribute("StaysOpen"));
+        Assert.Equal("False", (string?)popup.Attribute("IsHitTestVisible"));
+        var infoCircle = infoStyle.Descendants(Wpf + "Border")
+            .Single(element => (string?)element.Attribute(Xaml + "Name") == "InfoCircle");
+        Assert.Same(infoCircle.Parent, popup.Parent);
+
+        var icons = document
+            .Descendants(Wpf + "ContentControl")
+            .Where(element => (string?)element.Attribute("Style") == "{StaticResource ParameterInfoIconStyle}")
+            .ToArray();
+        var actualTags = icons
+            .Select(element => (string)element.Attribute("Tag")!)
+            .OrderBy(tag => tag, StringComparer.Ordinal)
+            .ToArray();
+        var expectedTags = new[]
+        {
+            "AbsoluteBounds",
+            "ContentLayoutMode",
+            "DebugOverlayEnabled",
+            "DebugVerticalSourceWidthMultiplier",
+            "DetectorPreset",
+            "GlobalHotkeys",
+            "HorizontalCandidateGrouping",
+            "LiveTiming",
+            "OcrBrightness",
+            "OcrContrast",
+            "OcrEngine",
+            "OcrNoiseReductionEnabled",
+            "OcrOrientation",
+            "OcrPreprocessingEnabled",
+            "OcrPreprocessingPreset",
+            "OcrScale",
+            "OcrSharpness",
+            "OcrThreshold",
+            "OcrThresholdingEnabled",
+            "OverlayBold",
+            "OverlayFontFamily",
+            "OverlayFontSize",
+            "OverlayItalic",
+            "OverlayMaskColor",
+            "OverlayMaskMode",
+            "OverlayOpacity",
+            "OverlayPadding",
+            "ProfileDescription",
+            "ProfileName",
+            "RelativeBounds",
+            "SourceLanguage",
+            "TargetLanguage",
+            "TranslatorEndpoint",
+            "TranslatorLocation",
+            "TranslatorProjectId",
+            "TranslatorProvider",
+            "TranslatorSecret",
+            "VerticalCandidateGrouping",
+            "ZoneName",
+            "ZoneOcrLanguage",
+        }.OrderBy(tag => tag, StringComparer.Ordinal).ToArray();
+
+        Assert.Equal(expectedTags, actualTags);
+        Assert.All(
+            icons,
+            icon => Assert.Matches("[А-Яа-яЁё]", (string?)icon.Attribute("Content") ?? string.Empty));
+
+        AssertHelpContains(icons, "DebugVerticalSourceWidthMultiplier", "1,0–2,5");
+        AssertHelpContains(icons, "OverlayOpacity", "0–1");
+        AssertHelpContains(icons, "OverlayPadding", "0 и выше");
+        AssertHelpContains(icons, "OcrContrast", "0,5–3");
+        AssertHelpContains(icons, "OcrBrightness", "−100–100");
+        AssertHelpContains(icons, "OcrSharpness", "0–2");
+        AssertHelpContains(icons, "OcrThreshold", "0–255");
+        AssertHelpContains(icons, "OcrScale", "1–3");
+        AssertHelpContains(icons, "AbsoluteBounds", "W и H > 0");
+        AssertHelpContains(icons, "RelativeBounds", "0 ≤ X < 1");
+        AssertHelpContains(icons, "OverlayFontSize", "8–72");
+        AssertHelpContains(icons, "HorizontalCandidateGrouping", "1–12");
+        AssertHelpContains(icons, "VerticalCandidateGrouping", "1–12");
+    }
+
+    [Fact]
+    public void ShellView_RendersDismissibleWelcomeTourWithNavigationAndManualRestart()
+    {
+        var document = LoadShellView();
+        var overlay = document
+            .Descendants(Wpf + "Grid")
+            .Single(element => (string?)element.Attribute(Xaml + "Name") == "WelcomeTourOverlay");
+
+        Assert.Equal(
+            "{Binding IsWelcomeTourVisible, Converter={StaticResource BooleanToVisibilityConverter}}",
+            (string?)overlay.Attribute("Visibility"));
+        Assert.Equal("3", (string?)overlay.Attribute("Grid.ColumnSpan"));
+        Assert.Equal("1000", (string?)overlay.Attribute("Panel.ZIndex"));
+        Assert.Equal("Transparent", (string?)overlay.Attribute("Background"));
+        Assert.Equal("OnWelcomeTourOverlayLayoutUpdated", (string?)overlay.Attribute("LayoutUpdated"));
+        Assert.Equal("OnWelcomeTourOverlayIsVisibleChanged", (string?)overlay.Attribute("IsVisibleChanged"));
+
+        Assert.Contains(
+            overlay.Descendants(Wpf + "Path"),
+            element => (string?)element.Attribute(Xaml + "Name") == "WelcomeTourDimmingPath"
+                && (string?)element.Attribute("Fill") == "#66192731");
+        Assert.Contains(
+            overlay.Descendants(Wpf + "Border"),
+            element => (string?)element.Attribute(Xaml + "Name") == "WelcomeTourSpotlightBorder"
+                && (string?)element.Attribute("IsHitTestVisible") == "False");
+
+        var namedElements = document
+            .Descendants()
+            .Select(element => (string?)element.Attribute(Xaml + "Name"))
+            .Where(name => name is not null)
+            .ToHashSet(StringComparer.Ordinal);
+        Assert.Contains("ProfileRail", namedElements);
+        Assert.Contains("WorkspaceHeaderActions", namedElements);
+        Assert.Contains("TranslationSettingsCard", namedElements);
+        Assert.Contains("WelcomeTourPickScreenButton", namedElements);
+        Assert.Contains("OcrPreprocessingCard", namedElements);
+        Assert.Contains("OverlaySettingsCard", namedElements);
+        Assert.Contains("WelcomeTourLiveControls", namedElements);
+
+        var closeButton = overlay
+            .Descendants(Wpf + "Button")
+            .Single(element => (string?)element.Attribute("Command") == "{Binding CloseWelcomeTourCommand}");
+        Assert.Equal("×", (string?)closeButton.Attribute("Content"));
+        Assert.Equal("Right", (string?)closeButton.Attribute("HorizontalAlignment"));
+
+        Assert.Contains(
+            overlay.Descendants(Wpf + "Button"),
+            element => (string?)element.Attribute("Command") == "{Binding PreviousWelcomeTourStepCommand}"
+                && (string?)element.Attribute("Content") == "Назад");
+        Assert.Contains(
+            overlay.Descendants(Wpf + "Button"),
+            element => (string?)element.Attribute("Command") == "{Binding NextWelcomeTourStepCommand}"
+                && (string?)element.Attribute("Content") == "{Binding WelcomeTourPrimaryActionText}");
+        Assert.Contains(
+            overlay.Descendants(Wpf + "TextBlock"),
+            element => (string?)element.Attribute("Text") == "{Binding WelcomeTourTitle}");
+        Assert.Contains(
+            overlay.Descendants(Wpf + "TextBlock"),
+            element => (string?)element.Attribute("Text") == "{Binding WelcomeTourBody}");
+        Assert.Contains(
+            document.Descendants(Wpf + "Button"),
+            element => (string?)element.Attribute("Command") == "{Binding ShowWelcomeTourCommand}"
+                && (string?)element.Attribute("Content") == "Приветственный тур");
+
+        var headerActions = document
+            .Descendants(Wpf + "StackPanel")
+            .Single(element => (string?)element.Attribute(Xaml + "Name") == "WorkspaceHeaderActions");
+        var headerTourButton = headerActions
+            .Elements(Wpf + "Button")
+            .Single(element => (string?)element.Attribute(Xaml + "Name") == "WelcomeTourHeaderButton");
+        Assert.Equal("{Binding ShowWelcomeTourCommand}", (string?)headerTourButton.Attribute("Command"));
+        Assert.Equal("? Тур", (string?)headerTourButton.Attribute("Content"));
+    }
+
+    [Fact]
     public void ShellView_ShowsPipelineWarningsAndErrorsWithDistinctStatusColors()
     {
         var document = LoadShellView();
@@ -341,5 +508,14 @@ public sealed class ShellWorkspaceTabsSourceTests
             .Elements(Wpf + "Setter")
             .Single(element => (string?)element.Attribute("Property") == property);
         Assert.Equal(expectedValue, (string?)setter.Attribute("Value"));
+    }
+
+    private static void AssertHelpContains(
+        IEnumerable<XElement> icons,
+        string tag,
+        string expectedText)
+    {
+        var icon = icons.Single(element => (string?)element.Attribute("Tag") == tag);
+        Assert.Contains(expectedText, (string?)icon.Attribute("Content"), StringComparison.Ordinal);
     }
 }

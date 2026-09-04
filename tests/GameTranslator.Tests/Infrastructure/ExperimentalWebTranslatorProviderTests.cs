@@ -153,6 +153,49 @@ public sealed class ExperimentalWebTranslatorProviderTests
     }
 
     [Fact]
+    public async Task BingWebTranslateAsync_RecordsEachActualNetworkAttemptSeparatelyFromQueueTime()
+    {
+        var handler = new SequenceHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = CreateHtmlContent(CreateBingSessionHtml("ABCDEF123456", "12345", "TOKENVALUE")),
+            },
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = CreateJsonContent("""[{ "translations": [ { "text": "Привет", "to": "ru" } ] }]"""),
+            });
+        var diagnostics = new TranslationProviderRequestDiagnostics(
+            new[] { "Hello" },
+            DateTimeOffset.UtcNow.AddSeconds(-1));
+        var provider = new BingWebTranslatorProvider(new HttpClient(handler));
+
+        await provider.TranslateAsync(CreateRequest(
+            "BingWeb",
+            "https://www.bing.com",
+            diagnostics: diagnostics));
+
+        var snapshot = diagnostics.CreateSnapshot();
+        Assert.NotNull(snapshot.ProviderInvocationStartedAt);
+        Assert.Equal(2, snapshot.NetworkAttempts.Count);
+        Assert.Collection(
+            snapshot.NetworkAttempts,
+            credentialsAttempt =>
+            {
+                Assert.Equal(TranslationProviderNetworkRequestKind.Credentials, credentialsAttempt.Kind);
+                Assert.True(credentialsAttempt.WasSent);
+                Assert.Equal(TranslationProviderNetworkRequestOutcome.Succeeded, credentialsAttempt.Outcome);
+                Assert.Equal(HttpStatusCode.OK, credentialsAttempt.StatusCode);
+            },
+            translationAttempt =>
+            {
+                Assert.Equal(TranslationProviderNetworkRequestKind.Translation, translationAttempt.Kind);
+                Assert.True(translationAttempt.WasSent);
+                Assert.Equal(TranslationProviderNetworkRequestOutcome.Succeeded, translationAttempt.Outcome);
+                Assert.Equal(HttpStatusCode.OK, translationAttempt.StatusCode);
+            });
+    }
+
+    [Fact]
     public async Task BingWebTranslateAsync_WhenTwoRequestsTimeout_OpensCooldownWithoutRetrying()
     {
         var handler = new ScriptedHttpMessageHandler(
@@ -178,12 +221,15 @@ public sealed class ExperimentalWebTranslatorProviderTests
         Assert.Equal(TranslatorProviderFailureKind.Timeout, first.FailureKind);
         Assert.Equal(1, first.ConsecutiveFailureCount);
         Assert.Null(first.RetryAfter);
+        Assert.Null(first.NextRetryAt);
         Assert.Equal(TranslatorProviderFailureKind.Timeout, second.FailureKind);
         Assert.Equal(2, second.ConsecutiveFailureCount);
         Assert.Equal(TimeSpan.FromSeconds(60), second.RetryAfter);
+        Assert.NotNull(second.NextRetryAt);
         Assert.Equal(TranslatorProviderFailureKind.Timeout, paused.FailureKind);
         Assert.Equal(2, paused.ConsecutiveFailureCount);
         Assert.InRange(paused.RetryAfter!.Value, TimeSpan.FromSeconds(59), TimeSpan.FromSeconds(60));
+        Assert.Equal(second.NextRetryAt, paused.NextRetryAt);
         Assert.Equal(3, handler.RequestCount);
     }
 
@@ -210,15 +256,27 @@ public sealed class ExperimentalWebTranslatorProviderTests
 
         var throttled = await Assert.ThrowsAsync<TranslatorProviderException>(
             () => provider.TranslateAsync(CreateRequest("BingWeb", "https://www.bing.com")));
+        var pausedDiagnostics = new TranslationProviderRequestDiagnostics(
+            new[] { "Hello" },
+            DateTimeOffset.UtcNow);
         var paused = await Assert.ThrowsAsync<TranslatorProviderException>(
-            () => provider.TranslateAsync(CreateRequest("BingWeb", "https://www.bing.com")));
+            () => provider.TranslateAsync(CreateRequest(
+                "BingWeb",
+                "https://www.bing.com",
+                diagnostics: pausedDiagnostics)));
 
         Assert.Equal(TranslatorProviderFailureKind.Throttled, throttled.FailureKind);
         Assert.Equal(HttpStatusCode.TooManyRequests, throttled.StatusCode);
         Assert.Equal(TimeSpan.FromSeconds(90), throttled.RetryAfter);
+        Assert.NotNull(throttled.NextRetryAt);
         Assert.Equal(TranslatorProviderFailureKind.Throttled, paused.FailureKind);
         Assert.InRange(paused.RetryAfter!.Value, TimeSpan.FromSeconds(89), TimeSpan.FromSeconds(90));
+        Assert.Equal(throttled.NextRetryAt, paused.NextRetryAt);
         Assert.Equal(2, handler.Requests.Count);
+        var pausedSnapshot = pausedDiagnostics.CreateSnapshot();
+        Assert.Equal(TranslationProviderInvocationOutcome.RejectedBeforeSend, pausedSnapshot.Outcome);
+        Assert.False(pausedSnapshot.WasNetworkRequestSent);
+        Assert.Empty(pausedSnapshot.NetworkAttempts);
     }
 
     [Fact]
@@ -295,7 +353,12 @@ public sealed class ExperimentalWebTranslatorProviderTests
         Assert.Contains("provider code 429", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static TranslateRequest CreateRequest(string provider, string endpoint, string sourceLanguage = "en", string targetLanguage = "ru")
+    private static TranslateRequest CreateRequest(
+        string provider,
+        string endpoint,
+        string sourceLanguage = "en",
+        string targetLanguage = "ru",
+        TranslationProviderRequestDiagnostics? diagnostics = null)
     {
         return new TranslateRequest(
             new[] { "Hello" },
@@ -305,7 +368,8 @@ public sealed class ExperimentalWebTranslatorProviderTests
                 "experimental-web-provider",
                 provider,
                 "global",
-                new Uri(endpoint)));
+                new Uri(endpoint)),
+            diagnostics);
     }
 
     private static StringContent CreateJsonContent(string json)

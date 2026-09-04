@@ -1,12 +1,16 @@
 # Game-Translator
 
-Game-Translator is a Windows 11 desktop application for real-time OCR and translation overlay in games. The implementation must follow the project constitution, architecture decisions, roadmap, quality gates, and AI development rules stored in `docs/`.
+Game-Translator is a Windows 11 desktop application for real-time screen OCR and translation overlays in games, comics, and other bounded on-screen regions. The solution contains four production modules (`Domain`, `Application`, `Infrastructure`, and `UI`) plus one verification project (`GameTranslator.Tests`).
+
+The current normal pipeline is: manual OCR zone → GPU Paddle text detection → bounded writing-system grouping → Tesseract crop recognition → the explicitly selected translator → per-region overlay. Windows OCR and Tesseract remain supported OCR engines; the detector worker is an Infrastructure adapter, not a fifth product module.
+
+For installation, first-run setup, OCR language packs, providers, cache, hotkeys, and diagnostics, see the [user guide](docs/user-guide.md).
 
 ## Reproducible live-Paddle build
 
-The source repository deliberately does not contain game or manga screenshots, OCR/translation evidence, release candidates, Paddle model files, or Tesseract language data. They are local-only under `artifacts/`, `work/`, and `tessdata/`.
+The source repository deliberately excludes third-party game/manga screenshots, local OCR/translation reports, release candidates, Paddle model files, and Tesseract language data. It does contain a small tracked deterministic calibration set; generated evidence and owner-provided source material remain local-only under ignored `artifacts/`, `work/`, `outputs/`, application-data, and `tessdata/` paths unless the owner explicitly promotes a specific artifact.
 
-To assemble the same class of live-Paddle package as the verified r15 candidate, use a Windows x64 host with:
+To assemble the current ADR-030 live-Paddle package class, use a Windows x64 host with:
 
 - .NET SDK 9;
 - CPython 3.12.10 x64, installed from the official Python release;
@@ -39,11 +43,14 @@ dotnet test GameTranslator.sln -c Release --no-build --no-restore
 
 The bootstrap pins CPython/Paddle package versions (including the official Paddle CUDA 12.9 wheel index) and verifies the PP-OCRv6 detector and six Tesseract packs by SHA-256. The first run downloads only their official distributions. The package build requires the exact locked language-pack set and verifies every pack before copying it; if the GPU runtime is unavailable or a language pack is missing, unexpected or changed, the script fails rather than silently producing an incomplete package.
 
+Current publication boundary: the newest locally verified owner-smoke portable is r43, but it predates the latest welcome-tour spotlight, startup-safety, header-action, and OCR guidance fixes. No source-equivalent replacement portable, signed package, or current GitHub Release has been produced yet. Do not present r43 as the latest source build.
+
 ## Documentation
 
 Start here:
 
 - [Documentation index](docs/README.md)
+- [User guide](docs/user-guide.md)
 - [Project Constitution](docs/00-project-constitution.md)
 - [Technical Specification](docs/01-technical-specification.md)
 - [Architecture](docs/02-architecture.md)
@@ -58,6 +65,13 @@ Governance and AI-agent materials:
 - [Change Approval Required](docs/governance/change-approval-required.md)
 - [Master Prompt](docs/prompts/master-prompt.md)
 - [Agent Startup Manifest](docs/ai/agent-startup-manifest.md)
+
+Developer module guides:
+
+- [Domain](src/GameTranslator.Domain/README.md)
+- [Application](src/GameTranslator.Application/README.md)
+- [Infrastructure](src/GameTranslator.Infrastructure/README.md)
+- [UI](src/GameTranslator.UI/README.md)
 
 ## Required Direction
 

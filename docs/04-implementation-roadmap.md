@@ -4,7 +4,7 @@
 
 Проект: Система экранного OCR-перевода игровых субтитров и текста для Windows 11
 
-Версия документа: 1.3 (обновлено 2026-08-25)
+Версия документа: 1.4 (обновлено 2026-09-04)
 
 ------------------------------------------------------------------------
 
@@ -24,7 +24,7 @@
 
 Штатный путь продукта — GPU Paddle detector → bounded grouping → Tesseract crop recognition → configured translator → per-region overlay. Его runtime воспроизводится через зафиксированные CPython/Paddle/model/Tesseract lock-файлы и bootstrap-скрипты. Для релизной вехи обязательны применимые quality gates: отсутствие скрытого legacy/provider/cache fallback, проверка runtime/model hashes, пакетная целостность, offline-install/recovery/rollback и разрешённая WPF-проверка. Same-host clean-root является только same-host evidence, не физическим clean host.
 
-Оставшаяся функциональная работа ведётся отдельно от исторической full-page ветки: глобальная baseline-группировка, layout profile и языковые исключения (первое подтверждённое исключение — Thai), затем новый RC только при изменении релизного содержимого. Подпись, публикация GitHub Release и удаление legacy требуют отдельного решения владельца.
+Глобальный writing-system baseline, per-zone `ContentLayoutMode`, CJK horizontal/vertical rules и подтверждённое Thai-исключение реализованы. Открыты owner-smoke для LTR-профиля (#49), отдельные Brahmic/Indic и RTL-профили (#53-#55), human validation диагностики (#34), calibration workflow (#35) и Release 1.0 (#30). Новый source-equivalent portable/RC ещё не собран; подпись и публикация GitHub Release требуют отдельного решения владельца.
 
 ------------------------------------------------------------------------
 
@@ -126,11 +126,11 @@ Baseline для этой очереди — десять owner live-сессий
 
 ## 18.1. Очередь оптимизаций live candidate pipeline
 
-1. **Bounded asynchronous Tesseract execution.** Перенести CPU/native Tesseract recognition с вызывающего live/UI-потока в ограниченный executor с измеряемым параллелизмом, начиная с `2..3`. Не менять публичный `IOcrEngine`, OCR-модель, preprocessing, grouping, число stability observations или результат распознавания. Исправить lifecycle timing так, чтобы `CandidateWorkStarted` предшествовал фактической работе. Gate: несколько кандидатов больше не блокируют reconciliation последовательно; нет роста OCR failures, process crashes или расхождений golden/calibration tests.
-2. **Event-driven completion and overlay publication.** Собирать завершившиеся candidate tasks и публиковать revision-valid snapshot без обязательного ожидания следующего detector polling-цикла. Сохранить единственный сериализованный authority для candidate revision, geometry/source identity, cancellation и overlay removal. Gate: provider-completed → overlay latency уменьшается, а stale revision никогда не публикуется.
-3. **Remove redundant frame copies and make candidate crop materialization allocation-aware.** Убрать неиспользуемую полную `FrameFingerprint`-копию zone frame из candidate path; затем измерить и при необходимости сделать crop/fingerprint ленивыми, не ослабляя byte-exact source identity. Baseline оценивает только лишние full-zone copies примерно в `28.9 GiB` временных аллокаций за десять сессий. Gate: эквивалентное обнаружение source changes/cancellation и измеримое снижение allocations/GC pause.
-4. **Byte-identical crop OCR reuse.** После отдельного сравнения результатов разрешить reuse только уже полученного реального Tesseract результата, когда candidate revision, geometry и все crop bytes совпадают. Наблюдение нового captured frame должно оставаться явным; approximate image matching и reuse между различными revisions запрещены. Этот пункт меняет способ доказательства OCR stability и реализуется только после пунктов 1–3, отдельного quality-теста и явного подтверждения владельца.
-5. **Non-blocking detector prewarm.** Исследовать фоновый прогрев packaged Paddle worker после готовности подходящего профиля, чтобы убрать cold first-detect `3.2–5.0 s`. Это не readiness barrier: `Start live` не ждёт отдельный тестовый перевод, provider не вызывается, failure не вызывает fallback, а availability остаётся диагностической. До включения по умолчанию требуется решение по раннему занятию GPU/VRAM и сравнение app-start/resource behavior.
+1. **Выполнено — bounded asynchronous Tesseract execution.** CPU/native Tesseract recognition вынесен с вызывающего live/UI-потока в process-wide трёхслотовый bounded executor без изменения публичного `IOcrEngine`, OCR-модели или результата распознавания. Lifecycle timing отражает фактическое начало работы; focused/full gates пройдены.
+2. **Выполнено — event-driven completion and overlay publication.** Завершённые candidate tasks будят отдельный сериализованный collection/publication path; revision/source authority, cancellation и overlay removal сохранены. Готовый overlay больше не обязан ждать следующего detector polling-cycle.
+3. **Выполнено — remove redundant frame copies.** Неиспользуемая полная `FrameFingerprint`-копия zone frame удалена; byte-exact crop identity остаётся authority для source changes и cancellation. Дополнительная lazy materialization не потребовалась в принятом change set.
+4. **Отложено решением владельца — byte-identical crop OCR reuse.** Возможен только после отдельного сравнения результатов и quality-теста. Наблюдение нового frame остаётся явным; approximate matching и reuse между различными revisions запрещены.
+5. **Отложено решением владельца — non-blocking detector prewarm.** Требует отдельного решения о раннем занятии GPU/VRAM и сравнения startup/resource behavior; не может становиться readiness gate или вызывать provider/fallback.
 
 ## 18.2. Порядок и quality gates
 
@@ -202,11 +202,13 @@ Owner live-проверка r34 подтвердила, что фиксиров�
 
 Исправление ошибок, улучшение UI (одно окно, сворачиваемые панели, зеленая/красная кнопка), документация.
 
+Статус на 2026-09-04: актуальные developer README, user guide и review безопасных defaults подготовлены. Новый source-equivalent portable/RC после r43 не собран и не опубликован; это относится к отдельной release-задаче #30.
+
 ------------------------------------------------------------------------
 
 # 22. Этап 19. Release 1.0 (1 спринт)
 
-Полный состав: профили, JSON импорт/экспорт, три переводчика, Windows OCR + Tesseract, overlay, многозонность, хоткеи, кэш (TTL 30 дней), отладка, вертикальный текст, автообновление.
+Полный состав: профили, JSON импорт/экспорт, три обязательных official translators и три отдельно выбираемых diagnostic web providers, Windows OCR + Tesseract, ADR-030 packaged detector runtime, overlay, многозонность, хоткеи, кэш (TTL 30 дней), диагностика, вертикальный текст и автообновление. Межпровайдерного fallback нет.
 
 ------------------------------------------------------------------------
 

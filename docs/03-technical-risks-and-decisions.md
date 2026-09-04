@@ -58,7 +58,7 @@
 
 # 9. Риск неправильного позиционирования текста
 
-**Решение:** raw OCR bounds сохраняются для маски и диагностики. Близкие raw blocks могут формировать semantic translation group с детерминированным reading order. Translation text bounds могут отличаться от mask bounds по ADR-016, особенно для вертикального текста.
+**Решение:** raw OCR bounds сохраняются для маски и диагностики. Близкие raw blocks могут формировать semantic translation group с детерминированным reading order. Translation text bounds могут отличаться от mask bounds по действующему ADR-018: measured frame расширяется от source center до допустимых границ и только затем уменьшает шрифт. ADR-016 является историческим superseded-решением.
 
 ------------------------------------------------------------------------
 

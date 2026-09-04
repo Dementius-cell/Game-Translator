@@ -63,7 +63,7 @@
 По ADR-031 каждая сохранённая OCR-зона имеет `ContentLayoutMode`. Начальное и текущее значение `DialogComic` объединяет штатную bounded writing-system grouping policy, centered per-region overlay и участие зоны в каждом live refresh. Язык и orientation по-прежнему автоматически выбирают частный writing-system grouping profile внутри режима. Новые `Book`, `StaticMenu`, ненулевая частота обновления или иная overlay policy требуют отдельного решения и измеримых регрессий; режим не может включать legacy/full-frame/provider fallback.
 
 ## Перевод
-Поддерживаемые сервисы: Google Translate API, Microsoft Azure Translator, Яндекс Переводчик API. Архитектура позволяет добавление новых переводчиков.
+Обязательные официальные сервисы: Google Translate API, Microsoft Azure Translator, Яндекс Переводчик API. Дополнительно доступны отдельно выбираемые credentialless diagnostic providers `GoogleWeb`, `BingWeb` и `YandexWeb`; они не являются release default и не переключаются автоматически. Архитектура позволяет совместимое добавление новых переводчиков через `ITranslatorProvider`.
 
 ## Использование API
 Приложение не содержит встроенных API-ключей. Пользователь самостоятельно вводит API Key, Secret Key, Endpoint, Region и иные параметры.
@@ -116,7 +116,7 @@ API-ключи хранятся только в защищенном храни�
 
 Raw OCR-блоки сохраняются для диагностики и маскирования. Pipeline может объединять близкие raw-блоки в semantic translation group для диалога, меню или комикса, сохраняя детерминированный reading order и исходные member bounds.
 
-Mask bounds остаются привязанными к raw/semantic OCR source. Translation text bounds могут отличаться от mask bounds, если это требуется для читаемости и не нарушает правила overlay. Для vertical OCR применяется ADR-016: controlled wrap width, рост текста по высоте и только затем уменьшение шрифта.
+Mask bounds остаются привязанными к raw/semantic OCR source. Translation text bounds могут отличаться от mask bounds, если это требуется для читаемости и не нарушает правила overlay. По действующему ADR-018 translation frame начинается от минимально дополненной source-based рамки, расширяется симметрично вокруг центра источника по результату WPF text measurement и только после исчерпания доступного пространства уменьшает шрифт. ADR-016 сохранён только как историческое superseded-решение.
 
 После стабилизации source region semantic translation groups обрабатываются и доставляются независимо. Готовый перевод одного региона должен появляться в overlay без ожидания OCR, перевода или layout других регионов того же кадра. При смене изображения отменяются только задачи региона, чей source identity изменился или исчез; результаты неизменённых регионов остаются допустимыми. Это не меняет сохранённые OCR-зоны профиля: transient candidate regions существуют только внутри текущей зоны захвата согласно ADR-030. Legacy full-page orchestration остаётся только явным diagnostic/compatibility режимом.
 
@@ -124,7 +124,7 @@ Mask bounds остаются привязанными к raw/semantic OCR source
 
 # 11. Настройка внешнего вида
 
-Пользователь может изменять: шрифт, размер, жирность, курсив, цвет текста, цвет обводки, толщину обводки, прозрачность, межстрочный интервал, внутренние отступы. Система автоматически переносит длинные строки, не обрезая текст.
+Для каждой OCR-зоны пользователь может выбрать семейство и размер шрифта, жирность и курсив перевода. Общие mask settings задают Solid/Darken, цвет, opacity и padding. Translation layout использует WPF measurement, перенос строк и ADR-018 fit policy; если текст нельзя разместить без clipping/collision, pipeline обязан выдать детерминированное quality warning, а не скрывать потерю текста.
 
 ------------------------------------------------------------------------
 

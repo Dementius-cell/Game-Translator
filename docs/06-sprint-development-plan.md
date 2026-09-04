@@ -14,7 +14,7 @@
 
 Для OCR/overlay действует ADR-030: GPU Paddle detector → bounded grouping → Tesseract crop recognition → configured translator → per-region overlay. Это не новая историческая нумерация спринтов, а действующий scope release hardening. Его воспроизводимый runtime собирается bootstrap-скриптом с lock-файлом; legacy full-page путь не является штатной задачей и остаётся только явным diagnostic/compatibility режимом.
 
-Следующая функциональная ветка после release hardening — глобальная baseline-группировка, затем layout profile и узкие языковые исключения (Thai при подтверждённом отличии геометрии). Не публиковать новый RC, GitHub Release или подпись без отдельного решения владельца.
+Глобальный writing-system baseline, per-zone `ContentLayoutMode`, CJK horizontal/vertical и подтверждённое Thai-исключение уже реализованы. Текущие незавершённые ветки: owner-smoke LTR (#49), Brahmic/Indic и RTL (#53-#55), human validation (#34/#35) и выпуск Release 1.0 (#30). Новый RC, GitHub Release или подпись не публикуются без отдельного решения владельца.
 
 ------------------------------------------------------------------------
 
@@ -188,7 +188,7 @@ Frame Difference Detection, OCR/Translation debouncing. Достичь целе�
 
 # Sprint 28: Release 1.0
 
-Установщик, сборка, документация. Состав релиза: профили игр, JSON импорт/экспорт, три переводчика, Windows OCR + Tesseract, overlay, многозонность, горячие клавиши, кэш (TTL 30 дней), режим отладки, вертикальный текст, автообновление.
+Установщик, сборка, документация. Состав релиза: профили игр, JSON импорт/экспорт, три обязательных official translators и отдельно выбираемые diagnostic web providers без fallback, Windows OCR + Tesseract, ADR-030 packaged detector runtime, overlay, многозонность, горячие клавиши, кэш (TTL 30 дней), режим отладки, вертикальный текст, автообновление.
 
 ------------------------------------------------------------------------
 

@@ -2,6 +2,14 @@
 
 This folder contains the source-of-truth documents for Game-Translator. Read them before changing architecture, implementation order, technology choices, OCR behavior, translation providers, overlay behavior, cache format, profile format, or security-sensitive logic.
 
+## User and Developer Guides
+
+- [User guide](user-guide.md): installation, first launch, OCR packs, providers, cache, hotkeys, and diagnostics.
+- [Domain module](../src/GameTranslator.Domain/README.md)
+- [Application module](../src/GameTranslator.Application/README.md)
+- [Infrastructure module](../src/GameTranslator.Infrastructure/README.md)
+- [UI module](../src/GameTranslator.UI/README.md)
+
 ## Reading Order
 
 1. [Project Constitution](00-project-constitution.md)
@@ -33,7 +41,7 @@ This folder contains the source-of-truth documents for Game-Translator. Read the
 
 ## Project Status Source
 
-This README is an index, not the live sprint/status source. Use GitHub Issues and the latest handoff under `docs/handoff/` for active work, then cross-check against the roadmap and sprint plan. If a document hard-codes an older stage/sprint, treat it as historical context until reconciled.
+This README is an index, not the live sprint/status source. Use [GitHub Issues](https://github.com/Dementius-cell/Game-Translator/issues), [Local unpublished worktree status](agents/local-unpublished-worktree-status.md), and [OCR/overlay work status](agents/ocr-overlay-work-status.md), then cross-check against the roadmap and sprint plan. Files under `docs/handoff/` are dated historical records and are not current instructions.
 
 ## Evidence Artifacts
 

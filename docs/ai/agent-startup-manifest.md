@@ -1,4 +1,4 @@
-> Historical note: this file is the original Sprint 0 startup manifest. It is kept for project-history context only and must not be used as the current project status or active sprint instruction. For current work, start with `AGENTS.md`, GitHub Issues, and the latest handoff under `docs/handoff/`.
+> Historical note: this file is the original Sprint 0 startup manifest. It is kept for project-history context only and must not be used as the current project status or active sprint instruction. For current work, start with `AGENTS.md`, GitHub Issues, `docs/agents/local-unpublished-worktree-status.md`, and `docs/agents/ocr-overlay-work-status.md`; files under `docs/handoff/` are dated historical records.
 
 СТАРТОВЫЙ МАНИФЕСТ ДЛЯ AI-АГЕНТА
 Проект: Game Translator

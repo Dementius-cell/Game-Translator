@@ -1,5 +1,7 @@
 # Sprint 26 Issue 32 Production Real Smoke Handoff - 2026-07-02
 
+> Historical handoff. Do not use its repository path, dirty-tree description, dependency state, `WebAuto` route, or startup checklist as current instructions. Start from the repository `AGENTS.md`, GitHub Issues, [current local status](../agents/local-unpublished-worktree-status.md), and [OCR/overlay chronology](../agents/ocr-overlay-work-status.md). The evidence below is retained only for audit history.
+
 User language: Russian.
 
 Repository:
@@ -95,6 +97,6 @@ Commit/PR preparation notes:
 Remaining risks / next step:
 
 - The real smoke uses a static frame capture source and does not replace an interactive packaged-app smoke through Windows Graphics Capture and the window picker.
-- `WebAuto` depends on public web translation behavior and should remain manual-smoke evidence, not a deterministic CI gate.
+- The historical `WebAuto` route depended on public web translation behavior. It has since been removed; current direct web-provider smoke remains manual evidence, not a deterministic CI gate.
 - If #34 specifically requires interactive web-provider diagnostics from the packaged UI, run that separately before closing #34.
 - Next practical step: review the staged/commit scope, then either commit issue #32 production promotion or post a GitHub issue #32 progress comment from a body file.

@@ -1,6 +1,8 @@
 # Issue 32 Overlay Placement Production Promotion Spec
 
-Status: approved for production implementation on 2026-07-01.
+Status: historical approved production-promotion record from 2026-07-01. The implementation was completed; current runtime policy is defined by ADR-018, ADR-030, ADR-031, and [Architecture](../02-architecture.md).
+
+The `WebAuto`, `BlockByBlock`, `WholeZone`, and `NearbyBlocks` names in the evidence tables below record the then-current smoke configuration. They are not current user choices: `WebAuto` is removed from production selection, and normal candidate grouping is controlled by writing-system policy under `ContentLayoutMode.DialogComic`.
 
 Date: 2026-07-01
 
@@ -210,7 +212,7 @@ Notes:
 
 - The real smoke uses a static frame capture source to exercise the application pipeline deterministically while still using real OCR and translation.
 - It does not replace an interactive packaged-app smoke through Windows Graphics Capture and the window picker.
-- `WebAuto`/`GoogleWeb` behavior is external-service dependent; these artifacts are manual evidence and should not become CI gates.
+- The historical `WebAuto` → `GoogleWeb` path was external-service dependent. `WebAuto` is now removed; direct web-provider evidence remains manual-only and must not become a CI gate.
 
 ## Follow-Up Test Correction - 2026-07-02
 

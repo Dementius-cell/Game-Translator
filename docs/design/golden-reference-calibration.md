@@ -1,6 +1,8 @@
 # Golden Reference Calibration Sandbox
 
-Status: active Sprint 26 test-only design note.
+Status: historical Sprint 26 test-only design record. Superseded for current workflow guidance by [Calibration and Smoke Workflow](../testing/calibration-and-smoke-workflow.md), ADR-030/ADR-031, and [Evidence Artifact Policy](../evidence-artifacts.md).
+
+The `NearbyBlocks`, `WholeZone`, `WebAuto`, and older placement references below describe the configuration and evidence at the time. They are not current product options or setup instructions. Current behavior uses bounded writing-system candidate grouping, `ContentLayoutMode.DialogComic`, a directly selected provider, and ADR-018 overlay fit.
 
 Scope: offline calibration tests and manual smoke for OCR fidelity, semantic grouping, translation-request order, mask source selection, overlay placement, and diagnostics packages.
 
@@ -198,7 +200,7 @@ Decision:
 Limits and risks:
 
 - This smoke uses a static frame capture source, so it does not replace an interactive Windows Graphics Capture/window-picker packaged-app smoke.
-- `WebAuto` depends on network and external web translation behavior, so this evidence is manual-smoke only and must not become a deterministic CI requirement.
+- Historical `WebAuto` evidence depended on external web translation behavior and remains manual-smoke history only. `WebAuto` has since been removed; current web providers are selected directly and still must not become deterministic CI requirements.
 - OCR text quality remains language/model dependent; this gate verifies pipeline execution, grouping/overlay counts, bounds checks, and diagnostics rather than semantic translation perfection.
 
 ## Fixed Reference User-Like Smoke Correction - 2026-07-02

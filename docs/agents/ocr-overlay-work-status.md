@@ -1,19 +1,20 @@
 ﻿# OCR and Overlay Work Status
 
-Last updated: 2026-08-30
+Last updated: 2026-09-04
 
-Purpose: durable handoff/status note for follow-up work on overlay layout, WPF text measurement, and Tesseract OCR geometry/quality. When the user asks for status in a later chat, read this file after the required `AGENTS.md` chain and source-of-truth docs, then compare it with current GitHub Issues and the working tree.
+Purpose: durable chronology of overlay layout, OCR geometry/quality, candidate-pipeline, packaging, and owner evidence. For current state, read this file together with [Local unpublished worktree status](local-unpublished-worktree-status.md), GitHub Issues, and the working tree; dated track plans below are historical records unless the current guidance explicitly keeps an item open.
 
 This file is a coordination note, not a new ADR and not a replacement for GitHub Issues. GitHub Issues and their explicit dependency graph remain the current delivery source. If an issue, accepted ADR, or explicit owner decision conflicts with this file, report the conflict and update this file after the owner decision.
 
 ## Current Baseline
 
-- Branch baseline at handoff: `main` contains commit `3381225` (`Refine governance and stabilize cache tests`).
-- Checks at handoff: docs mini check clean, Release build clean, Release tests `334/334`.
-- Governance model: ADR-017 accepted. Normal implementation inside accepted ADR scope does not require a new owner decision.
-- ADR-018 accepted and ADR-016 superseded: expanded translation layout starts from a source-based frame, expands symmetrically around the source center as measured content requires, and reduces font size only after available expansion is exhausted. Vertical start width defaults to about `2x` source width.
-- Related issues after 2026-08-01 sync: `#32`, `#37`, `#38`, and `#39` are closed. Future CJK/OCR quality improvements should be tracked in new focused issues rather than reopening this overlay/OCR checkpoint chain.
-- Preserve the old calibration/evidence working-tree tail unless the owner explicitly decides otherwise.
+- Product baseline before the current documentation sync: `main` commit `2ca05091c97944ec2726a045c6307d68beb8d6f7` (`Harden live translation and add guided setup`).
+- Last completed source gates: Release build `0` warnings / `0` errors, full Release tests `645/645`, docs mini-check clean, and `git diff --check` clean.
+- ADR-030 normal route is GPU Paddle detection → bounded writing-system grouping → Tesseract crop recognition → explicitly selected translator → per-region overlay. Detector/runtime failure is visible and does not select a hidden legacy/cache/provider fallback.
+- ADR-018 source-centered measured overlay fit and ADR-031 per-zone `ContentLayoutMode.DialogComic` are active. ADR-016 is superseded; `Book` and `StaticMenu` are not implemented.
+- CJK horizontal/vertical and Thai profile work is complete. Open language work is LTR owner-smoke (`#49`) plus Brahmic/Indic and RTL cohorts (`#53`-`#55`).
+- The retained local r43 portable is older than current source and has no archive/signature/publication. A replacement portable has not been assembled.
+- Preserve the nine protected calibration/evidence paths listed in [Local unpublished worktree status](local-unpublished-worktree-status.md) until explicit owner disposition under `#35`.
 
 ## Status Legend
 
@@ -24,7 +25,9 @@ This file is a coordination note, not a new ADR and not a replacement for GitHub
 - `Blocked`: cannot proceed without an upstream task or owner decision.
 - `Done`: implemented, verified, and status updated with evidence.
 
-## Dependency Graph
+## Historical completed dependency graph (July-August 2026)
+
+The graph below records the route that produced the accepted overlay/candidate baseline. It is not the active task queue; all named A/B tracks are complete or superseded by later ADR-030 work.
 
 ```text
 Track A: Overlay
@@ -37,9 +40,7 @@ B1 Tesseract word bounds and confidence
   -> B2 zone-mode PSM and grouping passes
      -> B3 Thai/CJK low-confidence fallback
 
-Parallel entry points: A1 and B1 may proceed in parallel.
-Recommended single-agent order: A1 -> A2 -> B1 -> B2 -> B3.
-Recommended multi-agent order: A1 and B1 in parallel, then A2 and B2, then B3.
+Historical sequence only: A1/A2 and B1/B2/B3 were completed before the current candidate pipeline became the default.
 ```
 
 ## Track A: Overlay and Text Measurement
@@ -95,7 +96,7 @@ Implemented:
 - Placement collision handling now treats already placed translation text boxes as obstacles in addition to neighboring OCR semantic bounds.
 - Clipped/overlapping placement fallbacks add deterministic `Overlay fit warning:` debug metric lines.
 
-Owner-approved refinement in progress:
+Owner-approved refinement completed:
 - ADR-018 supersedes ADR-016's vertical-height-first policy. The common fit order is now source-based initial frame, measured centered expansion, then font reduction.
 - Remove the horizontal right-overflow dampening heuristic that shifted real comic translations left of their source text.
 - Add a session-only debug control for the vertical source-width multiplier (`1.0x` through `2.5x`, default `2.0x`); do not persist it in profiles or settings.
@@ -293,7 +294,7 @@ Verification:
 
 ## Track D: Full-Page Comic OCR Geometry Hardening
 
-Status: In progress
+Status: Done; the failed full-page baseline led to the accepted ADR-030 candidate-region default. The plan below is historical.
 
 Owner-approved delivery plan:
 1. Add a full-page comic geometry golden gate using the accepted `S9` Japanese and `S10` Chinese owner annotations as reference geometry. The gate must score full-page OCR output against expected semantic source bounds, extra detections, missed groups, reading order, and downstream overlay warnings/overlaps.
@@ -322,7 +323,7 @@ Implementation notes:
 
 ### D2. Approved Progressive Delivery Increment
 
-Status: Done, pending final owner closure confirmation for Issue `#41`.
+Status: Done; Issue `#41` was closed on 2026-08-15.
 
 - `TranslationPipelineService.RunAllZonesAsync` starts the existing saved OCR zones independently and publishes a combined overlay whenever one zone completes. A ready simple zone therefore does not wait for a slow zone from the same batch.
 - The in-memory translation cache is synchronized for concurrent zone work. No OCR engine, profile field, persisted zone, retry policy, or UI workflow was added or replaced.
@@ -334,7 +335,7 @@ Status: Done, pending final owner closure confirmation for Issue `#41`.
 
 ### D3. GPU Candidate-Detector Research Decision
 
-Status: In progress; ADR-025 gated detector pilot authorized.
+Status: Done as historical research; the gated pilot progressed through owner evidence to ADR-030 default adoption.
 
 - 2026-08-02 local-only follow-up: the GPU PaddleOCR higher-resolution-balanced detector with research-only vertical merge-gap factor `0.5` was stable across `30` repeated runs on each owner page. It produced `S9 10/10` and `S10 6/6` owner geometry matches; before filtering it still had `1` and `5` outside candidates. Validated detector report and red/green candidate evidence: `C:\Users\admin\Documents\Codex\2026-08-01\game-translator-track-d-adr-023\outputs\issue-41-vertical-merge-gap-probe-2026-08-02\candidate-detector-benchmark-report.json`.
 - 2026-08-02 local-only Tesseract crop follow-up: applying existing Tesseract `Dialog` recognition to each transient candidate returned non-empty text for all `11/11` S9 and `10/11` S10 candidates; every owner-matched S9/S10 candidate returned text. A research-only post-filter (candidate height at least `4%` of the saved-zone height, height/width at least `1.0`, and at least two Japanese/Chinese script characters) retained exactly `S9 10/10` and `S10 6/6` owner groups with `0` extras. This is source-geometry/text-presence evidence on two pages, not character-accuracy evidence or a production rule. Report: `C:\Users\admin\Documents\Codex\2026-08-01\game-translator-track-d-adr-023\outputs\issue-41-vertical-merge-gap-probe-2026-08-02\candidate-crop-tesseract-research-summary.md`.
@@ -360,7 +361,7 @@ Status: In progress; ADR-025 gated detector pilot authorized.
 
 ### D4. ADR-028 readiness and bounded direct-provider delivery
 
-Status: In progress; ADR-028 accepted, with no pilot/default enablement.
+Status: Done as historical readiness work; its retained safety/SLO constraints feed the active ADR-030 default.
 
 - 2026-08-11: the owner accepted ADR-028 through Change Request [#45](https://github.com/Dementius-cell/Game-Translator/issues/45). It supersedes only ADR-025's cold-worker timing gate with a P95 `<= 5 s` first translated `OverlaySnapshot` SLO after verified readiness. All quality (with only the held-out non-empty-crop threshold later amended by ADR-029), package, safety, WPF-visible-render and disabled-by-default gates remain binding.
 - The Application live-session path now has an opt-in readiness state (`Prewarming`, `Ready`, `Degraded`), a discarded detector/provider prewarm frame, direct `GoogleWeb` provider identity verification, bounded retry (at most three attempts with observable next-retry time), and a three-slot cache-miss candidate translation limiter. One-shot candidate execution is explicitly rejected when the readiness policy is requested, so it cannot bypass the barrier.
@@ -484,26 +485,21 @@ Status: In progress; ADR-028 accepted, with no pilot/default enablement.
 - 2026-09-04 r43 unpacked owner-smoke portable assembled and finalized without an archive: `work/release-hardening/release-candidates/v0.1.0-pre.20260904-welcome-tour-parameter-help-r43`. It packages r42 plus compact hover help for every manually editable parameter group and the seven-step Russian first-run welcome tour with Back/Next/Done navigation, a top-right close button, local versioned completion state and manual restart from `Hotkeys & Settings`. The tour does not mutate profile settings, start capture or contact a provider. Hidden packaged Tesseract smoke passed with one block / ten characters in `292.3 ms`; packaged Paddle reached Ready in `2749.8 ms`, returned its first Standard result (`threshold=0.30`, `boxThreshold=0.60`, `unclipRatio=1.20`) in `3780.2 ms` and found `28` candidates. Independent verification rehashed all `30,729` manifest entries with zero malformed, duplicate, unsafe, missing, mismatched or extra paths. All four product assemblies match applicable Release outputs; the three model files and exactly `chi_sim`, `chi_sim_vert`, `eng`, `jpn`, `jpn_vert`, `tha` match the runtime lock. The candidate contains `30,730` files / `5.020 GiB`, no root release archive and no running packaged process. The temporary lock-matching packaging substitution was removed and the root owner `chi_sim_vert.traineddata` restored to SHA-256 `ea672a78157199c333aa12ec4e74550077689b545df5fc770903716850c8b2e5`. No visible UI, signing, staging, commit, push or publication was performed.
 - 2026-09-04 post-r43 UI correction: owner smoke showed that r43's welcome card obscured the workspace without identifying its referenced controls, and that a parameter-help popup could remain open when the pointer moved from `i` onto the popup. Current source assigns each of the seven steps a concrete visible target, uses an `Exclude` geometry plus accent border for a true spotlight, scrolls the target into view and chooses the least-overlapping card corner. The help popup now observes only its sibling icon circle's hover state. Focused tests passed `4/4`, including all seven spotlights at `1024x640`, `1280x720`, `1600x900`, `1920x1080` and `2560x1440`; Release build completed with zero warnings/errors and the full suite passed `645/645`. r43 does not contain this post-package correction; no replacement portable has been assembled yet.
 - 2026-09-04 direct-Release startup correction: the owner's first file and `dotnet run --no-build` attempts exited immediately after `Main window resolved from dependency injection`. Windows `.NET Runtime` event `1026` identified the exact unhandled `XamlParseException`: the welcome overlay's early `IsVisibleChanged` reset resolved `WelcomeTourDimmingPath` before the `DataTemplate` had created that child. A failing-first test now invokes reset before template materialization, and the implementation safely clears only cached children during that phase. The corrected Release output rebuilt with zero warnings/errors; focused UI/startup tests passed `4/4` and the full suite passed `645/645`. No visible post-fix launch, replacement portable, signing, staging, commit, push or publication was performed.
+- 2026-09-04 documentation/default review: project and module documentation was reconciled with current `main`; four module developer READMEs and one cohesive Russian user guide now cover installation, first run, OCR packs, providers, profiles, overlay, cache, hotkeys and diagnostics. Safe defaults were verified against source: no provider/language/zone is silently selected, `Standard` detector and `DialogComic` bounded policy remain default, live timing is `Balanced`, and the welcome tour performs no capture or provider call. This completes the documentation scope of Issue `#29` without creating or publishing a replacement portable.
 
 Consolidated unpublished-worktree inventory: `docs/agents/local-unpublished-worktree-status.md`.
 
 ## Next Delivery Guidance
 
 - Track D Issue `#41` retains the evidence trail; Change Request `#47` and ADR-030 record the owner-authorized default transition. ADR-025's `<= 5.0 s` ready-session translated-overlay SLO remains binding. Python/Paddle import and detector-load optimization remains a separate performance task, not a reason to restore legacy full-page selection.
-- Issue `#28` is closed, so `#29` is no longer dependency-blocked; it remains a separate RC documentation/defaults task. Issue `#30` remains blocked by `#29`.
-- Current open GitHub follow-ups outside this OCR/overlay chain are `#34` experimental web translator diagnostics validation and `#35` test architecture/calibration workflow hardening. Treat their human/manual validation scope separately from production OCR/runtime changes.
+- Issue `#29` documentation/default scope is complete. Issue `#30` remains open for a source-equivalent package, release notes, applicable QG21 evidence and explicit owner publication approval.
+- Writing-system parent `#48` remains open while `#49` and `#53`-`#55` are incomplete. CJK horizontal/vertical (`#50`/`#51`) and Thai (`#52`) are complete; do not reopen them to absorb unrelated language cohorts.
+- Issues `#34` and `#35` remain human/owner review tasks. `#35` owns the explicit disposition of the nine protected calibration paths; documentation maintenance must not stage, revert or regenerate them.
 - ADR-030 authorizes the packaged detector adapter as the target default path under the accepted evidence. Any further OCR runtime, non-Tesseract recognizer, provider-default change, game-process feature or retry/fallback policy still requires its own owner decision.
 
 ## Parallelization Guidance
 
-Safe to start in parallel:
-- A1 and B1.
-
-Do not start in parallel as final implementation:
-- A2 before A1.
-- B3 before B1.
-- B3 before B2 unless explicitly scoped as a narrow experiment.
-- OCR public contract breaking changes without governance classification and owner decision.
+Independent work may proceed on `#34`, `#35`, `#49`, and the separate `#53`-`#55` cohorts when each task's own evidence and dependencies are satisfied. Release `#30` remains owner-gated. Do not combine specialized writing-system rules, calibration promotion, provider-default changes, OCR contract changes, or release publication into one implicit scope.
 
 ## Status Update Rules
 

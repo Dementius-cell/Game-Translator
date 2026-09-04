@@ -24,7 +24,7 @@
 
 Штатный путь продукта — GPU Paddle detector → bounded grouping → Tesseract crop recognition → configured translator → per-region overlay. Его runtime воспроизводится через зафиксированные CPython/Paddle/model/Tesseract lock-файлы и bootstrap-скрипты. Для релизной вехи обязательны применимые quality gates: отсутствие скрытого legacy/provider/cache fallback, проверка runtime/model hashes, пакетная целостность, offline-install/recovery/rollback и разрешённая WPF-проверка. Same-host clean-root является только same-host evidence, не физическим clean host.
 
-Глобальный writing-system baseline, per-zone `ContentLayoutMode`, CJK horizontal/vertical rules и подтверждённое Thai-исключение реализованы. Открыты owner-smoke для LTR-профиля (#49), отдельные Brahmic/Indic и RTL-профили (#53-#55), human validation диагностики (#34), calibration workflow (#35) и Release 1.0 (#30). Новый source-equivalent portable/RC ещё не собран; подпись и публикация GitHub Release требуют отдельного решения владельца.
+Глобальный writing-system baseline, per-zone `ContentLayoutMode`, CJK horizontal/vertical rules и подтверждённое Thai-исключение реализованы. Открыты owner-smoke для LTR-профиля (#49), отдельные Brahmic/Indic и RTL-профили (#53-#55), human validation диагностики (#34), calibration workflow (#35) и Release 1.0 (#30). Локальный source-equivalent portable r44 собран и проверен без архива; подпись, transfer archive и публикация GitHub Release требуют отдельного решения владельца.
 
 ------------------------------------------------------------------------
 
@@ -202,7 +202,7 @@ Owner live-проверка r34 подтвердила, что фиксиров�
 
 Исправление ошибок, улучшение UI (одно окно, сворачиваемые панели, зеленая/красная кнопка), документация.
 
-Статус на 2026-09-04: актуальные developer README, user guide и review безопасных defaults подготовлены. Новый source-equivalent portable/RC после r43 не собран и не опубликован; это относится к отдельной release-задаче #30.
+Статус на 2026-09-04: актуальные developer README, user guide и review безопасных defaults подготовлены. Source-equivalent self-contained portable r44 собран и локально проверен без архива; owner acceptance, подпись, transfer archive и публикация остаются в release-задаче #30.
 
 ------------------------------------------------------------------------
 

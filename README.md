@@ -43,7 +43,7 @@ dotnet test GameTranslator.sln -c Release --no-build --no-restore
 
 The bootstrap pins CPython/Paddle package versions (including the official Paddle CUDA 12.9 wheel index) and verifies the PP-OCRv6 detector and six Tesseract packs by SHA-256. The first run downloads only their official distributions. The package build requires the exact locked language-pack set and verifies every pack before copying it; if the GPU runtime is unavailable or a language pack is missing, unexpected or changed, the script fails rather than silently producing an incomplete package.
 
-Current publication boundary: the newest locally verified owner-smoke portable is r43, but it predates the latest welcome-tour spotlight, startup-safety, header-action, and OCR guidance fixes. No source-equivalent replacement portable, signed package, or current GitHub Release has been produced yet. Do not present r43 as the latest source build.
+Current publication boundary: the unpacked self-contained r44 is the newest locally verified source-equivalent portable and includes the welcome-tour spotlight, startup-safety, header-action, and OCR-guidance fixes. It has no transfer archive or signature and has not been uploaded to GitHub Releases, so it remains a local release candidate rather than a published release.
 
 ## Documentation
 

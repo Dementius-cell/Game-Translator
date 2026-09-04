@@ -4,7 +4,7 @@ Snapshot date: 2026-09-04
 
 ## 1. Current boundary
 
-The inspected branch is `main`; the last product implementation baseline before this documentation sync is `2ca05091c97944ec2726a045c6307d68beb8d6f7` (`Harden live translation and add guided setup`). Published source includes the current candidate pipeline, adaptive horizontal/vertical grouping, Thai tolerance, transient-overlay retention, Bing attempt/failure diagnostics, parameter help, and the seven-step welcome tour with post-r43 startup/spotlight/OCR-guidance corrections.
+The inspected branch is `main`; current published HEAD before the r44 status update is `20e2e1b3611002d8a2974926185fe0f31bd277bf` (`Refresh project and module documentation`), and the last product implementation baseline is `2ca05091c97944ec2726a045c6307d68beb8d6f7` (`Harden live translation and add guided setup`). Published source includes the current candidate pipeline, adaptive horizontal/vertical grouping, Thai tolerance, transient-overlay retention, Bing attempt/failure diagnostics, parameter help, and the seven-step welcome tour with post-r43 startup/spotlight/OCR-guidance corrections.
 
 After the current documentation sync, the intended local difference from `main` is exactly nine owner-protected paths: eight calibration artifacts and one calibration test. They are not staged, reverted, deleted, regenerated, or uploaded by documentation/release maintenance.
 
@@ -45,11 +45,11 @@ These changes belong to Issue #35. The next action is an explicit owner review t
 
 The newest retained ignored/local-only portable is:
 
-`work/release-hardening/release-candidates/v0.1.0-pre.20260904-welcome-tour-parameter-help-r43`
+`work/release-hardening/release-candidates/v0.1.0-pre.20260904-post-r43-current-source-r44`
 
-r43 is an unpacked, self-contained owner-smoke candidate with the pinned Paddle runtime/model and exactly `chi_sim`, `chi_sim_vert`, `eng`, `jpn`, `jpn_vert`, and `tha` Tesseract packs. Its manifest verification passed all `30,729` records; the complete candidate contains `30,730` files / `5.020 GiB`. It is not archived, signed, committed, pushed, or published.
+r44 is an unpacked, self-contained source-equivalent candidate with the pinned Paddle runtime/model and exactly `chi_sim`, `chi_sim_vert`, `eng`, `jpn`, `jpn_vert`, and `tha` Tesseract packs. Hidden packaged Tesseract smoke passed; packaged Paddle reached Ready in `2731.3 ms`, returned its first Standard result in `3892.1 ms`, and found `28` candidates. Independent verification passed all `30,729` checksum records with no malformed, duplicate, unsafe, missing, mismatched, or extra path; the complete candidate contains `30,730` files / `5.020 GiB`. Applicable product assemblies match the current Release outputs and the packaged worker text matches source. It is not archived, signed, committed, pushed, owner-live accepted, or published.
 
-r43 does not contain the later source fixes for true spotlight targeting, early welcome-template startup safety, the persistent `? Тур` header action, or the explicit `Check OCR language` → `Install OCR language` guidance. A source-equivalent replacement portable has not been assembled. Therefore r43 must not be described or distributed as the current source build.
+r44 contains the true spotlight targeting, early welcome-template startup safety, persistent `? Тур` header action, explicit `Check OCR language` → `Install OCR language` guidance, and all other source behavior at published HEAD `20e2e1b`. The superseded local r42 and r43 directories were permanently removed after r44 verification; their historical evidence remains in [OCR/overlay work status](ocr-overlay-work-status.md).
 
 The existing GitHub Release is historical and also does not represent current `main`. A new RC/Release, archive, signature, or public upload requires a separate owner release decision and applicable QG21 evidence.
 
@@ -60,8 +60,9 @@ The existing GitHub Release is historical and also does not represent current `m
 - Focused welcome-tour/startup/header/OCR-guidance regressions passed.
 - Documentation mini-check: `0` Markdown-link problems and `0` actionable-backtick path problems.
 - `git diff --check`: clean for the published implementation change.
+- Local r44 package: Tesseract smoke `passed`, Paddle headless `passed`, all `30,729` checksum entries independently rehashed, six language packs matched the runtime lock, no generated transfer archive.
 
-This is the most recent completed source gate. Documentation-only changes in the current sync are rechecked separately and do not claim a new application build or runtime smoke.
+The `645/645` suite is the most recent completed source gate. The later r44 package gate reuses that source build and adds packaged-runtime smoke and integrity evidence; documentation-only status changes are rechecked separately.
 
 ## 6. Current issue boundary
 
@@ -75,7 +76,7 @@ Completed by the current product/documentation state and eligible for successful
 
 Remain open:
 
-- #30 — package and publish Release 1.0; current source-equivalent package and owner publication approval are still missing;
+- #30 — package and publish Release 1.0; a local source-equivalent r44 directory now exists, but owner acceptance, transfer archive, signing, and publication approval are still missing;
 - #34 — human validation of current provider failure UI/diagnostics;
 - #35 — owner review and disposition of the nine protected calibration paths;
 - #48 — parent writing-system epic while its remaining cohorts are open;

@@ -5659,6 +5659,13 @@ public sealed class MainViewModel : ValidatableObservableObject
             AppendLifecycleField(builder, "DetectorConfidenceMin", FormatDiagnosticDouble(entry.MinimumDetectorConfidence));
             AppendLifecycleField(builder, "DetectorConfidenceMax", FormatDiagnosticDouble(entry.MaximumDetectorConfidence));
             AppendLifecycleField(builder, "DetectorConfidenceAverage", FormatDiagnosticDouble(entry.AverageDetectorConfidence));
+            if (entry.OcrLineRecognition is { } lineRecognition)
+            {
+                AppendLifecycleField(builder, "OcrRecognition", "DetectorRawLine");
+                AppendLifecycleField(builder, "OcrExpectedLines", lineRecognition.ExpectedLines.ToString(CultureInfo.InvariantCulture));
+                AppendLifecycleField(builder, "OcrRecognizedLines", lineRecognition.RecognizedLines.ToString(CultureInfo.InvariantCulture));
+                AppendLifecycleField(builder, "OcrMissingLines", lineRecognition.MissingLines.ToString(CultureInfo.InvariantCulture));
+            }
             if (entry.OrderedOcrBlockBoundsCount > 0)
             {
                 AppendLifecycleField(
@@ -5708,6 +5715,13 @@ public sealed class MainViewModel : ValidatableObservableObject
             {
                 AppendLifecycleField(builder, "WorkAttempt", entry.WorkAttempt.ToString());
             }
+
+            AppendLifecycleField(builder, "EmptyOcrRetryCount", entry.EmptyOcrRetryCount?.ToString());
+            AppendLifecycleField(
+                builder,
+                "EmptyOcrRetryDelayMs",
+                entry.EmptyOcrRetryDelay?.TotalMilliseconds.ToString("F1", CultureInfo.InvariantCulture));
+            AppendLifecycleField(builder, "EmptyOcrGroupingReset", entry.EmptyOcrGroupingReset?.ToString());
 
             if (entry.FrameCapturedAt is { } frameCapturedAt)
             {

@@ -6,6 +6,25 @@ namespace GameTranslator.Tests.Application;
 
 public sealed class TranslationCacheServiceTests
 {
+    [Fact]
+    public async Task KoreanSpaces_AreSentToProviderAndCachedSeparately()
+    {
+        var repository = new InMemoryTranslationCacheRepository();
+        var service = CreateService(repository);
+        var settings = CreateSettings(sourceLanguage: "ko", targetLanguage: "ru");
+        var calls = new List<string>();
+        Task<TranslateResponse> Translate(IReadOnlyList<string> texts)
+        {
+            calls.AddRange(texts);
+            return Task.FromResult(new TranslateResponse(texts.Select(text => "translated:" + text).ToArray(), Now));
+        }
+        await service.GetOrAddAsync(settings, new[] { "가나" }, Translate, Now);
+        await service.GetOrAddAsync(settings, new[] { "가 나" }, Translate, Now);
+        var cached = await service.GetOrAddAsync(settings, new[] { "가 나" }, Translate, Now);
+        Assert.Equal(new[] { "가나", "가 나" }, calls);
+        Assert.Equal(1, cached.MemoryHitCount);
+    }
+
     private static readonly DateTimeOffset Now = new(2026, 6, 19, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]

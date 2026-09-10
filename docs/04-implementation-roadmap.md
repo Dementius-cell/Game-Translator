@@ -4,7 +4,7 @@
 
 Проект: Система экранного OCR-перевода игровых субтитров и текста для Windows 11
 
-Версия документа: 1.4 (обновлено 2026-09-04)
+Версия документа: 1.5 (обновлено 2026-09-06)
 
 ------------------------------------------------------------------------
 
@@ -24,7 +24,7 @@
 
 Штатный путь продукта — GPU Paddle detector → bounded grouping → Tesseract crop recognition → configured translator → per-region overlay. Его runtime воспроизводится через зафиксированные CPython/Paddle/model/Tesseract lock-файлы и bootstrap-скрипты. Для релизной вехи обязательны применимые quality gates: отсутствие скрытого legacy/provider/cache fallback, проверка runtime/model hashes, пакетная целостность, offline-install/recovery/rollback и разрешённая WPF-проверка. Same-host clean-root является только same-host evidence, не физическим clean host.
 
-Глобальный writing-system baseline, per-zone `ContentLayoutMode`, CJK horizontal/vertical rules и подтверждённое Thai-исключение реализованы. Открыты owner-smoke для LTR-профиля (#49), отдельные Brahmic/Indic и RTL-профили (#53-#55), human validation диагностики (#34), calibration workflow (#35) и Release 1.0 (#30). Локальный source-equivalent portable r44 собран и проверен без архива; подпись, transfer archive и публикация GitHub Release требуют отдельного решения владельца.
+Глобальный writing-system baseline, per-zone `ContentLayoutMode`, CJK horizontal/vertical rules и подтверждённое Thai-исключение реализованы. Открыты owner-smoke для LTR-профиля (#49), отдельные Brahmic/Indic и RTL-профили (#53-#55), human validation диагностики (#34), calibration workflow (#35) и Release 1.0 (#30). Локальный portable r45 с ADR-032 и корейскими OCR-исправлениями собран и проверен без архива; owner live-проверка ожидается; подпись, transfer archive и публикация GitHub Release требуют отдельного решения владельца.
 
 ------------------------------------------------------------------------
 
@@ -183,6 +183,13 @@ Owner live-проверка r34 подтвердила, что фиксиров�
 - Только `WritingSystemGroupingProfile.SpacedLeftToRight` с `MaximumHorizontalLines = null` получает adaptive Auto без fixed line count. После прежнего safety boundary в десять строк продолжение требует существующего strict overlap не менее `0.8`, вертикального зазора не более `12 px` и отсутствия одновременного абсолютного (`> 4 px`) и нормализованного (`> 0.2` median line height) скачка относительно медианного межстрочного интервала группы.
 - Явный `MaximumHorizontalLines = 1..12` остаётся hard override. Все non-`SpacedLeftToRight` профили сохраняют прежний десятистрочный automatic safety limit; detector/OCR recognition, stability, revision/source revalidation, cancellation/publication, provider/cache behavior и roadmap items 4-5 не меняются.
 - Gates: failing-first regression на подтверждённую геометрию `10 + 1`, coherent 23-line stack без fixed cap, significant-gap adjacent-bubble counterexample, explicit override и все шесть non-spaced profiles; затем focused grouping/OCR/architecture tests, Release build, full suite, docs mini-check и owner live smoke. Replacement portable собирается только по отдельной команде владельца.
+
+## 18.7. Восстановление после устойчивого пустого OCR
+
+- По ADR-032 завершённый `RecognizedBlocks=0` больше не блокирует неизменившийся live candidate бессрочно. Адресный watchdog повторяет только этот crop через `5 s`, `10 s`, затем не чаще одного раза в `20 s`.
+- Первые два повтора сохраняют уже подтверждённую grouping identity; с третьего последовательного пустого результата grouping observations подтверждаются заново. Непустой OCR, включая deferred-for-stability результат, сбрасывает backoff.
+- Retry не начинается от старта live-сессии, не затрагивает соседние кандидаты и не добавляет full-frame/legacy OCR, новый recognizer, provider switch/fallback или cache bypass. Lifecycle diagnostics фиксируют retry count, delay и grouping reset.
+- Gates: deterministic clock tests для границ `5/10/20 s`, восстановления после непустого OCR, повторной grouping confirmation, сохранения overlay соседнего кандидата и privacy-safe local report; затем Release build, full suite и docs mini-check. Owner live smoke и replacement portable выполняются только по отдельной команде владельца.
 
 ------------------------------------------------------------------------
 

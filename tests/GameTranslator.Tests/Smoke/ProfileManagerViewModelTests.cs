@@ -2434,6 +2434,18 @@ public sealed class ProfileManagerViewModelTests
             providerNetworkRequestOutcome: TranslationProviderNetworkRequestOutcome.HttpError,
             providerNetworkHttpStatusCode: 429,
             translationInputTexts: new[] { "bounded local input" }));
+        lifecycleEvents.Add(new LiveCandidateLifecycleEvent(
+            sequence: 4,
+            refreshSequence: 3,
+            occurredAt: nextRetryAt.AddSeconds(5),
+            kind: LiveCandidateLifecycleEventKind.CandidateEmptyOcrRetryScheduled,
+            emptyOcrRetryCount: 3,
+            emptyOcrRetryDelay: TimeSpan.FromSeconds(20),
+            emptyOcrGroupingReset: true));
+        lifecycleEvents.Add(new LiveCandidateLifecycleEvent(
+            sequence: 5, refreshSequence: 4, occurredAt: DateTimeOffset.UnixEpoch.AddSeconds(6),
+            kind: LiveCandidateLifecycleEventKind.CandidateWorkCompleted,
+            ocrLineRecognition: new OcrLineRecognitionDiagnostics(2, 1)));
         var appendMethod = viewModel.GetType().GetMethod(
             "AppendLiveCandidateLifecycleDebugInfo",
             BindingFlags.NonPublic | BindingFlags.Instance)
@@ -2483,6 +2495,14 @@ public sealed class ProfileManagerViewModelTests
         Assert.Contains("ProviderNetworkRequestSent=True", report, StringComparison.Ordinal);
         Assert.Contains("ProviderNetworkOutcome=HttpError", report, StringComparison.Ordinal);
         Assert.Contains("ProviderNetworkHttpStatus=429", report, StringComparison.Ordinal);
+        Assert.Contains("Event=CandidateEmptyOcrRetryScheduled", report, StringComparison.Ordinal);
+        Assert.Contains("EmptyOcrRetryCount=3", report, StringComparison.Ordinal);
+        Assert.Contains("OcrRecognition=DetectorRawLine", report, StringComparison.Ordinal);
+        Assert.Contains("OcrExpectedLines=2", report, StringComparison.Ordinal);
+        Assert.Contains("OcrRecognizedLines=1", report, StringComparison.Ordinal);
+        Assert.Contains("OcrMissingLines=1", report, StringComparison.Ordinal);
+        Assert.Contains("EmptyOcrRetryDelayMs=20000.0", report, StringComparison.Ordinal);
+        Assert.Contains("EmptyOcrGroupingReset=True", report, StringComparison.Ordinal);
         Assert.Contains("Storage: local files only; no diagnostics upload is performed.", report, StringComparison.Ordinal);
 
         var providerHealthAppendMethod = viewModel.GetType().GetMethod(

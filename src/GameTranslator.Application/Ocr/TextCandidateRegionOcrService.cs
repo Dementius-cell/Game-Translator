@@ -426,6 +426,11 @@ public sealed class TextCandidateRegion
 
     public CapturedFrame Frame { get; }
 
+    internal static IReadOnlyList<BoundingBox> CreateDetectorLineBounds(TextCandidate candidate) =>
+        candidate.SourceCandidateBounds.Select(bound => new BoundingBox(
+            bound.X - candidate.Bounds.X, bound.Y - candidate.Bounds.Y,
+            bound.Width, bound.Height)).ToArray();
+
     public OcrRequest CreateOcrRequest(OcrRequest zoneRequest)
     {
         ArgumentNullException.ThrowIfNull(zoneRequest);
@@ -441,6 +446,7 @@ public sealed class TextCandidateRegion
             zoneRequest.CandidateGroupingSettings)
         {
             DetectorPreset = zoneRequest.DetectorPreset,
+            DetectorLineBounds = CreateDetectorLineBounds(Candidate),
         };
     }
 }

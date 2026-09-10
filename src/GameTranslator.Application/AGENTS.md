@@ -20,7 +20,7 @@ Keep application use cases and contracts independent from concrete UI, platform,
 - Cache lookup remains part of normal translation flow before provider calls; the default TTL policy stays 30 days unless a Decision Record changes it.
 - Keep OCR contracts engine-neutral. Windows OCR and Tesseract remain mandatory product capabilities implemented outside this layer.
 - Keep translator contracts provider-neutral. Credentialed Google, Azure, and Yandex remain the supported provider set unless a Decision Record changes it.
-- Preserve raw OCR block geometry for diagnostics and masking; semantic grouping may create translation groups without destroying source geometry.
+- Preserve raw OCR block geometry for diagnostics and masking; semantic grouping may create translation groups without destroying source geometry. Candidate requests may carry immutable crop-relative detector line hints; preprocessing must scale hints with pixels, and line coverage remains bounded numeric evidence rather than proof of OCR accuracy.
 
 ## Work Guidance
 

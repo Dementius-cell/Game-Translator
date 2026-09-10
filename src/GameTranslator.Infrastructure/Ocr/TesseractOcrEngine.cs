@@ -67,6 +67,12 @@ public sealed class TesseractOcrEngine : IOcrEngine
             using var engine = new Engine(tessdataPath, language, EngineMode.Default);
             cancellationToken.ThrowIfCancellationRequested();
 
+            var detectorLines = ResolveKoreanDetectorLines(request, recognitionOrientationMode);
+            if (detectorLines.Count > 0)
+            {
+                return RecognizeDetectorLines(request, engine, detectorLines, cancellationToken);
+            }
+
             if (request.LayoutMode is OcrLayoutMode.Comic)
             {
                 return CreateComicResult(
@@ -139,6 +145,50 @@ public sealed class TesseractOcrEngine : IOcrEngine
                 "Tesseract OCR failed to recognize text from the captured frame.",
                 exception);
         }
+    }
+
+    internal static IReadOnlyList<BoundingBox> ResolveKoreanDetectorLines(
+        OcrRequest request, OcrOrientationMode orientation)
+    {
+        if (orientation != OcrOrientationMode.Horizontal || MapLanguage(request.Language, orientation) != "kor"
+            || request.DetectorLineBounds.Count is < 1 or > 12)
+            return Array.Empty<BoundingBox>();
+        var lines = request.DetectorLineBounds.OrderBy(bound => bound.Y).ThenBy(bound => bound.X).ToArray();
+        // Only ordinary readable lines use RawLine. Tiny watermark strokes, square sound effects
+        // and overlapping regions retain the existing block recognizer; they are not discarded.
+        if (lines.Any(bound => bound.Height < 20 || (double)bound.Width / bound.Height < 1.5)
+            || lines.Zip(lines.Skip(1)).Any(pair => pair.First.Bottom > pair.Second.Y))
+            return Array.Empty<BoundingBox>();
+        return lines;
+    }
+
+    private static ApplicationOcrResult RecognizeDetectorLines(OcrRequest request, Engine engine,
+        IReadOnlyList<BoundingBox> lines, CancellationToken cancellationToken)
+    {
+        var blocks = new List<OcrTextBlock>();
+        var words = new List<OcrWord>();
+        const PageSegMode mode = PageSegMode.RawLine;
+        foreach (var bounds in lines)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var frame = CreateCroppedFrame(request.Frame, bounds);
+            using var pix = PixImage.LoadFromMemory(CreateBitmapBytes(frame));
+            using var page = engine.Process(pix, mode);
+            cancellationToken.ThrowIfCancellationRequested();
+            var text = page.Text?.Trim();
+            if (string.IsNullOrWhiteSpace(text)) continue;
+            var rawBlocks = CreateTextBlocks(page, frame.Width, frame.Height);
+            if (rawBlocks.Count == 0) continue;
+            blocks.Add(new OcrTextBlock(text, TranslateBounds(
+                CreateCombinedBounds(rawBlocks.Select(block => block.Bounds).ToArray()), bounds.X, bounds.Y)));
+            words.AddRange(TranslateWords(CreateWords(page, frame.Width, frame.Height,
+                "tesseract:RawLine:detector-line"), bounds.X, bounds.Y));
+        }
+        return new ApplicationOcrResult(request, blocks, DateTimeOffset.UtcNow,
+            CreateTextBlockSources(blocks, OcrOrientationMode.Horizontal), words)
+        {
+            LineRecognition = new OcrLineRecognitionDiagnostics(lines.Count, blocks.Count),
+        };
     }
 
     internal static string MapLanguage(string languageTag)

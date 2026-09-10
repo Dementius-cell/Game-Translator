@@ -40,7 +40,6 @@ public static class OcrTextNormalizer
     {
         return character is >= '\u3040' and <= '\u30ff'
             or >= '\u3400' and <= '\u4dbf'
-            or >= '\u4e00' and <= '\u9fff'
-            or >= '\uac00' and <= '\ud7af';
+            or >= '\u4e00' and <= '\u9fff';
     }
 }

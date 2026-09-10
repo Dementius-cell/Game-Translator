@@ -57,6 +57,8 @@ public sealed class OcrService
                 request.CandidateGroupingSettings)
             {
                 DetectorPreset = request.DetectorPreset,
+                DetectorLineBounds = request.DetectorLineBounds.Select(bounds => ScaleBounds(
+                    bounds, request.Frame, preprocessedFrame)).ToArray(),
             };
 
         return engine.RecognizeAsync(preprocessedRequest, cancellationToken);
@@ -79,6 +81,16 @@ public sealed class OcrService
         }
 
         return results;
+    }
+
+    private static BoundingBox ScaleBounds(BoundingBox bounds,
+        Capture.CapturedFrame source, Capture.CapturedFrame target)
+    {
+        var x = Math.Clamp((int)Math.Floor((double)bounds.X * target.Width / source.Width), 0, target.Width - 1);
+        var y = Math.Clamp((int)Math.Floor((double)bounds.Y * target.Height / source.Height), 0, target.Height - 1);
+        var right = Math.Clamp((int)Math.Ceiling((double)bounds.Right * target.Width / source.Width), x + 1, target.Width);
+        var bottom = Math.Clamp((int)Math.Ceiling((double)bounds.Bottom * target.Height / source.Height), y + 1, target.Height);
+        return new BoundingBox(x, y, right - x, bottom - y);
     }
 
     private IOcrEngine SelectEngine(string engineId)

@@ -1567,6 +1567,76 @@ Project owner, explicit chat approval on 2026-08-22: «согласен прис
 
 ---
 
+# ADR-032
+
+## Bounded Empty-OCR Retry Watchdog for Stable Live Candidates
+
+Status:
+ACCEPTED
+
+Date:
+2026-09-06
+
+### Context
+
+The ADR-030 live candidate path treated a completed OCR result with zero recognized blocks as fully processed. If the candidate geometry and byte-exact crop source then remained unchanged, no later OCR work was scheduled. A transient Tesseract false negative could therefore leave a real static text candidate without another recognition attempt until the game image changed, which appeared to the user as a stalled translation.
+
+An unconditional fast retry would continuously spend OCR capacity on detector false positives and decorative regions that genuinely contain no recognizable text. A session-wide reset would also discard useful grouping and stability state for unrelated candidates.
+
+### Options
+
+1. Keep empty OCR results final until candidate geometry or source changes.
+2. Reset every candidate and all text stability whenever no overlay text appears for five seconds.
+3. Add a per-candidate watchdog with bounded backoff, targeted state reset and explicit lifecycle diagnostics.
+
+### Decision
+
+Use option 3 for the normal live candidate path.
+
+* Start the retry timer when a candidate work item completes with zero recognized OCR blocks, not when the live session or detector starts.
+* Retry the same still-authoritative candidate after `5 s`, after a second consecutive empty result after `10 s`, and after later consecutive empty results no more frequently than every `20 s`.
+* Before every retry, clear only that candidate's completed empty result, OCR text-stability state, previous translation-input signature and typewriter-growth state.
+* Preserve confirmed candidate grouping for the first two retries. From the third consecutive empty result onward, reset grouping observations and require the normal grouping confirmation again before OCR starts.
+* Reset the empty-result count and backoff after any non-empty OCR result, including a result still deferred by the existing text-stability window. Source or grouping changes also start a fresh empty-result sequence.
+* Do not clear valid overlays from other candidates while scheduling the retry. Preserve all existing source/revision validation, cancellation and publication authority.
+* Record `CandidateEmptyOcrRetryScheduled` with the consecutive empty-result count, effective retry delay and grouping-reset flag in the bounded local lifecycle report.
+* Do not add a full-frame or legacy OCR retry, alternate recognizer, provider switch/fallback, cache bypass, profile field or UI setting.
+
+### Reasons
+
+* A transient empty recognition can recover while static source text remains visible.
+* Per-candidate scope preserves multi-zone independence and useful overlays.
+* Bounded backoff limits repeated OCR load from genuine non-text candidates.
+* The existing deterministic clock and lifecycle diagnostics make the behavior testable and reviewable.
+
+### Consequences
+
+Positive:
+
+* Static text no longer remains permanently unprocessed after one empty candidate OCR result.
+* Non-empty but unstable OCR observations continue through the existing stability policy without watchdog interference.
+* Diagnostics distinguish recovery work from source changes and normal OCR work.
+
+Negative:
+
+* Persistent detector false positives can consume one additional crop OCR operation every `20 s` after backoff reaches its cap.
+* Recovery still cannot recognize a crop that contains no usable text or needs a different OCR model/preprocessing policy.
+
+Compatibility:
+
+* No profile, persistence, public `IOcrEngine`, translator, cache or packaging migration is required.
+* ADR-030, ADR-031, provider selection, detector policy and overlay source authority remain unchanged.
+
+### Requires Migration
+
+No.
+
+### Approved
+
+Project owner, explicit chat approval on 2026-09-06: «согласен с всеми предложениями» after the `5 → 10 → 20 s` per-candidate retry, targeted state reset, grouping reconfirmation, success reset and lifecycle diagnostics were proposed.
+
+---
+
 # ADR TEMPLATE
 
 Использовать для новых решений.

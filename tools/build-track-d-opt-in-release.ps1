@@ -22,6 +22,8 @@ param(
     [ValidatePattern("^[a-z0-9_]+$")]
     [string[]]$TesseractLanguagePacks = @(),
 
+    [string]$TesseractSourceDirectory,
+
     [switch]$ValidateRuntimeOnly,
 
     [switch]$SelfContained,
@@ -49,7 +51,7 @@ if ($usesBootstrapRuntime) {
 
     $BootstrapRuntimeRoot = (Resolve-Path $BootstrapRuntimeRoot).Path
     $bootstrapVerifier = Join-Path $PSScriptRoot "verify-paddle-runtime.ps1"
-    & $bootstrapVerifier -RuntimeRoot $BootstrapRuntimeRoot
+    & $bootstrapVerifier -RuntimeRoot $BootstrapRuntimeRoot -TesseractSourceDirectory $TesseractSourceDirectory
     if ($LASTEXITCODE -ne 0) {
         throw "Pinned Paddle runtime verification failed with exit code $LASTEXITCODE."
     }
@@ -86,7 +88,11 @@ else {
 $detectorDirectory = Join-Path $appDirectory "candidate-detector"
 $venvSitePackages = Join-Path $PaddleVenvRoot "Lib\site-packages"
 $detectorSitePackages = Join-Path $detectorDirectory "Lib\site-packages"
-$tessdataSourceDirectory = Join-Path $repositoryRoot "tessdata"
+$tessdataSourceDirectory = if ([string]::IsNullOrWhiteSpace($TesseractSourceDirectory)) {
+    Join-Path $repositoryRoot "tessdata"
+} else {
+    (Resolve-Path -LiteralPath $TesseractSourceDirectory).Path
+}
 $packagedTessdataDirectory = Join-Path $appDirectory "tessdata"
 $portableOcrSmokeReportPath = Join-Path $releaseDirectory "portable-tesseract-ocr-smoke.json"
 $modelDirectoryName = "PP-OCRv6_medium_det"
@@ -308,7 +314,7 @@ if ($normalizedTesseractLanguagePacks.Count -gt 0) {
             relativePath = "tessdata/$language.traineddata"
             sha256 = (Get-FileHash -LiteralPath $targetPath -Algorithm SHA256).Hash.ToLowerInvariant()
             sizeBytes = (Get-Item -LiteralPath $targetPath).Length
-            source = "local repository tessdata/$language.traineddata"
+            source = "verified local tessdata/$language.traineddata"
         }
     }
 }

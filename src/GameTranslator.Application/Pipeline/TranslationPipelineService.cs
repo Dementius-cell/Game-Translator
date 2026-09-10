@@ -411,7 +411,7 @@ public sealed class TranslationPipelineService
             return reusedResult;
         }
 
-        var request = CreateOcrRequest(profile, zone, frame);
+        var request = CreateOcrRequest(profile, zone, frame, candidateRecognitionContext?.Candidate);
         var ocrMeasurement = await RunTimedStageAsync(
             TranslationPipelineStage.Ocr,
             () => runOptions.EnableCandidateDetectorPilot
@@ -433,11 +433,15 @@ public sealed class TranslationPipelineService
                 sourceResult.RecognizedAt);
         }
 
-        if (sourceResult.TextBlocks.Count == 0)
+        var groupingMeasurement = await RunTimedStageAsync(
+            TranslationPipelineStage.Grouping,
+            () => Task.FromResult(TranslationTextGroupingService.CreateTranslationSourceResult(sourceResult, zone)));
+        var translationSourceResult = groupingMeasurement.Value;
+        if (translationSourceResult.TextBlocks.Count == 0)
         {
             ClearTextStabilityState(optimizationContext.StateKey);
             var emptySnapshot = overlayPositioningService.CreateSnapshot(
-                sourceResult,
+                translationSourceResult,
                 sourceResult.RecognizedAt,
                 previousSnapshot,
                 zone.TextStyle,
@@ -466,16 +470,12 @@ public sealed class TranslationPipelineService
                     cacheElapsed,
                     overlayElapsed,
                     totalStopwatch.Elapsed),
-                CreateProcessedOptimization(optimizationContext));
+                CreateProcessedOptimization(optimizationContext),
+                translationInputBlockCount: 0);
             StoreOptimizationState(optimizationContext.StateKey, frame, emptyResult);
 
             return emptyResult;
         }
-
-        var groupingMeasurement = await RunTimedStageAsync(
-            TranslationPipelineStage.Grouping,
-            () => Task.FromResult(TranslationTextGroupingService.CreateTranslationSourceResult(sourceResult, zone)));
-        var translationSourceResult = groupingMeasurement.Value;
 
         var currentTextSignature = CreateTextSignature(translationSourceResult);
         var typewriterGrowthGuardApplied = ShouldApplyCjkVerticalTypewriterGrowthGuard(
@@ -703,7 +703,8 @@ public sealed class TranslationPipelineService
     private static OcrRequest CreateOcrRequest(
         GameProfile profile,
         OcrZone zone,
-        CapturedFrame frame)
+        CapturedFrame frame,
+        TextCandidate? candidate = null)
     {
         return new OcrRequest(
             frame,
@@ -717,6 +718,8 @@ public sealed class TranslationPipelineService
             zone.CandidateGrouping)
         {
             DetectorPreset = zone.DetectorPreset,
+            DetectorLineBounds = candidate is null ? Array.Empty<BoundingBox>()
+                : TextCandidateRegion.CreateDetectorLineBounds(candidate),
         };
     }
 
@@ -1178,7 +1181,10 @@ public sealed class TranslationPipelineService
             previousResult.TextBlocks,
             previousResult.RecognizedAt,
             previousResult.TextBlockSources,
-            previousResult.Words);
+            previousResult.Words)
+        {
+            LineRecognition = previousResult.LineRecognition,
+        };
     }
 
     private static TranslationPipelineOptimizationInfo CreateProcessedOptimization(PipelineOptimizationContext optimizationContext)
@@ -1534,6 +1540,10 @@ public sealed class TranslationPipelineService
         private const int MaximumCandidateLifecycleEvents = 131_072;
         private const int MaximumCandidateGeometryJitterPixels = 4;
         private const double MinimumCandidateGeometryJitterIntersectionOverUnion = 0.95d;
+        private const int EmptyOcrGroupingResetThreshold = 3;
+        private static readonly TimeSpan FirstEmptyOcrRetryDelay = TimeSpan.FromSeconds(5);
+        private static readonly TimeSpan SecondEmptyOcrRetryDelay = TimeSpan.FromSeconds(10);
+        private static readonly TimeSpan MaximumEmptyOcrRetryDelay = TimeSpan.FromSeconds(20);
 
         private readonly TranslationPipelineService service;
         private readonly GameProfile profile;
@@ -2147,6 +2157,7 @@ public sealed class TranslationPipelineService
                     candidateState.Failure = null;
                     candidateState.Revision = checked(candidateState.Revision + 1);
                     ClearCandidateTextStability(candidateState);
+                    ResetCandidateEmptyOcrRetryState(candidateState);
                     RecordCandidateLifecycleEvent(
                         LiveCandidateLifecycleEventKind.CandidateGroupingChanged,
                         candidateState,
@@ -2202,6 +2213,7 @@ public sealed class TranslationPipelineService
                     candidateState.Failure = null;
                     candidateState.Revision = checked(candidateState.Revision + 1);
                     ClearCandidateTextStability(candidateState);
+                    ResetCandidateEmptyOcrRetryState(candidateState);
                     RecordCandidateLifecycleEvent(
                         LiveCandidateLifecycleEventKind.CandidateSourceChanged,
                         candidateState,
@@ -2221,6 +2233,9 @@ public sealed class TranslationPipelineService
                     continue;
                 }
 
+                PrepareCandidateEmptyOcrRetryIfDue(
+                    candidateState,
+                    capturedZone.Frame.CapturedAt);
                 if (candidateState.ActiveWork is null
                     && ShouldProcessStableFrame(candidateState)
                     && IsCandidateGroupingConfirmed(candidateState))
@@ -2554,6 +2569,61 @@ public sealed class TranslationPipelineService
             service.ClearTextStabilityState(CreateStateKey(candidateProfile, candidateState.Zone));
         }
 
+        private void PrepareCandidateEmptyOcrRetryIfDue(
+            LiveCandidateState candidateState,
+            DateTimeOffset frameCapturedAt)
+        {
+            if (candidateState.ActiveWork is not null
+                || candidateState.Failure is not null
+                || candidateState.Result?.RecognizedBlockCount != 0
+                || candidateState.LastEmptyOcrResultAt is not { } lastEmptyResultAt)
+            {
+                return;
+            }
+
+            var retryDelay = ResolveEmptyOcrRetryDelay(candidateState.ConsecutiveEmptyOcrResultCount);
+            if (service.timeProvider.GetUtcNow() - lastEmptyResultAt < retryDelay)
+            {
+                return;
+            }
+
+            var resetGrouping = candidateState.ConsecutiveEmptyOcrResultCount >= EmptyOcrGroupingResetThreshold;
+            candidateState.Result = null;
+            candidateState.ResultPublishedAt = null;
+            candidateState.LastObservedTranslationInputSignature = null;
+            candidateState.TypewriterGrowthGuardActive = false;
+            ClearCandidateTextStability(candidateState);
+            if (resetGrouping)
+            {
+                ResetCandidateGroupingObservation(candidateState, frameCapturedAt);
+            }
+
+            RecordCandidateLifecycleEvent(
+                LiveCandidateLifecycleEventKind.CandidateEmptyOcrRetryScheduled,
+                candidateState,
+                frameCapturedAt: frameCapturedAt,
+                emptyOcrRetryCount: candidateState.ConsecutiveEmptyOcrResultCount,
+                emptyOcrRetryDelay: retryDelay,
+                emptyOcrGroupingReset: resetGrouping);
+        }
+
+        private static TimeSpan ResolveEmptyOcrRetryDelay(int consecutiveEmptyOcrResultCount)
+        {
+            return consecutiveEmptyOcrResultCount switch
+            {
+                <= 0 => throw new ArgumentOutOfRangeException(nameof(consecutiveEmptyOcrResultCount)),
+                1 => FirstEmptyOcrRetryDelay,
+                2 => SecondEmptyOcrRetryDelay,
+                _ => MaximumEmptyOcrRetryDelay,
+            };
+        }
+
+        private static void ResetCandidateEmptyOcrRetryState(LiveCandidateState candidateState)
+        {
+            candidateState.ConsecutiveEmptyOcrResultCount = 0;
+            candidateState.LastEmptyOcrResultAt = null;
+        }
+
         private void RecordCandidateGroupingAwaitingConfirmationIfNeeded(
             LiveCandidateState candidateState,
             DateTimeOffset frameCapturedAt)
@@ -2639,6 +2709,7 @@ public sealed class TranslationPipelineService
 
                         candidateState.Result = completedResult;
                         UpdateCandidateTypewriterGrowthState(candidateState, completedResult);
+                        UpdateCandidateEmptyOcrRetryState(candidateState, completedResult);
                         candidateState.ResultPublishedAt = null;
                         candidateState.Failure = null;
                         RecordCandidateLifecycleEvent(
@@ -2704,6 +2775,21 @@ public sealed class TranslationPipelineService
             candidateState.LastObservedTranslationInputSignature = currentTextSignature;
             candidateState.TypewriterGrowthGuardActive =
                 result.TextStability.TypewriterGrowthGuardApplied && !result.TextStability.IsStable;
+        }
+
+        private void UpdateCandidateEmptyOcrRetryState(
+            LiveCandidateState candidateState,
+            TranslationPipelineResult result)
+        {
+            if (result.RecognizedBlockCount > 0)
+            {
+                ResetCandidateEmptyOcrRetryState(candidateState);
+                return;
+            }
+
+            candidateState.ConsecutiveEmptyOcrResultCount = checked(
+                candidateState.ConsecutiveEmptyOcrResultCount + 1);
+            candidateState.LastEmptyOcrResultAt = service.timeProvider.GetUtcNow();
         }
 
         private void RecordCandidateProviderRequestDiagnostics(
@@ -2922,7 +3008,10 @@ public sealed class TranslationPipelineService
             TimeSpan? failureProviderRetryAfter = null,
             DateTimeOffset? failureProviderNextRetryAt = null,
             int? failureProviderConsecutiveFailureCount = null,
-            LiveCandidateCancellationReason cancellationReason = LiveCandidateCancellationReason.None)
+            LiveCandidateCancellationReason cancellationReason = LiveCandidateCancellationReason.None,
+            int? emptyOcrRetryCount = null,
+            TimeSpan? emptyOcrRetryDelay = null,
+            bool? emptyOcrGroupingReset = null)
         {
             ArgumentNullException.ThrowIfNull(candidateState);
 
@@ -2992,7 +3081,11 @@ public sealed class TranslationPipelineService
                 candidateConfidence: candidateState.Region.Candidate.Confidence,
                 ocrTexts: sourceOcrResult?.TextBlocks.Select(block => block.Text),
                 translationInputTexts: translationInputTexts,
-                translatedTexts: result?.TranslateResponse?.TranslatedTexts);
+                translatedTexts: result?.TranslateResponse?.TranslatedTexts,
+                emptyOcrRetryCount: emptyOcrRetryCount,
+                emptyOcrRetryDelay: emptyOcrRetryDelay,
+                emptyOcrGroupingReset: emptyOcrGroupingReset,
+                ocrLineRecognition: sourceOcrResult?.LineRecognition);
         }
 
         private void RecordLifecycleEvent(
@@ -3066,7 +3159,11 @@ public sealed class TranslationPipelineService
             double? candidateConfidence = null,
             IEnumerable<string>? ocrTexts = null,
             IEnumerable<string>? translationInputTexts = null,
-            IEnumerable<string>? translatedTexts = null)
+            IEnumerable<string>? translatedTexts = null,
+            int? emptyOcrRetryCount = null,
+            TimeSpan? emptyOcrRetryDelay = null,
+            bool? emptyOcrGroupingReset = null,
+            OcrLineRecognitionDiagnostics? ocrLineRecognition = null)
         {
             if (!runOptions.EnableCandidateDetectorPilot)
             {
@@ -3153,7 +3250,11 @@ public sealed class TranslationPipelineService
                 candidateConfidence: candidateConfidence,
                 ocrTexts: ocrTexts,
                 translationInputTexts: translationInputTexts,
-                translatedTexts: translatedTexts);
+                translatedTexts: translatedTexts,
+                emptyOcrRetryCount: emptyOcrRetryCount,
+                emptyOcrRetryDelay: emptyOcrRetryDelay,
+                emptyOcrGroupingReset: emptyOcrGroupingReset,
+                ocrLineRecognition: ocrLineRecognition);
             candidateLifecycleEvents.Enqueue(lifecycleEvent);
             candidateLifecycleEventsSinceLastUpdate.Add(lifecycleEvent);
             candidateLifecycleEventSequence = checked(candidateLifecycleEventSequence + 1);
@@ -3332,6 +3433,10 @@ public sealed class TranslationPipelineService
             public string? LastObservedTranslationInputSignature { get; set; }
 
             public bool TypewriterGrowthGuardActive { get; set; }
+
+            public int ConsecutiveEmptyOcrResultCount { get; set; }
+
+            public DateTimeOffset? LastEmptyOcrResultAt { get; set; }
         }
 
         private sealed record LiveZoneWork(

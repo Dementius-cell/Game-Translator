@@ -36,12 +36,12 @@ dotnet test GameTranslator.sln -c Release --no-build --no-restore
 
 .\tools\build-track-d-opt-in-release.ps1 `
   -BootstrapRuntimeRoot .\work\paddle-runtime-win-x64 `
-  -TesseractLanguagePacks eng,jpn,jpn_vert,chi_sim,chi_sim_vert,tha `
+  -TesseractLanguagePacks eng,jpn,jpn_vert,chi_sim,chi_sim_vert,tha,kor `
   -SelfContained `
   -ReleaseName v0.1.0-local-paddle
 ```
 
-The bootstrap pins CPython/Paddle package versions (including the official Paddle CUDA 12.9 wheel index) and verifies the PP-OCRv6 detector and six Tesseract packs by SHA-256. The first run downloads only their official distributions. The package build requires the exact locked language-pack set and verifies every pack before copying it; if the GPU runtime is unavailable or a language pack is missing, unexpected or changed, the script fails rather than silently producing an incomplete package.
+The bootstrap pins CPython/Paddle package versions (including the official Paddle CUDA 12.9 wheel index) and verifies the PP-OCRv6 detector and seven Tesseract packs by SHA-256. The first run downloads only their official distributions. The package build requires the exact locked language-pack set and verifies every pack before copying it; if the GPU runtime is unavailable or a language pack is missing, unexpected or changed, the script fails rather than silently producing an incomplete package.
 
 Current publication boundary: the unpacked self-contained r44 is the newest locally verified source-equivalent portable and includes the welcome-tour spotlight, startup-safety, header-action, and OCR-guidance fixes. It has no transfer archive or signature and has not been uploaded to GitHub Releases, so it remains a local release candidate rather than a published release.
 
@@ -84,3 +84,6 @@ Developer module guides:
 - Secrets: Windows Credential Manager
 
 The application must not inject into game processes, read game memory, bypass anti-cheat systems, or use DLL injection.
+
+
+For packaging from a separately verified language-data directory, pass `-TesseractSourceDirectory` to the build script (or runtime verifier). All seven locked packs are still hash-checked. This avoids replacing any locally preserved root language data.

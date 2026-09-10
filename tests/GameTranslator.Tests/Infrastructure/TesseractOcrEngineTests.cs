@@ -166,7 +166,7 @@ public sealed class TesseractOcrEngineTests
                 StringComparer.Ordinal);
 
         Assert.Equal(
-            ["chi_sim", "chi_sim_vert", "eng", "jpn", "jpn_vert", "tha"],
+            ["chi_sim", "chi_sim_vert", "eng", "jpn", "jpn_vert", "kor", "tha"],
             languagePacks.Keys.Order(StringComparer.Ordinal));
         Assert.Equal(
             "bf1e2640954691797e2dc14f38533e601b59ee37958698ae0f0b81dc6f09c71b",
@@ -177,7 +177,7 @@ public sealed class TesseractOcrEngineTests
 
         var readme = File.ReadAllText(Path.Combine(repositoryRoot, "README.md"));
         Assert.Contains(
-            "-TesseractLanguagePacks eng,jpn,jpn_vert,chi_sim,chi_sim_vert,tha",
+            "-TesseractLanguagePacks eng,jpn,jpn_vert,chi_sim,chi_sim_vert,tha,kor",
             readme,
             StringComparison.Ordinal);
         Assert.Contains("-SelfContained", readme, StringComparison.Ordinal);
@@ -207,7 +207,7 @@ public sealed class TesseractOcrEngineTests
             finalizeScript,
             StringComparison.Ordinal);
         Assert.Contains(
-            "-TesseractLanguagePacks eng,jpn,jpn_vert,chi_sim,chi_sim_vert,tha",
+            "-TesseractLanguagePacks eng,jpn,jpn_vert,chi_sim,chi_sim_vert,tha,kor",
             bootstrapScript,
             StringComparison.Ordinal);
     }

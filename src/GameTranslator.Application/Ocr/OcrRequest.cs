@@ -46,6 +46,21 @@ public sealed class OcrRequest
         CandidateGroupingSettings = candidateGroupingSettings ?? OcrCandidateGroupingSettings.Default;
     }
 
+    // Detector members are crop-relative, immutable hints; absent on legacy requests.
+    private IReadOnlyList<BoundingBox> detectorLineBounds = Array.Empty<BoundingBox>();
+    public IReadOnlyList<BoundingBox> DetectorLineBounds
+    {
+        get => detectorLineBounds;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            var bounds = value.ToArray();
+            if (bounds.Any(bound => !bound.IsWithin(Frame.Width, Frame.Height)))
+                throw new ArgumentException("Detector lines must remain inside the OCR crop.", nameof(value));
+            detectorLineBounds = Array.AsReadOnly(bounds);
+        }
+    }
+
     public CapturedFrame Frame { get; }
 
     public CaptureRegion Region => Frame.Region;

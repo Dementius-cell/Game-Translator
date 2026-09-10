@@ -19,7 +19,7 @@ Keep concrete external integrations isolated behind Application contracts.
 
 - Infrastructure may depend on Application and Domain, but must not depend on UI.
 - Implement Application interfaces without changing their public semantics unless the matching Application contract is intentionally changed and tested.
-- Do not remove Windows OCR or Tesseract support, and do not make the product depend on only one OCR engine.
+- Do not remove Windows OCR or Tesseract support, and do not make the product depend on only one OCR engine. Korean horizontal detector-line recognition is limited to the measured eligible geometry; other crops retain the existing recognition path. Preserve raw OCR coordinates and report expected/recognized line counts without introducing automatic recognizer or provider fallback.
 - Store secrets only through Windows Credential Manager or an approved protected fallback; redact provider credentials from logs, exceptions, diagnostics, and artifacts.
 - Credentialless web translator providers are separately selected diagnostic/experimental paths and must not become silent production defaults or automatic fallback chains.
 - Do not add process injection, hooks, game memory access, drivers, anti-cheat bypass, or reverse engineering.

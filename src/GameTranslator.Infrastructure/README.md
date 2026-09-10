@@ -28,3 +28,5 @@ Credentials сохраняются только в Windows Credential Manager. W
 ## Проверка
 
 Запускайте focused adapter tests и architecture tests. Для capture/OCR/provider/cache/profile/credential changes добавляйте проход через соответствующий Application contract; live network calls и локальные language packs не должны становиться обязательными CI-зависимостями. См. [AGENTS.md](AGENTS.md) и [руководство пользователя](../../docs/user-guide.md).
+
+Для подходящих корейских горизонтальных candidate lines Tesseract использует RawLine отдельно на каждом detector member, сохраняя raw OCR bounds. Геометрические ограничения выбирают режим распознавания и не отбрасывают остальные crops. Числовая line-coverage диагностика отражает пропуски, но не гарантирует правильность распознанных букв.

@@ -75,6 +75,8 @@ public sealed class OcrResult
         RecognizedAt = recognizedAt;
     }
 
+    public OcrLineRecognitionDiagnostics? LineRecognition { get; init; }
+
     public OcrRequest Request { get; }
 
     public string? ZoneId { get; }

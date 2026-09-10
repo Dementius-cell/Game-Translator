@@ -4,6 +4,8 @@ param(
     [ValidateScript({ Test-Path -LiteralPath $_ -PathType Container })]
     [string]$RuntimeRoot,
 
+    [string]$TesseractSourceDirectory,
+
     [switch]$SkipGpuProbe
 )
 
@@ -19,7 +21,7 @@ $pythonRoot = Join-Path $runtimePath "python"
 $venvRoot = Join-Path $runtimePath "venv"
 $venvPython = Join-Path $venvRoot "Scripts\python.exe"
 $modelRoot = Join-Path $runtimePath "models\official_models\$($lock.model.name)"
-$tessdataRoot = Join-Path $repositoryRoot "tessdata"
+$tessdataRoot = if ([string]::IsNullOrWhiteSpace($TesseractSourceDirectory)) { Join-Path $repositoryRoot "tessdata" } else { (Resolve-Path -LiteralPath $TesseractSourceDirectory).Path }
 
 function Get-Sha256 {
     param([Parameter(Mandatory)] [string]$Path)

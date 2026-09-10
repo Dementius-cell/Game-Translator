@@ -15,12 +15,45 @@ public static class TranslationTextGroupingService
         ArgumentNullException.ThrowIfNull(sourceResult);
         ArgumentNullException.ThrowIfNull(zone);
 
+        // Keep raw OCR authoritative for diagnostics and the empty-OCR watchdog.
+        // Only the translation projection excludes standalone punctuation noise.
+        if (sourceResult.TextBlocks.Any(block => IsPunctuationNoise(block.Text)))
+        {
+            var retained = sourceResult.TextBlocks
+                .Select((block, index) => (block, index))
+                .Where(item => !IsPunctuationNoise(item.block.Text))
+                .ToArray();
+            sourceResult = new OcrResult(
+                sourceResult.Request,
+                retained.Select(item => item.block),
+                sourceResult.RecognizedAt,
+                retained.Select(item => sourceResult.TextBlockSources[item.index]),
+                sourceResult.Words)
+            {
+                LineRecognition = sourceResult.LineRecognition,
+            };
+        }
+
         return zone.TranslationGroupingMode switch
         {
             TranslationGroupingMode.WholeZone => CreateWholeZoneResult(sourceResult),
             TranslationGroupingMode.NearbyBlocks => CreateNearbyBlocksResult(sourceResult, zone.TextGrouping ?? OcrZoneTextGroupingSettings.Default),
             _ => sourceResult,
         };
+    }
+
+    private static bool IsPunctuationNoise(string text)
+    {
+        foreach (var character in text)
+        {
+            if (!char.IsWhiteSpace(character) && !char.IsPunctuation(character)
+                && character is not '|' and not '~')
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>

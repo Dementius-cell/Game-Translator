@@ -9,6 +9,24 @@ public sealed class TranslationTextGroupingServiceTests
 {
     private static readonly DateTimeOffset FrameTime = new(2026, 7, 2, 12, 0, 0, TimeSpan.Zero);
 
+    [Theory]
+    [InlineData(TranslationGroupingMode.WholeZone)]
+    [InlineData(TranslationGroupingMode.NearbyBlocks)]
+    [InlineData(TranslationGroupingMode.BlockByBlock)]
+    public void PunctuationNoise_MixedBlocks_KeepUsefulTextAndItsGeometry(TranslationGroupingMode mode)
+    {
+        var useful = new OcrTextBlock("A! 40", new BoundingBox(40, 20, 35, 14));
+        var source = CreateResult(300, 120,
+            new OcrTextBlock("|", new BoundingBox(5, 20, 10, 14)), useful);
+        var zone = new OcrZone { Id = "test", Name = "Test", TranslationGroupingMode = mode };
+        var result = TranslationTextGroupingService.CreateTextGroupingResult(source, zone);
+        Assert.Same(source, result.MaskSourceResult);
+        Assert.Equal(2, source.TextBlocks.Count);
+        Assert.Same(useful, Assert.Single(result.TranslationSourceResult.TextBlocks));
+        Assert.Equal(useful.Bounds, Assert.Single(result.TranslationSourceResult.TextBlockSources).SemanticBounds);
+        Assert.Equal(new[] { useful.Bounds }, result.TranslationSourceResult.TextBlockSources[0].MemberBounds);
+    }
+
     [Fact]
     public void CreateTranslationSourceResult_WhenNearbyBlocksRunsInLargeUserZone_DoesNotBridgeDistantBubbles()
     {

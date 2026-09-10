@@ -63,6 +63,11 @@
       "code": "tha",
       "source": "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/tha.traineddata",
       "sha256": "294227cc2d1292b0acb28d61d4115c88252b96d466ca90b417cf4cf0c67bf07c"
+    },
+    {
+      "code": "kor",
+      "source": "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/kor.traineddata",
+      "sha256": "6b85e11d9bbf07863b97b3523b1b112844c43e713df8b66418a081fd1060b3b2"
     }
   ]
 }

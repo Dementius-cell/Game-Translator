@@ -91,7 +91,11 @@ public sealed class LiveCandidateLifecycleEvent
         double? candidateConfidence = null,
         IEnumerable<string>? ocrTexts = null,
         IEnumerable<string>? translationInputTexts = null,
-        IEnumerable<string>? translatedTexts = null)
+        IEnumerable<string>? translatedTexts = null,
+        int? emptyOcrRetryCount = null,
+        TimeSpan? emptyOcrRetryDelay = null,
+        bool? emptyOcrGroupingReset = null,
+        OcrLineRecognitionDiagnostics? ocrLineRecognition = null)
     {
         if (sequence < 1)
         {
@@ -205,7 +209,30 @@ public sealed class LiveCandidateLifecycleEvent
         ValidateConfidence(maximumDetectorConfidence, nameof(maximumDetectorConfidence));
         ValidateConfidence(averageDetectorConfidence, nameof(averageDetectorConfidence));
         ValidateConfidence(candidateConfidence, nameof(candidateConfidence));
+        if (emptyOcrRetryCount is <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(emptyOcrRetryCount));
+        }
 
+        if (emptyOcrRetryDelay <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(emptyOcrRetryDelay));
+        }
+
+        if (emptyOcrRetryCount is null != emptyOcrRetryDelay is null)
+        {
+            throw new ArgumentException(
+                "Empty OCR retry count and delay must either both be present or both be absent.");
+        }
+
+        if (emptyOcrGroupingReset is not null && emptyOcrRetryCount is null)
+        {
+            throw new ArgumentException(
+                "Empty OCR grouping reset requires retry diagnostics.",
+                nameof(emptyOcrGroupingReset));
+        }
+
+        OcrLineRecognition = ocrLineRecognition;
         var orderedOcrGeometry = CreateBoundedGeometryDiagnostics(orderedOcrBlockBounds);
         var orderedGroupedGeometry = CreateBoundedGeometryDiagnostics(orderedGroupedMemberBounds);
         var boundedOcrTexts = CreateBoundedTextDiagnostics(ocrTexts);
@@ -293,6 +320,9 @@ public sealed class LiveCandidateLifecycleEvent
         TranslationInputTextCount = boundedTranslationInputTexts.Count;
         TranslatedTexts = boundedTranslatedTexts.Values;
         TranslatedTextCount = boundedTranslatedTexts.Count;
+        EmptyOcrRetryCount = emptyOcrRetryCount;
+        EmptyOcrRetryDelay = emptyOcrRetryDelay;
+        EmptyOcrGroupingReset = emptyOcrGroupingReset;
     }
 
     public long Sequence { get; }
@@ -458,6 +488,8 @@ public sealed class LiveCandidateLifecycleEvent
 
     public int OcrTextCount { get; }
 
+    public OcrLineRecognitionDiagnostics? OcrLineRecognition { get; }
+
     public IReadOnlyList<string> TranslationInputTexts { get; }
 
     public int TranslationInputTextCount { get; }
@@ -465,6 +497,12 @@ public sealed class LiveCandidateLifecycleEvent
     public IReadOnlyList<string> TranslatedTexts { get; }
 
     public int TranslatedTextCount { get; }
+
+    public int? EmptyOcrRetryCount { get; }
+
+    public TimeSpan? EmptyOcrRetryDelay { get; }
+
+    public bool? EmptyOcrGroupingReset { get; }
 
     private static GeometryDiagnostics CreateBoundedGeometryDiagnostics(
         IEnumerable<BoundingBox>? bounds)
@@ -588,6 +626,7 @@ public enum LiveCandidateLifecycleEventKind
     CandidateWorkCancelled,
     CandidateRemoved,
     OverlaySnapshotPublished,
+    CandidateEmptyOcrRetryScheduled,
 }
 
 public enum LiveCandidateCancellationReason

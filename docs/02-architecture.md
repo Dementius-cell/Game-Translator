@@ -4,7 +4,7 @@
 
 Система экранного OCR-перевода игровых субтитров и текста для Windows 11
 
-Версия документа: 1.2 (обновлено 2026-09-04)
+Версия документа: 1.3 (обновлено 2026-09-06)
 
 ------------------------------------------------------------------------
 
@@ -68,6 +68,16 @@ ADR-031 добавляет per-zone `ContentLayoutMode` как единый Appl
 Candidate detector также принимает сохранённый per-zone `TextCandidateDetectorPreset`. `Standard` использует штатные Paddle post-process параметры `threshold=0.30`, `boxThreshold=0.60`, `unclipRatio=1.20`. Экспериментальные `ChineseExperimental` (`boxThreshold=0.65`) и `ChineseStrictExperimental` (`0.70`) действуют только для китайских OCR language tags; для японского, английского и остальных языков они безопасно разрешаются обратно в `Standard`. Predictor и модель остаются одним persistent worker, а параметры передаются на каждый запрос без reload. Preset изменяет только detector post-processing и не меняет recognizer, grouping/stability, revision/source revalidation, cancellation/publication или provider/cache policy. Диагностика detector preset содержит только requested/effective preset, числовые thresholds, количество кандидатов и агрегаты confidence — без OCR/translation/provider text.
 
 Live publication применяет условный `MinimumCandidateOverlayVisibleDuration` только к краткому полному выпадению доступного detector: уже показанный candidate overlay может оставаться видимым до `2 s`, но вернувшийся candidate обязан иметь тот же id и byte-exact crop source. Capture loss, detector unavailable, source mismatch и окончание интервала немедленно публикуют актуальный пустой snapshot; revision/source revalidation и единая cancellation/publication authority не ослабляются. Локальный lifecycle report сохраняет per-candidate detector confidence как ограниченное число `0..1`; это не добавляет frame pixels или новый диагностический текст.
+
+По ADR-032 завершённый пустой OCR-результат устойчивого live candidate не остаётся окончательным до изменения кадра. Пока candidate и его byte-exact source остаются актуальными, адресный watchdog повторяет crop OCR через `5 s`, затем `10 s`, затем с ограничением `20 s`. Первые два повтора сохраняют подтверждённую grouping identity; с третьего последовательного пустого результата grouping observations подтверждаются заново. Любой непустой OCR, включая ещё не прошедший text-stability window, сбрасывает empty-result backoff. Retry не очищает overlay других кандидатов и не включает legacy/full-frame OCR, другой recognizer, provider fallback или cache bypass. Локальный lifecycle report фиксирует `CandidateEmptyOcrRetryScheduled`, номер пустого результата, задержку и факт сброса grouping без новых пикселей или текстовых данных.
+
+------------------------------------------------------------------------
+
+## Корейские горизонтальные candidate crops
+
+Для одноязычного корейского горизонтального candidate request передаются исходные detector-member bounds относительно crop, с масштабированием вместе с preprocessing. От одной до двенадцати неперекрывающихся по вертикали строк высотой не менее 20 px и отношением ширины к высоте не менее 1.5 распознаются отдельно Tesseract RawLine. Это ограничение выбора режима, а не фильтр текста: мелкие, почти квадратные, перекрывающиеся, mixed-language и прочие crops сохраняют прежний recognizer path. Native executor по-прежнему ограничен тремя slots, engine создаётся один на candidate, cancellation проверяется между строками; повторного full-frame OCR нет.
+
+Raw OCR bounds сохраняются в системе координат candidate. Локальные события добавляют способ распознавания и числовые expected/recognized/missing line counts. Частичный результат не считается доказательством полноты; бесконечных повторов или подмены ошибочных слов нет. ADR-032 продолжает обрабатывать полностью пустые результаты. Нормализация сохраняет пробелы между слогами хангыль в stability, translation input и cache key; японские/китайские compact-script правила остаются прежними. Старый кеш не очищается, отличающиеся по пробелам ключи не совпадают.
 
 ------------------------------------------------------------------------
 

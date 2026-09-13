@@ -18,6 +18,219 @@ public sealed class TranslationPipelineServiceTests
     private static readonly DateTimeOffset TranslatedAt = DateTimeOffset.UtcNow.AddMinutes(1);
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BingBudget_CancelsAtDeadlineButPreservesCallerCancellation(bool callerCancels)
+    {
+        var clock = new DeadlineClock();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<TranslateResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken providerToken = default;
+        var translator = new FakeTranslatorProvider("BingWeb", translateAsync: (_, token) =>
+        {
+            providerToken = token;
+            entered.SetResult();
+            return release.Task; // Deliberately ignores cancellation: never publish a late result.
+        });
+        var zone = CreateZone();
+        var profile = CreateProfile(zone) with { TranslatorSettings = new TranslatorSettings { Provider = "BingWeb", SourceLanguage = "en", TargetLanguage = "ru" } };
+        var overlay = new FakeOverlayService();
+        var service = CreateService(new FakeCaptureFrameSource(), new FakeOcrEngine
+        {
+            BlocksFactory = _ => new[] { new OcrTextBlock("Hello", new BoundingBox(1, 1, 20, 8)) },
+        }, translator, overlay, timeProvider: clock);
+        using var cancellation = new CancellationTokenSource();
+        var pending = service.RunAsync(profile, zone, runOptions: TranslationPipelineRunOptions.LegacyFullPage,
+            cancellationToken: cancellation.Token);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        clock.Advance(TimeSpan.FromSeconds(29));
+        Assert.False(pending.IsCompleted);
+        if (callerCancels) cancellation.Cancel();
+        else clock.Advance(TimeSpan.FromSeconds(1));
+        if (callerCancels) await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending.WaitAsync(TimeSpan.FromSeconds(5)));
+        else
+        {
+            var error = await Assert.ThrowsAsync<TranslationPipelineException>(() => pending.WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.Equal(TranslationPipelineStage.Translation, error.Stage);
+            Assert.Equal(TranslatorProviderFailureKind.Timeout, Assert.IsType<TranslatorProviderException>(error.InnerException).FailureKind);
+        }
+        Assert.True(providerToken.IsCancellationRequested);
+        release.SetResult(new TranslateResponse(new[] { "Late result" }, TranslatedAt, "BingWeb"));
+        Assert.DoesNotContain("Show:1", overlay.Events);
+    }
+
+    [Fact]
+    public async Task BingBudget_QueueDeadlineAndLiveProgressDoNotWaitForTranslationCompletion()
+    {
+        var clock = new DeadlineClock();
+        var zone = CreateZone("progress", "Progress", new AbsoluteRectangle(0, 0, 240, 140));
+        var bounds = new[] { new BoundingBox(8, 8, 40, 16), new BoundingBox(170, 90, 40, 16) };
+        var pixels = CreateCandidatePilotPixels(zone, 1, (bounds[0], (byte)10), (bounds[1], (byte)20));
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<TranslateResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        TranslationProviderRequestDiagnostics? runningDiagnostics = null;
+        var translator = new FakeTranslatorProvider("BingWeb", translateAsync: (request, _) =>
+        {
+            runningDiagnostics = request.Diagnostics;
+            request.Diagnostics!.MarkProviderInvocationStarted("BingWeb", clock.GetUtcNow());
+            entered.TrySetResult();
+            return release.Task;
+        });
+        var service = CreateService(new FakeCaptureFrameSource { PixelFrames = Enumerable.Repeat(pixels, 10).ToArray() },
+            new FakeOcrEngine { EngineId = OcrSettings.TesseractEngineId, BlocksFactory = request => new[]
+            { new OcrTextBlock("Text " + request.Frame.PixelData.Span[0], new BoundingBox(1, 1, 25, 10)) } },
+            translator, new FakeOverlayService(), candidateDetector: new FakeCandidateDetector(_ =>
+                TextCandidateDetectionResult.Available("test", bounds.Select(b => new TextCandidate(b, 0.95)))), timeProvider: clock);
+        var profile = CreateProfile(zone) with { TranslatorSettings = new TranslatorSettings { Provider = "BingWeb", SourceLanguage = "en", TargetLanguage = "ru" } };
+        using var session = service.CreateLiveSession(profile,
+            new TranslationPipelineRunOptions(enableCandidateDetectorPilot: true, candidateTranslationMaxParallelism: 1));
+        var first = await session.RefreshAsync();
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(2, first.CandidateLifecycleEvents.Count(e => e.Kind == LiveCandidateLifecycleEventKind.CandidateOcrCompleted));
+        Assert.Equal(2, first.PendingTranslations.Count);
+        Assert.Empty(first.BatchResult.ZoneResults);
+        clock.Advance(TimeSpan.FromSeconds(5));
+        var waiting = await session.PublishCompletedWorkAsync();
+        Assert.Contains(waiting.CandidateLifecycleEvents, e => e.Kind == LiveCandidateLifecycleEventKind.CandidateTranslationQueueWaitWarning);
+        Assert.Contains(waiting.CandidateLifecycleEvents, e => e.Kind == LiveCandidateLifecycleEventKind.CandidateTranslationCredentialsWaitWarning);
+        Assert.Empty((await session.PublishCompletedWorkAsync()).CandidateLifecycleEvents);
+        runningDiagnostics!.MarkNetworkRequestStarted(TranslationProviderNetworkRequestKind.Translation, clock.GetUtcNow());
+        Assert.Contains((await session.PublishCompletedWorkAsync()).CandidateLifecycleEvents,
+            e => e.Kind == LiveCandidateLifecycleEventKind.CandidateTranslationResponseWaitWarning);
+        clock.Advance(TimeSpan.FromSeconds(25));
+        await session.WaitForWorkCompletionAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        // Both independent continuations have their own completion signals.
+        var completed = await session.PublishCompletedWorkAsync();
+        while (completed.BatchResult.ZoneFailures.Count < 2)
+        {
+            await session.WaitForWorkCompletionAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            completed = await session.PublishCompletedWorkAsync();
+        }
+        Assert.Equal(2, completed.BatchResult.ZoneFailures.Count);
+        Assert.Empty(completed.PendingTranslations);
+        Assert.Equal(1, translator.CallCount); // The queued candidate never reached the provider.
+        Assert.All(completed.BatchResult.ZoneFailures, failure => Assert.Equal(TranslationPipelineStage.Translation, failure.Stage));
+        release.SetResult(new TranslateResponse(new[] { "Late result" }, TranslatedAt, "BingWeb"));
+        Assert.Empty((await session.PublishCompletedWorkAsync()).BatchResult.OverlaySnapshot.TextItems);
+    }
+
+    private sealed class DeadlineClock : TimeProvider
+    {
+        private DateTimeOffset now = DateTimeOffset.UtcNow;
+        private readonly List<DeadlineTimer> timers = new();
+        public override DateTimeOffset GetUtcNow() => now;
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var timer = new DeadlineTimer(this, callback, state);
+            timer.Change(dueTime, period);
+            timers.Add(timer);
+            return timer;
+        }
+        public void Advance(TimeSpan elapsed)
+        {
+            now += elapsed;
+            foreach (var timer in timers.ToArray()) timer.FireIfDue();
+        }
+        private sealed class DeadlineTimer(DeadlineClock clock, TimerCallback callback, object? state) : ITimer
+        {
+            private DateTimeOffset due;
+            private bool disposed;
+            public bool Change(TimeSpan dueTime, TimeSpan period)
+            {
+                due = dueTime == Timeout.InfiniteTimeSpan ? DateTimeOffset.MaxValue : clock.now + dueTime;
+                return !disposed;
+            }
+            public void FireIfDue()
+            {
+                if (disposed || due > clock.now) return;
+                due = DateTimeOffset.MaxValue;
+                callback(state);
+            }
+            public void Dispose() => disposed = true;
+            public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
+        }
+    }
+
+    [Theory]
+    [InlineData(true, TranslatorProviderFailureKind.Dns, 0)]
+    [InlineData(false, TranslatorProviderFailureKind.Dns, 0)]
+    [InlineData(true, TranslatorProviderFailureKind.Connection, 0)]
+    [InlineData(true, TranslatorProviderFailureKind.Network, 0)]
+    [InlineData(true, TranslatorProviderFailureKind.Timeout, 0)]
+    [InlineData(true, TranslatorProviderFailureKind.Throttled, 30)]
+    [InlineData(true, TranslatorProviderFailureKind.UserVerificationRequired, -1)]
+    [InlineData(true, TranslatorProviderFailureKind.Configuration, -1)]
+    [InlineData(true, TranslatorProviderFailureKind.Tls, -1)]
+    public async Task LiveSession_StableText_RecoversOnlyFromTransientTranslationFailures(
+        bool candidates, TranslatorProviderFailureKind kind, int pause)
+    {
+        var zone = CreateZone("zone-dialog", "Dialog", new AbsoluteRectangle(10, 20, 100, 40));
+        var bounds = new BoundingBox(8, 8, 30, 12);
+        var pixels = CreateCandidatePilotPixels(zone, frameMarker: 1, (bounds, (byte)10));
+        var clock = new ManualTimeProvider(FrameTime);
+        var offline = true;
+        var translator = new FakeTranslatorProvider("Google", translateAsync: (request, _) => offline
+            ? Task.FromException<TranslateResponse>(new TranslatorProviderException("Google", kind, "Offline",
+                retryAfter: pause > 0 ? TimeSpan.FromSeconds(pause) : null,
+                nextRetryAt: pause > 0 ? clock.GetUtcNow().AddSeconds(pause + 5) : null))
+            : Task.FromResult(new TranslateResponse(request.Texts.Select(text => "Translated " + text), TranslatedAt, "Google")));
+        var service = CreateService(new FakeCaptureFrameSource { PixelFrames = Enumerable.Repeat(pixels, 100).ToArray() },
+            new FakeOcrEngine { EngineId = candidates ? OcrSettings.TesseractEngineId : OcrSettings.WindowsEngineId, BlocksFactory = _ => new[] { new OcrTextBlock("Hello", new BoundingBox(1, 1, 20, 8)) } }, translator, new FakeOverlayService(),
+            candidateDetector: new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available(
+                "test", new[] { new TextCandidate(bounds, 0.9) })), timeProvider: clock);
+        using var session = service.CreateLiveSession(CreateProfile(zone),
+            new TranslationPipelineRunOptions(enableCandidateDetectorPilot: candidates));
+        await session.RefreshAsync();
+        await session.RefreshAsync();
+        var initial = await session.RefreshAsync();
+        Assert.True(translator.CallCount == 1, string.Join(";", initial.BatchResult.ZoneFailures.Select(f => f.Exception.ToString())));
+        if (pause < 0)
+        {
+            offline = false;
+            clock.Advance(TimeSpan.FromMinutes(2));
+            await session.RefreshAsync();
+            Assert.Equal(1, translator.CallCount);
+            return;
+        }
+        foreach (var delay in new[] { 5, 10, 20, 20 })
+        {
+            var calls = translator.CallCount;
+            clock.Advance(TimeSpan.FromSeconds(pause > 0 ? pause + 5 : delay) - TimeSpan.FromMilliseconds(1));
+            await session.RefreshAsync();
+            Assert.Equal(calls, translator.CallCount);
+            clock.Advance(TimeSpan.FromMilliseconds(1));
+            await session.RefreshAsync();
+            Assert.Equal(calls + 1, translator.CallCount);
+        }
+        offline = false;
+        clock.Advance(TimeSpan.FromSeconds(pause > 0 ? pause + 5 : 20));
+        var recovered = await session.RefreshAsync();
+        Assert.Equal(6, translator.CallCount);
+        Assert.Empty(recovered.BatchResult.ZoneFailures);
+        Assert.NotEmpty(recovered.BatchResult.ZoneResults);
+        clock.Advance(TimeSpan.FromMinutes(1));
+        await session.RefreshAsync();
+        Assert.Equal(6, translator.CallCount);
+    }
+    [Fact]
+    public async Task RunAsync_SingleJapaneseBlock_NormalizesProviderInputAndPreservesRawText()
+    {
+        var zone = CreateZone() with { OcrLanguage = "ja" };
+        var engine = new FakeOcrEngine
+        {
+            BlocksFactory = _ => new[] { new OcrTextBlock("日 本 語", new BoundingBox(4, 5, 24, 10)) },
+        };
+        var translator = new FakeTranslatorProvider("Google");
+        var service = CreateService(new FakeCaptureFrameSource(), engine, translator, new FakeOverlayService());
+        var result = await service.RunAsync(CreateProfile(zone), zone,
+            runOptions: TranslationPipelineRunOptions.LegacyFullPage);
+        Assert.Equal(new[] { "日本語" }, translator.Request!.Texts);
+        Assert.Equal("日 本 語", Assert.Single(result.SourceOcrResult.TextBlocks).Text);
+        Assert.Equal(1, result.TranslationInputBlockCount);
+        Assert.Equal(1, result.TranslatedBlockCount);
+    }
+
+    [Theory]
     [InlineData("|", false)]
     [InlineData("~", false)]
     [InlineData(", !", false)]
@@ -3713,6 +3926,61 @@ public sealed class TranslationPipelineServiceTests
         Assert.Equal(
             new[] { "Translated Stable candidate" },
             overlay.CurrentSnapshot!.TextItems.Select(item => item.Text));
+    }
+
+    [Theory]
+    [InlineData(1, false, false)]
+    [InlineData(2, false, false)]
+    [InlineData(1, true, false)]
+    [InlineData(1, false, true)]
+    public async Task LiveSession_InternalLineJitter_PreservesOverlayOnlyForUnchangedSource(
+        int offset, bool textChanges, bool memberCountChanges)
+    {
+        var zone = CreateZone("panel", "Panel", new AbsoluteRectangle(0, 0, 160, 100));
+        var bounds = new BoundingBox(20, 10, 80, 50);
+        var original = new[] { new BoundingBox(30, 10, 60, 20), new BoundingBox(20, 40, 80, 20) };
+        var revised = memberCountChanges ? original.Take(1).ToArray() : new[]
+        { new BoundingBox(30 - offset, 10, 60 + offset, 20), original[1] };
+        int observation = 0;
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available("test", new[]
+        {
+            new TextCandidate(bounds, 0.95)
+            { SourceCandidateBounds = Interlocked.Increment(ref observation) % 2 == 1 ? original : revised },
+        }));
+        var frames = Enumerable.Range(0, 6).Select(index => CreateCandidatePilotPixels(zone,
+            (byte)(index + 1), (bounds, (byte)(textChanges && index > 0 ? 30 : 10)))).ToArray();
+        // The panel changes pixels outside the candidate; the text crop stays unchanged.
+        for (int index = 1; index < frames.Length; index += 2)
+            Array.Fill(frames[index], (byte)90, frames[index].Length - 160 * 4 * 5, 160 * 4 * 5);
+        var engine = new FakeOcrEngine { EngineId = OcrSettings.TesseractEngineId, BlocksFactory = request => new[]
+        { new OcrTextBlock(request.Frame.PixelData.Span[0] == 10 ? "Original text" : "Changed text", new BoundingBox(0, 0, 40, 12)) } };
+        var translator = new FakeTranslatorProvider("Google");
+        var service = CreateService(new FakeCaptureFrameSource { PixelFrames = frames }, engine, translator,
+            new FakeOverlayService(), candidateDetector: detector);
+        using var session = service.CreateLiveSession(CreateProfile(zone),
+            new TranslationPipelineRunOptions(enableCandidateDetectorPilot: true));
+        var first = await session.RefreshAsync();
+        Assert.True(first.OverlayChanged);
+        var second = await session.RefreshAsync();
+        if (offset == 1 && !textChanges && !memberCountChanges)
+        {
+            for (int index = 1; index < 6; index++)
+            {
+                var update = index == 1 ? second : await session.RefreshAsync();
+                Assert.False(update.OverlayChanged);
+                Assert.Contains(update.CandidateLifecycleEvents, e => e.Kind == LiveCandidateLifecycleEventKind.CandidateGeometryJitterMatched);
+                Assert.DoesNotContain(update.CandidateLifecycleEvents, e => e.Kind is LiveCandidateLifecycleEventKind.CandidateGroupingChanged
+                    or LiveCandidateLifecycleEventKind.CandidateSourceChanged or LiveCandidateLifecycleEventKind.CandidateWorkStarted);
+            }
+            Assert.Single(engine.Requests);
+            Assert.Equal(1, translator.CallCount);
+        }
+        else
+        {
+            Assert.Contains(second.CandidateLifecycleEvents, e => e.Kind == LiveCandidateLifecycleEventKind.CandidateGroupingChanged);
+            Assert.True(engine.Requests.Count > 1);
+            if (textChanges) Assert.Equal(2, translator.CallCount);
+        }
     }
 
     [Fact]

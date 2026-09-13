@@ -41,13 +41,27 @@ public sealed class InfrastructureServiceModule : IApplicationServiceModule
         services.AddSingleton<ITextCandidateDetector, PaddleOcrTextCandidateDetector>();
         services.AddSingleton<IOcrLanguagePackService, OcrLanguagePackService>();
         services.AddSingleton<HttpClient>();
+        services.AddKeyedSingleton<HttpClient>("BingWeb", (_, _) => new HttpClient(
+            new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(5) })
+        {
+            Timeout = System.Threading.Timeout.InfiniteTimeSpan,
+        });
         services.AddSingleton<ICredentialStorage, WindowsCredentialStorage>();
         services.AddSingleton<ITranslatorProvider, GoogleTranslatorProvider>();
         services.AddSingleton<ITranslatorProvider, AzureTranslatorProvider>();
         services.AddSingleton<ITranslatorProvider, YandexTranslatorProvider>();
-        services.AddSingleton<ITranslatorProvider, GoogleWebTranslatorProvider>();
-        services.AddSingleton<ITranslatorProvider, BingWebTranslatorProvider>();
-        services.AddSingleton<ITranslatorProvider, YandexWebTranslatorProvider>();
+        if (Environment.GetEnvironmentVariable("GAME_TRANSLATOR_TEST_FAULT") is "timeout" or "429" or "captcha")
+        {
+        services.AddSingleton<ITranslatorProvider>(provider => DiagnosticWebTranslatorProvider.Wrap(ActivatorUtilities.CreateInstance<GoogleWebTranslatorProvider>(provider)));
+        services.AddSingleton<ITranslatorProvider>(provider => DiagnosticWebTranslatorProvider.Wrap(new BingWebTranslatorProvider(provider.GetRequiredKeyedService<HttpClient>("BingWeb"))));
+        services.AddSingleton<ITranslatorProvider>(provider => DiagnosticWebTranslatorProvider.Wrap(ActivatorUtilities.CreateInstance<YandexWebTranslatorProvider>(provider)));
+        }
+        else
+        {
+            services.AddSingleton<ITranslatorProvider, GoogleWebTranslatorProvider>();
+            services.AddSingleton<ITranslatorProvider>(provider => new BingWebTranslatorProvider(provider.GetRequiredKeyedService<HttpClient>("BingWeb")));
+            services.AddSingleton<ITranslatorProvider, YandexWebTranslatorProvider>();
+        }
         services.AddSingleton<IApplicationUpdateProvider, SquirrelApplicationUpdateProvider>();
         services.AddSingleton<ISettingsService>(provider =>
         {

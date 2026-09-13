@@ -17,6 +17,17 @@ public sealed class TranslationProviderRequestDiagnostics
     private string? providerId;
     private TranslationProviderInvocationOutcome outcome = TranslationProviderInvocationOutcome.Pending;
     private TranslatorProviderFailureKind? failureKind;
+    private TranslationProviderWaitStage waitStage = TranslationProviderWaitStage.Queue;
+
+    public void MarkBudgetExceeded(DateTimeOffset completedAt)
+    {
+        lock (syncRoot)
+        {
+            providerInvocationCompletedAt = completedAt;
+            outcome = TranslationProviderInvocationOutcome.Failed;
+            failureKind = TranslatorProviderFailureKind.Timeout;
+        }
+    }
 
     public TranslationProviderRequestDiagnostics(
         IEnumerable<string> inputTexts,
@@ -55,6 +66,7 @@ public sealed class TranslationProviderRequestDiagnostics
         {
             this.providerId ??= providerId.Trim();
             providerInvocationStartedAt ??= startedAt;
+            waitStage = TranslationProviderWaitStage.Credentials;
         }
     }
 
@@ -71,6 +83,8 @@ public sealed class TranslationProviderRequestDiagnostics
         {
             var attemptId = $"{RequestId}:{networkAttempts.Count + 1}";
             networkAttempts.Add(new MutableNetworkAttempt(attemptId, kind, startedAt));
+            waitStage = kind == TranslationProviderNetworkRequestKind.Credentials
+                ? TranslationProviderWaitStage.Credentials : TranslationProviderWaitStage.Response;
             return attemptId;
         }
     }
@@ -146,7 +160,7 @@ public sealed class TranslationProviderRequestDiagnostics
                     attempt.StartedAt,
                     attempt.CompletedAt,
                     attempt.Outcome,
-                    attempt.StatusCode)).ToArray());
+                    attempt.StatusCode)).ToArray()) { WaitStage = waitStage };
         }
     }
 
@@ -194,6 +208,8 @@ public sealed record TranslationProviderRequestDiagnosticsSnapshot(
     IReadOnlyList<string> InputTexts,
     IReadOnlyList<TranslationProviderNetworkAttempt> NetworkAttempts)
 {
+    public TranslationProviderWaitStage WaitStage { get; init; }
+
     public bool WasNetworkRequestSent => NetworkAttempts.Any(attempt => attempt.WasSent);
 
     public TimeSpan? QueueDuration => ProviderInvocationStartedAt is { } startedAt
@@ -217,6 +233,13 @@ public enum TranslationProviderInvocationOutcome
     Failed = 2,
     Cancelled = 3,
     RejectedBeforeSend = 4,
+}
+
+public enum TranslationProviderWaitStage
+{
+    Queue,
+    Credentials,
+    Response,
 }
 
 public enum TranslationProviderNetworkRequestKind

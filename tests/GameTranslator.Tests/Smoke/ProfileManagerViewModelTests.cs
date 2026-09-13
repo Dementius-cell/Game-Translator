@@ -2357,6 +2357,29 @@ public sealed class ProfileManagerViewModelTests
             builder.ToString());
     }
 
+    [Theory]
+    [InlineData(TranslationProviderWaitStage.Queue, "translation queue")]
+    [InlineData(TranslationProviderWaitStage.Credentials, "initializing")]
+    [InlineData(TranslationProviderWaitStage.Response, "translation response")]
+    public void LiveBingWaitStatus_IsVisibleAndClearsWhenRequestLeaves(TranslationProviderWaitStage stage, string expected)
+    {
+        var viewModel = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService());
+        var profile = CreateProfile("Wait", "BingWeb", "en", "ru");
+        var batch = new TranslationPipelineBatchResult(profile.Id, [], [],
+            new OverlaySnapshot([], DateTimeOffset.UtcNow, OverlaySettings.Default));
+        var pending = new TranslationProviderRequestDiagnostics(new[] { "Hello" }, DateTimeOffset.UtcNow.AddSeconds(-6))
+            .CreateSnapshot() with { WaitStage = stage };
+        viewModel.GetType().GetMethod("ApplyLiveTranslationUpdate", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(viewModel, new object[] { profile,
+            new LiveTranslationPipelineUpdate(batch, false, pendingTranslations: new[] { pending }), CancellationToken.None });
+        var status = viewModel.GetType().GetProperty("PipelineStatus")!;
+        Assert.Contains(expected, Assert.IsType<string>(status.GetValue(viewModel)));
+        Assert.Equal("Warning", viewModel.GetType().GetProperty("PipelineStatusSeverity")!.GetValue(viewModel)!.ToString());
+        viewModel.GetType().GetMethod("ApplyLiveTranslationUpdate", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(viewModel, new object[] { profile,
+            new LiveTranslationPipelineUpdate(batch, false), CancellationToken.None });
+        Assert.DoesNotContain("BingWeb is", Assert.IsType<string>(status.GetValue(viewModel)));
+        Assert.Equal("Normal", viewModel.GetType().GetProperty("PipelineStatusSeverity")!.GetValue(viewModel)!.ToString());
+    }
+
     [Fact]
     public void LiveDiagnosticsLifecycle_IncludesBoundedOrderedGeometryAndLocalTextEvidence()
     {
@@ -2768,10 +2791,16 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Theory]
-    [InlineData(TranslatorProviderFailureKind.Timeout, 1, false, "Warning")]
-    [InlineData(TranslatorProviderFailureKind.Timeout, 2, true, "Error")]
-    [InlineData(TranslatorProviderFailureKind.Throttled, 1, true, "Error")]
-    public async Task RunTranslationPipelineAsync_WhenBingWebIsUnhealthy_SetsVisibleStatusSeverity(
+    [InlineData("BingWeb", TranslatorProviderFailureKind.Timeout, 1, false, "Warning")]
+    [InlineData("BingWeb", TranslatorProviderFailureKind.Timeout, 2, true, "Error")]
+    [InlineData("BingWeb", TranslatorProviderFailureKind.Throttled, 1, true, "Error")]
+    [InlineData("YandexWeb", TranslatorProviderFailureKind.UserVerificationRequired, 0, false, "Error")]
+    [InlineData("GoogleWeb", TranslatorProviderFailureKind.Dns, 0, false, "Warning")]
+    [InlineData("YandexWeb", TranslatorProviderFailureKind.Connection, 0, false, "Warning")]
+    [InlineData("GoogleWeb", TranslatorProviderFailureKind.Tls, 0, false, "Warning")]
+    [InlineData("YandexWeb", TranslatorProviderFailureKind.Throttled, 0, true, "Error")]
+    public async Task RunTranslationPipelineAsync_WhenWebProviderIsUnhealthy_SetsVisibleStatusSeverity(
+        string providerId,
         TranslatorProviderFailureKind failureKind,
         int consecutiveFailureCount,
         bool hasRetryAfter,
@@ -2780,19 +2809,19 @@ public sealed class ProfileManagerViewModelTests
         TimeSpan? retryAfter = hasRetryAfter ? TimeSpan.FromSeconds(60) : null;
         var providerFailure = failureKind == TranslatorProviderFailureKind.Throttled
             ? new TranslatorProviderException(
-                "BingWeb",
+                providerId,
                 HttpStatusCode.TooManyRequests,
                 failureKind,
                 "BingWeb returned HTTP 429 and has been paused.",
                 retryAfter: retryAfter,
                 consecutiveFailureCount: consecutiveFailureCount)
             : new TranslatorProviderException(
-                "BingWeb",
+                providerId,
                 failureKind,
                 "BingWeb did not respond within 15 seconds.",
                 retryAfter: retryAfter,
                 consecutiveFailureCount: consecutiveFailureCount);
-        var translator = new TestTranslatorProvider("BingWeb", failure: providerFailure);
+        var translator = new TestTranslatorProvider(providerId, failure: providerFailure);
         var viewModel = CreateMainViewModel(
             new InMemoryProfileRepository(),
             new TestSettingsService(),
@@ -2806,14 +2835,14 @@ public sealed class ProfileManagerViewModelTests
             translatorProvider: translator);
 
         ConfigureValidDraftProfile(viewModel, "BingWeb provider health");
-        SetPropertyValue(viewModel, "TranslatorProvider", "BingWeb");
+        SetPropertyValue(viewModel, "TranslatorProvider", providerId);
         InvokeMethodWithArguments(viewModel, "StartZoneSelection", 10d, 20d);
         InvokeMethodWithArguments(viewModel, "CompleteZoneSelection", 110d, 70d);
 
         await InvokeTaskMethodAsync(viewModel, "RunTranslationPipelineAsync");
 
         Assert.Equal(expectedSeverity, GetPropertyValue(viewModel, "PipelineStatusSeverity")?.ToString());
-        Assert.Contains("BingWeb", GetPropertyValue(viewModel, "PipelineStatus")?.ToString(), StringComparison.Ordinal);
+        Assert.Contains(providerId, GetPropertyValue(viewModel, "PipelineStatus")?.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]

@@ -24,3 +24,7 @@ Business rules остаются в `Domain`/`Application`; concrete external int
 ## Проверка
 
 Для view-model/XAML changes запускайте focused UI/headless WPF tests. Видимый UI запускается только когда это действительно нужно для ручной проверки; overlay/focus/click-through changes дополнительно требуют соответствующего visual/manual gate. См. [AGENTS.md](AGENTS.md).
+
+Explicit simulated web fault launches mark error messages [SIMULATED] and exported reports SyntheticWebFaultScenario. Normal launches do not enable fault injection. The marker is local diagnostic metadata, not evidence of a real service failure.
+
+Live candidate translation displays a Bing waiting warning after five seconds: translation queue, service initialization, or response. The elapsed value is total time since enqueue. OCR completion is explicit, pending warnings clear when the request leaves, and existing failures take precedence. Service initialization describes waiting for the shared token operation; it does not imply an additional HTTP attempt.

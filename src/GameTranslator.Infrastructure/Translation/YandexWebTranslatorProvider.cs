@@ -57,8 +57,9 @@ public sealed class YandexWebTranslatorProvider : ITranslatorProvider
                 ["lang"] = YandexHotPatch(NormalizeLanguageTag(request.TargetLanguage)),
             });
 
-        using var response = await httpClient.SendAsync(httpRequest, cancellationToken);
+        using var response = await WebTranslatorAvailability.SendAsync(httpClient, httpRequest, ProviderId, cancellationToken);
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+        WebTranslatorAvailability.ValidateResponse(ProviderId, response, responseBody);
         if (!response.IsSuccessStatusCode)
         {
             throw CreateProviderException(response.StatusCode, responseBody);
@@ -178,14 +179,7 @@ public sealed class YandexWebTranslatorProvider : ITranslatorProvider
 
     private static string CreateSafeErrorMessage(string? responseBody)
     {
-        if (string.IsNullOrWhiteSpace(responseBody))
-        {
-            return "The provider returned an empty error response.";
-        }
-
-        return responseBody.Length > 300
-            ? responseBody[..300]
-            : responseBody;
+        return "The provider rejected the request. Response details are omitted.";
     }
 
     private sealed class YandexWebResponse

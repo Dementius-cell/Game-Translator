@@ -79,10 +79,10 @@ public sealed class ProfileStorageCompositionTests : IDisposable
             services,
             descriptor => descriptor.ServiceType == typeof(ITranslatorProvider)
                 && descriptor.ImplementationType == typeof(GoogleWebTranslatorProvider));
-        Assert.Contains(
-            services,
-            descriptor => descriptor.ServiceType == typeof(ITranslatorProvider)
-                && descriptor.ImplementationType == typeof(BingWebTranslatorProvider));
+        using var container = services.BuildServiceProvider();
+        Assert.Single(container.GetServices<ITranslatorProvider>().OfType<BingWebTranslatorProvider>());
+        Assert.NotSame(container.GetRequiredService<System.Net.Http.HttpClient>(),
+            container.GetRequiredKeyedService<System.Net.Http.HttpClient>("BingWeb"));
         Assert.Contains(
             services,
             descriptor => descriptor.ServiceType == typeof(ITranslatorProvider)

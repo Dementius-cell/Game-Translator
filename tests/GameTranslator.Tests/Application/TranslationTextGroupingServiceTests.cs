@@ -10,6 +10,38 @@ public sealed class TranslationTextGroupingServiceTests
     private static readonly DateTimeOffset FrameTime = new(2026, 7, 2, 12, 0, 0, TimeSpan.Zero);
 
     [Theory]
+    [InlineData("ja", "日 本 語", "日本語")]
+    [InlineData("ja", "明 日 は 晴 れ で す。", "明日は晴れです。")]
+    [InlineData("ko", "가 나", "가 나")]
+    [InlineData("en", "Hello world", "Hello world")]
+    [InlineData("ja", "HP 10", "HP 10")]
+    public void SingleBlock_NormalizesTranslationOnly_InEveryGroupingAndOrientation(string language, string text, string expected)
+    {
+        foreach (var mode in Enum.GetValues<TranslationGroupingMode>())
+        foreach (var orientation in new[] { OcrOrientationMode.Horizontal, OcrOrientationMode.Vertical })
+        {
+            var block = new OcrTextBlock(text, new BoundingBox(10, 10, 80, 30));
+            var raw = CreateResult(300, 120, orientation, language, block);
+            var word = new OcrWord(text, block.Bounds, 90, "test");
+            var source = new OcrResult(raw.Request, raw.TextBlocks, raw.RecognizedAt, raw.TextBlockSources, new[] { word })
+            {
+                LineRecognition = new OcrLineRecognitionDiagnostics(1, 1),
+            };
+            var result = TranslationTextGroupingService.CreateTextGroupingResult(source,
+                new OcrZone { Id = "test", Name = "Test", TranslationGroupingMode = mode });
+            Assert.Same(source, result.MaskSourceResult);
+            Assert.Equal(text, Assert.Single(source.TextBlocks).Text);
+            var translated = result.TranslationSourceResult;
+            Assert.Equal(expected, Assert.Single(translated.TextBlocks).Text);
+            Assert.Equal(block.Bounds, translated.TextBlocks[0].Bounds);
+            Assert.Same(source.TextBlockSources[0], Assert.Single(translated.TextBlockSources));
+            Assert.Same(word, Assert.Single(translated.Words));
+            Assert.Same(source.LineRecognition, translated.LineRecognition);
+            if (text == expected) Assert.Same(source, translated);
+        }
+    }
+
+    [Theory]
     [InlineData(TranslationGroupingMode.WholeZone)]
     [InlineData(TranslationGroupingMode.NearbyBlocks)]
     [InlineData(TranslationGroupingMode.BlockByBlock)]
@@ -148,6 +180,73 @@ public sealed class TranslationTextGroupingServiceTests
             Assert.Single(grouped.TextBlockSources).MemberBounds);
     }
 
+    [Theory]
+    [InlineData("he", TranslationGroupingMode.WholeZone)]
+    [InlineData("heb", TranslationGroupingMode.WholeZone)]
+    [InlineData("he", TranslationGroupingMode.NearbyBlocks)]
+    public void HebrewSplitRow_PreservesMixedTextAndRawGeometry(string language, TranslationGroupingMode mode)
+    {
+        var left = new OcrTextBlock("עולם", new BoundingBox(10, 10, 35, 20));
+        var right = new OcrTextBlock("שלום HP 123", new BoundingBox(50, 10, 100, 20));
+        var next = new OcrTextBlock("שלב 45", new BoundingBox(50, 35, 100, 20));
+        var raw = CreateResult(400, 200, OcrOrientationMode.Horizontal, language, left, next, right);
+        var result = TranslationTextGroupingService.CreateTextGroupingResult(raw,
+            new OcrZone { Id = "he", Name = "Hebrew", TranslationGroupingMode = mode });
+        Assert.Equal("שלום HP 123 עולם שלב 45", Assert.Single(result.TranslationSourceResult.TextBlocks).Text);
+        Assert.Same(raw, result.MaskSourceResult);
+        Assert.Equal(new[] { left, next, right }, raw.TextBlocks);
+        Assert.Equal(new[] { right.Bounds, left.Bounds, next.Bounds },
+            Assert.Single(result.TranslationSourceResult.TextBlockSources).MemberBounds);
+        Assert.Equal(new[] { right.Bounds, left.Bounds, next.Bounds },
+            TranslationTextGroupingService.ResolveOrderedMemberBoundsForDiagnostics(raw));
+    }
+
+    [Fact]
+    public void HebrewSeparateBubbles_StaySeparateAndOrderedRightToLeft()
+    {
+        var left = new OcrTextBlock("שמאל 12", new BoundingBox(10, 10, 70, 20));
+        var right = new OcrTextBlock("ימין ABC", new BoundingBox(250, 10, 100, 20));
+        var raw = CreateResult(400, 200, OcrOrientationMode.Horizontal, "he", left, right);
+        var result = TranslationTextGroupingService.CreateTranslationSourceResult(raw,
+            new OcrZone { Id = "he", Name = "Hebrew", TranslationGroupingMode = TranslationGroupingMode.NearbyBlocks });
+        Assert.Equal(new[] { right.Text, left.Text }, result.TextBlocks.Select(block => block.Text));
+        Assert.Equal(new[] { right.Bounds, left.Bounds }, result.TextBlocks.Select(block => block.Bounds));
+        Assert.All(result.TextBlockSources, source => Assert.Single(source.MemberBounds));
+    }
+    [Theory]
+    [InlineData("ar", TranslationGroupingMode.WholeZone)]
+    [InlineData("ara", TranslationGroupingMode.WholeZone)]
+    [InlineData("ar-SA", TranslationGroupingMode.WholeZone)]
+    [InlineData("ar", TranslationGroupingMode.NearbyBlocks)]
+    public void ArabicSplitRow_PreservesMixedTextAndRawGeometry(string language, TranslationGroupingMode mode)
+    {
+        var left = new OcrTextBlock("العالم", new BoundingBox(10, 10, 35, 20));
+        var right = new OcrTextBlock("مرحبا HP 123", new BoundingBox(50, 10, 100, 20));
+        var next = new OcrTextBlock("مرحلة ٤٥", new BoundingBox(50, 35, 100, 20));
+        var raw = CreateResult(400, 200, OcrOrientationMode.Horizontal, language, left, next, right);
+        var result = TranslationTextGroupingService.CreateTextGroupingResult(raw,
+            new OcrZone { Id = "ar", Name = "Arabic", TranslationGroupingMode = mode });
+        Assert.Equal("مرحبا HP 123 العالم مرحلة ٤٥", Assert.Single(result.TranslationSourceResult.TextBlocks).Text);
+        Assert.Same(raw, result.MaskSourceResult);
+        Assert.Equal(new[] { left, next, right }, raw.TextBlocks);
+        Assert.Equal(new[] { right.Bounds, left.Bounds, next.Bounds },
+            Assert.Single(result.TranslationSourceResult.TextBlockSources).MemberBounds);
+        Assert.Equal(new[] { right.Bounds, left.Bounds, next.Bounds },
+            TranslationTextGroupingService.ResolveOrderedMemberBoundsForDiagnostics(raw));
+    }
+
+    [Fact]
+    public void ArabicSeparateBubbles_StaySeparateAndOrderedRightToLeft()
+    {
+        var left = new OcrTextBlock("يسار ١٢", new BoundingBox(10, 10, 70, 20));
+        var right = new OcrTextBlock("يمين ABC", new BoundingBox(250, 10, 100, 20));
+        var raw = CreateResult(400, 200, OcrOrientationMode.Horizontal, "ar", left, right);
+        var result = TranslationTextGroupingService.CreateTranslationSourceResult(raw,
+            new OcrZone { Id = "ar", Name = "Arabic", TranslationGroupingMode = TranslationGroupingMode.NearbyBlocks });
+        Assert.Equal(new[] { right.Text, left.Text }, result.TextBlocks.Select(block => block.Text));
+        Assert.Equal(new[] { right.Bounds, left.Bounds }, result.TextBlocks.Select(block => block.Bounds));
+        Assert.All(result.TextBlockSources, source => Assert.Single(source.MemberBounds));
+    }
     private static OcrResult CreateResult(int inputWidth, int inputHeight, params OcrTextBlock[] blocks)
     {
         return CreateResult(

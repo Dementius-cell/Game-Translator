@@ -8,7 +8,8 @@ public sealed class LiveTranslationPipelineUpdate
         IEnumerable<string>? cancelledZoneIds = null,
         CandidatePipelineReadiness? candidateReadiness = null,
         IEnumerable<LiveCandidateLifecycleEvent>? candidateLifecycleEvents = null,
-        int droppedCandidateLifecycleEventCount = 0)
+        int droppedCandidateLifecycleEventCount = 0,
+        IEnumerable<GameTranslator.Application.Translation.TranslationProviderRequestDiagnosticsSnapshot>? pendingTranslations = null)
     {
         BatchResult = batchResult ?? throw new ArgumentNullException(nameof(batchResult));
         if (droppedCandidateLifecycleEventCount < 0)
@@ -23,11 +24,14 @@ public sealed class LiveTranslationPipelineUpdate
         CandidateReadiness = candidateReadiness ?? CandidatePipelineReadiness.Disabled;
         CandidateLifecycleEvents = (candidateLifecycleEvents ?? Array.Empty<LiveCandidateLifecycleEvent>()).ToArray();
         DroppedCandidateLifecycleEventCount = droppedCandidateLifecycleEventCount;
+        PendingTranslations = (pendingTranslations ?? []).ToArray();
     }
 
     public TranslationPipelineBatchResult BatchResult { get; }
 
     public bool OverlayChanged { get; }
+
+    public IReadOnlyList<GameTranslator.Application.Translation.TranslationProviderRequestDiagnosticsSnapshot> PendingTranslations { get; }
 
     public IReadOnlyList<string> CancelledZoneIds { get; }
 

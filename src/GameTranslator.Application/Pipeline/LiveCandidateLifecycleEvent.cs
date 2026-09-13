@@ -627,6 +627,10 @@ public enum LiveCandidateLifecycleEventKind
     CandidateRemoved,
     OverlaySnapshotPublished,
     CandidateEmptyOcrRetryScheduled,
+    CandidateOcrCompleted,
+    CandidateTranslationQueueWaitWarning,
+    CandidateTranslationCredentialsWaitWarning,
+    CandidateTranslationResponseWaitWarning,
 }
 
 public enum LiveCandidateCancellationReason

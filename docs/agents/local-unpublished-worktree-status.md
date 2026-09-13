@@ -1,5 +1,11 @@
 # Local unpublished worktree status
 
+## Current calibration decision — 2026-09-13
+
+The owner approved [issue #35 artifact disposition](../testing/calibration-artifact-disposition.md): retain active calibration test source and its local changes; remove nine generated PNG/JSON outputs from tracking while retaining them locally. Earlier protection instructions below are historical and superseded for these ten paths. Other local changes are not authorized for bulk staging, reverting or deletion. The r51 source baseline passes 745/745 tests and is being committed locally for portable packaging. Published remote source remains 0900560 until an explicit push. See [r51 handoff](portable-r51-watermark-handoff.md) for the current delivery boundary.
+
+The remainder of this document records historical snapshots, not the current protected-path policy.
+
 ## Publication update — 2026-09-10
 
 Current source includes Korean detector-line OCR, preserved Korean spaces, ADR-032 and punctuation-only translation filtering. Local r46 package smoke and integrity passed. Owner live evidence confirms punctuation filtering and complete recognized line counts; numeric OCR instability and letter/digit watermark noise remain open. A roughly 10-second first-result delay was observed once; a startup timeout/restart is suspected, not proven. Three subsequent detector starts completed in 3.1–3.4 seconds. Local crop experiments reproduced digit instability; switching RawLine to SingleLine or adding crop padding did not provide a reliable correction, so no speculative OCR change was shipped.

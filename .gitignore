@@ -8,6 +8,8 @@
 # Calibration material and release packages are local-only. They can contain
 # third-party game or manga content and must not be added to GitHub.
 /artifacts/calibration/
+# Issue #35 (2026-09-13): nine generated evidence files are untracked;
+# retain explicitly promoted fixture inputs and calibration test source.
 /artifacts/releases/
 bin/
 obj/

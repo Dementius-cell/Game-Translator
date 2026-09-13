@@ -34,6 +34,25 @@ public static class TranslationTextGroupingService
             };
         }
 
+        // A single block bypasses group construction, but still needs the same text
+        // normalization as each member of a multi-block translation group.
+        if (sourceResult.TextBlocks.Count == 1)
+        {
+            var block = sourceResult.TextBlocks[0];
+            var normalized = OcrTextNormalizer.NormalizeForComparison(block.Text);
+            if (!string.Equals(normalized, block.Text, StringComparison.Ordinal))
+            {
+                return new OcrResult(sourceResult.Request,
+                    new[] { new OcrTextBlock(normalized, block.Bounds) },
+                    sourceResult.RecognizedAt, sourceResult.TextBlockSources, sourceResult.Words)
+                {
+                    LineRecognition = sourceResult.LineRecognition,
+                };
+            }
+
+            return sourceResult;
+        }
+
         return zone.TranslationGroupingMode switch
         {
             TranslationGroupingMode.WholeZone => CreateWholeZoneResult(sourceResult),
@@ -132,7 +151,7 @@ public static class TranslationTextGroupingService
         var groups = OrderGroupsByReadingPosition(
             ClusterNearbyBlocks(sourceResult.TextBlocks, thresholdPixels)
                 .Select(group => OrderBlocksByReadingPosition(sourceResult, group))
-                .ToArray());
+                .ToArray(), UsesRightToLeftBlockOrder(sourceResult));
         var groupedBlocks = groups
             .Select(group => CreateTextBlockFromGroup(sourceResult, group))
             .Where(group => group is not null)
@@ -185,6 +204,11 @@ public static class TranslationTextGroupingService
         return groups;
     }
 
+    private static bool UsesRightToLeftBlockOrder(OcrResult sourceResult) =>
+        WritingSystemGroupingProfileResolver.Resolve(sourceResult.Request.Language, sourceResult.Request.OrientationMode)
+            is WritingSystemGroupingProfile.RightToLeftHebrew ||
+        (TesseractLanguageCatalog.TryMapLanguageTagToTrainedDataCode(sourceResult.Request.Language, out var code)
+            && code == "ara");
     private static IReadOnlyList<OcrTextBlock> OrderBlocksByReadingPosition(
         OcrResult sourceResult,
         IReadOnlyList<OcrTextBlock> blocks)
@@ -200,11 +224,11 @@ public static class TranslationTextGroupingService
                 sourceResult.Request.OrientationMode)
             is WritingSystemGroupingProfile.CjkVertical
             ? OrderVerticalCjkBlocksByReadingPosition(blocks)
-            : OrderHorizontalBlocksByReadingPosition(blocks);
+            : OrderHorizontalBlocksByReadingPosition(blocks, UsesRightToLeftBlockOrder(sourceResult));
     }
 
     private static IReadOnlyList<OcrTextBlock> OrderHorizontalBlocksByReadingPosition(
-        IReadOnlyList<OcrTextBlock> blocks)
+        IReadOnlyList<OcrTextBlock> blocks, bool rightToLeft = false)
     {
 
         var rows = new List<List<OcrTextBlock>>();
@@ -223,7 +247,7 @@ public static class TranslationTextGroupingService
         return rows
             .OrderBy(row => row.Min(block => block.Bounds.Y))
             .ThenBy(row => row.Min(block => block.Bounds.X))
-            .SelectMany(row => row.OrderBy(block => block.Bounds.X).ThenBy(block => block.Bounds.Y))
+            .SelectMany(row => row.OrderBy(block => rightToLeft ? -block.Bounds.X : block.Bounds.X).ThenBy(block => block.Bounds.Y))
             .ToArray();
     }
 
@@ -255,7 +279,7 @@ public static class TranslationTextGroupingService
     }
 
     private static IReadOnlyList<IReadOnlyList<OcrTextBlock>> OrderGroupsByReadingPosition(
-        IReadOnlyList<IReadOnlyList<OcrTextBlock>> groups)
+        IReadOnlyList<IReadOnlyList<OcrTextBlock>> groups, bool rightToLeft = false)
     {
         if (groups.Count <= 1)
         {
@@ -278,7 +302,7 @@ public static class TranslationTextGroupingService
         return rows
             .OrderBy(row => row.Min(group => CreateCombinedBounds(group).Y))
             .ThenBy(row => row.Min(group => CreateCombinedBounds(group).X))
-            .SelectMany(row => row.OrderBy(group => CreateCombinedBounds(group).X).ThenBy(group => CreateCombinedBounds(group).Y))
+            .SelectMany(row => row.OrderBy(group => rightToLeft ? -CreateCombinedBounds(group).X : CreateCombinedBounds(group).X).ThenBy(group => CreateCombinedBounds(group).Y))
             .ToArray();
     }
 

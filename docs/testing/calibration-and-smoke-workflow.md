@@ -2,6 +2,8 @@
 
 Status: active test-architecture workflow for issue #35.
 
+The [2026-09-13 artifact disposition](calibration-artifact-disposition.md) resolves the former ten-path hold: retain test code, untrack nine generated outputs, and keep promoted fixture inputs.
+
 This workflow keeps real OCR/overlay scenarios visible without letting generated evidence drift into production behavior or accidental commits.
 
 ## Evidence Buckets
@@ -32,7 +34,7 @@ Screenshots and contact sheets are supporting evidence. They should not be the o
 
 | Artifact or scenario | Decision |
 | --- | --- |
-| `artifacts/calibration/full-screen-mixed-content-frame/**` | Tracked deterministic fixture; keep. It represents the full-image OCR capture scenario with mixed language, orientation, and text sizes. |
+| `artifacts/calibration/full-screen-mixed-content-frame/**` | Scenario generated from the test's code-defined fixture. Keep the existing tracked manifest; clean-frame PNG, scorecard and readable crop/overlay PNGs are generated local-only outputs under the 2026-09-13 disposition. |
 | `artifacts/calibration/vertical-long-translation-fit-frame/**` | Tracked deterministic fixture; keep. It asserts accepted vertical long-translation fit values through a focused calibration test. |
 | `artifacts/calibration/mixed-worst-case-frame/**` | Candidate review package. Keep local until readable overlay rules and accepted values are chosen. |
 | `artifacts/calibration/mixed-orientation-frame/**` | Candidate review package. Keep local until it has a focused fixture contract distinct from the full-screen mixed fixture. |

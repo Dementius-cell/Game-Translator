@@ -13,4 +13,9 @@ public enum TranslatorProviderFailureKind
     ProviderCode,
     AllProvidersFailed,
     Unexpected,
+    Dns,
+    Connection,
+    Tls,
+    Network,
+    UserVerificationRequired,
 }

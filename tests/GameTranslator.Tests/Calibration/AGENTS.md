@@ -26,6 +26,8 @@ A calibration result can only become application behavior after human visual ver
 
 ## Fixture Promotion Workflow
 
+- Follow `docs/testing/calibration-artifact-disposition.md` for the 2026-09-13 owner decision: the nine former protected PNG/JSON outputs are local-only; retain active test source and promoted fixture inputs. Earlier ten-path holds are superseded by this disposition. Do not force-add generated evidence during test maintenance.
+
 - Use `docs/testing/calibration-and-smoke-workflow.md` as the source of truth for generated evidence classification.
 - Keep exploratory scorecards, contact sheets, manual smoke screenshots, and debug reports local by default.
 - Promote only the minimal deterministic fixture contract that a calibration test consumes: fixed source frame or manifest, expected values, and any required stable review image.

@@ -419,6 +419,7 @@ public sealed class TranslationPipelineService
                 : ocrService.RecognizeAsync(request, cancellationToken));
         var sourceResult = ocrMeasurement.Value;
         ocrElapsed = ocrMeasurement.Elapsed;
+        providerRequestDiagnosticsCollector?.RecordOcrCompleted(sourceResult.TextBlocks.Count, ocrElapsed);
 
         if (candidateRecognitionContext is { } candidateContext
             && !candidateRegionOcrService.IsRecognizedCandidateAccepted(
@@ -550,6 +551,28 @@ public sealed class TranslationPipelineService
                                     missingTexts,
                                     timeProvider.GetUtcNow())
                             : null;
+                        async Task<TranslateResponse> TranslateMissingAsync(CancellationToken translationCancellation)
+                        {
+                            var credentialsMeasurement = await RunTimedStageAsync(
+                                TranslationPipelineStage.Credentials,
+                                () => credentialService.CreateCredentialsAsync(profile.TranslatorSettings.Provider, translationCancellation));
+                            credentialsElapsed += credentialsMeasurement.Elapsed;
+                            var translationMeasurement = await RunTimedStageAsync(
+                                TranslationPipelineStage.Translation,
+                                () => translatorManager.TranslateAsync(profile.TranslatorSettings, missingTexts,
+                                    credentialsMeasurement.Value, translationCancellation, providerRequestDiagnostics));
+                            translationElapsed += translationMeasurement.Elapsed;
+                            return translationMeasurement.Value;
+                        }
+
+                        if (string.Equals(profile.TranslatorSettings.Provider, "BingWeb", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var bounded = await RunTimedStageAsync(TranslationPipelineStage.Translation,
+                                () => TranslationRequestBudget.RunAsync(TranslateMissingAsync,
+                                    candidateTranslationLimiter, timeProvider, cancellationToken, providerRequestDiagnostics));
+                            return bounded.Value;
+                        }
+
                         var acquiredCandidateTranslationSlot = false;
                         if (candidateTranslationLimiter is not null)
                         {
@@ -559,22 +582,7 @@ public sealed class TranslationPipelineService
 
                         try
                         {
-                            var credentialsMeasurement = await RunTimedStageAsync(
-                                TranslationPipelineStage.Credentials,
-                                () => credentialService.CreateCredentialsAsync(profile.TranslatorSettings.Provider, cancellationToken));
-                            credentialsElapsed += credentialsMeasurement.Elapsed;
-
-                            var translationMeasurement = await RunTimedStageAsync(
-                                TranslationPipelineStage.Translation,
-                                () => translatorManager.TranslateAsync(
-                                    profile.TranslatorSettings,
-                                    missingTexts,
-                                    credentialsMeasurement.Value,
-                                    cancellationToken,
-                                    providerRequestDiagnostics));
-                            translationElapsed += translationMeasurement.Elapsed;
-
-                            return translationMeasurement.Value;
+                            return await TranslateMissingAsync(cancellationToken);
                         }
                         finally
                         {
@@ -1496,6 +1504,23 @@ public sealed class TranslationPipelineService
     {
         private readonly object syncRoot = new();
         private readonly List<TranslationProviderRequestDiagnostics> requests = new();
+        private (int Count, TimeSpan Elapsed)? completedOcr;
+        public HashSet<string> ReportedWaitWarnings { get; } = new(StringComparer.Ordinal);
+
+        public void RecordOcrCompleted(int count, TimeSpan elapsed)
+        {
+            lock (syncRoot) completedOcr = (count, elapsed);
+        }
+
+        public (int Count, TimeSpan Elapsed)? TakeCompletedOcr()
+        {
+            lock (syncRoot)
+            {
+                var result = completedOcr;
+                completedOcr = null;
+                return result;
+            }
+        }
 
         public TranslationProviderRequestDiagnostics Begin(
             IEnumerable<string> inputTexts,
@@ -1702,6 +1727,14 @@ public sealed class TranslationPipelineService
             bool overlayChanged,
             IEnumerable<string> cancelledZoneIds)
         {
+            var pendingTranslations = new List<TranslationProviderRequestDiagnosticsSnapshot>();
+            foreach (var candidate in zoneStates.Values.SelectMany(zone => zone.CandidateStates.Values))
+            {
+                if (candidate.ActiveWork is not { } work) continue;
+                CollectCandidateProgress(candidate, work);
+                pendingTranslations.AddRange(work.ProviderRequestDiagnostics?.CreateSnapshots()
+                    .Where(request => request.Outcome == TranslationProviderInvocationOutcome.Pending) ?? []);
+            }
             var lifecycleEventsSinceLastUpdate = candidateLifecycleEventsSinceLastUpdate;
             candidateLifecycleEventsSinceLastUpdate = new List<LiveCandidateLifecycleEvent>();
             return new LiveTranslationPipelineUpdate(
@@ -1710,7 +1743,36 @@ public sealed class TranslationPipelineService
                 cancelledZoneIds,
                 candidateReadiness,
                 lifecycleEventsSinceLastUpdate,
-                droppedCandidateLifecycleEventCount);
+                droppedCandidateLifecycleEventCount,
+                pendingTranslations);
+        }
+
+        private void CollectCandidateProgress(LiveCandidateState candidate, LiveZoneWork work)
+        {
+            if (work.ProviderRequestDiagnostics is not { } diagnostics) return;
+            if (diagnostics.TakeCompletedOcr() is { } ocr)
+                RecordLifecycleEvent(LiveCandidateLifecycleEventKind.CandidateOcrCompleted,
+                    zoneId: candidate.SourceZoneId, candidateId: candidate.Id,
+                    candidateRevision: work.CandidateRevision, workAttempt: candidate.WorkAttempt,
+                    recognizedBlockCount: ocr.Count, elapsed: ocr.Elapsed);
+            foreach (var request in diagnostics.CreateSnapshots())
+            {
+                var elapsed = service.timeProvider.GetUtcNow() - request.QueuedAt;
+                if (request.Outcome != TranslationProviderInvocationOutcome.Pending || elapsed < TimeSpan.FromSeconds(5)
+                    || !diagnostics.ReportedWaitWarnings.Add($"{request.RequestId}:{request.WaitStage}")) continue;
+                var kind = request.WaitStage switch
+                {
+                    TranslationProviderWaitStage.Queue => LiveCandidateLifecycleEventKind.CandidateTranslationQueueWaitWarning,
+                    TranslationProviderWaitStage.Credentials => LiveCandidateLifecycleEventKind.CandidateTranslationCredentialsWaitWarning,
+                    _ => LiveCandidateLifecycleEventKind.CandidateTranslationResponseWaitWarning,
+                };
+                RecordLifecycleEvent(kind, zoneId: candidate.SourceZoneId, candidateId: candidate.Id,
+                    candidateRevision: work.CandidateRevision, workAttempt: candidate.WorkAttempt,
+                    elapsed: elapsed, providerDiagnosticRequestId: request.RequestId,
+                    providerRequestQueuedAt: request.QueuedAt,
+                    providerInvocationStartedAt: request.ProviderInvocationStartedAt,
+                    providerInvocationOutcome: request.Outcome);
+            }
         }
 
         private bool PublishOverlaySnapshotIfReady(
@@ -2008,6 +2070,7 @@ public sealed class TranslationPipelineService
                 state.SourceIdentity = FrameFingerprint.FromFrame(capturedZone.Frame);
                 state.Result = null;
                 state.Failure = null;
+                state.TranslationRetry.Reset();
                 StartWork(state, capturedZone);
                 return hadPublishedResult;
             }
@@ -2119,7 +2182,10 @@ public sealed class TranslationPipelineService
                     StringComparison.Ordinal);
                 var sourceChanged = !candidateState.SourceIdentity.Matches(region.Frame);
                 if (geometryChanged
-                    && matchedGeometryJitter
+                    && (matchedGeometryJitter
+                        || (!sourceChanged
+                            && candidateState.Region.Candidate.Bounds == region.Candidate.Bounds
+                            && HasBoundedCandidateMemberGeometryJitter(candidateState.Region, region, 1)))
                     && HasBoundedCandidateMemberGeometryJitter(candidateState.Region, region))
                 {
                     candidateState.Region = region;
@@ -2155,6 +2221,7 @@ public sealed class TranslationPipelineService
                     candidateState.Result = null;
                     candidateState.ResultPublishedAt = null;
                     candidateState.Failure = null;
+                    candidateState.TranslationRetry.Reset();
                     candidateState.Revision = checked(candidateState.Revision + 1);
                     ClearCandidateTextStability(candidateState);
                     ResetCandidateEmptyOcrRetryState(candidateState);
@@ -2211,6 +2278,7 @@ public sealed class TranslationPipelineService
                     candidateState.Result = null;
                     candidateState.ResultPublishedAt = null;
                     candidateState.Failure = null;
+                    candidateState.TranslationRetry.Reset();
                     candidateState.Revision = checked(candidateState.Revision + 1);
                     ClearCandidateTextStability(candidateState);
                     ResetCandidateEmptyOcrRetryState(candidateState);
@@ -2326,7 +2394,8 @@ public sealed class TranslationPipelineService
 
         private static bool HasBoundedCandidateMemberGeometryJitter(
             TextCandidateRegion existingRegion,
-            TextCandidateRegion currentRegion)
+            TextCandidateRegion currentRegion,
+            int maximumJitterPixels = MaximumCandidateGeometryJitterPixels)
         {
             var existingMembers = OrderCandidateMemberBounds(existingRegion.Candidate.SourceCandidateBounds);
             var currentMembers = OrderCandidateMemberBounds(currentRegion.Candidate.SourceCandidateBounds);
@@ -2337,7 +2406,7 @@ public sealed class TranslationPipelineService
 
             return existingMembers
                 .Zip(currentMembers)
-                .All(pair => HasBoundedCandidateGeometryJitter(pair.First, pair.Second));
+                .All(pair => HasBoundedCandidateGeometryJitter(pair.First, pair.Second, maximumJitterPixels));
         }
 
         private static BoundingBox[] OrderCandidateMemberBounds(IEnumerable<BoundingBox> bounds)
@@ -2350,12 +2419,13 @@ public sealed class TranslationPipelineService
                 .ToArray();
         }
 
-        private static bool HasBoundedCandidateGeometryJitter(BoundingBox anchor, BoundingBox current)
+        private static bool HasBoundedCandidateGeometryJitter(BoundingBox anchor, BoundingBox current,
+            int maximumJitterPixels = MaximumCandidateGeometryJitterPixels)
         {
-            return Math.Abs(anchor.X - current.X) <= MaximumCandidateGeometryJitterPixels
-                && Math.Abs(anchor.Y - current.Y) <= MaximumCandidateGeometryJitterPixels
-                && Math.Abs(anchor.Right - current.Right) <= MaximumCandidateGeometryJitterPixels
-                && Math.Abs(anchor.Bottom - current.Bottom) <= MaximumCandidateGeometryJitterPixels;
+            return Math.Abs(anchor.X - current.X) <= maximumJitterPixels
+                && Math.Abs(anchor.Y - current.Y) <= maximumJitterPixels
+                && Math.Abs(anchor.Right - current.Right) <= maximumJitterPixels
+                && Math.Abs(anchor.Bottom - current.Bottom) <= maximumJitterPixels;
         }
 
         private static double CalculateIntersectionOverUnion(BoundingBox left, BoundingBox right)
@@ -2523,15 +2593,15 @@ public sealed class TranslationPipelineService
             return new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         }
 
-        private static bool ShouldProcessStableFrame(LiveZoneState state)
+        private bool ShouldProcessStableFrame(LiveZoneState state)
         {
-            return state.Failure is null
+            return (state.Failure is null || state.TranslationRetry.IsDue(service.timeProvider.GetUtcNow()))
                 && (state.Result is null || state.Result.Optimization.TranslationSkipped);
         }
 
-        private static bool ShouldProcessStableFrame(LiveCandidateState state)
+        private bool ShouldProcessStableFrame(LiveCandidateState state)
         {
-            return state.Failure is null
+            return (state.Failure is null || state.TranslationRetry.IsDue(service.timeProvider.GetUtcNow()))
                 && (state.Result is null || state.Result.Optimization.TranslationSkipped);
         }
 
@@ -2663,6 +2733,7 @@ public sealed class TranslationPipelineService
                     {
                         state.Result = await work.Task;
                         state.Failure = null;
+                        state.TranslationRetry.Reset();
                         overlayChanged = true;
                     }
                     catch (OperationCanceledException) when (work.Cancellation.IsCancellationRequested)
@@ -2672,6 +2743,7 @@ public sealed class TranslationPipelineService
                     {
                         state.Result = null;
                         state.Failure = CreateZoneFailure(state.Zone, exception);
+                        state.TranslationRetry.Schedule(exception, service.timeProvider.GetUtcNow());
                         overlayChanged = true;
                     }
                     finally
@@ -2683,6 +2755,7 @@ public sealed class TranslationPipelineService
                 foreach (var candidateState in state.CandidateStates.Values.ToArray())
                 {
                     var candidateWork = candidateState.ActiveWork;
+                    if (candidateWork is not null) CollectCandidateProgress(candidateState, candidateWork);
                     if (candidateWork is null || !candidateWork.Task.IsCompleted)
                     {
                         continue;
@@ -2712,6 +2785,7 @@ public sealed class TranslationPipelineService
                         UpdateCandidateEmptyOcrRetryState(candidateState, completedResult);
                         candidateState.ResultPublishedAt = null;
                         candidateState.Failure = null;
+                        candidateState.TranslationRetry.Reset();
                         RecordCandidateLifecycleEvent(
                             completedResult.Optimization.TranslationSkipped
                                 ? LiveCandidateLifecycleEventKind.CandidateWorkDeferredForStability
@@ -2729,6 +2803,7 @@ public sealed class TranslationPipelineService
                         candidateState.Result = null;
                         candidateState.ResultPublishedAt = null;
                         candidateState.Failure = CreateZoneFailure(candidateState.Zone, exception);
+                        candidateState.TranslationRetry.Schedule(exception, service.timeProvider.GetUtcNow());
                         var failureDiagnostics = CreateOcrFailureDiagnostics(exception);
                         var providerFailureDiagnostics = CreateProviderFailureDiagnostics(exception);
                         RecordCandidateLifecycleEvent(
@@ -3344,6 +3419,48 @@ public sealed class TranslationPipelineService
             ObjectDisposedException.ThrowIf(disposed, this);
         }
 
+        private sealed class TranslationFailureRetryState
+        {
+            private int consecutiveFailures;
+            private DateTimeOffset? retryAt;
+
+            public bool IsDue(DateTimeOffset now) => retryAt is { } due && now >= due;
+
+            public void Reset()
+            {
+                consecutiveFailures = 0;
+                retryAt = null;
+            }
+
+            public void Schedule(TranslationPipelineException exception, DateTimeOffset now)
+            {
+                retryAt = null;
+                var failure = CreateProviderFailureDiagnostics(exception);
+                if (exception.Stage != TranslationPipelineStage.Translation
+                    || failure.FailureKind is not (TranslatorProviderFailureKind.Dns
+                        or TranslatorProviderFailureKind.Connection
+                        or TranslatorProviderFailureKind.Network
+                        or TranslatorProviderFailureKind.Timeout
+                        or TranslatorProviderFailureKind.Throttled))
+                {
+                    Reset();
+                    return;
+                }
+
+                consecutiveFailures = Math.Min(consecutiveFailures + 1, 3);
+                var delay = TimeSpan.FromSeconds(consecutiveFailures switch { 1 => 5, 2 => 10, _ => 20 });
+                if (failure.RetryAfter is { } retryAfter && retryAfter > delay)
+                {
+                    delay = retryAfter;
+                }
+
+                retryAt = now + delay;
+                if (failure.NextRetryAt is { } providerRetryAt && providerRetryAt > retryAt.Value)
+                {
+                    retryAt = providerRetryAt;
+                }
+            }
+        }
         private sealed class LiveZoneState
         {
             public LiveZoneState(OcrZone zone)
@@ -3360,6 +3477,8 @@ public sealed class TranslationPipelineService
             public TranslationPipelineResult? Result { get; set; }
 
             public TranslationPipelineZoneFailure? Failure { get; set; }
+
+            public TranslationFailureRetryState TranslationRetry { get; } = new();
 
             public LiveZoneWork? ActiveWork { get; set; }
 
@@ -3427,6 +3546,8 @@ public sealed class TranslationPipelineService
             public DateTimeOffset? ResultPublishedAt { get; set; }
 
             public TranslationPipelineZoneFailure? Failure { get; set; }
+
+            public TranslationFailureRetryState TranslationRetry { get; } = new();
 
             public LiveZoneWork? ActiveWork { get; set; }
 

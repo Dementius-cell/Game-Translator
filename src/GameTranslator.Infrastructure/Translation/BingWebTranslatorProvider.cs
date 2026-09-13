@@ -11,7 +11,7 @@ namespace GameTranslator.Infrastructure.Translation;
 /// <summary>
 /// Direct Bing Translate mode compatible with ScreTran's GTranslate 2.2.8 BingTranslator.
 /// </summary>
-public sealed class BingWebTranslatorProvider : ITranslatorProvider
+public sealed class BingWebTranslatorProvider : ITranslatorProvider, IDisposable
 {
     private const int TimeoutFailureThreshold = 2;
     private const string ScreTranBingIid = "translator.5024.1";
@@ -22,9 +22,11 @@ public sealed class BingWebTranslatorProvider : ITranslatorProvider
     private readonly TimeProvider timeProvider;
     private readonly TimeSpan requestTimeout;
     private readonly TimeSpan defaultCooldown;
-    private readonly SemaphoreSlim credentialsLock = new(1, 1);
+    private readonly object credentialsLock = new();
+    private readonly CancellationTokenSource lifetime = new();
+    private readonly Dictionary<Uri, CredentialsFlight> credentialsFlights = new();
+    private bool disposed;
     private readonly object providerHealthLock = new();
-    private BingWebCredentials? credentials;
     private int consecutiveTimeoutCount;
     private ProviderCooldown? cooldown;
 
@@ -144,6 +146,7 @@ public sealed class BingWebTranslatorProvider : ITranslatorProvider
             request.Diagnostics,
             cancellationToken);
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+        WebTranslatorAvailability.ValidateResponse(ProviderId, response, responseBody, handleHttpErrors: false);
         if (!response.IsSuccessStatusCode)
         {
             throw CreateProviderException(response, responseBody);
@@ -186,45 +189,98 @@ public sealed class BingWebTranslatorProvider : ITranslatorProvider
         TranslationProviderRequestDiagnostics? diagnostics,
         CancellationToken cancellationToken)
     {
-        if (credentials is { ExpiresAt: var expiresAt } cached && expiresAt > timeProvider.GetUtcNow())
+        cancellationToken.ThrowIfCancellationRequested();
+        CredentialsFlight flight;
+        lock (credentialsLock)
         {
-            return cached;
+            ObjectDisposedException.ThrowIf(disposed, this);
+            if (!credentialsFlights.TryGetValue(endpoint, out flight!)
+                || flight.Task.IsFaulted || flight.Task.IsCanceled
+                || (flight.Task.IsCompletedSuccessfully && flight.Task.Result.ExpiresAt <= timeProvider.GetUtcNow()))
+            {
+                // Provider-owned lifetime: individual OCR candidates only cancel their wait.
+                flight = new CredentialsFlight();
+                flight.Task = FetchCredentialsAsync(endpoint, flight.Diagnostics, lifetime.Token);
+                credentialsFlights[endpoint] = flight;
+                _ = flight.Task.ContinueWith(task => { _ = task.Exception; },
+                    CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
+            }
         }
 
-        await credentialsLock.WaitAsync(cancellationToken);
         try
         {
-            if (credentials is { ExpiresAt: var expiresAtAfterLock } cachedAfterLock
-                && expiresAtAfterLock > timeProvider.GetUtcNow())
-            {
-                return cachedAfterLock;
-            }
-
-            using var httpRequest = new HttpRequestMessage(
-                HttpMethod.Get,
-                new Uri($"{endpoint.ToString().TrimEnd('/')}/translator"));
-            AddBrowserHeaders(httpRequest);
-
-            using var response = await SendWithTimeoutAsync(
-                httpRequest,
-                TranslationProviderNetworkRequestKind.Credentials,
-                diagnostics,
-                cancellationToken);
-            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-            if (!response.IsSuccessStatusCode)
-            {
-                throw CreateProviderException(response, responseBody);
-            }
-
-            credentials = ParseCredentials(responseBody);
-            return credentials;
+            return await flight.Task.WaitAsync(cancellationToken);
         }
         finally
         {
-            credentialsLock.Release();
+            // Attribute the shared HTTP attempt once, to a waiter that observed completion.
+            // Cancelled waiters must not mark the still-running shared request cancelled.
+            if (!cancellationToken.IsCancellationRequested && flight.Task.IsCompleted && diagnostics is not null
+                && Interlocked.CompareExchange(ref flight.DiagnosticsClaimed, 1, 0) == 0)
+            {
+                foreach (var attempt in flight.Diagnostics.CreateSnapshot().NetworkAttempts)
+                {
+                    var id = diagnostics.MarkNetworkRequestStarted(attempt.Kind, attempt.StartedAt);
+                    if (attempt.CompletedAt is { } completedAt)
+                        diagnostics.MarkNetworkRequestCompleted(id, attempt.Outcome, completedAt, attempt.StatusCode);
+                }
+            }
         }
     }
 
+    private async Task<BingWebCredentials> FetchCredentialsAsync(
+        Uri endpoint, TranslationProviderRequestDiagnostics diagnostics, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await FetchCredentialsAttemptAsync(endpoint, diagnostics, cancellationToken);
+        }
+        catch (TranslatorProviderException exception) when (
+            exception.FailureKind == TranslatorProviderFailureKind.Timeout
+            && exception.RetryAfter is null
+            && exception.InnerException is OperationCanceledException { InnerException: TimeoutException }
+            && !cancellationToken.IsCancellationRequested)
+        {
+            // Only the shared, idempotent bootstrap gets one transport-timeout retry.
+            // HTTP errors, request-budget timeouts and translation POSTs are not replayed here.
+            return await FetchCredentialsAttemptAsync(endpoint, diagnostics, cancellationToken);
+        }
+    }
+
+    private async Task<BingWebCredentials> FetchCredentialsAttemptAsync(
+        Uri endpoint, TranslationProviderRequestDiagnostics diagnostics, CancellationToken cancellationToken)
+    {
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Get,
+            new Uri($"{endpoint.ToString().TrimEnd('/')}/translator"));
+        AddBrowserHeaders(httpRequest);
+        using var response = await SendWithTimeoutAsync(httpRequest,
+            TranslationProviderNetworkRequestKind.Credentials, diagnostics, cancellationToken);
+        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+        WebTranslatorAvailability.ValidateResponse(ProviderId, response, responseBody, expectsJson: false, handleHttpErrors: false);
+        if (!response.IsSuccessStatusCode)
+            throw CreateProviderException(response, responseBody);
+        return ParseCredentials(responseBody);
+    }
+
+    public void Dispose()
+    {
+        lock (credentialsLock)
+        {
+            if (disposed) return;
+            disposed = true;
+            lifetime.Cancel();
+            lifetime.Dispose();
+            credentialsFlights.Clear();
+        }
+    }
+
+    private sealed class CredentialsFlight
+    {
+        public Task<BingWebCredentials> Task { get; set; } = null!;
+        public TranslationProviderRequestDiagnostics Diagnostics { get; } = new(new[] { "credentials bootstrap" }, DateTimeOffset.UtcNow);
+        public int DiagnosticsClaimed;
+    }
     private static Uri CreateTranslateUri(Uri endpoint, BingWebCredentials credentialsSnapshot)
     {
         var root = endpoint.ToString().TrimEnd('/');
@@ -307,6 +363,13 @@ public sealed class BingWebTranslatorProvider : ITranslatorProvider
                 timeProvider.GetUtcNow());
             throw RecordTimeout(exception);
         }
+        catch (OperationCanceledException exception)
+            when (!cancellationToken.IsCancellationRequested && exception.InnerException is TimeoutException)
+        {
+            diagnostics?.MarkNetworkRequestCompleted(attemptId!, TranslationProviderNetworkRequestOutcome.Timeout,
+                timeProvider.GetUtcNow());
+            throw RecordTimeout(exception);
+        }
         catch (OperationCanceledException)
         {
             diagnostics?.MarkNetworkRequestCompleted(
@@ -314,6 +377,12 @@ public sealed class BingWebTranslatorProvider : ITranslatorProvider
                 TranslationProviderNetworkRequestOutcome.Cancelled,
                 timeProvider.GetUtcNow());
             throw;
+        }
+        catch (HttpRequestException exception)
+        {
+            diagnostics?.MarkNetworkRequestCompleted(attemptId!, TranslationProviderNetworkRequestOutcome.Failed,
+                timeProvider.GetUtcNow());
+            throw WebTranslatorAvailability.ClassifyNetworkFailure(ProviderId, exception);
         }
         catch
         {
@@ -385,7 +454,7 @@ public sealed class BingWebTranslatorProvider : ITranslatorProvider
                 return new TranslatorProviderException(
                     ProviderId,
                     TranslatorProviderFailureKind.Timeout,
-                    $"BingWeb did not respond within {FormatDuration(requestTimeout)}. No automatic retry was sent; one more consecutive timeout will pause the provider.",
+                    "BingWeb connection or request timed out. One more consecutive timeout will pause the provider.",
                     exception,
                     consecutiveFailureCount: consecutiveTimeoutCount);
             }
@@ -533,14 +602,7 @@ public sealed class BingWebTranslatorProvider : ITranslatorProvider
 
     private static string CreateSafeErrorMessage(string? responseBody)
     {
-        if (string.IsNullOrWhiteSpace(responseBody))
-        {
-            return "The provider returned an empty error response.";
-        }
-
-        return responseBody.Length > 300
-            ? responseBody[..300]
-            : responseBody;
+        return "The provider rejected the request. Response details are omitted.";
     }
 
     private static void AddBrowserHeaders(HttpRequestMessage request)

@@ -2,6 +2,8 @@
 
 Status: active documentation hygiene rule.
 
+The [2026-09-13 calibration disposition](testing/calibration-artifact-disposition.md) removes nine generated files from tracking while retaining active test source and promoted fixture inputs. It supersedes historical ten-path preservation holds.
+
 This project uses generated screenshots, JSON scorecards, debug reports, and smoke summaries as review evidence. These files do not all have the same availability in a clean checkout, so documentation must say what kind of artifact a path refers to.
 
 ## Artifact Categories

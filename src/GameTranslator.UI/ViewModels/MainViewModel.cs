@@ -513,6 +513,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private OcrResult? latestOcrPreviewResult;
     private IReadOnlyList<CandidateGroupingDebugEntry> latestCandidateGroupingEntries = Array.Empty<CandidateGroupingDebugEntry>();
     private readonly List<LiveCandidateLifecycleEvent> latestCandidateLifecycleEvents = new();
+    private bool showingTranslationWaitStatus;
     private int droppedCandidateLifecycleEventCount;
     private LiveTranslationTiming? lastLiveTranslationTiming;
     private LiveTranslationTimingPreset? lastLiveTranslationTimingPreset;
@@ -3061,6 +3062,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         lastCandidatePipelineReadiness = null;
         lastLiveTranslationFailureKind = null;
         latestCandidateLifecycleEvents.Clear();
+        showingTranslationWaitStatus = false;
         droppedCandidateLifecycleEventCount = 0;
         IsLiveTranslationRunning = true;
         PipelineStatus = $"Live translation running for {profile.OcrZones.Count} OCR zone(s). {CreateLiveTimingStatus(liveTiming)}";
@@ -3196,6 +3198,29 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
 
         ApplyCandidatePipelineReadinessStatus(update.CandidateReadiness);
+        var waiting = update.PendingTranslations
+            .Where(request => DateTimeOffset.UtcNow - request.QueuedAt >= TimeSpan.FromSeconds(5))
+            .OrderBy(request => request.QueuedAt).FirstOrDefault();
+        if (!update.BatchResult.HasFailures && waiting is not null)
+        {
+            var stage = waiting.WaitStage switch
+            {
+                TranslationProviderWaitStage.Queue => "waiting in the translation queue",
+                TranslationProviderWaitStage.Credentials => "initializing the translation service",
+                _ => "waiting for a translation response",
+            };
+            PipelineStatus = $"OCR completed. BingWeb is {stage} ({(int)(DateTimeOffset.UtcNow - waiting.QueuedAt).TotalSeconds}s total).";
+            PipelineStatusSeverity = PipelineStatusSeverity.Warning;
+            StatusMessage = PipelineStatus;
+            showingTranslationWaitStatus = true;
+        }
+        else if (showingTranslationWaitStatus)
+        {
+            PipelineStatus = CreateLivePipelineStatus(update.BatchResult);
+            PipelineStatusSeverity = ResolvePipelineStatusSeverity(update.BatchResult);
+            StatusMessage = PipelineStatus;
+            showingTranslationWaitStatus = false;
+        }
     }
 
     private async Task WaitForNextLiveRefreshAsync(
@@ -3951,12 +3976,13 @@ public sealed class MainViewModel : ValidatableObservableObject
         {
             var providerException = FindTranslatorProviderException(failure.Exception);
             if (providerException is null
-                || !string.Equals(providerException.ProviderId, "BingWeb", StringComparison.OrdinalIgnoreCase))
+                || !IsExperimentalWebProvider(providerException.ProviderId))
             {
                 continue;
             }
 
-            if (providerException.FailureKind == TranslatorProviderFailureKind.Throttled
+            if (providerException.FailureKind == TranslatorProviderFailureKind.UserVerificationRequired
+                || providerException.FailureKind == TranslatorProviderFailureKind.Throttled
                 || (providerException.FailureKind == TranslatorProviderFailureKind.Timeout
                     && (providerException.RetryAfter.HasValue
                         || providerException.ConsecutiveFailureCount >= 2)))
@@ -3964,7 +3990,9 @@ public sealed class MainViewModel : ValidatableObservableObject
                 return PipelineStatusSeverity.Error;
             }
 
-            if (providerException.FailureKind == TranslatorProviderFailureKind.Timeout)
+            if (providerException.FailureKind is TranslatorProviderFailureKind.Timeout
+                or TranslatorProviderFailureKind.Dns or TranslatorProviderFailureKind.Connection
+                or TranslatorProviderFailureKind.Tls or TranslatorProviderFailureKind.Network)
             {
                 severity = PipelineStatusSeverity.Warning;
             }
@@ -4024,6 +4052,11 @@ public sealed class MainViewModel : ValidatableObservableObject
     {
         return failureKind switch
         {
+            TranslatorProviderFailureKind.Dns => "DNS failure",
+            TranslatorProviderFailureKind.Connection => "connection failure",
+            TranslatorProviderFailureKind.Tls => "secure connection failure",
+            TranslatorProviderFailureKind.Network => "network failure",
+            TranslatorProviderFailureKind.UserVerificationRequired => "user verification required",
             TranslatorProviderFailureKind.Configuration => "configuration failure",
             TranslatorProviderFailureKind.Http => "HTTP failure",
             TranslatorProviderFailureKind.Throttled => "throttled",
@@ -5476,6 +5509,9 @@ public sealed class MainViewModel : ValidatableObservableObject
         var generatedAt = DateTimeOffset.Now;
 
         builder.AppendLine("Game Translator debug info");
+        var diagnosticFault = Environment.GetEnvironmentVariable("GAME_TRANSLATOR_TEST_FAULT");
+        if (diagnosticFault is "timeout" or "429" or "captcha")
+            builder.AppendLine($"SyntheticWebFaultScenario: {diagnosticFault}; simulated failures, no HTTP sent during fault window.");
         builder.AppendLine($"GeneratedLocal: {generatedAt:O}");
         builder.AppendLine($"Application: {ApplicationName}");
         builder.AppendLine("Privacy: profile free-text fields and credential values are omitted.");

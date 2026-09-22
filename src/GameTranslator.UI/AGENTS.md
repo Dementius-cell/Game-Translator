@@ -37,3 +37,7 @@ Keep the WPF presentation layer ergonomic, testable, and separated from infrastr
 ## Child Instruction Index
 
 No nested `AGENTS.md` files are currently defined below this directory.
+
+The zone editor owns the ADR-033 AutoFontSize toggle and its model/duplicate round trip. Physical overlay geometry, font and padding must be converted together for DPI.
+
+Overlay TextFormatter and TextBlock must use matching whole-word wrapping. Expanded rendering may only scale down to contain actual text; report word overflow to the Application sizing policy.

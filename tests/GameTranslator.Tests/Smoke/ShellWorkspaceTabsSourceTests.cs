@@ -265,6 +265,7 @@ public sealed class ShellWorkspaceTabsSourceTests
             "TranslatorProvider",
             "TranslatorSecret",
             "VerticalCandidateGrouping",
+            "WatermarkFilter",
             "ZoneName",
             "ZoneOcrLanguage",
         }.OrderBy(tag => tag, StringComparer.Ordinal).ToArray();

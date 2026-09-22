@@ -56,7 +56,7 @@ public sealed class OverlayWindowSourceTests
         Assert.Contains("Width=\"{Binding ContentWidth}\"", source, StringComparison.Ordinal);
         Assert.Contains("TextAlignment=\"Center\"", source, StringComparison.Ordinal);
         Assert.Contains("TextTrimming=\"None\"", source, StringComparison.Ordinal);
-        Assert.Contains("TextWrapping=\"Wrap\"", source, StringComparison.Ordinal);
+        Assert.Contains("TextWrapping=\"WrapWithOverflow\"", source, StringComparison.Ordinal);
         Assert.DoesNotContain("MinWidth=", source, StringComparison.Ordinal);
         Assert.DoesNotContain("MinHeight=", source, StringComparison.Ordinal);
         Assert.DoesNotContain("MaxWidth=", source, StringComparison.Ordinal);

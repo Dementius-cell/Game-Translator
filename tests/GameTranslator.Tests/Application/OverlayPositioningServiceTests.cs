@@ -814,7 +814,7 @@ public sealed class OverlayPositioningServiceTests
     }
 
     [Fact]
-    public void CreateSnapshot_WithHorizontalMultilineText_AppliesLineOffsetWithoutHorizontalDampening()
+    public void CreateSnapshot_WithHorizontalMultilineText_RetainsSourceHeightAndCenter()
     {
         var service = new OverlayPositioningService();
         var textStyle = new OcrZoneTextStyle
@@ -844,7 +844,7 @@ public sealed class OverlayPositioningServiceTests
         var snapshot = service.CreateSnapshot(result, ShownAt, previousSnapshot: null, textStyle);
 
         var item = Assert.Single(snapshot.TextItems);
-        Assert.Equal(141, item.Y);
+        Assert.Equal(100, item.Y);
         Assert.InRange(item.X + item.Width / 2d, 139d, 141d);
         var mask = Assert.Single(snapshot.MaskItems);
         Assert.Equal(100, mask.X);
@@ -986,6 +986,102 @@ public sealed class OverlayPositioningServiceTests
         Assert.Equal(26, mask.Height);
     }
 
+    [Fact]
+    public void ExpandedFrame_RetainsSourceHeightAndConfiguredFont()
+    {
+        var service = new OverlayPositioningService();
+        var result = CreateResult(new CaptureRegion(0, 0, 500, 500), 500, 500,
+            new OcrTextBlock("Short", new BoundingBox(100, 100, 220, 200)));
+        var snapshot = service.CreateSnapshot(result, ShownAt, null,
+            new OcrZoneTextStyle { FontSize = 16, LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter });
+        var item = Assert.Single(snapshot.TextItems);
+        Assert.Equal(200, item.Height);
+        Assert.Equal(100, item.Y);
+        Assert.Equal(16, item.TextStyle.FontSize);
+        Assert.Equal(200, Assert.Single(snapshot.MaskItems).Height);
+    }
+
+    [Theory]
+    [InlineData(1, 72)]
+    [InlineData(3, 30)]
+    public void AutoFont_ChoosesLargestFittingSizeWithinLimit(int heightFactor, int expected)
+    {
+        var service = new OverlayPositioningService(new RecordingOverlayTextMeasurer(request =>
+            new OverlayTextMeasurement(10, (int)request.TextStyle.FontSize * heightFactor)));
+        var result = CreateResult(new CaptureRegion(0, 0, 500, 500), 500, 500,
+            new OcrTextBlock("Short", new BoundingBox(100, 100, 220, 100)));
+        var item = Assert.Single(service.CreateSnapshot(result, ShownAt, null,
+            new OcrZoneTextStyle { FontSize = 16, AutoFontSize = true,
+                LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter }).TextItems);
+        Assert.Equal(expected, item.TextStyle.FontSize);
+        Assert.Equal(100, item.Height);
+    }
+
+    [Fact]
+    public void AutoFont_RejectsHorizontallyOverflowingMeasurement()
+    {
+        var service = new OverlayPositioningService(new RecordingOverlayTextMeasurer(request =>
+            new OverlayTextMeasurement(10, 20, new[] {
+                new OverlayTextLineMeasurement(10, 20, 5, request.TextStyle.FontSize > 20) })));
+        var result = CreateResult(new CaptureRegion(0, 0, 500, 500), 500, 500,
+            new OcrTextBlock("Short", new BoundingBox(100, 100, 220, 100)));
+        var item = Assert.Single(service.CreateSnapshot(result, ShownAt, null,
+            new OcrZoneTextStyle { AutoFontSize = true,
+                LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter }).TextItems);
+        Assert.Equal(20, item.TextStyle.FontSize);
+    }
+
+    [Fact]
+    public void ExpandedFrame_KeepsCompactHeightWhenNeighborBlocksExpansion()
+    {
+        var service = new OverlayPositioningService();
+        var region = new CaptureRegion(0, 0, 500, 500);
+        var result = CreateResult(region, 500, 500,
+            new OcrTextBlock("Short", new BoundingBox(100, 100, 220, 200)));
+        var item = Assert.Single(service.CreateSnapshot(result, ShownAt, null,
+            new OcrZoneTextStyle { LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter },
+            placementConstraints: new OverlayPlacementConstraints(region,
+                new[] { new CaptureRegion(100, 260, 220, 40) })).TextItems);
+        Assert.True(item.Height < 200);
+        Assert.False(Intersects(item, new BoundingBox(100, 260, 220, 40)));
+    }
+
+    [Fact]
+    public void ExpandedFrame_RespectsSmallerPlacementBoundary()
+    {
+        var service = new OverlayPositioningService();
+        var result = CreateResult(new CaptureRegion(0, 0, 500, 500), 500, 500,
+            new OcrTextBlock("Short", new BoundingBox(100, 100, 220, 200)));
+        var item = Assert.Single(service.CreateSnapshot(result, ShownAt, null,
+            new OcrZoneTextStyle { LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter },
+            placementConstraints: new OverlayPlacementConstraints(new CaptureRegion(50, 150, 400, 80))).TextItems);
+        Assert.InRange(item.Height, 1, 80);
+        Assert.InRange(item.Y, 150, 230 - item.Height);
+    }
+
+    [Fact]
+    public void AutoFontCache_ReusesMeasurementButInvalidatesChangedContentAndGeometry()
+    {
+        var measurer = new RecordingOverlayTextMeasurer(request => new OverlayTextMeasurement(10, (int)request.TextStyle.FontSize));
+        var service = new OverlayPositioningService(measurer);
+        var style = new OcrZoneTextStyle { AutoFontSize = true, LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter };
+        void Render(string text, int height, bool bold)
+        {
+            var result = CreateResult(new CaptureRegion(0, 0, 500, 500), 500, 500,
+                new OcrTextBlock(text, new BoundingBox(100, 100, 200, height)));
+            service.CreateSnapshot(result, ShownAt, null, style with { IsBold = bold });
+        }
+        Render("One", 100, true);
+        var first = measurer.Requests.Count;
+        Render("One", 100, true);
+        Assert.Equal(1, measurer.Requests.Count - first);
+        foreach (var changed in new[] { ("Two", 100, true), ("Two", 120, true), ("Two", 120, false) })
+        {
+            var before = measurer.Requests.Count;
+            Render(changed.Item1, changed.Item2, changed.Item3);
+            Assert.True(measurer.Requests.Count - before > 1);
+        }
+    }
     private static OverlaySnapshot CreateSnapshot(params OverlayTextItem[] textItems)
     {
         return new OverlaySnapshot(textItems, ShownAt.AddSeconds(-1));

@@ -8,6 +8,8 @@ public sealed record OcrSettings
 
     public static OcrSettings Default { get; } = new();
 
+    public WatermarkFilterMode WatermarkFilter { get; init; } = WatermarkFilterMode.Off;
+
     public string Engine { get; init; } = WindowsEngineId;
 
     public OcrOrientationMode OrientationMode { get; init; } = OcrOrientationMode.Auto;

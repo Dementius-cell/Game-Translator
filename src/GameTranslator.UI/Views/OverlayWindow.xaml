@@ -108,8 +108,13 @@
                                     Text="{Binding Text}"
                                     TextAlignment="Center"
                                     TextTrimming="None"
-                                    TextWrapping="Wrap" />
+                                    TextWrapping="WrapWithOverflow" />
                             </Viewbox>
+                            <Viewbox
+                                Stretch="Uniform"
+                                StretchDirection="DownOnly"
+                                Margin="0,2"
+                                Visibility="{Binding UsesExpandedLayout, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <TextBlock
                                 Width="{Binding ContentWidth}"
                                 HorizontalAlignment="Center"
@@ -122,8 +127,8 @@
                                 Text="{Binding Text}"
                                 TextAlignment="Center"
                                 TextTrimming="None"
-                                TextWrapping="Wrap"
-                                Visibility="{Binding UsesExpandedLayout, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                TextWrapping="WrapWithOverflow" />
+                            </Viewbox>
                         </Grid>
                     </Border>
                 </DataTemplate>

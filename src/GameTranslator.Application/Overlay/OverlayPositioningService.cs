@@ -28,6 +28,8 @@ public sealed class OverlayPositioningService
     private const string OverlayFitWarningPrefix = "Overlay fit warning:";
 
     private readonly IOverlayTextMeasurer textMeasurer;
+    private readonly object autoFontCacheSync = new();
+    private readonly Dictionary<AutoFontKey, double> autoFontCache = new();
     private readonly object sessionLayoutTuningSync = new();
     private double sessionVerticalSourceWidthMultiplier = DefaultSessionVerticalSourceWidthMultiplier;
 
@@ -118,6 +120,8 @@ public sealed class OverlayPositioningService
                 placementConstraints))
             .ToArray(),
             placementConstraints);
+        positionedItems = ApplySourceHeightAndFontSizing(positionedItems,
+            placementConstraints?.PlacementRegion ?? result.Region, placementConstraints);
         var textItems = positionedItems
             .Select(item => item.TextItem)
             .ToArray();
@@ -206,6 +210,94 @@ public sealed class OverlayPositioningService
             debugMetricLines);
     }
 
+    private OverlayPositionedTextItem[] ApplySourceHeightAndFontSizing(
+        IReadOnlyList<OverlayPositionedTextItem> items,
+        CaptureRegion region,
+        OverlayPlacementConstraints? constraints)
+    {
+        var adjusted = items.ToArray();
+        var external = constraints?.OccupiedRegions
+            .Select(value => new OverlayLayoutBounds(value.X, value.Y, value.Width, value.Height))
+            .ToArray() ?? Array.Empty<OverlayLayoutBounds>();
+        for (var index = 0; index < adjusted.Length; index++)
+        {
+            var entry = adjusted[index];
+            var item = entry.TextItem;
+            if (item.TextStyle.LayoutMode != OverlayTextLayoutMode.ExpandFromSourceCenter)
+            {
+                continue;
+            }
+
+            var obstacles = adjusted.Where((_, other) => other != index)
+                .SelectMany(other => new[] { other.SemanticBounds, CreateLayoutBounds(other.TextItem) })
+                .Concat(external).ToArray();
+            var targetHeight = Math.Min(region.Height, Math.Max(item.Height, entry.SemanticBounds.Height));
+            // Retain the original text height only when the enlarged frame is unobstructed.
+            // The already fitted compact frame remains the fallback for crowded pages.
+            if (targetHeight > item.Height)
+            {
+                var y = Math.Clamp((int)Math.Round(entry.SemanticBounds.CenterY - targetHeight / 2d),
+                    region.Y, region.Y + region.Height - targetHeight);
+                var expanded = new OverlayTextItem(item.Text, item.X, y, item.Width, targetHeight,
+                    item.TextStyle, item.UseCalloutPresentation);
+                if (!OverlapsAnyBounds(expanded, obstacles))
+                {
+                    item = expanded;
+                }
+            }
+
+            if (item.TextStyle.AutoFontSize)
+            {
+                var best = FindAutoFontSize(item);
+
+                item = new OverlayTextItem(item.Text, item.X, item.Y, item.Width, item.Height,
+                    item.TextStyle with { FontSize = best }, item.UseCalloutPresentation);
+            }
+
+            adjusted[index] = entry with { TextItem = item };
+        }
+
+        return adjusted;
+    }
+
+
+    private double FindAutoFontSize(OverlayTextItem item)
+    {
+        var key = new AutoFontKey(item.Text, item.TextStyle, item.Width, item.Height);
+        lock (autoFontCacheSync)
+        {
+            if (autoFontCache.TryGetValue(key, out var cached))
+            {
+                return cached;
+            }
+        }
+
+        var low = (int)OcrZoneTextStyle.MinimumFontSize;
+        var high = (int)OcrZoneTextStyle.MaximumFontSize;
+        var best = low;
+        while (low <= high)
+        {
+            var size = low + (high - low) / 2;
+            var measured = MeasureText(item.Text, item.TextStyle with { FontSize = size },
+                Math.Max(1, item.Width - ExpandedTextHorizontalPadding * 2));
+            var fits = measured.Height + ExpandedTextVerticalPadding * 2 + ExpandedTextVerticalSafetyPadding <= item.Height
+                && measured.Lines.All(line => !line.HasOverflowed);
+            if (fits) { best = size; low = size + 1; }
+            else { high = size - 1; }
+        }
+
+        // Never hold the cache lock while the WPF measurer dispatches to the UI thread.
+        lock (autoFontCacheSync)
+        {
+            if (autoFontCache.Count >= 256) { autoFontCache.Clear(); }
+            autoFontCache[key] = best;
+        }
+
+        return best;
+    }
+
+    private sealed record AutoFontKey(string Text, OcrZoneTextStyle Style, int Width, int Height);
+
     private static OverlayMaskItem CreateMaskItem(OverlayMaskBounds maskBounds, OverlaySettings settings)
     {
         var padding = Math.Max(0, (int)Math.Round(settings.Padding, MidpointRounding.AwayFromZero));
@@ -266,11 +358,7 @@ public sealed class OverlayPositioningService
                     useCalloutPresentation: true);
 
             return new OverlayPositionedTextItem(
-                ApplySemanticPlacementRules(
-                    textItem,
-                    sourceBounds,
-                    memberBounds,
-                    isVerticalSource),
+                textItem,
                 new OverlayMaskBounds(sourceBounds.X, sourceBounds.Y, sourceBounds.Width, sourceBounds.Height),
                 sourceBounds,
                 placement.DebugMetricLines);
@@ -390,8 +478,8 @@ public sealed class OverlayPositioningService
 
             while (true)
             {
-                var desiredHeight = MeasureExpandedTextHeight(normalizedText, width, candidateTextStyle);
-                if (desiredHeight <= heightLimit)
+                var desiredHeight = MeasureExpandedTextHeight(normalizedText, width, candidateTextStyle, out var wordOverflows);
+                if (desiredHeight <= heightLimit && !wordOverflows)
                 {
                     finalWidth = width;
                     finalHeight = desiredHeight;
@@ -499,10 +587,11 @@ public sealed class OverlayPositioningService
     private int MeasureExpandedTextHeight(
         string text,
         int width,
-        OcrZoneTextStyle textStyle)
+        OcrZoneTextStyle textStyle, out bool wordOverflows)
     {
         var contentWidth = Math.Max(1, width - ExpandedTextHorizontalPadding * 2);
         var measured = MeasureText(text.Trim(), textStyle, contentWidth);
+        wordOverflows = measured.Lines.Any(line => line.HasOverflowed);
 
         return Math.Max(
             1,

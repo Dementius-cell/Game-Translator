@@ -81,10 +81,18 @@ public sealed class BoundedTextCandidateGroupingService
             return Order(materialized);
         }
 
+        // A single Latin letter can be square/tall while still being a horizontal line.
+        // Require matching horizontal lines immediately above and below before reclassifying it.
+        var shortHorizontalLines = groupingProfile is WritingSystemGroupingProfile.SpacedLeftToRight
+            ? materialized.Where(candidate => IsEmbeddedShortHorizontalLine(candidate, materialized)).ToHashSet()
+            : new HashSet<TextCandidate>();
+        bool IsHorizontalLine(TextCandidate candidate) =>
+            candidate.Bounds.Height < candidate.Bounds.Width || shortHorizontalLines.Contains(candidate);
+
         var usesAdaptiveCjkVerticalAuto = groupingProfile is WritingSystemGroupingProfile.CjkVertical
             && groupingSettings.MaximumVerticalColumns is null;
         var verticalCandidatesSource = materialized
-            .Where(candidate => candidate.Bounds.Height >= candidate.Bounds.Width);
+            .Where(candidate => !IsHorizontalLine(candidate));
         var verticalCandidates = usesAdaptiveCjkVerticalAuto
             ? verticalCandidatesSource
                 .OrderByDescending(candidate => candidate.Bounds.X)
@@ -99,7 +107,7 @@ public sealed class BoundedTextCandidateGroupingService
                 .ThenBy(candidate => candidate.Bounds.Height)
                 .ToList();
         var grouped = materialized
-            .Where(candidate => candidate.Bounds.Height < candidate.Bounds.Width)
+            .Where(IsHorizontalLine)
             .OrderBy(candidate => candidate.Bounds.Y)
             .ThenBy(candidate => candidate.Bounds.X)
             .ThenBy(candidate => candidate.Bounds.Width)
@@ -142,13 +150,13 @@ public sealed class BoundedTextCandidateGroupingService
         }
 
         var horizontalCandidates = grouped
-            .Where(candidate => candidate.Bounds.Height < candidate.Bounds.Width)
+            .Where(IsHorizontalLine)
             .OrderBy(candidate => candidate.Bounds.Y)
             .ThenBy(candidate => candidate.Bounds.X)
             .ThenBy(candidate => candidate.Bounds.Width)
             .ThenBy(candidate => candidate.Bounds.Height)
             .ToList();
-        grouped.RemoveAll(candidate => candidate.Bounds.Height < candidate.Bounds.Width);
+        grouped.RemoveAll(candidate => IsHorizontalLine(candidate));
 
         while (horizontalCandidates.Count > 0)
         {
@@ -193,6 +201,35 @@ public sealed class BoundedTextCandidateGroupingService
         }
 
         return Order(grouped);
+    }
+
+    private static bool IsEmbeddedShortHorizontalLine(
+        TextCandidate candidate, IReadOnlyList<TextCandidate> candidates)
+    {
+        var bounds = candidate.Bounds;
+        if (bounds.Width > bounds.Height || bounds.Height > bounds.Width * 3)
+        {
+            return false;
+        }
+
+        var neighbors = candidates.Where(other => !ReferenceEquals(other, candidate)
+            && other.Bounds.Width >= other.Bounds.Height * 1.5
+            && bounds.Height >= other.Bounds.Height * 0.5
+            && bounds.Height <= other.Bounds.Height * 1.5
+            && SharedHorizontalOverlapRatio(new[] { candidate, other }) >= 0.8).ToArray();
+        var above = neighbors.Where(other => other.Bounds.Bottom <= bounds.Y)
+            .OrderByDescending(other => other.Bounds.Bottom).FirstOrDefault();
+        var below = neighbors.Where(other => other.Bounds.Y >= bounds.Bottom)
+            .OrderBy(other => other.Bounds.Y).FirstOrDefault();
+        if (above is null || below is null)
+        {
+            return false;
+        }
+
+        // Tight two-sided context prevents a short mark from bridging separate paragraphs.
+        return VerticalGap(above.Bounds, bounds) <= Math.Min(bounds.Height, above.Bounds.Height) * 0.65
+            && VerticalGap(bounds, below.Bounds) <= Math.Min(bounds.Height, below.Bounds.Height) * 0.65
+            && SharedHorizontalOverlapRatio(new[] { above, below }) >= 0.8;
     }
 
     private static void GroupAdaptiveCjkVerticalCandidates(

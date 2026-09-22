@@ -34,3 +34,5 @@ Keep the domain layer small, deterministic, and independent from frameworks and 
 ## Child Instruction Index
 
 No nested `AGENTS.md` files are currently defined below this directory.
+
+Overlay text style includes optional AutoFontSize (default false); absent values preserve schema-1 fixed-font behavior under ADR-033.

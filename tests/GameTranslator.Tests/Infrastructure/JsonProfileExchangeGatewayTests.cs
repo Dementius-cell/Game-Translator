@@ -12,17 +12,21 @@ public sealed class JsonProfileExchangeGatewayTests : IDisposable
         "GameTranslator.Tests",
         Guid.NewGuid().ToString("N"));
 
-    [Fact]
-    public async Task ExportAndImportAsync_RoundTripsProfile()
+    [Theory]
+    [InlineData(WatermarkFilterMode.Off)]
+    [InlineData(WatermarkFilterMode.Cautious)]
+    [InlineData(WatermarkFilterMode.Strong)]
+    public async Task ExportAndImportAsync_RoundTripsProfile(WatermarkFilterMode mode)
     {
         var gateway = new JsonProfileExchangeGateway();
         var filePath = Path.Combine(workingDirectory, "profile.json");
-        var profile = CreateProfile("Chrono Trigger");
+        var profile = CreateProfile("Chrono Trigger") with { OcrSettings = new() { WatermarkFilter = mode } };
 
         await gateway.ExportAsync(profile, filePath);
         var imported = await gateway.ImportAsync(filePath);
 
         Assert.Equal(profile.Name, imported.Name);
+        Assert.Equal(mode, imported.OcrSettings.WatermarkFilter);
         Assert.Equal(profile.SchemaVersion, imported.SchemaVersion);
         Assert.Equal(profile.OverlaySettings.MaskColor, imported.OverlaySettings.MaskColor);
         Assert.Equal(profile.OcrZones[0].AbsoluteBounds, imported.OcrZones[0].AbsoluteBounds);
@@ -45,6 +49,21 @@ public sealed class JsonProfileExchangeGatewayTests : IDisposable
             () => gateway.ImportAsync(filePath));
 
         Assert.Equal("Profile JSON is invalid or corrupted.", exception.Message);
+    }
+
+    [Fact]
+    public async Task ImportAsync_OldProfileWithoutAutoSize_KeepsConfiguredFont()
+    {
+        var gateway = new JsonProfileExchangeGateway();
+        var path = Path.Combine(workingDirectory, "old-profile.json");
+        await gateway.ExportAsync(CreateProfile("Old"), path);
+        var json = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        var style = json["ocrZones"]![0]!["textStyle"]!.AsObject();
+        Assert.True(style.Remove("autoFontSize"));
+        await File.WriteAllTextAsync(path, json.ToJsonString());
+        var imported = await gateway.ImportAsync(path);
+        Assert.False(imported.OcrZones[0].TextStyle.AutoFontSize);
+        Assert.Equal(22, imported.OcrZones[0].TextStyle.FontSize);
     }
 
     public void Dispose()
@@ -73,6 +92,7 @@ public sealed class JsonProfileExchangeGatewayTests : IDisposable
                     {
                         FontFamily = "Segoe UI",
                         FontSize = 22,
+                        AutoFontSize = true,
                         IsBold = false,
                         IsItalic = true,
                         LayoutMode = OverlayTextLayoutMode.ExpandFromSourceCenter,

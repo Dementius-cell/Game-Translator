@@ -1643,6 +1643,27 @@ Project owner, explicit chat approval on 2026-09-06: «согласен с вс�
 
 ---
 
+# ADR-033
+
+## Retain source text height and optional automatic overlay font size
+
+Status: ACCEPTED
+
+Date: 2026-09-21
+
+Owner decision: explicit approval in the current local task after discussing minimum source height and fixed/automatic font sizing.
+
+Supersedes ADR-018 only for shrinking expanded translation frames below source height and for the new opt-in automatic font size. Other placement, mask, collision and measurement responsibilities remain unchanged.
+
+Expanded translation frames retain at least the original recognized text height when zone bounds and neighboring source/translation regions permit. The compact fitted frame is retained when expansion is obstructed. Expanded text is centered on the source before collision handling; the legacy extra multiline Y offset is not applied to this mode.
+
+OcrZoneTextStyle.AutoFontSize is an optional boolean with default false. Existing schema-1 profiles remain readable without migration; missing values retain fixed font behavior. The editor saves and duplicates the flag per zone. Fixed mode uses the configured font and existing expansion-before-reduction policy. Automatic mode chooses the largest whole font size from 8 to 72 fitting the final available frame using the existing text measurement port, including horizontal overflow checks. It does not stretch the mask or infer speech-bubble boundaries. Existing minimum-font fit warnings remain applicable.
+
+Automatic font search is cached in memory only, bounded to 256 entries keyed by text, style and physical frame dimensions. No cache lock is held while dispatching WPF measurement. Domain stays framework independent; measurement and DPI conversion remain in UI. The preview-only FitToSourceBounds mode is unchanged.
+
+Validation: source-height retention, crowded-region fallback, boundary clamp, maximal fit, horizontal overflow, cache invalidation, schema-1 import without field, JSON round trip, zone editor save/duplicate, WPF fixed/auto template at 100/125/150/200 percent. Local-only generated evidence and release verification are described in the workspace outputs/ПРОВЕРКА-R60.md; they are not tracked fixtures or published binaries.
+
+---
 # ADR-XXX
 
 Название решения

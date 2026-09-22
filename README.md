@@ -43,7 +43,15 @@ dotnet test GameTranslator.sln -c Release --no-build --no-restore
 
 The bootstrap pins CPython/Paddle package versions (including the official Paddle CUDA 12.9 wheel index) and verifies the PP-OCRv6 detector and seven Tesseract packs by SHA-256. The first run downloads only their official distributions. The package build requires the exact locked language-pack set and verifies every pack before copying it; if the GPU runtime is unavailable or a language pack is missing, unexpected or changed, the script fails rather than silently producing an incomplete package.
 
-Current publication boundary: the unpacked self-contained r44 is the newest locally verified source-equivalent portable and includes the welcome-tour spotlight, startup-safety, header-action, and OCR-guidance fixes. It has no transfer archive or signature and has not been uploaded to GitHub Releases, so it remains a local release candidate rather than a published release.
+Current publication boundary: source and tests are maintained on main; r61 remains a locally verified release candidate. Public binary releases require a separate release decision.
+
+## Current source status — 2026-09-22
+
+The current source includes the r61 feature set: opt-in watermark filtering (Off/Cautious/Strong), short-line grouping corrections, Bing Web session and connection recovery, consistent overlay DPI conversion, source-height retention with optional automatic font sizing (ADR-033), whole-word wrapping and final render containment.
+
+Verification: Release build with zero warnings/errors; 835 tests (819 main plus 16 calibration); real WPF layout checks at 100/125/150/200 percent; packaged Tesseract/Paddle smoke and local r61 integrity checks passed. The owner confirmed improved Bing behavior and strong watermark filtering. Final owner verification of the r61 clipping/wrapping correction remains pending.
+
+The latest portable is the locally verified, unpacked r61 candidate. It is not a signed public release or a GitHub Release asset. Generated screenshots, private OCR text, diagnostic logs, models, runtimes and portable binaries stay local. See the [delivery history](docs/agents/portable-r51-watermark-handoff.md) and [user guide](docs/user-guide.md).
 
 ## Documentation
 

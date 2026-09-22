@@ -9,7 +9,7 @@ using GameTranslator.Application.Translation;
 namespace GameTranslator.Infrastructure.Translation;
 
 /// <summary>
-/// Direct Bing Translate mode compatible with ScreTran's GTranslate 2.2.8 BingTranslator.
+/// Direct Bing Translate web mode using the session identifiers and token lifetime issued by its page.
 /// </summary>
 public sealed class BingWebTranslatorProvider : ITranslatorProvider, IDisposable
 {
@@ -284,38 +284,48 @@ public sealed class BingWebTranslatorProvider : ITranslatorProvider, IDisposable
     private static Uri CreateTranslateUri(Uri endpoint, BingWebCredentials credentialsSnapshot)
     {
         var root = endpoint.ToString().TrimEnd('/');
-        var impressionGuid = credentialsSnapshot.ImpressionGuid.ToString("N").ToUpperInvariant();
-        return new Uri($"{root}/ttranslatev3?isVertical=1&IG={impressionGuid}&IID={ScreTranBingIid}");
+        var impressionGuid = Uri.EscapeDataString(credentialsSnapshot.ImpressionGuid);
+        return new Uri($"{root}/ttranslatev3?isVertical=1&IG={impressionGuid}&IID={Uri.EscapeDataString(credentialsSnapshot.ImpressionId)}");
     }
 
     private BingWebCredentials ParseCredentials(string html)
     {
-        var match = Regex.Match(
-            html,
-            @"params_AbusePreventionHelper\s*=\s*\[\s*(?<key>[^,\]\s]+)\s*,\s*[""'](?<token>[^""']+)[""']",
-            RegexOptions.IgnoreCase);
-        if (!match.Success)
+        // Keep page-issued identifiers and lifetime together, as the web client does.
+        var values = Regex.Match(html,
+            @"params_AbusePreventionHelper\s*=\s*(?<values>\[[^\]\r\n]+\])",
+            RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+        var impressionGuid = Regex.Match(html,
+            @"\bIG\s*:\s*[""'](?<value>[A-Za-z0-9_-]{1,128})[""']",
+            RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+        var impressionId = Regex.Match(html,
+            @"data-iid\s*=\s*[""'](?<value>translator\.[A-Za-z0-9._-]{1,128})[""']",
+            RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+        if (!values.Success || !impressionGuid.Success || !impressionId.Success)
+            throw InvalidSession();
+        try
         {
-            throw new TranslatorProviderException(
-                ProviderId,
-                TranslatorProviderFailureKind.UnsupportedResponse,
-                "BingWeb credentials could not be found in the translator page.");
+            using var document = JsonDocument.Parse(values.Groups["values"].Value);
+            var fields = document.RootElement;
+            if (fields.GetArrayLength() < 3 || !fields[0].TryGetInt64(out var key)
+                || fields[1].ValueKind != JsonValueKind.String
+                || !fields[2].TryGetInt64(out var lifetimeMs) || lifetimeMs <= 0)
+                throw InvalidSession();
+            var token = fields[1].GetString();
+            if (string.IsNullOrWhiteSpace(token)) throw InvalidSession();
+            var expiresAt = DateTimeOffset.FromUnixTimeMilliseconds(key).AddMilliseconds(lifetimeMs);
+            return new BingWebCredentials(key, token, impressionGuid.Groups["value"].Value,
+                impressionId.Groups["value"].Value, expiresAt);
         }
-
-        var key = long.TryParse(
-            match.Groups["key"].Value,
-            NumberStyles.Integer,
-            CultureInfo.InvariantCulture,
-            out var parsedKey)
-            ? parsedKey
-            : timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
-        var expiresAt = DateTimeOffset.FromUnixTimeMilliseconds(key).AddHours(1);
-        return new BingWebCredentials(
-            key,
-            match.Groups["token"].Value,
-            Guid.NewGuid(),
-            expiresAt);
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException or ArgumentOutOfRangeException)
+        {
+            // Never include page contents or credential values in diagnostics.
+            throw InvalidSession();
+        }
     }
+
+    private TranslatorProviderException InvalidSession() => new(
+        ProviderId, TranslatorProviderFailureKind.UnsupportedResponse,
+        "BingWeb translator page did not contain a valid session and token lifetime.");
 
     private void ThrowIfProviderStatusCodeIsPresent(JsonDocument document)
     {
@@ -607,6 +617,10 @@ public sealed class BingWebTranslatorProvider : ITranslatorProvider, IDisposable
 
     private static void AddBrowserHeaders(HttpRequestMessage request)
     {
+        request.Version = HttpVersion.Version20;
+        request.VersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
+        if (request.Method == HttpMethod.Post && request.RequestUri is { } uri)
+            request.Headers.Referrer = new Uri(uri, "/translator");
         request.Headers.UserAgent.ParseAdd("Mozilla/5.0 GameTranslator/1.0");
         request.Headers.AcceptLanguage.ParseAdd("en-US,en;q=0.9");
     }
@@ -614,7 +628,8 @@ public sealed class BingWebTranslatorProvider : ITranslatorProvider, IDisposable
     private sealed record BingWebCredentials(
         long Key,
         string Token,
-        Guid ImpressionGuid,
+        string ImpressionGuid,
+        string ImpressionId,
         DateTimeOffset ExpiresAt);
 
     private sealed record ProviderCooldown(

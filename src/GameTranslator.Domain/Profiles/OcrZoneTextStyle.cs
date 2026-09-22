@@ -13,6 +13,8 @@ public sealed record OcrZoneTextStyle
 
     public double FontSize { get; init; } = DefaultFontSize;
 
+    public bool AutoFontSize { get; init; }
+
     public bool IsBold { get; init; } = true;
 
     public bool IsItalic { get; init; }

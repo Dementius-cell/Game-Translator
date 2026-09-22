@@ -11,6 +11,7 @@ Keep application use cases and contracts independent from concrete UI, platform,
 - Application services and orchestration.
 - Ports and abstractions for capture, OCR, translation, cache, credentials, settings, profiles, hotkeys, debug, and updates.
 - Translation pipeline behavior, timings, grouping, multi-zone handling, cancellation, and recoverable failures.
+- Opt-in watermark candidate selection and bounded per-session/per-zone page evidence and bounded source-frame and neighboring OCR-line context for fragmented emblems; preserve raw OCR and source/revision authority, exclude only translation/overlay projection.
 - Profile migrations and import/export orchestration.
 
 ## Local Contracts
@@ -37,3 +38,5 @@ Keep application use cases and contracts independent from concrete UI, platform,
 ## Child Instruction Index
 
 No nested `AGENTS.md` files are currently defined below this directory.
+
+ADR-033 expanded overlay layout preserves source height where unobstructed and optionally fits font size through IOverlayTextMeasurer; the bounded in-memory font-fit cache does not replace translation caching.

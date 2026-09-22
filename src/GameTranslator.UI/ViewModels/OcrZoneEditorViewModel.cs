@@ -31,6 +31,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
     private bool useAutomaticVerticalCandidateGroupingLimit = true;
     private int maximumVerticalCandidateColumns = 4;
     private string overlayFontFamily = OcrZoneTextStyle.DefaultFontFamily;
+    private bool overlayAutoFontSize;
     private double overlayFontSize = OcrZoneTextStyle.DefaultFontSize;
     private bool overlayIsBold = true;
     private bool overlayIsItalic;
@@ -290,6 +291,18 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         }
     }
 
+    public bool OverlayAutoFontSize
+    {
+        get => overlayAutoFontSize;
+        set
+        {
+            if (SetProperty(ref overlayAutoFontSize, value))
+            {
+                NotifyDerivedPropertiesChanged();
+            }
+        }
+    }
+
     public bool OverlayIsBold
     {
         get => overlayIsBold;
@@ -409,6 +422,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
 
     public string OverlayTextStyleSummary =>
         $"{OverlayFontFamily} {OverlayFontSize:0.#}"
+        + (OverlayAutoFontSize ? " auto" : string.Empty)
         + (OverlayIsBold ? " bold" : string.Empty)
         + (OverlayIsItalic ? " italic" : string.Empty)
         + $" | {OcrLanguageSummary}"
@@ -456,6 +470,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
                 ? OcrZoneTextStyle.DefaultFontFamily
                 : zone.TextStyle.FontFamily,
             OverlayFontSize = zone.TextStyle?.FontSize ?? OcrZoneTextStyle.DefaultFontSize,
+            OverlayAutoFontSize = zone.TextStyle?.AutoFontSize ?? false,
             OverlayIsBold = zone.TextStyle?.IsBold ?? true,
             OverlayIsItalic = zone.TextStyle?.IsItalic ?? false,
             OverlayCanExpandBeyondSource = zone.TextStyle?.LayoutMode == OverlayTextLayoutMode.ExpandFromSourceCenter,
@@ -505,6 +520,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
                     ? OcrZoneTextStyle.DefaultFontFamily
                     : OverlayFontFamily.Trim(),
                 FontSize = OverlayFontSize,
+                AutoFontSize = OverlayAutoFontSize,
                 IsBold = OverlayIsBold,
                 IsItalic = OverlayIsItalic,
                 LayoutMode = OverlayCanExpandBeyondSource
@@ -541,6 +557,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
             MaximumVerticalCandidateColumns = MaximumVerticalCandidateColumns,
             OverlayFontFamily = OverlayFontFamily,
             OverlayFontSize = OverlayFontSize,
+            OverlayAutoFontSize = OverlayAutoFontSize,
             OverlayIsBold = OverlayIsBold,
             OverlayIsItalic = OverlayIsItalic,
             OverlayCanExpandBeyondSource = OverlayCanExpandBeyondSource,

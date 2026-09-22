@@ -195,6 +195,84 @@ public sealed class ExperimentalWebTranslatorProviderTests
         Assert.Equal(1, inner.Calls);
     }
 
+    [Theory]
+    [InlineData(1000)]
+    [InlineData(7200000)]
+    public async Task BingPageSession_UsesIssuedLifetimeAndRefreshesIdentifiers(int lifetimeMs)
+    {
+        var clock = new DiagnosticClock();
+        var key = clock.Now.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture);
+        var page = CreateBingSessionHtml("PAGE_IG", key, "TOKEN").Replace("3600000", lifetimeMs.ToString(CultureInfo.InvariantCulture));
+        var nextPage = CreateBingSessionHtml("NEW_IG", (clock.Now.ToUnixTimeMilliseconds() + lifetimeMs).ToString(CultureInfo.InvariantCulture), "NEXT");
+        var handler = new SequenceHttpMessageHandler(
+            new(HttpStatusCode.OK) { Content = CreateHtmlContent(page) },
+            new(HttpStatusCode.OK) { Content = CreateJsonContent("""[{"translations":[{"text":"ok"}]}]""") },
+            new(HttpStatusCode.OK) { Content = CreateJsonContent("""[{"translations":[{"text":"ok"}]}]""") },
+            new(HttpStatusCode.OK) { Content = CreateHtmlContent(nextPage) },
+            new(HttpStatusCode.OK) { Content = CreateJsonContent("""[{"translations":[{"text":"ok"}]}]""") });
+        using var client = new HttpClient(handler);
+        using var provider = new BingWebTranslatorProvider(client, clock, TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(60));
+        var request = CreateRequest("BingWeb", "https://example.test");
+        await provider.TranslateAsync(request);
+        clock.Now = clock.Now.AddMilliseconds(lifetimeMs / 2);
+        await provider.TranslateAsync(request);
+        Assert.Equal(3, handler.Requests.Count);
+        clock.Now = clock.Now.AddMilliseconds(lifetimeMs / 2 + 1);
+        await provider.TranslateAsync(request);
+        Assert.Equal(5, handler.Requests.Count);
+        Assert.Contains("IG=PAGE_IG&IID=translator.5028", handler.Requests[1].Uri!.Query);
+        Assert.Contains("IG=NEW_IG&IID=translator.5028", handler.Requests[4].Uri!.Query);
+    }
+
+    [Theory]
+    [InlineData("missing-ig")]
+    [InlineData("missing-iid")]
+    [InlineData("invalid-lifetime")]
+    [InlineData("invalid-key")]
+    public async Task BingPageSession_InvalidFieldsDoNotSendTranslationOrExposeToken(string scenario)
+    {
+        var page = CreateBingSessionHtml("PAGE_IG", CreateCurrentBingKey(), "PRIVATE_TOKEN");
+        page = scenario switch
+        {
+            "missing-ig" => page.Replace("IG:", "Other:"),
+            "missing-iid" => page.Replace("data-iid", "data-other"),
+            "invalid-lifetime" => page.Replace("3600000", "-1"),
+            _ => page,
+        };
+        if (scenario == "invalid-key")
+            page = "<script>IG:\"PAGE_IG\";params_AbusePreventionHelper=[9999999999999999999999999999,\"PRIVATE_TOKEN\",1000]</script><div data-iid=\"translator.123\"></div>";
+        var handler = new SequenceHttpMessageHandler(new HttpResponseMessage(HttpStatusCode.OK) { Content = CreateHtmlContent(page) });
+        using var client = new HttpClient(handler);
+        using var provider = new BingWebTranslatorProvider(client);
+        var failure = await Assert.ThrowsAsync<TranslatorProviderException>(() => provider.TranslateAsync(CreateRequest("BingWeb", "https://example.test")));
+        Assert.Equal(TranslatorProviderFailureKind.UnsupportedResponse, failure.FailureKind);
+        Assert.DoesNotContain("PRIVATE_TOKEN", failure.ToString());
+        Assert.Single(handler.Requests);
+    }
+
+    [Fact]
+    public async Task BingPageSession_RequestsHttp2WithFallbackAndSetsTranslationReferer()
+    {
+        var handler = new ScriptedHttpMessageHandler(
+            (request, _) =>
+            {
+                Assert.Equal(HttpVersion.Version20, request.Version);
+                Assert.Equal(HttpVersionPolicy.RequestVersionOrLower, request.VersionPolicy);
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = CreateHtmlContent(CreateBingSessionHtml("PAGE", CreateCurrentBingKey(), "TOKEN")) });
+            },
+            (request, _) =>
+            {
+                Assert.Equal(new Uri("https://example.test/translator"), request.Headers.Referrer);
+                Assert.Equal(HttpVersion.Version20, request.Version);
+                Assert.Equal(HttpVersionPolicy.RequestVersionOrLower, request.VersionPolicy);
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = CreateJsonContent("""[{"translations":[{"text":"ok"}]}]""") });
+            });
+        using var client = new HttpClient(handler);
+        using var provider = new BingWebTranslatorProvider(client);
+        await provider.TranslateAsync(CreateRequest("BingWeb", "https://example.test"));
+    }
+
+
     private sealed class DiagnosticClock : TimeProvider
     {
         public DateTimeOffset Now { get; set; } = new(2026, 9, 12, 0, 0, 0, TimeSpan.Zero);
@@ -410,7 +488,7 @@ public sealed class ExperimentalWebTranslatorProviderTests
         Assert.Equal(2, handler.Requests.Count);
         Assert.EndsWith("/translator", handler.Requests[0].Uri?.AbsolutePath, StringComparison.Ordinal);
         Assert.Contains("/ttranslatev3", handler.Requests[1].Uri?.AbsolutePath, StringComparison.Ordinal);
-        Assert.Contains("IID=translator.5024.1", handler.Requests[1].Uri?.Query, StringComparison.Ordinal);
+        Assert.Contains("IID=translator.5028", handler.Requests[1].Uri?.Query, StringComparison.Ordinal);
         Assert.Contains("fromLang=auto-detect", handler.Requests[1].Content, StringComparison.Ordinal);
         Assert.Contains("to=ru", handler.Requests[1].Content, StringComparison.Ordinal);
         Assert.Contains("token=TOKENVALUE", handler.Requests[1].Content, StringComparison.Ordinal);

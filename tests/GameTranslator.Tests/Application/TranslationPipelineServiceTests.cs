@@ -4470,6 +4470,111 @@ public sealed class TranslationPipelineServiceTests
         Assert.Equal("Translated Candidate text", Assert.Single(result.OverlaySnapshot.TextItems).Text);
     }
 
+    [Theory]
+    [InlineData(WatermarkFilterMode.Off, false)]
+    [InlineData(WatermarkFilterMode.Strong, true)]
+    public async Task Watermark_LiveAndOneShotPreserveRawOcrAndExcludeOnlyLogo(WatermarkFilterMode mode, bool excluded)
+    {
+        var zone=CreateZone("watermark", "Watermark", new AbsoluteRectangle(0,0,320,320));
+        var logo=WatermarkFilterTests.Logo();
+        var pixels=WatermarkFilterTests.Page(0).PixelData.ToArray();
+        for(var y=0;y<100;y++) logo.Frame.PixelData.Span.Slice(y*480,480).CopyTo(pixels.AsSpan(y*1280,480));
+        var bubble=new BoundingBox(170,190,120,90);
+        var detector=new FakeCandidateDetector(_=>TextCandidateDetectionResult.Available("test",new[] {
+            logo.Candidate,new TextCandidate(bubble,.95) }));
+        var engine=new FakeOcrEngine { EngineId=OcrSettings.TesseractEngineId, BlocksFactory=r=>new[] {
+            new OcrTextBlock(r.Frame.Height==100?"synthetic emblem":"Useful dialogue 42",new BoundingBox(0,0,60,15)) } };
+        var translator=new FakeTranslatorProvider("Google");
+        var clock=new ManualTimeProvider(FrameTime);
+        var service=CreateService(new FakeCaptureFrameSource { PixelFrames=Enumerable.Repeat(pixels,30).ToArray() },
+            engine,translator,new FakeOverlayService(),candidateDetector:detector,timeProvider:clock);
+        var profile=CreateProfile(zone) with { OcrSettings=new() { OrientationMode=OcrOrientationMode.Horizontal,WatermarkFilter=mode } };
+        using(var session=service.CreateLiveSession(profile,new TranslationPipelineRunOptions()))
+        {
+            var first=await session.RefreshAsync();
+            Assert.Equal(2,first.BatchResult.ZoneResults.Count);
+            Assert.Equal(excluded?1:2,first.BatchResult.ZoneResults.Sum(r=>r.TranslatedBlockCount));
+            Assert.All(first.BatchResult.ZoneResults,r=>Assert.Single(r.SourceOcrResult.TextBlocks));
+            if(excluded) Assert.Contains(first.CandidateLifecycleEvents,e=>e.WatermarkDecision?.Excluded==true);
+            clock.Advance(TimeSpan.FromSeconds(60));
+            for(var i=0;i<5;i++)
+            {
+                var next=await session.RefreshAsync();
+                Assert.DoesNotContain(next.CandidateLifecycleEvents,e=>e.Kind==LiveCandidateLifecycleEventKind.CandidateEmptyOcrRetryScheduled);
+            }
+            Assert.Equal(2,engine.Requests.Count);
+        }
+        var batch=await service.RunAllZonesAsync(profile);
+        Assert.Equal(excluded?1:2,batch.ZoneResults.Sum(r=>r.TranslatedBlockCount));
+        var single=await service.RunAsync(profile,zone);
+        Assert.Equal(2,single.RecognizedBlockCount);
+        Assert.Equal(excluded?1:2,single.TranslationInputBlockCount);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Watermark_CautiousReevaluatesUnchangedLogoOnThirdPage(bool optimize)
+    {
+        var zone=CreateZone("repeat", "Repeat", new AbsoluteRectangle(0,0,320,320));
+        var logo=WatermarkFilterTests.Logo();
+        var frames=new List<byte[]>();
+        foreach(var page in new[]{0,0,0,1,1,1,0,0,2,2,2})
+        {
+            var pixels=WatermarkFilterTests.Page(page).PixelData.ToArray();
+            for(var y=0;y<100;y++) logo.Frame.PixelData.Span.Slice(y*480,480).CopyTo(pixels.AsSpan(y*1280,480));
+            frames.Add(pixels);
+        }
+        var detector=new FakeCandidateDetector(_=>TextCandidateDetectionResult.Available("test",new[]{logo.Candidate}));
+        var engine=new FakeOcrEngine { EngineId=OcrSettings.TesseractEngineId,
+            BlocksFactory=_=>new[]{new OcrTextBlock("Synthetic emblem",new BoundingBox(0,0,60,15))} };
+        var service=CreateService(new FakeCaptureFrameSource { PixelFrames=frames },engine,
+            new FakeTranslatorProvider("Google"),new FakeOverlayService(),candidateDetector:detector,
+            optimizationOptions:new TranslationPipelineOptimizationOptions(isEnabled:optimize));
+        var profile=CreateProfile(zone) with { OcrSettings=new() { WatermarkFilter=WatermarkFilterMode.Cautious,OrientationMode=OcrOrientationMode.Horizontal } };
+        using var session=service.CreateLiveSession(profile,new TranslationPipelineRunOptions());
+        for(var i=0;i<frames.Count;i++)
+        {
+            var update=await session.RefreshAsync();
+            var result=Assert.Single(update.BatchResult.ZoneResults);
+            Assert.Equal(i>=9,result.SourceOcrResult.WatermarkDecision!.Excluded);
+            Assert.Equal(i>=9?0:1,result.TranslatedBlockCount);
+        }
+        Assert.Equal(2,engine.Requests.Count);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Watermark_ContextChangeReevaluatesIdenticalOcrCrop(bool optimize)
+    {
+        var zone=CreateZone("context", "Context", new AbsoluteRectangle(0,0,320,320));
+        var badge=WatermarkContextAnalyzerTests.Page(40,50,100,100,0);
+        var plain=WatermarkContextAnalyzerTests.Page(40,50,100,100,4).PixelData.ToArray();
+        var bounds=new BoundingBox(48,124,84,18);
+        for(var y=bounds.Y;y<bounds.Bottom;y++)
+            badge.PixelData.Span.Slice(y*1280+bounds.X*4,bounds.Width*4).CopyTo(plain.AsSpan(y*1280+bounds.X*4));
+        var frames=new[]{badge.PixelData.ToArray(),badge.PixelData.ToArray(),plain,plain,badge.PixelData.ToArray()};
+        var detector=new FakeCandidateDetector(_=>TextCandidateDetectionResult.Available("test",new[]{new TextCandidate(bounds,.95)}));
+        var engine=new FakeOcrEngine { EngineId=OcrSettings.TesseractEngineId,
+            BlocksFactory=_=>new[]{new OcrTextBlock("Same OCR text",new BoundingBox(0,0,60,15))} };
+        var service=CreateService(new FakeCaptureFrameSource { PixelFrames=frames },engine,
+            new FakeTranslatorProvider("Google"),new FakeOverlayService(),candidateDetector:detector,
+            optimizationOptions:new TranslationPipelineOptimizationOptions(isEnabled:optimize));
+        var profile=CreateProfile(zone) with { OcrSettings=new() { WatermarkFilter=WatermarkFilterMode.Strong,OrientationMode=OcrOrientationMode.Horizontal } };
+        using var session=service.CreateLiveSession(profile,new TranslationPipelineRunOptions());
+        for(var i=0;i<frames.Length;i++)
+        {
+            var update=await session.RefreshAsync();
+            var result=Assert.Single(update.BatchResult.ZoneResults);
+            Assert.Equal(i<2 || i==4,result.SourceOcrResult.WatermarkDecision!.Excluded);
+            Assert.Equal(i<2 || i==4?0:1,result.TranslatedBlockCount);
+            Assert.Single(result.SourceOcrResult.TextBlocks);
+            if(i==2 || i==4) Assert.Contains(update.CandidateLifecycleEvents,e=>e.Kind==LiveCandidateLifecycleEventKind.CandidateWatermarkEvidenceChanged);
+        }
+        Assert.Equal(3,engine.Requests.Count);
+    }
+
     private static TranslationPipelineService CreateService(
         FakeCaptureFrameSource frameSource,
         FakeOcrEngine ocrEngine,

@@ -170,6 +170,13 @@ public sealed class ProfileValidator
     {
         var value = settings ?? OcrSettings.Default;
 
+        if (!Enum.IsDefined(value.WatermarkFilter))
+        {
+            errors.Add(new ProfileValidationError(
+                ProfileValidationErrorCodes.InvalidOcrSettings,
+                "OCR watermark filter mode is not supported."));
+        }
+
         if (!OcrSettings.IsSupportedEngine(value.Engine))
         {
             errors.Add(new ProfileValidationError(

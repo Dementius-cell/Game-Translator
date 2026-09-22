@@ -1517,6 +1517,15 @@
                                                         ItemsSource="{Binding OcrOrientations}"
                                                         SelectedItem="{Binding OcrOrientationMode, Mode=TwoWay}"
                                                         ToolTip="{Binding OcrOrientationSelectionToolTip}" />
+                                                    <StackPanel Margin="0,6,0,2" Orientation="Horizontal">
+                                                        <TextBlock Foreground="#56616F" Text="Фильтрация водяных знаков" />
+                                                        <ContentControl Style="{StaticResource ParameterInfoIconStyle}"
+                                                            Tag="WatermarkFilter"
+                                                            Content="Чувствительность фильтра: Выключена (по умолчанию), Осторожная или Усиленная. Исключает из перевода кандидатов по сочетанию контраста, структуры логотипа, повторяемости на разных страницах и адреса сайта. Осторожная сохраняет сомнительный текст. Пиксели изображения не изменяются; контраст не является измерением прозрачности." />
+                                                    </StackPanel>
+                                                    <ComboBox Padding="6,3" ItemsSource="{Binding WatermarkFilterModes}"
+                                                        DisplayMemberPath="Value" SelectedValuePath="Key"
+                                                        SelectedValue="{Binding WatermarkFilterMode, Mode=TwoWay}" />
                                                 </StackPanel>
                                                 <StackPanel
                                                     Grid.Row="1"
@@ -2078,6 +2087,10 @@
                                                             <TextBox
                                                                 Padding="6,3"
                                                                 Text="{Binding SelectedZone.OverlayFontSize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, ValidatesOnExceptions=True}" />
+                                                            <CheckBox Margin="0,5,0,0"
+                                                                Content="Авторазмер (8–72)"
+                                                                ToolTip="Подобрать самый крупный размер, который помещается в область перевода. Без галочки используется заданный размер."
+                                                                IsChecked="{Binding SelectedZone.OverlayAutoFontSize, Mode=TwoWay}" />
                                                         </StackPanel>
                                                         <StackPanel
                                                             Grid.Row="4"

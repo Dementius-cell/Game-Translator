@@ -28,10 +28,13 @@ public partial class OverlayWindow : Window
     private const double ExpandedTextHorizontalPadding = 8;
     private static readonly nint HtTransparent = new(-1);
 
+    private OverlaySnapshot? currentSnapshot;
+
     public OverlayWindow()
     {
         InitializeComponent();
         SourceInitialized += OnSourceInitialized;
+        DpiChanged += (_, _) => Dispatcher.InvokeAsync(RefreshSnapshot);
     }
 
     public bool IsExcludedFromCapture { get; private set; }
@@ -40,6 +43,7 @@ public partial class OverlayWindow : Window
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
+        currentSnapshot = snapshot;
         Left = 0;
         Top = 0;
         Width = SystemParameters.PrimaryScreenWidth;
@@ -51,6 +55,14 @@ public partial class OverlayWindow : Window
         }
 
         DataContext = CreateViewModel(snapshot);
+    }
+
+    private void RefreshSnapshot()
+    {
+        if (IsVisible && currentSnapshot is not null)
+        {
+            ShowSnapshot(currentSnapshot);
+        }
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e)
@@ -233,6 +245,7 @@ public partial class OverlayWindow : Window
             double height,
             string fontFamily,
             double fontSize,
+            double horizontalPadding,
             FontWeight fontWeight,
             FontStyle fontStyle,
             bool usesExpandedLayout,
@@ -245,6 +258,7 @@ public partial class OverlayWindow : Window
             Height = height;
             FontFamily = fontFamily;
             FontSize = fontSize;
+            HorizontalPadding = horizontalPadding;
             FontWeight = fontWeight;
             FontStyle = fontStyle;
             UsesExpandedLayout = usesExpandedLayout;
@@ -261,7 +275,9 @@ public partial class OverlayWindow : Window
 
         public double Height { get; }
 
-        public double ContentWidth => Math.Max(1, Width - ExpandedTextHorizontalPadding * 2);
+        private double HorizontalPadding { get; }
+
+        public double ContentWidth => Math.Max(1, Width - HorizontalPadding * 2);
 
         public string FontFamily { get; }
 
@@ -283,12 +299,16 @@ public partial class OverlayWindow : Window
         {
             var topLeft = transformFromDevice.Transform(new Point(item.X, item.Y));
             var bottomRight = transformFromDevice.Transform(new Point(item.X + item.Width, item.Y + item.Height));
+            // Placement and text measurement use physical pixels. Convert every text metric
+            // together so Windows scaling cannot change wrapping after placement.
+            var scaleX = transformFromDevice.M11;
+            var scaleY = transformFromDevice.M22;
             var rawWidth = Math.Max(1, bottomRight.X - topLeft.X);
             var rawHeight = Math.Max(1, bottomRight.Y - topLeft.Y);
             var screenWidth = Math.Max(1, SystemParameters.PrimaryScreenWidth);
             var screenHeight = Math.Max(1, SystemParameters.PrimaryScreenHeight);
-            var width = Math.Min(screenWidth, Math.Max(MinReadableItemWidth, rawWidth + PreviewPadding * 2));
-            var height = Math.Min(screenHeight, Math.Max(MinReadableItemHeight, rawHeight + PreviewPadding * 2));
+            var width = Math.Min(screenWidth, Math.Max(MinReadableItemWidth * scaleX, rawWidth + PreviewPadding * 2 * scaleX));
+            var height = Math.Min(screenHeight, Math.Max(MinReadableItemHeight * scaleY, rawHeight + PreviewPadding * 2 * scaleY));
 
             return new OverlayWindowTextItemViewModel(
                 item.Text,
@@ -302,7 +322,8 @@ public partial class OverlayWindow : Window
                 Math.Clamp(
                     item.TextStyle.FontSize,
                     OcrZoneTextStyle.MinimumFontSize,
-                    OcrZoneTextStyle.MaximumFontSize),
+                    OcrZoneTextStyle.MaximumFontSize) * scaleY,
+                ExpandedTextHorizontalPadding * scaleX,
                 item.TextStyle.IsBold ? FontWeights.Bold : FontWeights.Normal,
                 item.TextStyle.IsItalic ? FontStyles.Italic : FontStyles.Normal,
                 item.TextStyle.LayoutMode == OverlayTextLayoutMode.ExpandFromSourceCenter,

@@ -95,7 +95,8 @@ public sealed class LiveCandidateLifecycleEvent
         int? emptyOcrRetryCount = null,
         TimeSpan? emptyOcrRetryDelay = null,
         bool? emptyOcrGroupingReset = null,
-        OcrLineRecognitionDiagnostics? ocrLineRecognition = null)
+        OcrLineRecognitionDiagnostics? ocrLineRecognition = null,
+        WatermarkDecision? watermarkDecision = null)
     {
         if (sequence < 1)
         {
@@ -233,6 +234,7 @@ public sealed class LiveCandidateLifecycleEvent
         }
 
         OcrLineRecognition = ocrLineRecognition;
+        WatermarkDecision = watermarkDecision;
         var orderedOcrGeometry = CreateBoundedGeometryDiagnostics(orderedOcrBlockBounds);
         var orderedGroupedGeometry = CreateBoundedGeometryDiagnostics(orderedGroupedMemberBounds);
         var boundedOcrTexts = CreateBoundedTextDiagnostics(ocrTexts);
@@ -488,6 +490,8 @@ public sealed class LiveCandidateLifecycleEvent
 
     public int OcrTextCount { get; }
 
+    public WatermarkDecision? WatermarkDecision { get; }
+
     public OcrLineRecognitionDiagnostics? OcrLineRecognition { get; }
 
     public IReadOnlyList<string> TranslationInputTexts { get; }
@@ -631,6 +635,7 @@ public enum LiveCandidateLifecycleEventKind
     CandidateTranslationQueueWaitWarning,
     CandidateTranslationCredentialsWaitWarning,
     CandidateTranslationResponseWaitWarning,
+    CandidateWatermarkEvidenceChanged,
 }
 
 public enum LiveCandidateCancellationReason
@@ -641,4 +646,5 @@ public enum LiveCandidateCancellationReason
     CandidateDisappeared,
     CaptureLost,
     CandidatePipelineDegraded,
+    WatermarkEvidenceChanged,
 }

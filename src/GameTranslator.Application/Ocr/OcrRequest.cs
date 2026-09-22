@@ -61,6 +61,17 @@ public sealed class OcrRequest
         }
     }
 
+    private WatermarkFilterMode watermarkFilter;
+    public WatermarkFilterMode WatermarkFilter
+    {
+        get => watermarkFilter;
+        init
+        {
+            if (!Enum.IsDefined(value)) throw new ArgumentOutOfRangeException(nameof(value));
+            watermarkFilter = value;
+        }
+    }
+
     public CapturedFrame Frame { get; }
 
     public CaptureRegion Region => Frame.Region;

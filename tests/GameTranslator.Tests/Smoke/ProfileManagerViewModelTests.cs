@@ -175,6 +175,7 @@ public sealed class ProfileManagerViewModelTests
         SetPropertyValue(viewModel, "SourceLanguage", "ja");
         SetPropertyValue(viewModel, "TargetLanguage", "en");
         SetPropertyValue(viewModel, "OcrOrientationMode", OcrOrientationMode.Vertical);
+        SetPropertyValue(viewModel, "WatermarkFilterMode", WatermarkFilterMode.Strong);
 
         await InvokeTaskMethodAsync(viewModel, "SaveAsync");
 
@@ -184,6 +185,7 @@ public sealed class ProfileManagerViewModelTests
         Assert.Equal("Cyberpunk 2077", storedProfiles[0].Name);
         Assert.Equal("Google", storedProfiles[0].TranslatorSettings.Provider);
         Assert.Equal(OcrOrientationMode.Vertical, storedProfiles[0].OcrSettings.OrientationMode);
+        Assert.Equal(WatermarkFilterMode.Strong, storedProfiles[0].OcrSettings.WatermarkFilter);
         Assert.Equal(storedProfiles[0].Id, settings.GetValue<string>("profiles.selectedId"));
         Assert.Equal(storedProfiles[0].Id, GetPropertyValue(GetPropertyValue(viewModel, "SelectedProfile")!, "Id"));
     }
@@ -199,6 +201,7 @@ public sealed class ProfileManagerViewModelTests
         settings.SetValue("shell.draft.translator.sourceLanguage", "ja");
         settings.SetValue("shell.draft.translator.targetLanguage", "en");
         settings.SetValue("shell.draft.ocr.orientationMode", OcrOrientationMode.Vertical);
+        settings.SetValue("shell.draft.ocr.watermarkFilter", WatermarkFilterMode.Cautious);
         settings.SetValue("shell.draft.overlay.maskMode", OverlayMaskMode.Darken);
         settings.SetValue("shell.draft.overlay.maskColor", "#202020");
         settings.SetValue("shell.draft.overlay.opacity", 0.65);
@@ -230,6 +233,7 @@ public sealed class ProfileManagerViewModelTests
         Assert.Equal("ja", GetPropertyValue(viewModel, "SourceLanguage"));
         Assert.Equal("en", GetPropertyValue(viewModel, "TargetLanguage"));
         Assert.Equal(OcrOrientationMode.Vertical, GetPropertyValue(viewModel, "OcrOrientationMode"));
+        Assert.Equal(WatermarkFilterMode.Cautious, GetPropertyValue(viewModel, "WatermarkFilterMode"));
         Assert.Equal(OverlayMaskMode.Darken, GetPropertyValue(viewModel, "OverlayMaskMode"));
         Assert.Equal("#202020", GetPropertyValue(viewModel, "OverlayMaskColor"));
         Assert.Equal(0.65, GetPropertyValue(viewModel, "OverlayOpacity"));

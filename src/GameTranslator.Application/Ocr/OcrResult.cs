@@ -75,6 +75,10 @@ public sealed class OcrResult
         RecognizedAt = recognizedAt;
     }
 
+    public IReadOnlyList<WatermarkCandidateDecision> WatermarkCandidates { get; init; } = Array.Empty<WatermarkCandidateDecision>();
+
+    public WatermarkDecision? WatermarkDecision { get; init; }
+
     public OcrLineRecognitionDiagnostics? LineRecognition { get; init; }
 
     public OcrRequest Request { get; }

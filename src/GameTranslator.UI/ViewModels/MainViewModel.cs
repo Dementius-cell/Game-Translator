@@ -486,6 +486,8 @@ public sealed class MainViewModel : ValidatableObservableObject
     private string sourceLanguage = string.Empty;
     private string targetLanguage = string.Empty;
     private string ocrEngine = OcrSettings.Default.Engine;
+    private WatermarkFilterMode watermarkFilterMode;
+
     private OcrOrientationMode ocrOrientationMode = OcrSettings.Default.OrientationMode;
     private string translatorCredentialSecret = string.Empty;
     private string translatorCredentialProjectId = string.Empty;
@@ -1052,6 +1054,28 @@ public sealed class MainViewModel : ValidatableObservableObject
             {
                 OnPropertyChanged(nameof(ProfileSummary));
                 ResetOcrLanguagePackStatus();
+                PersistDraftShellStateIfNeeded();
+                RefreshValidationState();
+                NotifyCommandStateChanged();
+            }
+        }
+    }
+
+    public IReadOnlyList<KeyValuePair<WatermarkFilterMode, string>> WatermarkFilterModes { get; } =
+        new[] {
+            new KeyValuePair<WatermarkFilterMode, string>(WatermarkFilterMode.Off, "Выключена"),
+            new KeyValuePair<WatermarkFilterMode, string>(WatermarkFilterMode.Cautious, "Осторожная"),
+            new KeyValuePair<WatermarkFilterMode, string>(WatermarkFilterMode.Strong, "Усиленная"),
+        };
+
+    public WatermarkFilterMode WatermarkFilterMode
+    {
+        get => watermarkFilterMode;
+        set
+        {
+            if (!Enum.IsDefined(value)) value = WatermarkFilterMode.Off;
+            if (SetProperty(ref watermarkFilterMode, value))
+            {
                 PersistDraftShellStateIfNeeded();
                 RefreshValidationState();
                 NotifyCommandStateChanged();
@@ -4285,6 +4309,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             {
                 Engine = OcrEngine.Trim(),
                 OrientationMode = OcrOrientationMode,
+                WatermarkFilter = WatermarkFilterMode,
             },
             OcrPreprocessingSettings = BuildOcrPreprocessingSettings(),
             OverlaySettings = new OverlaySettings
@@ -4433,6 +4458,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             OcrPreprocessingScale = profile.OcrPreprocessingSettings.Scale;
             OcrPreprocessingNoiseReductionEnabled = profile.OcrPreprocessingSettings.NoiseReductionEnabled;
             ReplaceZones(profile.OcrZones.Select(OcrZoneEditorViewModel.FromModel));
+            WatermarkFilterMode = profile.OcrSettings.WatermarkFilter;
             OcrOrientationMode = OcrSettings.IsSupportedOrientationMode(profile.OcrSettings.OrientationMode)
                 ? profile.OcrSettings.OrientationMode
                 : OcrSettings.Default.OrientationMode;
@@ -4472,6 +4498,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             OcrPreprocessingScale = settings.GetValue<double?>(DraftOcrPreprocessingScaleSettingKey) ?? OcrPreprocessingSettings.Default.Scale;
             OcrPreprocessingNoiseReductionEnabled = settings.GetValue<bool?>(DraftOcrPreprocessingNoiseReductionSettingKey) ?? OcrPreprocessingSettings.Default.NoiseReductionEnabled;
             ReplaceZones(draftZones.Select(OcrZoneEditorViewModel.FromModel));
+            WatermarkFilterMode = settings.GetValue<WatermarkFilterMode?>("shell.draft.ocr.watermarkFilter") ?? WatermarkFilterMode.Off;
             OcrOrientationMode = settings.GetValue<OcrOrientationMode?>(DraftOcrOrientationModeSettingKey) ?? OcrSettings.Default.OrientationMode;
             if (!string.IsNullOrWhiteSpace(draftSelectedZoneId))
             {
@@ -4862,6 +4889,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         settings.SetValue(DraftTargetLanguageSettingKey, NormalizeOptionalText(TargetLanguage));
         settings.SetValue(DraftOcrEngineSettingKey, NormalizeOptionalText(OcrEngine));
         settings.SetValue(DraftOcrOrientationModeSettingKey, OcrOrientationMode);
+        settings.SetValue("shell.draft.ocr.watermarkFilter", WatermarkFilterMode);
         settings.SetValue(DraftOverlayMaskModeSettingKey, OverlayMaskMode);
         settings.SetValue(DraftOverlayMaskColorSettingKey, OverlayMaskColor.Trim());
         settings.SetValue(DraftOverlayOpacitySettingKey, OverlayOpacity);
@@ -5695,6 +5723,12 @@ public sealed class MainViewModel : ValidatableObservableObject
             AppendLifecycleField(builder, "DetectorConfidenceMin", FormatDiagnosticDouble(entry.MinimumDetectorConfidence));
             AppendLifecycleField(builder, "DetectorConfidenceMax", FormatDiagnosticDouble(entry.MaximumDetectorConfidence));
             AppendLifecycleField(builder, "DetectorConfidenceAverage", FormatDiagnosticDouble(entry.AverageDetectorConfidence));
+            if (entry.WatermarkDecision is { } watermark)
+            {
+                AppendLifecycleField(builder, "WatermarkMode", watermark.Mode.ToString());
+                AppendLifecycleField(builder, "WatermarkExcluded", watermark.Excluded.ToString());
+                AppendLifecycleField(builder, "WatermarkReasons", watermark.Reasons);
+            }
             if (entry.OcrLineRecognition is { } lineRecognition)
             {
                 AppendLifecycleField(builder, "OcrRecognition", "DetectorRawLine");

@@ -44,7 +44,7 @@ public sealed class WpfOverlayTextMeasurer : IOverlayTextMeasurer
                 maxWidth,
                 paragraphProperties,
                 previousLineBreak);
-            var lineWidth = Math.Max(1, (int)Math.Ceiling(Math.Min(maxWidth, line.WidthIncludingTrailingWhitespace)));
+            var lineWidth = Math.Max(1, (int)Math.Ceiling(line.WidthIncludingTrailingWhitespace));
             var lineHeight = Math.Max(1, (int)Math.Ceiling(line.Height));
 
             width = Math.Max(width, lineWidth);
@@ -53,7 +53,7 @@ public sealed class WpfOverlayTextMeasurer : IOverlayTextMeasurer
                 lineWidth,
                 lineHeight,
                 Math.Max(0, line.Length),
-                line.HasOverflowed));
+                line.HasOverflowed || line.Width > maxWidth + 0.01));
 
             var nextCharacterIndex = characterIndex + line.Length;
             if (nextCharacterIndex <= characterIndex)
@@ -153,7 +153,7 @@ public sealed class WpfOverlayTextMeasurer : IOverlayTextMeasurer
 
         public override TextRunProperties DefaultTextRunProperties { get; }
 
-        public override TextWrapping TextWrapping => TextWrapping.Wrap;
+        public override TextWrapping TextWrapping => TextWrapping.WrapWithOverflow;
 
         public override double LineHeight => double.NaN;
 

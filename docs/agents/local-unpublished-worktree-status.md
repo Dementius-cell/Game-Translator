@@ -1,5 +1,12 @@
 # Local unpublished worktree status
 
+## Current delivery status — 2026-09-22
+
+This source update publishes the owner-authorized r51–r61 implementation: watermark filtering, grouping, Bing session/connection compatibility, DPI-correct overlays, ADR-033 source height/auto font size, whole-word wrapping and render containment. Release verification passed 835 tests with zero build warnings/errors. Bing and strong watermark behavior have positive owner evidence; final r61 overlay acceptance remains pending.
+
+The r61 portable, runtime/model files, diagnostic logs, private OCR text and generated visual evidence remain local-only. The unrelated reinstall handoff remains untracked. The 2026-09-13 calibration disposition remains active: retained source/promoted fixtures are tracked; nine generated outputs remain ignored. Earlier dated status blocks below are historical and do not describe current publication or retained portable versions.
+
+
 ## Current calibration decision — 2026-09-13
 
 The owner approved [issue #35 artifact disposition](../testing/calibration-artifact-disposition.md): retain active calibration test source and its local changes; remove nine generated PNG/JSON outputs from tracking while retaining them locally. Earlier protection instructions below are historical and superseded for these ten paths. Other local changes are not authorized for bulk staging, reverting or deletion. The r51 source baseline passes 745/745 tests and is being committed locally for portable packaging. Published remote source remains 0900560 until an explicit push. See [r51 handoff](portable-r51-watermark-handoff.md) for the current delivery boundary.

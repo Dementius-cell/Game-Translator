@@ -107,6 +107,14 @@ public sealed class TextCandidateRegionOcrService
                 zoneRequest.Frame)
             .Select(candidate => new TextCandidateRegion(candidate, CreateCroppedFrame(zoneRequest.Frame, candidate.Bounds)))
             .ToArray();
+        if (zoneRequest.WatermarkFilter != WatermarkFilterMode.Off)
+        {
+            foreach (var region in regions)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                region.WatermarkEvidence = WatermarkContextAnalyzer.Analyze(zoneRequest.Frame, region, regions);
+            }
+        }
         return new TextCandidateRegionDetectionResult(
             detection.Availability,
             detection.DetectorId,
@@ -150,7 +158,11 @@ public sealed class TextCandidateRegionOcrService
             region.Candidate,
             recognizedText,
             candidateResult.RecognizedAt,
-            zoneRequest.OrientationMode);
+            zoneRequest.OrientationMode)
+        {
+            WatermarkDecision = zoneRequest.WatermarkFilter == WatermarkFilterMode.Off ? null
+                : WatermarkFilter.Evaluate(zoneRequest.WatermarkFilter, region.WatermarkEvidence ?? WatermarkFilter.Analyze(region), recognizedText),
+        };
     }
 
     internal bool IsRecognizedCandidateAccepted(
@@ -422,6 +434,8 @@ public sealed class TextCandidateRegion
         Frame = frame ?? throw new ArgumentNullException(nameof(frame));
     }
 
+    public WatermarkVisualEvidence? WatermarkEvidence { get; internal set; }
+
     public TextCandidate Candidate { get; }
 
     public CapturedFrame Frame { get; }
@@ -535,6 +549,8 @@ public sealed class TextCandidateRegionOcrResult
     }
 
     public TextCandidate Candidate { get; }
+
+    public WatermarkDecision? WatermarkDecision { get; init; }
 
     public string RecognizedText { get; }
 

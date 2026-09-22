@@ -42,7 +42,7 @@ public sealed class InfrastructureServiceModule : IApplicationServiceModule
         services.AddSingleton<IOcrLanguagePackService, OcrLanguagePackService>();
         services.AddSingleton<HttpClient>();
         services.AddKeyedSingleton<HttpClient>("BingWeb", (_, _) => new HttpClient(
-            new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(5) })
+            new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(5), ConnectCallback = MultiAddressConnector.ConnectAsync })
         {
             Timeout = System.Threading.Timeout.InfiniteTimeSpan,
         });

@@ -235,7 +235,9 @@ public sealed class TranslationPipelineService
                         cancellationToken,
                         CreateCandidateOverlayPlacementConstraints(zone, orderedRegions, region),
                         candidateTranslationLimiter,
-                        new CandidateRecognitionContext(region.Candidate, zone.AbsoluteBounds.Height))));
+                        new CandidateRecognitionContext(region.Candidate, zone.AbsoluteBounds.Height,
+                            WatermarkEvidence: profile.OcrSettings.WatermarkFilter == WatermarkFilterMode.Off
+                                ? null : region.WatermarkEvidence ?? WatermarkFilter.Analyze(region)))));
             }
         }
 
@@ -370,6 +372,12 @@ public sealed class TranslationPipelineService
         }
 
         var optimizationContext = CreateOptimizationContext(profile, zone, frame, runOptions);
+        if (candidateRecognitionContext?.WatermarkEvidence is { } currentWatermark
+            && optimizationContext.PreviousState?.Result.SourceOcrResult.WatermarkDecision is { } previousWatermark
+            && previousWatermark.EvidenceKey != WatermarkFilter.CreateEvidenceKey(profile.OcrSettings.WatermarkFilter, currentWatermark))
+        {
+            optimizationContext = optimizationContext with { ShouldReusePreviousResult = false };
+        }
         if (optimizationContext.ShouldReusePreviousResult && optimizationContext.PreviousState is not null)
         {
             var reusedResult = CreateReusedResult(
@@ -432,6 +440,18 @@ public sealed class TranslationPipelineService
                 sourceResult.Request,
                 Array.Empty<OcrTextBlock>(),
                 sourceResult.RecognizedAt);
+        }
+
+        if (candidateRecognitionContext?.WatermarkEvidence is { } watermarkEvidence
+            && profile.OcrSettings.WatermarkFilter != WatermarkFilterMode.Off)
+        {
+            sourceResult = new OcrResult(sourceResult.Request, sourceResult.TextBlocks,
+                sourceResult.RecognizedAt, sourceResult.TextBlockSources, sourceResult.Words)
+            {
+                LineRecognition = sourceResult.LineRecognition,
+                WatermarkDecision = WatermarkFilter.Evaluate(profile.OcrSettings.WatermarkFilter,
+                    watermarkEvidence, sourceResult.Text),
+            };
         }
 
         var groupingMeasurement = await RunTimedStageAsync(
@@ -705,7 +725,11 @@ public sealed class TranslationPipelineService
             zoneRequest,
             candidateResults.Select(result => result.CreateSourceTextBlock()),
             recognizedAt,
-            candidateResults.Select(result => result.CreateSourceGeometry()));
+            candidateResults.Select(result => result.CreateSourceGeometry()))
+        {
+            WatermarkCandidates = candidateResults.Where(r => r.WatermarkDecision is not null)
+                .Select(r => new WatermarkCandidateDecision(r.Candidate.Bounds, r.WatermarkDecision!)).ToArray(),
+        };
     }
 
     private static OcrRequest CreateOcrRequest(
@@ -726,6 +750,7 @@ public sealed class TranslationPipelineService
             zone.CandidateGrouping)
         {
             DetectorPreset = zone.DetectorPreset,
+            WatermarkFilter = profile.OcrSettings.WatermarkFilter,
             DetectorLineBounds = candidate is null ? Array.Empty<BoundingBox>()
                 : TextCandidateRegion.CreateDetectorLineBounds(candidate),
         };
@@ -1192,6 +1217,8 @@ public sealed class TranslationPipelineService
             previousResult.Words)
         {
             LineRecognition = previousResult.LineRecognition,
+            WatermarkDecision = previousResult.WatermarkDecision,
+            WatermarkCandidates = previousResult.WatermarkCandidates,
         };
     }
 
@@ -1466,7 +1493,8 @@ public sealed class TranslationPipelineService
         TextCandidate Candidate,
         int SourceZoneHeight,
         string? PreviousTranslationInputSignature = null,
-        bool TypewriterGrowthGuardActive = false);
+        bool TypewriterGrowthGuardActive = false,
+        WatermarkVisualEvidence? WatermarkEvidence = null);
 
     private sealed record PipelineZoneTask(
         int Index,
@@ -2132,6 +2160,8 @@ public sealed class TranslationPipelineService
 
             var matchedCandidateIds = new HashSet<string>(StringComparer.Ordinal);
             var orderedRegions = OrderCandidateRegions(detection.Regions);
+            if (profile.OcrSettings.WatermarkFilter != WatermarkFilterMode.Off)
+                state.WatermarkHistory.Observe(capturedZone.Frame, orderedRegions);
             ValidateTransientEmptyOverlayRetention(state, orderedRegions);
             foreach (var region in orderedRegions)
             {
@@ -2174,6 +2204,12 @@ public sealed class TranslationPipelineService
                 }
 
                 matchedCandidateIds.Add(candidateState.Id);
+
+                // Changed contextual pixels or decision thresholds need fresh OCR/translation projection.
+                // Reuse the existing revision/cancellation path; old work never gains authority.
+                var watermarkChanged = WatermarkFilter.CreateEvidenceKey(profile.OcrSettings.WatermarkFilter, candidateState.Region.WatermarkEvidence)
+                    != WatermarkFilter.CreateEvidenceKey(profile.OcrSettings.WatermarkFilter, region.WatermarkEvidence);
+                if (!watermarkChanged) candidateState.Region.WatermarkEvidence = region.WatermarkEvidence;
 
                 var geometrySignature = CreateCandidateGeometrySignature(region.Candidate);
                 var geometryChanged = !string.Equals(
@@ -2259,7 +2295,7 @@ public sealed class TranslationPipelineService
                         capturedZone.Frame.CapturedAt);
                 }
 
-                if (sourceChanged)
+                if (sourceChanged || watermarkChanged)
                 {
                     var hadPublishedResult = candidateState.Result is not null || candidateState.Failure is not null;
                     if (candidateState.ActiveWork is not null)
@@ -2269,7 +2305,8 @@ public sealed class TranslationPipelineService
                             LiveCandidateLifecycleEventKind.CandidateWorkCancelled,
                             candidateState,
                             frameCapturedAt: capturedZone.Frame.CapturedAt,
-                            cancellationReason: LiveCandidateCancellationReason.CandidateSourceChanged);
+                            cancellationReason: sourceChanged ? LiveCandidateCancellationReason.CandidateSourceChanged
+                                : LiveCandidateCancellationReason.WatermarkEvidenceChanged);
                         CancelActiveWork(candidateState);
                     }
 
@@ -2283,7 +2320,8 @@ public sealed class TranslationPipelineService
                     ClearCandidateTextStability(candidateState);
                     ResetCandidateEmptyOcrRetryState(candidateState);
                     RecordCandidateLifecycleEvent(
-                        LiveCandidateLifecycleEventKind.CandidateSourceChanged,
+                        sourceChanged ? LiveCandidateLifecycleEventKind.CandidateSourceChanged
+                            : LiveCandidateLifecycleEventKind.CandidateWatermarkEvidenceChanged,
                         candidateState,
                         frameCapturedAt: capturedZone.Frame.CapturedAt);
                     RecordCandidateGroupingAwaitingConfirmationIfNeeded(
@@ -2506,7 +2544,8 @@ public sealed class TranslationPipelineService
                         candidateState.Region.Candidate,
                         zoneStates[candidateState.SourceZoneId].Zone.AbsoluteBounds.Height,
                         candidateState.LastObservedTranslationInputSignature,
-                        candidateState.TypewriterGrowthGuardActive),
+                        candidateState.TypewriterGrowthGuardActive,
+                        candidateState.Region.WatermarkEvidence),
                     providerRequestDiagnostics),
                 candidateState.Revision,
                 candidateState.GeometrySignature,
@@ -3160,7 +3199,8 @@ public sealed class TranslationPipelineService
                 emptyOcrRetryCount: emptyOcrRetryCount,
                 emptyOcrRetryDelay: emptyOcrRetryDelay,
                 emptyOcrGroupingReset: emptyOcrGroupingReset,
-                ocrLineRecognition: sourceOcrResult?.LineRecognition);
+                ocrLineRecognition: sourceOcrResult?.LineRecognition,
+                watermarkDecision: sourceOcrResult?.WatermarkDecision);
         }
 
         private void RecordLifecycleEvent(
@@ -3238,7 +3278,8 @@ public sealed class TranslationPipelineService
             int? emptyOcrRetryCount = null,
             TimeSpan? emptyOcrRetryDelay = null,
             bool? emptyOcrGroupingReset = null,
-            OcrLineRecognitionDiagnostics? ocrLineRecognition = null)
+            OcrLineRecognitionDiagnostics? ocrLineRecognition = null,
+            WatermarkDecision? watermarkDecision = null)
         {
             if (!runOptions.EnableCandidateDetectorPilot)
             {
@@ -3329,7 +3370,8 @@ public sealed class TranslationPipelineService
                 emptyOcrRetryCount: emptyOcrRetryCount,
                 emptyOcrRetryDelay: emptyOcrRetryDelay,
                 emptyOcrGroupingReset: emptyOcrGroupingReset,
-                ocrLineRecognition: ocrLineRecognition);
+                ocrLineRecognition: ocrLineRecognition,
+                watermarkDecision: watermarkDecision);
             candidateLifecycleEvents.Enqueue(lifecycleEvent);
             candidateLifecycleEventsSinceLastUpdate.Add(lifecycleEvent);
             candidateLifecycleEventSequence = checked(candidateLifecycleEventSequence + 1);
@@ -3481,6 +3523,8 @@ public sealed class TranslationPipelineService
             public TranslationFailureRetryState TranslationRetry { get; } = new();
 
             public LiveZoneWork? ActiveWork { get; set; }
+
+            public WatermarkPageHistory WatermarkHistory { get; } = new();
 
             public Dictionary<string, LiveCandidateState> CandidateStates { get; } = new(StringComparer.Ordinal);
         }

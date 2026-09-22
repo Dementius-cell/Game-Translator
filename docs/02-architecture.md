@@ -73,6 +73,18 @@ Live publication применяет условный `MinimumCandidateOverlayVis
 
 ------------------------------------------------------------------------
 
+## Фильтрация водяных знаков
+
+Owner-approved scope описан в [watermark handoff](agents/portable-r51-watermark-handoff.md). Совместимое поле OcrSettings.WatermarkFilter сохраняется со schemaVersion 1.0: отсутствующее поле означает Off. Application анализирует оригинальные BGRA crop и ограниченное окружение в кадре до preprocessing и принимает решение после OCR, перед translation projection; raw OCR bounds/words сохраняются. Off не выполняет анализ пикселей или накопление истории.
+
+WatermarkFilter объединяет контраст, многокрасочную нерегулярную структуру эмблемы, повтор рисунка и ограниченные OCR-варианты адреса. Cautious требует адрес с контрастом/повторяемостью либо повтор детализированного бледного логотипа на трёх страницах. Strong принимает логотип с адресом, повтором на двух страницах либо сочетанием пониженного контраста и детализированной структуры. Один признак не исключает кандидата. Нет координатной маски, site blacklist или реконструкции пикселей.
+
+WatermarkPageHistory принадлежит live zone state: подтверждение новой страницы требует двух похожих наблюдений и существенного пространственного изменения относительно всех известных страниц. Небольшая анимация и равномерная яркость не считаются страницей. Каталог ограничен 16 страницами и 128 визуальными шаблонами; после заполнения новые страницы не добавляются до новой сессии. В памяти остаются только уменьшенные числовые образцы, без сохранения на диск. Смена capture geometry очищает историю. История учитывает также фрагменты до получения признака logo, чтобы отсутствие этого признака не блокировало накопление. Переход порога повторяемости и смена контекстного fingerprint/структурных признаков проходят существующую revision/cancellation/source authority, включая запрет reuse старого решения оптимизатором.
+
+WatermarkContextAnalyzer ищет ограниченное прямоугольное окружение вокруг одиночных OCR-фрагментов: не более 384 px по стороне, 24 образца на границу, до трёх границ каждого направления, 48×48 образцов структуры. Проверяется распределение деталей по 3×3 секторам и отсутствие регулярных пустых строк; цвет дополняет эти признаки. Если рамка сливается с фоном или даёт слабые признаки, дополнительно проверяется композиция до восьми соседних исходных OCR-строк: выравнивание, разные ширины, внутренние интервалы и распределённая иллюстрированная текстура. Область по-прежнему ограничена 384 px; соседняя колонка не присоединяется. Для контекста localContrast — медиана диапазонов 5–95% яркости в текстурированных секторах 3×3; пустые сектора не снижают оценку. Это отделяет перепад яркости между панелью и полем страницы от контраста деталей эмблемы. Общий диапазон остаётся в диагностике как contextContrast. Геометрия OCR и маски не расширяется до контекста. Отмена проверяется между кандидатами. Нет пользовательской библиотеки или обучения эмблемам.
+
+Результат исключается только из translation projection и overlay; непустой raw OCR не активирует empty-OCR watchdog. Bounded per-signal metadata доступны в result и local lifecycle report. Default, profile exchange, одноразовый и live routes покрыты регрессиями. Это детерминированная эвристика, не универсальный watermark classifier.
+
 ## Корейские горизонтальные candidate crops
 
 Для одноязычного корейского горизонтального candidate request передаются исходные detector-member bounds относительно crop, с масштабированием вместе с preprocessing. От одной до двенадцати неперекрывающихся по вертикали строк высотой не менее 20 px и отношением ширины к высоте не менее 1.5 распознаются отдельно Tesseract RawLine. Это ограничение выбора режима, а не фильтр текста: мелкие, почти квадратные, перекрывающиеся, mixed-language и прочие crops сохраняют прежний recognizer path. Native executor по-прежнему ограничен тремя slots, engine создаётся один на candidate, cancellation проверяется между строками; повторного full-frame OCR нет.
@@ -223,3 +235,9 @@ MVVM + Clean Architecture. Слои: Presentation (WPF), Application, Domain, In
 - Логи: Serilog
 - Архитектура: MVVM + Clean Architecture
 - Автообновление: Squirrel.Windows
+
+### Overlay sizing and rendering (ADR-033)
+
+Expanded translation frames retain source text height when zone bounds and neighboring regions permit. Per-zone AutoFontSize defaults to false for existing schema-1 profiles; when enabled, the Application measurement port selects the largest fitting whole size 8–72. A bounded, in-memory 256-entry fit cache is keyed by text, style and frame dimensions. Mask geometry remains independent.
+
+WPF converts physical frame geometry, font size and padding together for DPI. TextFormatter and TextBlock share whole-word wrapping and propagate width overflow to the sizing policy. Final expanded rendering only scales down when necessary to contain the actual text, including its last line. Original masks and the configured translator/OCR route are unchanged.

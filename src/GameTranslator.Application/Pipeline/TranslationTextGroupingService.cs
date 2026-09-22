@@ -15,13 +15,20 @@ public static class TranslationTextGroupingService
         ArgumentNullException.ThrowIfNull(sourceResult);
         ArgumentNullException.ThrowIfNull(zone);
 
+        if (sourceResult.WatermarkDecision?.Excluded == true)
+        {
+            return new OcrResult(sourceResult.Request, Array.Empty<OcrTextBlock>(), sourceResult.RecognizedAt);
+        }
+
         // Keep raw OCR authoritative for diagnostics and the empty-OCR watchdog.
         // Only the translation projection excludes standalone punctuation noise.
-        if (sourceResult.TextBlocks.Any(block => IsPunctuationNoise(block.Text)))
+        var excludedBounds = sourceResult.WatermarkCandidates.Where(c => c.Decision.Excluded)
+            .Select(c => c.Bounds).ToHashSet();
+        if (excludedBounds.Count > 0 || sourceResult.TextBlocks.Any(block => IsPunctuationNoise(block.Text)))
         {
             var retained = sourceResult.TextBlocks
                 .Select((block, index) => (block, index))
-                .Where(item => !IsPunctuationNoise(item.block.Text))
+                .Where(item => !IsPunctuationNoise(item.block.Text) && !excludedBounds.Contains(item.block.Bounds))
                 .ToArray();
             sourceResult = new OcrResult(
                 sourceResult.Request,

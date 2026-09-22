@@ -1,5 +1,12 @@
 # OCR and Overlay Work Status
 
+## Current delivery status — 2026-09-22
+
+This source update publishes the owner-authorized r51–r61 implementation: watermark filtering, grouping, Bing session/connection compatibility, DPI-correct overlays, ADR-033 source height/auto font size, whole-word wrapping and render containment. Release verification passed 835 tests with zero build warnings/errors. Bing and strong watermark behavior have positive owner evidence; final r61 overlay acceptance remains pending.
+
+The r61 portable, runtime/model files, diagnostic logs, private OCR text and generated visual evidence remain local-only. The unrelated reinstall handoff remains untracked. The 2026-09-13 calibration disposition remains active: retained source/promoted fixtures are tracked; nine generated outputs remain ignored. Earlier dated status blocks below are historical and do not describe current publication or retained portable versions.
+
+
 ## Publication update — 2026-09-10
 
 Current source includes Korean detector-line OCR, preserved Korean spaces, ADR-032 and punctuation-only translation filtering. Local r46 package smoke and integrity passed. Owner live evidence confirms punctuation filtering and complete recognized line counts; numeric OCR instability and letter/digit watermark noise remain open. A roughly 10-second first-result delay was observed once; a startup timeout/restart is suspected, not proven. Three subsequent detector starts completed in 3.1–3.4 seconds. Local crop experiments reproduced digit instability; switching RawLine to SingleLine or adding crop padding did not provide a reliable correction, so no speculative OCR change was shipped.

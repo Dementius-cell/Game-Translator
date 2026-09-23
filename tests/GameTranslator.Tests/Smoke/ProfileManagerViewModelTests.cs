@@ -2258,9 +2258,11 @@ public sealed class ProfileManagerViewModelTests
             Guid.NewGuid().ToString("N"));
         var settings = new TestSettingsService();
         settings.SetValue("diagnostics.live.directory", diagnosticsDirectory);
+        var logger = new TestApplicationLogger();
         var viewModel = CreateMainViewModel(
             new InMemoryProfileRepository(),
-            settings);
+            settings,
+            logger: logger);
         ConfigureValidDraftProfile(viewModel, "Live diagnostics");
         InvokeMethod(viewModel, "AddZone");
 
@@ -2273,7 +2275,9 @@ public sealed class ProfileManagerViewModelTests
 
             InvokeMethod(viewModel, "StopLiveTranslation");
             await WaitForConditionAsync(() => !(bool)(GetPropertyValue(viewModel, "IsLiveTranslationRunning") ?? true));
-            await WaitForConditionAsync(() => Directory.EnumerateFiles(diagnosticsDirectory, "*.txt").Count() >= 3);
+            // File creation precedes completion of the asynchronous write and handle disposal.
+            await WaitForConditionAsync(() => logger.InformationMessages.Count(
+                message => message.StartsWith("Live diagnostics saved for", StringComparison.Ordinal)) >= 3);
 
             var reportPaths = Directory.EnumerateFiles(diagnosticsDirectory, "*.txt").ToArray();
             Assert.Contains(reportPaths, path => Path.GetFileName(path).Contains("start-live", StringComparison.Ordinal));
@@ -3720,6 +3724,8 @@ public sealed class ProfileManagerViewModelTests
     {
         public List<string> Errors { get; } = new();
 
+        public System.Collections.Concurrent.ConcurrentQueue<string> InformationMessages { get; } = new();
+
         public void Error(Exception exception, string message)
         {
             Errors.Add(message);
@@ -3727,6 +3733,7 @@ public sealed class ProfileManagerViewModelTests
 
         public void Information(string message)
         {
+            InformationMessages.Enqueue(message);
         }
 
         public void Warning(string message)

@@ -18,6 +18,8 @@ Keep the domain layer small, deterministic, and independent from frameworks and 
 - Do not add dependencies on Application, Infrastructure, UI, WPF, Windows APIs, persistence libraries, logging frameworks, DI frameworks, OCR engines, or translation providers.
 - Keep `GameTranslator.Domain.csproj` framework-independent unless an accepted decision explicitly changes the layer contract.
 - Preserve profile compatibility expectations: schema-related domain changes require matching migration, import/export, and validation coverage outside this subtree.
+- Preserve the independent OCR and translation Auto settings. Missing `ExperimentalMultilingual` means false; missing `MultilingualLanguages` retains the default model list. Enabled multilingual OCR requires Tesseract and a nonempty selection. Keep model-code lookup and installed-package checks outside Domain.
+- `AutoDetectSourceLanguage` is nullable for backward compatibility: null is distinct from explicit false. Application/UI resolve legacy null using the profile's multilingual OCR flag; do not collapse null to false in serialization. Explicit true resolves the translation source to auto without overwriting the stored manual `SourceLanguage`. Preserve the current supported-provider validation and test old-profile, explicit true/false and selected-model round trips.
 - Keep absolute and relative geometry semantics explicit and compatible with multi-zone profiles.
 
 ## Work Guidance

@@ -29,6 +29,7 @@ This repository uses a small DOX-style `AGENTS.md` hierarchy for area-specific r
 - For changes under `src/GameTranslator.Infrastructure/**`, also read `src/GameTranslator.Infrastructure/AGENTS.md`.
 - For changes under `src/GameTranslator.UI/**`, also read `src/GameTranslator.UI/AGENTS.md`.
 - For changes under `tests/**`, also read `tests/AGENTS.md`.
+- For changes under `tools/**`, also read `tools/AGENTS.md`, including runtime manifests, packaging scripts and the standalone benchmark project.
 - For calibration or golden-reference work under `tests/GameTranslator.Tests/Calibration/**`, also read `tests/GameTranslator.Tests/Calibration/AGENTS.md`.
 
 Child instruction files extend these root rules within their directory scope. When a meaningful change alters a subtree's durable purpose, ownership, contracts, workflow, verification, or child instruction index, update the nearest owning `AGENTS.md` and any affected parent index before finishing. Small edits that do not change those contracts may leave local instruction files unchanged, but the final report should make that clear when relevant.
@@ -57,6 +58,7 @@ Do not treat this file as the current sprint/status source. The project has prog
 - Keep changes minimal and tied to the current sprint.
 - Add or update tests for changed behavior according to the applicable quality gates, and record justified N/A gates in the final report when relevant.
 - When adding documentation references to generated screenshots, scorecards, debug reports, harnesses, or built binaries, label whether the path is tracked, generated/reproducible, local-only, ignored output, or a build output. Follow `docs/evidence-artifacts.md`.
+- Keep owner-uploaded page examples, their OCR transcripts and local experiment outputs out of source synchronization to GitHub. Use synthetic text in public regression tests; inspect the explicit publication file list rather than staging ignored evidence or local handoffs.
 - Report changed files, created files, validation performed, discovered risks, remaining work, and the next step after each task.
 - When posting or editing multi-line GitHub issue/PR comments, do not pass Markdown through inline shell strings or `gh ... --body` in PowerShell. Write the comment body to a UTF-8 file and use `--body-file`, or send JSON from a file through the GitHub API, then verify the published body with `gh issue view --json comments` or `gh api` before reporting success.
 

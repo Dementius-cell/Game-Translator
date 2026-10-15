@@ -53,12 +53,20 @@ This repo uses a small `AGENTS.md` hierarchy. Read the root file first, then the
 |   |   `-- AGENTS.md
 |   `-- GameTranslator.UI/
 |       `-- AGENTS.md
+|-- tools/
+|   |-- AGENTS.md
+|   |-- ComicGeometryCandidateDetectorBenchmark/
+|   `-- paddle-runtime/
 `-- tests/
     |-- AGENTS.md
     `-- GameTranslator.Tests/
         `-- Calibration/
             `-- AGENTS.md
 ```
+
+`tools/AGENTS.md` covers both the standalone benchmark project and runtime/packaging tooling; they are not additional production modules. `tests/AGENTS.md` covers the test project, with additional rules for calibration. A child instruction file is needed when a subtree has distinct contracts, not for every directory.
+
+For current delivery context, start with the newest dated section of `docs/agents/ocr-overlay-work-status.md` and `docs/agents/local-unpublished-worktree-status.md`, then verify the working tree and relevant issues. Older handoffs and dated sections are historical evidence, not instructions to restore an obsolete runtime or repeat completed work. Private local handoffs and owner-provided examples are not publication inputs.
 
 ## Use project vocabulary
 

@@ -28,6 +28,8 @@ Keep the WPF presentation layer ergonomic, testable, and separated from infrastr
 - Keep code-behind limited to WPF lifecycle, visual interaction glue, and view-specific plumbing.
 - Keep view models deterministic and testable with Application-level fakes.
 - Keep four profile tabs (zones, recognition, translation, appearance) separate from global settings/diagnostics navigation. Preserve access to advanced zone parameters in the collapsed editor and validate responsive layout headlessly at supported window sizes.
+- Auto OCR model search filters the available list only; it must not clear hidden selections. Keep the selected list independently visible and synchronize it with the model-code selection, saved profile and draft settings. Preserve selected models across search, profile reload and independent OCR/translation Auto toggles; reject empty or unsupported selections before starting work.
+- Keep multilingual OCR and automatic translation-source controls independent, retaining the manual source language. Loading legacy profiles may resolve the nullable translation Auto setting from the OCR flag; changing an OCR toggle must not overwrite an explicit translation choice. Installation of all catalog packs is an explicit cancellable action with progress and failure counts, not a side effect of search or selection.
 - Editor themes default to the Windows app colour mode; persist explicit Light/Dark/System preference via ISettingsService. ThemeService owns editor-scoped dynamic resources and marshals system notifications to each UI dispatcher. Never apply these dictionaries to Application.Resources or the translation overlay. Verify both themes and dispose static Windows event subscriptions.
 - Preserve click-through, capture exclusion, always-on-top, and overlay positioning behavior when touching overlay code.
 - Prefer clear recoverable user states for capture, OCR language packs, providers, and overlay failures.
@@ -35,6 +37,7 @@ Keep the WPF presentation layer ergonomic, testable, and separated from infrastr
 ## Verification
 
 - For view-model behavior changes, run UI smoke/view-model tests.
+- For OCR model selection changes, cover filtering without selection loss, the independent selected list, save/reload and draft persistence, invalid selections, separate Auto controls and cancellable package installation as applicable.
 - For overlay, region picker, hotkey, focus, or WPF service changes, run focused tests and add visual/manual evidence only when the task actually needs UI verification.
 - Do not launch the UI for docs-only or pure view-model edits unless explicitly requested.
 

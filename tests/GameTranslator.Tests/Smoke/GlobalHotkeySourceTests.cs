@@ -23,7 +23,7 @@ public sealed class GlobalHotkeySourceTests
     {
         var source = ReadSource("src/GameTranslator.UI/Views/ShellView.xaml");
 
-        Assert.Contains("Global hotkeys", source, StringComparison.Ordinal);
+        Assert.Contains("Горячие клавиши", source, StringComparison.Ordinal);
         Assert.Contains("HotkeyBindings", source, StringComparison.Ordinal);
         Assert.Contains("ApplyGlobalHotkeysCommand", source, StringComparison.Ordinal);
         Assert.Contains("ResetGlobalHotkeysCommand", source, StringComparison.Ordinal);
@@ -36,7 +36,7 @@ public sealed class GlobalHotkeySourceTests
         var source = ReadSource("src/GameTranslator.UI/Views/ShellView.xaml");
 
         Assert.Contains("CollectDebugInfoCommand", source, StringComparison.Ordinal);
-        Assert.Contains("Collect debug info", source, StringComparison.Ordinal);
+        Assert.Contains("Собрать диагностику", source, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -53,6 +53,6 @@ public sealed class GlobalHotkeySourceTests
 
     private static string ReadSource(string relativePath)
     {
-        return File.ReadAllText(Path.Combine(RepositoryRoot.Find(), relativePath));
+        return LocalizedXaml.ReadSource(Path.Combine(RepositoryRoot.Find(), relativePath));
     }
 }

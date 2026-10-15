@@ -3,14 +3,14 @@ using GameTranslator.Domain.Profiles;
 
 namespace GameTranslator.Application.Pipeline;
 
-public static class TranslationTextGroupingService
+public static partial class TranslationTextGroupingService
 {
     private const double SameReadingLineCenterToleranceFactor = 0.8;
     private const double SameReadingLineOverlapRatio = 0.15;
     private const double AdaptiveMergeMinorSideMultiplier = 1.75;
     private const double MinimumAdaptiveMergeThresholdPixels = 18;
 
-    public static OcrResult CreateTranslationSourceResult(OcrResult sourceResult, OcrZone zone)
+    public static OcrResult CreateTranslationSourceResult(OcrResult sourceResult, OcrZone zone, bool separateLanguages = false)
     {
         ArgumentNullException.ThrowIfNull(sourceResult);
         ArgumentNullException.ThrowIfNull(zone);
@@ -40,6 +40,9 @@ public static class TranslationTextGroupingService
                 LineRecognition = sourceResult.LineRecognition,
             };
         }
+
+        if (separateLanguages)
+            return CreateLanguageAwareResult(sourceResult, zone);
 
         // A single block bypasses group construction, but still needs the same text
         // normalization as each member of a multi-block translation group.
@@ -226,6 +229,16 @@ public static class TranslationTextGroupingService
             return blocks;
         }
 
+        var regions = blocks.GroupBy(block => GetSourceForBlock(sourceResult, block).CandidateRegionBounds).ToArray();
+        if (regions.Length > 1)
+            return regions.SelectMany(region => OrderBlocksByReadingPosition(sourceResult, region.ToArray())).ToArray();
+
+        var orientations = blocks.Select(block => GetSourceForBlock(sourceResult, block).OrientationMode).Distinct().ToArray();
+        if (orientations.Length == 1 && orientations[0] == OcrOrientationMode.Vertical)
+            return OrderVerticalCjkBlocksByReadingPosition(blocks);
+        if (orientations.Length == 1 && orientations[0] == OcrOrientationMode.Horizontal)
+            return OrderHorizontalBlocksByReadingPosition(blocks, UsesRightToLeftBlockOrder(sourceResult));
+
         return WritingSystemGroupingProfileResolver.Resolve(
                 sourceResult.Request.Language,
                 sourceResult.Request.OrientationMode)
@@ -342,6 +355,10 @@ public static class TranslationTextGroupingService
 
     private static bool IsSameReadingLine(IReadOnlyList<OcrTextBlock> row, OcrTextBlock block)
     {
+        // Vertically overlapping OCR boxes can still be different lines. Do not
+        // let a tall box bridge rows when they occupy the same horizontal span.
+        if (row.Any(item => Math.Min(item.Bounds.Right, block.Bounds.Right) - Math.Max(item.Bounds.X, block.Bounds.X)
+            > Math.Min(item.Bounds.Width, block.Bounds.Width) * 0.25)) return false;
         var rowTop = row.Min(item => item.Bounds.Y);
         var rowBottom = row.Max(item => item.Bounds.Bottom);
         var rowAverageHeight = row.Average(item => item.Bounds.Height);
@@ -367,6 +384,8 @@ public static class TranslationTextGroupingService
         IReadOnlyList<OcrTextBlock> column,
         OcrTextBlock block)
     {
+        if (column.Any(item => Math.Min(item.Bounds.Bottom, block.Bounds.Bottom) - Math.Max(item.Bounds.Y, block.Bounds.Y)
+            > Math.Min(item.Bounds.Height, block.Bounds.Height) * 0.25)) return false;
         var columnLeft = column.Min(item => item.Bounds.X);
         var columnRight = column.Max(item => item.Bounds.Right);
         var columnAverageWidth = column.Average(item => item.Bounds.Width);
@@ -424,7 +443,11 @@ public static class TranslationTextGroupingService
         return new OcrTextBlockSource(
             semanticBounds,
             memberBounds,
-            ResolveGroupOrientation(sourceResult, sources));
+            ResolveGroupOrientation(sourceResult, sources))
+        {
+            CandidateRegionBounds = sources.Select(source => source.CandidateRegionBounds).Distinct().Count() == 1
+                ? sources[0].CandidateRegionBounds : null,
+        };
     }
 
     private static OcrTextBlockSource GetSourceForBlock(OcrResult sourceResult, OcrTextBlock block)

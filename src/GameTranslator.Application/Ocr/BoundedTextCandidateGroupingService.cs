@@ -10,6 +10,7 @@ public sealed class BoundedTextCandidateGroupingService
     private const double HorizontalGapFactor = 0.5d;
     private const double MinimumSharedVerticalOverlapRatio = 0.5d;
     private const double VerticalGapFactor = 1.5d;
+    private const double MaximumHorizontalLineHeightRatio = 2d;
     private const double MinimumSharedHorizontalOverlapRatio = 0.5d;
     private const int MaximumVerticalGroupMembers = 4;
     private const int MaximumHorizontalStackGroupMembers = 6;
@@ -470,6 +471,15 @@ public sealed class BoundedTextCandidateGroupingService
         TextCandidate candidate,
         WritingSystemGroupingProfile groupingProfile)
     {
+        // Compare every original detector member, not the height of an already
+        // grouped crop. A large title must not absorb a nearby small caption,
+        // including through a chain of intermediate-sized lines.
+        var heights = group.Append(candidate)
+            .SelectMany(member => member.SourceCandidateBounds)
+            .Select(bounds => bounds.Height).ToArray();
+        if (heights.Max() > heights.Min() * MaximumHorizontalLineHeightRatio)
+            return false;
+
         if (SharedHorizontalOverlapRatio(group.Append(candidate))
             < GetMinimumSharedHorizontalOverlapRatio(groupingProfile))
         {

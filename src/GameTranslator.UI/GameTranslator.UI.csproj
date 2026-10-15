@@ -1,6 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <EmbeddedResource Include="Localization\Strings.json" />
     <ProjectReference Include="..\GameTranslator.Application\GameTranslator.Application.csproj" />
   </ItemGroup>
 

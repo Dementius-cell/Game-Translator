@@ -1,3 +1,4 @@
+using GameTranslator.UI.Localization;
 using GameTranslator.Application.Abstractions;
 using Microsoft.Win32;
 using System.Windows;
@@ -12,8 +13,8 @@ public sealed class DialogService : IDialogService
 
         var dialog = new OpenFileDialog
         {
-            Title = title,
-            Filter = filter,
+            Title = UiText.Translate(title),
+            Filter = UiText.Translate(filter),
             CheckFileExists = true,
             Multiselect = false,
         };
@@ -31,9 +32,9 @@ public sealed class DialogService : IDialogService
 
         var dialog = new SaveFileDialog
         {
-            Title = title,
+            Title = UiText.Translate(title),
             FileName = defaultFileName,
-            Filter = filter,
+            Filter = UiText.Translate(filter),
             OverwritePrompt = true,
         };
 
@@ -48,8 +49,8 @@ public sealed class DialogService : IDialogService
         cancellationToken.ThrowIfCancellationRequested();
 
         var result = MessageBox.Show(
-            message,
-            title,
+            UiText.Translate(message),
+            UiText.Translate(title),
             MessageBoxButton.YesNoCancel,
             MessageBoxImage.Question);
 
@@ -64,7 +65,7 @@ public sealed class DialogService : IDialogService
     public Task ShowInformationAsync(string title, string message, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Information);
+        MessageBox.Show(UiText.Translate(message), UiText.Translate(title), MessageBoxButton.OK, MessageBoxImage.Information);
         return Task.CompletedTask;
     }
 }

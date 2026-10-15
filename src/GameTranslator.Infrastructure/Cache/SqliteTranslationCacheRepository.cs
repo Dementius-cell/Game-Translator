@@ -155,6 +155,17 @@ public sealed class SqliteTranslationCacheRepository : ITranslationCacheReposito
         return deleted;
     }
 
+    public async Task<int> DeleteAllAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await EnsureDatabaseAsync(cancellationToken);
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM translations";
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     private async Task EnsureDatabaseAsync(CancellationToken cancellationToken)
     {
         if (isInitialized)

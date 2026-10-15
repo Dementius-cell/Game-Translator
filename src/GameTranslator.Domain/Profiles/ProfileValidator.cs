@@ -11,6 +11,14 @@ public sealed class ProfileValidator
         ValidateSchemaVersion(profile, errors);
         ValidateOcrZones(profile, errors);
         ValidateOcrSettings(profile.OcrSettings, errors);
+        if (TranslatorSettings.GetAutoConfigurationError(profile.TranslatorSettings.AutoDetectSourceLanguage
+            ?? profile.OcrSettings.ExperimentalMultilingual, profile.TranslatorSettings.Provider) is { } autoError)
+            errors.Add(new ProfileValidationError("InvalidAutoSourceLanguage", autoError));
+        if (profile.OcrSettings is { } settings && OcrSettings.GetMultilingualConfigurationError(
+            settings.ExperimentalMultilingual, settings.Engine, settings.OrientationMode, profile.TranslatorSettings.Provider) is { } multilingualError)
+            errors.Add(new ProfileValidationError("InvalidMultilingualOcrConfiguration", multilingualError));
+        if (profile.OcrSettings.ExperimentalMultilingual && string.IsNullOrWhiteSpace(profile.OcrSettings.MultilingualLanguages))
+            errors.Add(new ProfileValidationError("MissingMultilingualOcrLanguages", "Select at least one supported language for Auto OCR."));
         ValidateOcrPreprocessing(profile.OcrPreprocessingSettings, errors);
 
         return new ProfileValidationResult(errors.AsReadOnly());

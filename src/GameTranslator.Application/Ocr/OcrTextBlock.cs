@@ -16,4 +16,7 @@ public sealed class OcrTextBlock
     public string Text { get; }
 
     public BoundingBox Bounds { get; }
+
+    // Translation projection only; raw OCR does not claim a detected language.
+    public string TranslationSourceLanguage { get; init; } = "auto";
 }

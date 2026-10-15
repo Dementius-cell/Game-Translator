@@ -22,6 +22,7 @@ When changing vertical CJK behavior, cover at least one relevant case:
 
 - Keep tests deterministic and independent of live network services.
 - Do not require real API keys or credentials.
+- Tests that instantiate WPF windows or load theme dictionaries belong to the non-parallel `WpfResourceCollection`: pack-URI resource packages are shared across STA threads. Keep pure source and application tests outside this collection.
 
 ## Calibration Sandbox
 

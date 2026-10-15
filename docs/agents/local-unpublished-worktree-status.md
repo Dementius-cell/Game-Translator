@@ -1,5 +1,13 @@
 # Local unpublished worktree status
 
+## Source synchronization — 2026-10-15
+
+The owner authorized synchronizing current implementation, tests and documentation to GitHub, excluding uploaded page examples. The publication includes multilingual OCR and translation routing, outlined-text recovery, workspace navigation, themes, localization, local bug/crash reporting and explicit cache clearing. New text fixtures were replaced with synthetic strings before publication; source images and OCR transcripts remain local-only.
+
+The sanitized source export passed a Release build with zero warnings/errors and all 963 tests. WPF resource-loading tests are serialized through a dedicated collection. The unrelated reinstall handoff, ignored experiments/evidence, runtime models and existing portable builds remain local. This update does not publish binaries or change earlier owner-live acceptance boundaries. See [current OCR work status](ocr-overlay-work-status.md).
+
+The dated sections below preserve historical snapshots and are not the current list of unpublished implementation files.
+
 ## Current delivery status — 2026-09-22
 
 This source update publishes the owner-authorized r51–r61 implementation: watermark filtering, grouping, Bing session/connection compatibility, DPI-correct overlays, ADR-033 source height/auto font size, whole-word wrapping and render containment. Release verification passed 835 tests with zero build warnings/errors. Bing and strong watermark behavior have positive owner evidence; final r61 overlay acceptance remains pending.

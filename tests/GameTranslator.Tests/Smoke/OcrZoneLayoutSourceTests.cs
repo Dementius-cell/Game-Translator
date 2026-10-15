@@ -6,50 +6,33 @@ namespace GameTranslator.Tests.Smoke;
 public sealed class OcrZoneLayoutSourceTests
 {
     [Fact]
-    public void ShellView_RendersZoneSurfaceAndZoneDetailsInSeparateRows()
+    public void ShellView_SeparatesResponsiveZonePreviewInspectorAndCollapsedAdvancedSettings()
     {
-        var document = XDocument.Load(
-            Path.Combine(
-                RepositoryRoot.Find(),
-                "src",
-                "GameTranslator.UI",
-                "Views",
-                "ShellView.xaml"));
+        var document = LocalizedXaml.Load(Path.Combine(RepositoryRoot.Find(), "src", "GameTranslator.UI", "Views", "ShellView.xaml"));
         XNamespace wpf = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
-
-        var surfaceTitle = document
-            .Descendants(wpf + "TextBlock")
-            .Single(element => (string?)element.Attribute("Text") == "Interactive zone surface");
-        var surfacePanel = surfaceTitle.Ancestors(wpf + "Border").First();
-        var responsivePanel = surfacePanel.Ancestors(wpf + "WrapPanel").Single();
-
-        Assert.Equal("0", (string?)responsivePanel.Attribute("Grid.Row"));
-        Assert.Equal("ZoneResponsivePanels", GetName(responsivePanel));
-        Assert.Equal("540", (string?)surfacePanel.Attribute("Width"));
-        Assert.Contains(
-            responsivePanel.Elements(wpf + "Border"),
-            element => GetName(element) == "OcrPreprocessingCard"
-                && (string?)element.Attribute("Width") == "500");
-
-        var surfaceViewbox = surfacePanel
-            .Descendants(wpf + "Viewbox")
-            .Single();
-        Assert.Equal("490", (string?)surfaceViewbox.Attribute("Width"));
-        Assert.Equal("275.625", (string?)surfaceViewbox.Attribute("Height"));
-
-        var zoneDetailsPanel = document
-            .Descendants(wpf + "Grid")
-            .Single(element => GetName(element) == "SelectedZoneParametersPanel");
-        Assert.Equal("2", (string?)zoneDetailsPanel.Attribute("Grid.Row"));
-        Assert.DoesNotContain(
-            zoneDetailsPanel.Elements(wpf + "ListBox"),
-            element => (string?)element.Attribute("ItemsSource") == "{Binding OcrZones}");
+        var surface = document.Descendants(wpf + "Border").Single(e => GetName(e) == "ZoneSurfaceCard");
+        var responsive = surface.Ancestors(wpf + "Grid").First();
+        Assert.Equal("ZoneResponsivePanels", GetName(responsive));
+        Assert.Equal("OnZoneWorkspaceSizeChanged", (string?)responsive.Attribute("SizeChanged"));
+        Assert.Null(surface.Attribute("Width"));
+        Assert.Contains(responsive.Elements(wpf + "Border"), e => GetName(e) == "ZoneInspector");
+        var preview = surface.Descendants(wpf + "Expander").Single();
+        Assert.Equal("True", (string?)preview.Attribute("IsExpanded"));
+        var viewbox = preview.Descendants(wpf + "Viewbox").Single();
+        Assert.Equal("Uniform", (string?)viewbox.Attribute("Stretch"));
+        Assert.Equal("300", (string?)viewbox.Attribute("MaxHeight"));
+        var advanced = document.Descendants(wpf + "Expander").Single(e => GetName(e) == "AdvancedZoneSettings");
+        Assert.Equal("False", (string?)advanced.Attribute("IsExpanded"));
+        Assert.Contains(advanced.Descendants(wpf + "Grid"), e => GetName(e) == "SelectedZoneParametersPanel");
+        var zoneList = document.Descendants(wpf + "ListBox").Single(e => GetName(e) == "ZoneList");
+        Assert.Equal("{Binding OcrZones}", (string?)zoneList.Attribute("ItemsSource"));
+        Assert.Equal("{Binding SelectedZone, Mode=TwoWay}", (string?)zoneList.Attribute("SelectedItem"));
     }
 
     [Fact]
     public void ShellView_KeepsTheZoneWorkspaceCompactAndRoutesLanguagePacksToTheirOwnTab()
     {
-        var document = XDocument.Load(
+        var document = LocalizedXaml.Load(
             Path.Combine(
                 RepositoryRoot.Find(),
                 "src",
@@ -76,7 +59,7 @@ public sealed class OcrZoneLayoutSourceTests
     [Fact]
     public void ShellView_ExposesContentLayoutModeAndItsEffectivePolicy()
     {
-        var document = XDocument.Load(
+        var document = LocalizedXaml.Load(
             Path.Combine(
                 RepositoryRoot.Find(),
                 "src",
@@ -85,13 +68,14 @@ public sealed class OcrZoneLayoutSourceTests
                 "ShellView.xaml"));
         XNamespace wpf = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
 
-        var modeSelector = document
+        var modeSelectors = document
             .Descendants(wpf + "ComboBox")
-            .Single(element => (string?)element.Attribute("ItemsSource") == "{Binding ContentLayoutModeOptions}");
+            .Where(element => (string?)element.Attribute("ItemsSource") == "{Binding ContentLayoutModeOptions}").ToArray();
 
-        Assert.Equal(
+        Assert.Equal(2, modeSelectors.Length);
+        Assert.All(modeSelectors, modeSelector => Assert.Equal(
             "{Binding SelectedZone.ContentLayoutMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}",
-            (string?)modeSelector.Attribute("SelectedValue"));
+            (string?)modeSelector.Attribute("SelectedValue")));
         Assert.Contains(
             document.Descendants(wpf + "TextBlock"),
             element => (string?)element.Attribute("Text") == "{Binding SelectedZone.ContentLayoutPolicySummary}");
@@ -103,7 +87,7 @@ public sealed class OcrZoneLayoutSourceTests
     [Fact]
     public void ShellView_ExposesACompactPerZoneDetectorPresetSelector()
     {
-        var document = XDocument.Load(
+        var document = LocalizedXaml.Load(
             Path.Combine(
                 RepositoryRoot.Find(),
                 "src",
@@ -127,7 +111,7 @@ public sealed class OcrZoneLayoutSourceTests
     [Fact]
     public void ShellView_ExposesOrientationSpecificCandidateGroupingLimits()
     {
-        var document = XDocument.Load(
+        var document = LocalizedXaml.Load(
             Path.Combine(
                 RepositoryRoot.Find(),
                 "src",
@@ -157,7 +141,7 @@ public sealed class OcrZoneLayoutSourceTests
     [Fact]
     public void ShellView_OverlayHelpUsesItsOwnDeclaredGridRow()
     {
-        var document = XDocument.Load(
+        var document = LocalizedXaml.Load(
             Path.Combine(
                 RepositoryRoot.Find(),
                 "src",

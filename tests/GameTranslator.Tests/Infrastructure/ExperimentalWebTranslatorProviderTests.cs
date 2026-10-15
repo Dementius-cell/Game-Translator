@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http;
 using System.Globalization;
 using System.Text;
@@ -467,8 +467,10 @@ public sealed class ExperimentalWebTranslatorProviderTests
         Assert.Equal(TranslatorProviderFailureKind.EmptyResponse, exception.FailureKind);
     }
 
-    [Fact]
-    public async Task BingWebTranslateAsync_WhenSessionAndTranslationSucceed_ReturnsTranslatedText()
+    [Theory]
+    [InlineData("en", "en")]
+    [InlineData("auto", "auto-detect")]
+    public async Task BingWebTranslateAsync_WhenSessionAndTranslationSucceed_ReturnsTranslatedText(string source, string expectedSource)
     {
         var handler = new SequenceHttpMessageHandler(
             new HttpResponseMessage(HttpStatusCode.OK)
@@ -481,7 +483,7 @@ public sealed class ExperimentalWebTranslatorProviderTests
             });
         var provider = new BingWebTranslatorProvider(new HttpClient(handler));
 
-        var response = await provider.TranslateAsync(CreateRequest("BingWeb", "https://www.bing.com"));
+        var response = await provider.TranslateAsync(CreateRequest("BingWeb", "https://www.bing.com", source));
 
         Assert.Equal(new[] { "Привет" }, response.TranslatedTexts);
         Assert.Equal("BingWeb", response.ProviderId);
@@ -489,7 +491,7 @@ public sealed class ExperimentalWebTranslatorProviderTests
         Assert.EndsWith("/translator", handler.Requests[0].Uri?.AbsolutePath, StringComparison.Ordinal);
         Assert.Contains("/ttranslatev3", handler.Requests[1].Uri?.AbsolutePath, StringComparison.Ordinal);
         Assert.Contains("IID=translator.5028", handler.Requests[1].Uri?.Query, StringComparison.Ordinal);
-        Assert.Contains("fromLang=auto-detect", handler.Requests[1].Content, StringComparison.Ordinal);
+        Assert.Contains($"fromLang={expectedSource}", handler.Requests[1].Content, StringComparison.Ordinal);
         Assert.Contains("to=ru", handler.Requests[1].Content, StringComparison.Ordinal);
         Assert.Contains("token=TOKENVALUE", handler.Requests[1].Content, StringComparison.Ordinal);
         Assert.Contains("key=12345", handler.Requests[1].Content, StringComparison.Ordinal);
@@ -681,8 +683,10 @@ public sealed class ExperimentalWebTranslatorProviderTests
         Assert.Equal(4, handler.RequestCount);
     }
 
-    [Fact]
-    public async Task YandexWebTranslateAsync_WhenResponseContainsText_ReturnsTranslatedText()
+    [Theory]
+    [InlineData("en", "en-ru")]
+    [InlineData("auto", "ru")]
+    public async Task YandexWebTranslateAsync_WhenResponseContainsText_ReturnsTranslatedText(string source, string expectedPair)
     {
         var handler = new SequenceHttpMessageHandler(
             new HttpResponseMessage(HttpStatusCode.OK)
@@ -691,7 +695,7 @@ public sealed class ExperimentalWebTranslatorProviderTests
             });
         var provider = new YandexWebTranslatorProvider(new HttpClient(handler));
 
-        var response = await provider.TranslateAsync(CreateRequest("YandexWeb", "https://translate.yandex.net"));
+        var response = await provider.TranslateAsync(CreateRequest("YandexWeb", "https://translate.yandex.net", source));
 
         Assert.Equal(new[] { "Привет" }, response.TranslatedTexts);
         var translateRequest = Assert.Single(handler.Requests);
@@ -700,7 +704,7 @@ public sealed class ExperimentalWebTranslatorProviderTests
         Assert.Contains("ucid=", translateRequest.Uri?.Query, StringComparison.Ordinal);
         Assert.Contains("srv=android", translateRequest.Uri?.Query, StringComparison.Ordinal);
         Assert.Contains("format=text", translateRequest.Uri?.Query, StringComparison.Ordinal);
-        Assert.Contains("lang=ru", translateRequest.Content, StringComparison.Ordinal);
+        Assert.Contains($"lang={expectedPair}", translateRequest.Content, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -7,7 +7,170 @@ namespace GameTranslator.Tests.Application;
 
 public sealed class TranslationTextGroupingServiceTests
 {
+    [Theory]
+    [InlineData(OcrOrientationMode.Vertical, "右 中 左")]
+    [InlineData(OcrOrientationMode.Horizontal, "左 中 右")]
+    public void AutoRequest_UsesRecognizedOrientationForTranslationAndDiagnostics(OcrOrientationMode detected, string expected)
+    {
+        var blocks = new[] {
+            new OcrTextBlock("右", new BoundingBox(70, 5, 20, 100)),
+            new OcrTextBlock("中", new BoundingBox(40, 5, 20, 100)),
+            new OcrTextBlock("左", new BoundingBox(10, 5, 20, 100)) };
+        var raw = CreateResult(120, 120, OcrOrientationMode.Auto, "jpn+kor+chi_sim+eng", blocks);
+        var source = new OcrResult(raw.Request, blocks, raw.RecognizedAt,
+            blocks.Select(b => new OcrTextBlockSource(b.Bounds, new[] { b.Bounds }, detected)));
+        foreach (var autoLanguage in new[] { false, true })
+        {
+            var result = TranslationTextGroupingService.CreateTranslationSourceResult(source,
+                new OcrZone { TranslationGroupingMode = TranslationGroupingMode.WholeZone }, autoLanguage);
+            Assert.Equal(expected, Assert.Single(result.TextBlocks).Text);
+            Assert.Equal(detected, Assert.Single(result.TextBlockSources).OrientationMode);
+        }
+        Assert.Equal(detected == OcrOrientationMode.Vertical ? blocks.Select(b => b.Bounds) : blocks.Reverse().Select(b => b.Bounds),
+            TranslationTextGroupingService.ResolveOrderedMemberBoundsForDiagnostics(source));
+    }
+
+    [Fact]
+    public void AutoLanguages_SeparatesLatinHanAndKorean_PreservesContinuationAndSourceGeometry()
+    {
+        var blocks = new[] {
+            new OcrTextBlock("Hello world", new BoundingBox(5, 5, 150, 20)),
+            new OcrTextBlock("我去", new BoundingBox(5, 45, 60, 20)),
+            new OcrTextBlock("超市。", new BoundingBox(5, 70, 60, 20)),
+            new OcrTextBlock("안녕하세요", new BoundingBox(5, 110, 120, 20)) };
+        var source = CreateResult(300, 150, blocks);
+        var zone = new OcrZone { TranslationGroupingMode = TranslationGroupingMode.WholeZone };
+        var result = TranslationTextGroupingService.CreateTranslationSourceResult(source, zone, true);
+        Assert.Equal(3, result.TextBlocks.Count);
+        Assert.Equal(new[] { "Hello world", "我去 超市。", "안녕하세요" }, result.TextBlocks.Select(b => b.Text));
+        Assert.Equal(new[] { "auto", "auto", "ko" }, result.TextBlocks.Select(b => b.TranslationSourceLanguage));
+        Assert.Equal(new[] { blocks[1].Bounds, blocks[2].Bounds }, result.TextBlockSources[1].MemberBounds);
+        Assert.Equal(4, source.TextBlocks.Count);
+        Assert.Single(TranslationTextGroupingService.CreateTranslationSourceResult(source, zone).TextBlocks);
+    }
+
+    [Theory]
+    [InlineData("HPが回復した", "ja")]
+    [InlineData("東京", "auto")]
+    [InlineData("SAMPLE LABEL", "auto")]
+    [InlineData("Demo", "auto")]
+    [InlineData("AB XYZ", "auto")]
+    [InlineData("TOKEN/ 7ののん 」", "auto")]
+    public void AutoLanguages_DoesNotPretendScriptIsLanguage(string text, string expected)
+    {
+        var source = CreateResult(300, 120, new OcrTextBlock(text, new BoundingBox(0, 0, 200, 20)));
+        var result = TranslationTextGroupingService.CreateTranslationSourceResult(source, new OcrZone(), true);
+        Assert.Equal(text, Assert.Single(result.TextBlocks).Text);
+        Assert.Equal(expected, result.TextBlocks[0].TranslationSourceLanguage);
+    }
+
+    [Theory]
+    [InlineData(true, true, 2)]
+    [InlineData(false, true, 1)]
+    [InlineData(true, false, 1)]
+    public void AutoLanguages_SplitsWithinLineOnlyWithCompleteConfidentWordGeometry(bool complete, bool confident, int expectedCount)
+    {
+        var first = new OcrWord("Hello", new BoundingBox(0, 0, 50, 20), confident ? 95 : 20, "pass");
+        var second = new OcrWord("你好", new BoundingBox(70, 0, 40, 20), 95, "pass");
+        var raw = CreateResult(200, 100, new OcrTextBlock("Hello 你好", new BoundingBox(0, 0, 110, 20)));
+        var source = new OcrResult(raw.Request, raw.TextBlocks, raw.RecognizedAt, raw.TextBlockSources,
+            complete ? new[] { first, second } : new[] { first });
+        var result = TranslationTextGroupingService.CreateTranslationSourceResult(source, new OcrZone(), true);
+        Assert.Equal(expectedCount, result.TextBlocks.Count);
+        Assert.Single(source.TextBlocks);
+        if (expectedCount == 2) Assert.Equal(new[] { first.Bounds, second.Bounds }, result.TextBlocks.Select(b => b.Bounds));
+    }
+
+    [Fact]
+    public void AutoLanguages_PreservesVerticalRightToLeftReadingOrder()
+    {
+        var left = new OcrTextBlock("Hello world", new BoundingBox(10, 5, 20, 80));
+        var right = new OcrTextBlock("こんにちは", new BoundingBox(70, 5, 20, 80));
+        var source = CreateResult(100, 100, OcrOrientationMode.Vertical, "ja", left, right);
+        var result = TranslationTextGroupingService.CreateTranslationSourceResult(source,
+            new OcrZone { TranslationGroupingMode = TranslationGroupingMode.WholeZone }, true);
+        Assert.Equal(new[] { right.Text, left.Text }, result.TextBlocks.Select(b => b.Text));
+        Assert.Equal(new[] { "ja", "auto" }, result.TextBlocks.Select(b => b.TranslationSourceLanguage));
+    }
+
     private static readonly DateTimeOffset FrameTime = new(2026, 7, 2, 12, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public void AutoLanguages_OcrLatinErrorInsideChineseBubbleKeepsWholeDialogue()
+    {
+        var blocks = new[] {
+            new OcrTextBlock("测试!", new BoundingBox(42, 10, 73, 29)),
+            new OcrTextBlock("准备", new BoundingBox(47, 49, 62, 29)),
+            new OcrTextBlock("ABCD,", new BoundingBox(25, 89, 108, 29)),
+            new OcrTextBlock("示例，", new BoundingBox(44, 128, 71, 29)),
+            new OcrTextBlock("开始测试!", new BoundingBox(8, 167, 142, 28)) };
+        var source = CreateResult(200, 220, blocks);
+        var result = TranslationTextGroupingService.CreateTranslationSourceResult(source,
+            new OcrZone { TranslationGroupingMode = TranslationGroupingMode.WholeZone }, true);
+        Assert.Equal("测试! 准备 ABCD, 示例， 开始测试!", Assert.Single(result.TextBlocks).Text);
+        Assert.Equal("auto", result.TextBlocks[0].TranslationSourceLanguage);
+        Assert.Equal(blocks.Select(b => b.Bounds), Assert.Single(result.TextBlockSources).MemberBounds);
+        Assert.Equal(5, source.TextBlocks.Count);
+    }
+
+    [Fact]
+    public void AutoLanguages_OverlappingTallBoxesDoNotReorderDialogueLines()
+    {
+        var source = CreateResult(220, 150,
+            new OcrTextBlock("x Ab c", new BoundingBox(0, 0, 191, 60)),
+            new OcrTextBlock("测试文本", new BoundingBox(32, 52, 137, 31)),
+            new OcrTextBlock("Abc. |", new BoundingBox(0, 68, 191, 58)));
+        var result = TranslationTextGroupingService.CreateTranslationSourceResult(source,
+            new OcrZone { TranslationGroupingMode = TranslationGroupingMode.WholeZone }, true);
+        Assert.Equal("x Ab c 测试文本 Abc. |", Assert.Single(result.TextBlocks).Text);
+        Assert.Equal(source.TextBlocks.Select(b => b.Bounds),
+            TranslationTextGroupingService.ResolveOrderedMemberBoundsForDiagnostics(source));
+    }
+
+    [Theory]
+    [InlineData(OcrOrientationMode.Horizontal)]
+    [InlineData(OcrOrientationMode.Vertical)]
+    public void AutoLanguages_NeighboringDetectorRegionsNeverMerge(OcrOrientationMode orientation)
+    {
+        var a = new OcrTextBlock("你好", new BoundingBox(10, 10, 20, 20));
+        var b = new OcrTextBlock("世界", orientation == OcrOrientationMode.Horizontal
+            ? new BoundingBox(10, 35, 20, 20) : new BoundingBox(35, 10, 20, 20));
+        var raw = CreateResult(100, 100, orientation, "zh", a, b);
+        var source = new OcrResult(raw.Request, raw.TextBlocks, raw.RecognizedAt,
+            raw.TextBlocks.Select(block => new OcrTextBlockSource(block.Bounds, new[] { block.Bounds }, orientation)
+            { CandidateRegionBounds = block.Bounds }));
+        var result = TranslationTextGroupingService.CreateTranslationSourceResult(source,
+            new OcrZone { TranslationGroupingMode = TranslationGroupingMode.WholeZone }, true);
+        Assert.Equal(2, result.TextBlocks.Count);
+    }
+
+    [Fact]
+    public void AutoLanguages_NameHeaderStaysWithChineseDescription()
+    {
+        var source = CreateResult(250, 140,
+            new OcrTextBlock("EXAMPLE NAME (X7)", new BoundingBox(7, 8, 211, 20)),
+            new OcrTextBlock("这是第4个测试行", new BoundingBox(18, 37, 186, 21)),
+            new OcrTextBlock("WXYZ", new BoundingBox(55, 70, 122, 22)),
+            new OcrTextBlock("ABC D EF", new BoundingBox(42, 100, 147, 22)));
+        var result = TranslationTextGroupingService.CreateTranslationSourceResult(source,
+            new OcrZone { TranslationGroupingMode = TranslationGroupingMode.WholeZone }, true);
+        Assert.Equal("EXAMPLE NAME (X7) 这是第4个测试行 WXYZ ABC D EF", Assert.Single(result.TextBlocks).Text);
+        Assert.Equal("auto", result.TextBlocks[0].TranslationSourceLanguage);
+    }
+
+    [Fact]
+    public void AutoLanguages_VerticalContinuationKeepsContextAndRightToLeftOrder()
+    {
+        var left = new OcrTextBlock("你好", new BoundingBox(5, 5, 20, 80));
+        var right = new OcrTextBlock("ABCD", new BoundingBox(30, 5, 20, 80));
+        var source = CreateResult(100, 100, OcrOrientationMode.Vertical, "zh", left, right);
+        var result = TranslationTextGroupingService.CreateTranslationSourceResult(source,
+            new OcrZone { TranslationGroupingMode = TranslationGroupingMode.WholeZone }, true);
+        Assert.Equal("ABCD 你好", Assert.Single(result.TextBlocks).Text);
+        Assert.Equal(new[] { right.Bounds, left.Bounds }, result.TextBlockSources[0].MemberBounds);
+        Assert.Equal(2, TranslationTextGroupingService.CreateTranslationSourceResult(source,
+            new OcrZone { TranslationGroupingMode = TranslationGroupingMode.BlockByBlock }, true).TextBlocks.Count);
+    }
 
     [Theory]
     [InlineData("ja", "日 本 語", "日本語")]

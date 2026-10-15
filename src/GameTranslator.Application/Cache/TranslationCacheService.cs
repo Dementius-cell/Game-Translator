@@ -198,6 +198,13 @@ public sealed class TranslationCacheService
         return new TranslationCacheCleanupResult(expiredMemoryKeys.Length, persistentCount);
     }
 
+    // Call with translation stopped so an in-flight request cannot refill the cache.
+    public async Task ClearAsync(CancellationToken cancellationToken = default)
+    {
+        await repository.DeleteAllAsync(cancellationToken);
+        lock (memoryEntriesLock) memoryEntries.Clear();
+    }
+
     private bool TryGetMemoryEntry(
         TranslationCacheKey key,
         DateTimeOffset now,
@@ -236,7 +243,7 @@ public sealed class TranslationCacheService
     {
         return new TranslationCacheKey(
             settings.Provider,
-            settings.SourceLanguage,
+            settings.ResolveSourceLanguage(),
             settings.TargetLanguage,
             sourceText);
     }

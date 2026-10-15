@@ -1,3 +1,4 @@
+using GameTranslator.UI.Localization;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -88,6 +89,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private const int LiveDiagnosticsWorkspaceTabIndex = 3;
     private const int OcrPacksWorkspaceTabIndex = 4;
     private const int HotkeysSettingsWorkspaceTabIndex = 5;
+    private const int RecognitionWorkspaceTabIndex = 6;
     private const string SelectedProfileSettingKey = "profiles.selectedId";
     private const string ProfileFileDialogFilter = "Game Translator profile (*.json)|*.json|JSON files (*.json)|*.json|All files (*.*)|*.*";
     private const string DebugInfoFileDialogFilter = "Text files (*.txt)|*.txt|All files (*.*)|*.*";
@@ -245,33 +247,33 @@ public sealed class MainViewModel : ValidatableObservableObject
             ZonesOcrWorkspaceTabIndex),
         new(
             "1. Создайте профиль игры",
-            "Нажмите New, задайте понятное имя и при необходимости описание. Один профиль хранит зоны, языки, переводчик, OCR и внешний вид оверлея для конкретной игры или типа страниц.",
-            "После настройки нажмите Save profile. Несохранённый черновик также хранится локально, но для постоянной работы лучше сохранить профиль.",
+            "Нажмите «Новый», задайте понятное имя и при необходимости описание. Один профиль хранит зоны, языки, переводчик, OCR и внешний вид оверлея для конкретной игры или типа страниц.",
+            "После настройки нажмите Сохранить. Несохранённый черновик также хранится локально, но для постоянной работы лучше сохранить профиль.",
             ZonesOcrWorkspaceTabIndex),
         new(
             "2. Выберите переводчик и языки",
-            "Во вкладке Translation выберите Provider, Source language и Target language. Официальным Google, Azure и Yandex нужны credentials; диагностические GoogleWeb, BingWeb и YandexWeb работают без сохранённых ключей.",
+            "Во вкладке «Перевод» выберите переводчик, язык оригинала и язык перевода. Официальным Google, Azure и Yandex нужны credentials; диагностические GoogleWeb, BingWeb и YandexWeb работают без сохранённых ключей.",
             "Провайдеры не переключаются автоматически. Проверьте правильность исходного языка: от него также зависит выбор OCR-настроек по умолчанию.",
             TranslationWorkspaceTabIndex),
         new(
             "3. Выделите OCR-зону",
-            "Вернитесь в Zones & OCR и нажмите Pick screen. Для типовых облачков выделите область игры или страницы, где они появляются: оставьте небольшой запас по краям, но не захватывайте лишние панели и декоративный текст.",
+            "Вернитесь в «Зоны захвата» и нажмите «Выделить на экране». Для типовых облачков выделите область игры или страницы, где они появляются: оставьте небольшой запас по краям, но не захватывайте лишние панели и декоративный текст.",
             "Если текст появляется в нескольких постоянных местах, создайте отдельные зоны. Сохранённые зоны не должны пересекаться; внутри зоны detector сам найдёт текущие облачка.",
             ZonesOcrWorkspaceTabIndex),
         new(
             "4. Настройте OCR для облачков",
-            "Для зоны выберите OCR language и Orientation. При первом выборе языка нажмите Check OCR language, чтобы проверить наличие локального языкового пакета. Horizontal подходит обычным горизонтальным репликам; Vertical — вертикальному японскому или китайскому тексту; Auto оставьте, когда направление должен определить профиль.",
-            "Если проверка показала Missing, нажмите Install OCR language, дождитесь завершения установки и снова нажмите Check OCR language. Безопасная отправная точка: Detector preset = Standard, candidate grouping = Auto, preprocessing = Light 1,25× или Standard 1,5×. Ручные лимиты и строгие китайские пресеты нужны только для сравнительного теста.",
-            ZonesOcrWorkspaceTabIndex),
+            "Во вкладке «Распознавание» выберите движок и направление текста. Нажмите «Проверить язык OCR», чтобы проверить локальный языковой пакет. Язык отдельной зоны доступен в её дополнительных параметрах.",
+            "Если проверка показала Missing, нажмите Установить язык OCR, дождитесь завершения установки и снова нажмите Проверить язык OCR. Безопасная отправная точка: Detector preset = Standard, candidate grouping = Auto, preprocessing = Light 1,25× или Standard 1,5×. Ручные лимиты и строгие китайские пресеты нужны только для сравнительного теста.",
+            RecognitionWorkspaceTabIndex),
         new(
             "5. Проверьте маску и читаемость",
-            "Во вкладке Overlay выберите Solid или Darken, цвет и непрозрачность маски. Для каждой зоны можно выбрать шрифт, размер, жирность и курсив. Show test overlay показывает результат без запуска live-перевода.",
+            "Во вкладке «Оформление» выберите Solid или Darken, цвет и непрозрачность маски. Для каждой зоны можно выбрать шрифт, размер, жирность и курсив. Показать тестовый перевод показывает результат без запуска live-перевода.",
             "Маска должна полностью закрывать оригинал, а перевод — читаться на фоне игры. Для начала используйте непрозрачность 1 и умеренный Padding.",
             OverlayWorkspaceTabIndex),
         new(
             "6. Сохраните профиль и запустите live",
-            "Нажмите Save profile, затем откройте Live & Diagnostics и выберите Start live. Готовые стабильные текстовые регионы будут переводиться независимо; Stop live завершает сеанс и сохраняет локальный отчёт.",
-            "Если перевод не появился, сначала проверьте Pipeline status, OCR language packs и Open live reports. Отчёты автоматически не загружаются в интернет.",
+            "Нажмите Сохранить, затем откройте «Диагностика и отчёты» и выберите «Начать перевод». Готовые стабильные текстовые регионы будут переводиться независимо; «Остановить» завершает сеанс и сохраняет локальный отчёт.",
+            "Если перевод не появился, сначала проверьте Pipeline status, OCR language packs и Открыть отчёты перевода. Отчёты автоматически не загружаются в интернет.",
             LiveDiagnosticsWorkspaceTabIndex),
     };
 
@@ -487,6 +489,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private string targetLanguage = string.Empty;
     private string ocrEngine = OcrSettings.Default.Engine;
     private WatermarkFilterMode watermarkFilterMode;
+    private bool experimentalMultilingualOcr;
 
     private OcrOrientationMode ocrOrientationMode = OcrSettings.Default.OrientationMode;
     private string translatorCredentialSecret = string.Empty;
@@ -520,6 +523,8 @@ public sealed class MainViewModel : ValidatableObservableObject
     private LiveTranslationTiming? lastLiveTranslationTiming;
     private LiveTranslationTimingPreset? lastLiveTranslationTimingPreset;
     private string lastLiveOcrPreprocessingPreset = "(not started)";
+    private string lastLiveOcrLanguageMode = "(not started)";
+    private string lastLiveConfiguredSourceLanguage = "(not started)";
     private string lastLiveTranslatorProvider = "(not started)";
     private string lastLiveSourceLanguage = "(not started)";
     private string lastLiveTargetLanguage = "(not started)";
@@ -708,6 +713,14 @@ public sealed class MainViewModel : ValidatableObservableObject
         TranslatorProviderOptions = SupportedTranslatorProviders;
         LanguageOptions = SupportedLanguageOptions;
         OcrLanguageOptions = SupportedOcrLanguageOptions;
+        AutoOcrLanguages = TesseractLanguageCatalog.Languages
+            .Where(language => !language.Code.EndsWith("_vert", StringComparison.Ordinal) && language.Code != "osd")
+            .Select(language => new OcrAutoLanguageItemViewModel(language.Code, language.Name,
+                autoOcrLanguageSelection.Split('+').Contains(language.Code),
+                () => AutoOcrLanguageSelection = string.Join("+", AutoOcrLanguages.Where(item => item.IsSelected).Select(item => item.Code))))
+            .ToArray();
+        InstallAllTesseractLanguagesCommand = new AsyncRelayCommand(InstallAllTesseractLanguagesAsync, CanManageOcrLanguagePackChecklist);
+        CancelAllTesseractLanguagesCommand = new RelayCommand(() => allLanguagesCancellation?.Cancel(), () => allLanguagesCancellation is not null);
         BeginCreateProfileCommand = new RelayCommand(BeginCreateProfile, () => !IsBusy);
         RefreshProfilesCommand = new AsyncRelayCommand(RefreshProfilesAsync, () => !IsBusy);
         SaveProfileCommand = new AsyncRelayCommand(SaveAsync, CanSaveProfile);
@@ -741,7 +754,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         RunTranslationPipelineCommand = new AsyncRelayCommand(RunTranslationPipelineAsync, CanRunTranslationPipeline);
         StartLiveTranslationCommand = new AsyncRelayCommand(StartLiveTranslationAsync, CanStartLiveTranslation);
         StopLiveTranslationCommand = new RelayCommand(StopLiveTranslation, CanStopLiveTranslation);
-        CleanupTranslationCacheCommand = new AsyncRelayCommand(CleanupTranslationCacheAsync, () => !IsBusy);
+        CleanupTranslationCacheCommand = new AsyncRelayCommand(CleanupTranslationCacheAsync, () => !IsBusy && !IsLiveTranslationRunning);
         CheckForUpdatesCommand = new AsyncRelayCommand(CheckForUpdatesAsync, () => !IsBusy);
         ApplyGlobalHotkeysCommand = new RelayCommand(ApplyGlobalHotkeys, CanApplyGlobalHotkeys);
         ResetGlobalHotkeysCommand = new RelayCommand(ResetGlobalHotkeys, () => !IsBusy);
@@ -765,7 +778,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public double ZoneSurfaceHeight => OcrZoneEditorViewModel.PreviewSurfaceHeight;
 
-    public string ZoneSurfaceSummary => $"Reference surface {OcrZoneEditorViewModel.ReferenceSurfaceWidth}x{OcrZoneEditorViewModel.ReferenceSurfaceHeight}";
+    public string ZoneSurfaceSummary => "Масштаб схемы соответствует сохранённым границам зон.";
 
     public ObservableCollection<GameProfile> Profiles { get; }
 
@@ -868,6 +881,23 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
     }
 
+    private bool autoDetectSourceLanguage;
+    public bool AutoDetectSourceLanguage
+    {
+        get => autoDetectSourceLanguage;
+        set
+        {
+            if (!SetProperty(ref autoDetectSourceLanguage, value)) return;
+            OnPropertyChanged(nameof(IsManualSourceLanguageEnabled));
+            OnPropertyChanged(nameof(TranslatorSettingsSummary));
+            PersistDraftShellStateIfNeeded();
+            RefreshValidationState();
+            NotifyCommandStateChanged();
+        }
+    }
+
+    public bool IsManualSourceLanguageEnabled => !AutoDetectSourceLanguage;
+
     public string SourceLanguage
     {
         get => sourceLanguage;
@@ -915,7 +945,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public IReadOnlyList<OcrOrientationMode> OcrOrientations => SupportedOcrOrientations;
 
-    public bool IsOcrOrientationSelectionEnabled => SupportsVerticalOcrLayout();
+    public bool IsOcrOrientationSelectionEnabled => ExperimentalMultilingualOcr || SupportsVerticalOcrLayout();
 
     public bool IsVerticalOcrOrientation => OcrOrientationMode == OcrOrientationMode.Vertical;
 
@@ -942,7 +972,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         get => selectedWorkspaceTabIndex;
         set
         {
-            var normalizedValue = Math.Clamp(value, ZonesOcrWorkspaceTabIndex, HotkeysSettingsWorkspaceTabIndex);
+            var normalizedValue = Math.Clamp(value, ZonesOcrWorkspaceTabIndex, RecognitionWorkspaceTabIndex);
             if (!SetProperty(ref selectedWorkspaceTabIndex, normalizedValue))
             {
                 return;
@@ -955,8 +985,38 @@ public sealed class MainViewModel : ValidatableObservableObject
             OnPropertyChanged(nameof(IsOcrPacksTabSelected));
             OnPropertyChanged(nameof(IsHotkeysSettingsTabSelected));
             OnPropertyChanged(nameof(IsZonesOcrOrLiveDiagnosticsTabSelected));
+            OnPropertyChanged(nameof(IsRecognitionTabSelected));
+            OnPropertyChanged(nameof(IsProfileWorkspace));
+            OnPropertyChanged(nameof(SelectedProfileTabIndex));
+            OnPropertyChanged(nameof(WorkspaceTitle));
         }
     }
+
+    public int SelectedProfileTabIndex
+    {
+        get => SelectedWorkspaceTabIndex switch { 0 => 0, 6 => 1, 1 => 2, 2 => 3, _ => -1 };
+        set
+        {
+            if (value is >= 0 and <= 3)
+                SelectedWorkspaceTabIndex = value switch { 0 => 0, 1 => 6, 2 => 1, _ => 2 };
+        }
+    }
+
+    public bool IsRecognitionTabSelected => SelectedWorkspaceTabIndex == RecognitionWorkspaceTabIndex;
+    public bool IsProfileWorkspace => SelectedWorkspaceTabIndex is 0 or 1 or 2 or 6;
+    public string WorkspaceTitle => SelectedWorkspaceTabIndex switch
+    {
+        3 => UiText.Translate("Диагностика"),
+        4 => UiText.Translate("Языковые пакеты OCR"),
+        5 => UiText.Translate("Настройки приложения"),
+        _ => string.IsNullOrWhiteSpace(ProfileName) ? UiText.Translate("Новый профиль") : ProfileName,
+    };
+    public string LaunchReadinessText => IsLiveTranslationRunning ? "Перевод запущен"
+        : IsBusy ? "Выполняется операция…"
+        : HasValidationErrors ? "Проверьте параметры профиля"
+        : OcrZones.Count == 0 ? "Выделите область с текстом"
+        : CanStartLiveTranslation() ? "Профиль настроен · можно запустить проверку перевода"
+        : "Завершите настройку профиля";
 
     public bool IsProfileRenameActive
     {
@@ -1080,6 +1140,54 @@ public sealed class MainViewModel : ValidatableObservableObject
                 RefreshValidationState();
                 NotifyCommandStateChanged();
             }
+        }
+    }
+
+    public IReadOnlyList<OcrAutoLanguageItemViewModel> AutoOcrLanguages { get; private set; } = Array.Empty<OcrAutoLanguageItemViewModel>();
+    private string autoOcrLanguageSearch = string.Empty;
+    public string AutoOcrLanguageSearch
+    {
+        get => autoOcrLanguageSearch;
+        set
+        {
+            if (SetProperty(ref autoOcrLanguageSearch, value))
+                OnPropertyChanged(nameof(FilteredAutoOcrLanguages));
+        }
+    }
+    public IEnumerable<OcrAutoLanguageItemViewModel> FilteredAutoOcrLanguages =>
+        AutoOcrLanguages.Where(item => item.Matches(AutoOcrLanguageSearch));
+    public IEnumerable<OcrAutoLanguageItemViewModel> SelectedAutoOcrLanguages =>
+        AutoOcrLanguages.Where(item => item.IsSelected);
+
+    private string autoOcrLanguageSelection = OcrSettings.ExperimentalMultilingualLanguages;
+    public string AutoOcrLanguageSelection
+    {
+        get => autoOcrLanguageSelection;
+        set
+        {
+            if (!SetProperty(ref autoOcrLanguageSelection, value)) return;
+            var selected = value.Split('+').ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in AutoOcrLanguages) item.SetSelected(selected.Contains(item.Code));
+            OnPropertyChanged(nameof(SelectedAutoOcrLanguages));
+            ResetOcrLanguagePackStatus();
+            PersistDraftShellStateIfNeeded();
+            RefreshValidationState();
+            NotifyCommandStateChanged();
+        }
+    }
+
+    public bool ExperimentalMultilingualOcr
+    {
+        get => experimentalMultilingualOcr;
+        set
+        {
+            if (!SetProperty(ref experimentalMultilingualOcr, value)) return;
+            OnPropertyChanged(nameof(IsOcrOrientationSelectionEnabled));
+            OnPropertyChanged(nameof(OcrOrientationSelectionToolTip));
+            ResetOcrLanguagePackStatus();
+            PersistDraftShellStateIfNeeded();
+            RefreshValidationState();
+            NotifyCommandStateChanged();
         }
     }
 
@@ -1413,7 +1521,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public bool IsEditorValid => !HasValidationErrors;
 
-    public string ActiveProfileName => SelectedProfile?.Name ?? "No active profile";
+    public string ActiveProfileName => SelectedProfile?.Name ?? UiText.Translate("No active profile");
 
     public string EditorTitle => string.IsNullOrWhiteSpace(editingProfileId)
         ? "New Profile"
@@ -1434,7 +1542,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         get
         {
             var provider = string.IsNullOrWhiteSpace(TranslatorProvider) ? "no provider" : TranslatorProvider.Trim();
-            var source = string.IsNullOrWhiteSpace(SourceLanguage) ? "source ?" : SourceLanguage.Trim();
+            var source = AutoDetectSourceLanguage ? "Auto" : string.IsNullOrWhiteSpace(SourceLanguage) ? "source ?" : SourceLanguage.Trim();
             var target = string.IsNullOrWhiteSpace(TargetLanguage) ? "target ?" : TargetLanguage.Trim();
 
             return $"{provider} | {source} -> {target}";
@@ -1645,6 +1753,55 @@ public sealed class MainViewModel : ValidatableObservableObject
     public ICommand CheckOcrLanguagePackChecklistCommand { get; }
 
     public ICommand InstallTesseractLanguagePackChecklistCommand { get; }
+    public ICommand InstallAllTesseractLanguagesCommand { get; }
+    public ICommand CancelAllTesseractLanguagesCommand { get; }
+    private CancellationTokenSource? allLanguagesCancellation;
+
+    public async Task InstallAllTesseractLanguagesAsync()
+    {
+        if (!CanManageOcrLanguagePackChecklist()) return;
+        using var cancellation = new CancellationTokenSource();
+        allLanguagesCancellation = cancellation;
+        var failed = 0;
+        var completed = 0;
+        var languages = TesseractLanguageCatalog.Languages;
+        try
+        {
+            IsBusy = true;
+            ((RelayCommand)CancelAllTesseractLanguagesCommand).RaiseCanExecuteChanged();
+            foreach (var language in languages)
+            {
+                cancellation.Token.ThrowIfCancellationRequested();
+                OcrLanguagePackStatus = $"Tesseract: {completed + 1}/{languages.Count} — {language.Name} ({language.Code})";
+                StatusMessage = OcrLanguagePackStatus;
+                try
+                {
+                    var result = await ocrLanguagePackService.InstallAsync(OcrSettings.TesseractEngineId,
+                        language.Code, OcrOrientationMode.Horizontal, cancellation.Token);
+                    if (!result.Succeeded) failed++;
+                }
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { throw; }
+                catch (Exception exception)
+                {
+                    failed++;
+                    logger.Error(exception, $"Tesseract pack install failed: {language.Code}");
+                }
+                completed++;
+            }
+            OcrLanguagePackStatus = $"Tesseract download complete: {completed - failed}/{languages.Count}; failed: {failed}.";
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            OcrLanguagePackStatus = $"Tesseract download stopped: {completed - failed}/{languages.Count}; failed: {failed}.";
+        }
+        finally
+        {
+            StatusMessage = OcrLanguagePackStatus;
+            allLanguagesCancellation = null;
+            IsBusy = false;
+            ((RelayCommand)CancelAllTesseractLanguagesCommand).RaiseCanExecuteChanged();
+        }
+    }
 
     public ICommand ShowWindowsOcrLanguagePackHelpCommand { get; }
 
@@ -2003,6 +2160,10 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
 
         var zone = OcrZoneEditorViewModel.CreateDefault(OcrZones.Count + 1);
+        if (OcrZones.FirstOrDefault() is { } referenceZone)
+        {
+            zone.SetCoordinateReference(referenceZone.CoordinateReferenceWidth, referenceZone.CoordinateReferenceHeight);
+        }
         AttachZone(zone);
         OcrZones.Add(zone);
         ApplySurfaceBoundsToZone(
@@ -2042,8 +2203,8 @@ public sealed class MainViewModel : ValidatableObservableObject
             return;
         }
 
-        var left = ConvertAbsoluteToSurface(zoneResizeOriginalAbsoluteX, OcrZoneEditorViewModel.ReferenceSurfaceWidth, ZoneSurfaceWidth);
-        var top = ConvertAbsoluteToSurface(zoneResizeOriginalAbsoluteY, OcrZoneEditorViewModel.ReferenceSurfaceHeight, ZoneSurfaceHeight);
+        var left = ConvertAbsoluteToSurface(zoneResizeOriginalAbsoluteX, SelectedZone.CoordinateReferenceWidth, ZoneSurfaceWidth);
+        var top = ConvertAbsoluteToSurface(zoneResizeOriginalAbsoluteY, SelectedZone.CoordinateReferenceHeight, ZoneSurfaceHeight);
         var clampedX = Math.Clamp(surfaceX, left + 1, ZoneSurfaceWidth);
         var clampedY = Math.Clamp(surfaceY, top + 1, ZoneSurfaceHeight);
 
@@ -3079,7 +3240,10 @@ public sealed class MainViewModel : ValidatableObservableObject
         lastLiveTranslationTimingPreset = LiveTranslationTimingPreset;
         lastLiveOcrPreprocessingPreset = SelectedOcrPreprocessingPreset.DisplayName;
         lastLiveTranslatorProvider = profile.TranslatorSettings.Provider;
-        lastLiveSourceLanguage = profile.TranslatorSettings.SourceLanguage;
+        lastLiveSourceLanguage = profile.TranslatorSettings.ResolveSourceLanguage();
+        lastLiveConfiguredSourceLanguage = profile.TranslatorSettings.SourceLanguage;
+        lastLiveOcrLanguageMode = profile.OcrSettings.ExperimentalMultilingual
+            ? $"Auto ({profile.OcrSettings.MultilingualLanguages})" : "Manual / per-zone";
         lastLiveTargetLanguage = profile.TranslatorSettings.TargetLanguage;
         var cancellationSource = new CancellationTokenSource();
         liveTranslationCancellation = cancellationSource;
@@ -3390,17 +3554,18 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public async Task CleanupTranslationCacheAsync()
     {
+        if (IsBusy || IsLiveTranslationRunning) return;
         try
         {
             IsBusy = true;
-            TranslationCacheStatus = "Cleaning expired translation cache entries...";
+            TranslationCacheStatus = "Clearing all translation cache entries...";
             StatusMessage = TranslationCacheStatus;
 
-            var result = await translationCacheService.CleanupExpiredAsync(DateTimeOffset.UtcNow);
+            await translationCacheService.ClearAsync();
 
-            TranslationCacheStatus = $"Translation cache cleanup removed {result.TotalEntryCount} expired entr{(result.TotalEntryCount == 1 ? "y" : "ies")}.";
+            TranslationCacheStatus = "Translation cache cleared from memory and disk.";
             StatusMessage = TranslationCacheStatus;
-            logger.Information($"Translation cache cleanup removed {result.TotalEntryCount} expired entries.");
+            logger.Information("Translation cache cleared from memory and disk.");
         }
         catch (Exception exception)
         {
@@ -4310,6 +4475,8 @@ public sealed class MainViewModel : ValidatableObservableObject
                 Engine = OcrEngine.Trim(),
                 OrientationMode = OcrOrientationMode,
                 WatermarkFilter = WatermarkFilterMode,
+                ExperimentalMultilingual = ExperimentalMultilingualOcr,
+                MultilingualLanguages = AutoOcrLanguageSelection,
             },
             OcrPreprocessingSettings = BuildOcrPreprocessingSettings(),
             OverlaySettings = new OverlaySettings
@@ -4323,6 +4490,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             {
                 Provider = TranslatorProvider.Trim(),
                 SourceLanguage = SourceLanguage.Trim(),
+                AutoDetectSourceLanguage = AutoDetectSourceLanguage,
                 TargetLanguage = TargetLanguage.Trim(),
             },
         };
@@ -4441,6 +4609,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             ProfileDescription = profile.Description;
             TranslatorProvider = profile.TranslatorSettings.Provider;
             SourceLanguage = profile.TranslatorSettings.SourceLanguage;
+            AutoDetectSourceLanguage = profile.TranslatorSettings.AutoDetectSourceLanguage ?? profile.OcrSettings.ExperimentalMultilingual;
             TargetLanguage = profile.TranslatorSettings.TargetLanguage;
             OcrEngine = string.IsNullOrWhiteSpace(profile.OcrSettings.Engine)
                 ? OcrSettings.Default.Engine
@@ -4459,6 +4628,8 @@ public sealed class MainViewModel : ValidatableObservableObject
             OcrPreprocessingNoiseReductionEnabled = profile.OcrPreprocessingSettings.NoiseReductionEnabled;
             ReplaceZones(profile.OcrZones.Select(OcrZoneEditorViewModel.FromModel));
             WatermarkFilterMode = profile.OcrSettings.WatermarkFilter;
+            ExperimentalMultilingualOcr = profile.OcrSettings.ExperimentalMultilingual;
+            AutoOcrLanguageSelection = profile.OcrSettings.MultilingualLanguages ?? string.Empty;
             OcrOrientationMode = OcrSettings.IsSupportedOrientationMode(profile.OcrSettings.OrientationMode)
                 ? profile.OcrSettings.OrientationMode
                 : OcrSettings.Default.OrientationMode;
@@ -4499,6 +4670,9 @@ public sealed class MainViewModel : ValidatableObservableObject
             OcrPreprocessingNoiseReductionEnabled = settings.GetValue<bool?>(DraftOcrPreprocessingNoiseReductionSettingKey) ?? OcrPreprocessingSettings.Default.NoiseReductionEnabled;
             ReplaceZones(draftZones.Select(OcrZoneEditorViewModel.FromModel));
             WatermarkFilterMode = settings.GetValue<WatermarkFilterMode?>("shell.draft.ocr.watermarkFilter") ?? WatermarkFilterMode.Off;
+            ExperimentalMultilingualOcr = settings.GetValue<bool?>("shell.draft.ocr.experimentalMultilingual") ?? false;
+            AutoOcrLanguageSelection = settings.GetValue<string>("shell.draft.ocr.languages") ?? OcrSettings.ExperimentalMultilingualLanguages;
+            AutoDetectSourceLanguage = settings.GetValue<bool?>("shell.draft.translator.autoSource") ?? ExperimentalMultilingualOcr;
             OcrOrientationMode = settings.GetValue<OcrOrientationMode?>(DraftOcrOrientationModeSettingKey) ?? OcrSettings.Default.OrientationMode;
             if (!string.IsNullOrWhiteSpace(draftSelectedZoneId))
             {
@@ -4706,6 +4880,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     private string ResolveOcrLanguage(OcrZoneEditorViewModel zone)
     {
+        if (ExperimentalMultilingualOcr) return AutoOcrLanguageSelection;
         return string.IsNullOrWhiteSpace(zone.OcrLanguage)
             ? SourceLanguage.Trim()
             : zone.OcrLanguage.Trim();
@@ -4730,6 +4905,8 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     private string CreateOcrEngineLanguageCompatibilityError(OcrZoneEditorViewModel zone)
     {
+        if (ExperimentalMultilingualOcr)
+            return OcrSettings.GetMultilingualConfigurationError(true, OcrEngine, OcrOrientationMode, TranslatorProvider) ?? string.Empty;
         var language = ResolveOcrLanguage(zone);
         if (!IsTesseractOnlyLanguage(language))
         {
@@ -4756,7 +4933,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             return OcrSettings.Default.OrientationMode;
         }
 
-        return SupportsVerticalOcrLayout()
+        return orientationMode == OcrOrientationMode.Auto || ExperimentalMultilingualOcr || SupportsVerticalOcrLayout()
             ? orientationMode
             : OcrOrientationMode.Horizontal;
     }
@@ -4886,10 +5063,13 @@ public sealed class MainViewModel : ValidatableObservableObject
         settings.SetValue(DraftProfileDescriptionSettingKey, NormalizeOptionalText(ProfileDescription));
         settings.SetValue(DraftTranslatorProviderSettingKey, NormalizeOptionalText(TranslatorProvider));
         settings.SetValue(DraftSourceLanguageSettingKey, NormalizeOptionalText(SourceLanguage));
+        settings.SetValue("shell.draft.translator.autoSource", AutoDetectSourceLanguage);
         settings.SetValue(DraftTargetLanguageSettingKey, NormalizeOptionalText(TargetLanguage));
         settings.SetValue(DraftOcrEngineSettingKey, NormalizeOptionalText(OcrEngine));
         settings.SetValue(DraftOcrOrientationModeSettingKey, OcrOrientationMode);
         settings.SetValue("shell.draft.ocr.watermarkFilter", WatermarkFilterMode);
+        settings.SetValue("shell.draft.ocr.experimentalMultilingual", ExperimentalMultilingualOcr);
+        settings.SetValue("shell.draft.ocr.languages", AutoOcrLanguageSelection);
         settings.SetValue(DraftOverlayMaskModeSettingKey, OverlayMaskMode);
         settings.SetValue(DraftOverlayMaskColorSettingKey, OverlayMaskColor.Trim());
         settings.SetValue(DraftOverlayOpacitySettingKey, OverlayOpacity);
@@ -4937,6 +5117,8 @@ public sealed class MainViewModel : ValidatableObservableObject
             translatorProviderErrors.Add(CreateRemovedTranslatorProviderStatus(TranslatorProvider));
         }
 
+        if (TranslatorSettings.GetAutoConfigurationError(AutoDetectSourceLanguage, TranslatorProvider) is { } autoSourceError)
+            translatorProviderErrors.Add(autoSourceError);
         SetErrors(nameof(TranslatorProvider), translatorProviderErrors);
         SetErrors(
             nameof(SourceLanguage),
@@ -4958,6 +5140,10 @@ public sealed class MainViewModel : ValidatableObservableObject
             ocrEngineErrors.AddRange(CreateOcrEngineLanguageCompatibilityErrors());
         }
 
+        if (OcrSettings.GetMultilingualConfigurationError(ExperimentalMultilingualOcr, OcrEngine, OcrOrientationMode, TranslatorProvider) is { } multilingualError)
+            ocrEngineErrors.Add(multilingualError);
+        if (ExperimentalMultilingualOcr && (string.IsNullOrWhiteSpace(AutoOcrLanguageSelection) || AutoOcrLanguageSelection.Split('+').Any(code => !TesseractLanguageCatalog.TryGetTrainedDataCode(code, out _))))
+            ocrEngineErrors.Add("Select at least one supported language for Auto OCR.");
         SetErrors(nameof(OcrEngine), ocrEngineErrors);
         OnPropertyChanged(nameof(HasOcrEngineValidationError));
         OnPropertyChanged(nameof(OcrEngineValidationMessage));
@@ -5380,10 +5566,10 @@ public sealed class MainViewModel : ValidatableObservableObject
         var right = Math.Clamp(left + Math.Max(1, surfaceWidth), left + 1, ZoneSurfaceWidth);
         var bottom = Math.Clamp(top + Math.Max(1, surfaceHeight), top + 1, ZoneSurfaceHeight);
 
-        var absoluteLeft = ConvertSurfaceToAbsolute(left, OcrZoneEditorViewModel.ReferenceSurfaceWidth, ZoneSurfaceWidth);
-        var absoluteTop = ConvertSurfaceToAbsolute(top, OcrZoneEditorViewModel.ReferenceSurfaceHeight, ZoneSurfaceHeight);
-        var absoluteRight = ConvertSurfaceToAbsolute(right, OcrZoneEditorViewModel.ReferenceSurfaceWidth, ZoneSurfaceWidth);
-        var absoluteBottom = ConvertSurfaceToAbsolute(bottom, OcrZoneEditorViewModel.ReferenceSurfaceHeight, ZoneSurfaceHeight);
+        var absoluteLeft = ConvertSurfaceToAbsolute(left, zone.CoordinateReferenceWidth, ZoneSurfaceWidth);
+        var absoluteTop = ConvertSurfaceToAbsolute(top, zone.CoordinateReferenceHeight, ZoneSurfaceHeight);
+        var absoluteRight = ConvertSurfaceToAbsolute(right, zone.CoordinateReferenceWidth, ZoneSurfaceWidth);
+        var absoluteBottom = ConvertSurfaceToAbsolute(bottom, zone.CoordinateReferenceHeight, ZoneSurfaceHeight);
 
         zone.AbsoluteX = absoluteLeft;
         zone.AbsoluteY = absoluteTop;
@@ -5406,6 +5592,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     {
         var referenceWidth = Math.Max(1, selection.ReferenceWidth);
         var referenceHeight = Math.Max(1, selection.ReferenceHeight);
+        zone.SetCoordinateReference(referenceWidth, referenceHeight);
         var left = Math.Clamp(selection.X, 0, referenceWidth - 1);
         var top = Math.Clamp(selection.Y, 0, referenceHeight - 1);
         var right = Math.Clamp(left + Math.Max(1, selection.Width), left + 1, referenceWidth);
@@ -5568,6 +5755,8 @@ public sealed class MainViewModel : ValidatableObservableObject
         builder.AppendLine($"  CurrentOcrPreprocessingSelection: {SelectedOcrPreprocessingPreset.DisplayName}");
         builder.AppendLine($"  TranslatorProviderAtLastStart: {lastLiveTranslatorProvider}");
         builder.AppendLine($"  TranslatorLanguagesAtLastStart: {lastLiveSourceLanguage}->{lastLiveTargetLanguage}");
+        builder.AppendLine($"  ConfiguredManualSourceLanguageAtLastStart: {lastLiveConfiguredSourceLanguage}");
+        builder.AppendLine($"  OcrLanguageModeAtLastStart: {lastLiveOcrLanguageMode}");
         builder.AppendLine();
 
         builder.AppendLine("Statuses");
@@ -5806,6 +5995,8 @@ public sealed class MainViewModel : ValidatableObservableObject
             AppendLifecycleField(builder, "CandidateCount", entry.CandidateCount?.ToString());
             AppendLifecycleField(builder, "RecognizedBlocks", entry.RecognizedBlockCount?.ToString());
             AppendLifecycleField(builder, "TranslationInputGroups", entry.TranslationInputBlockCount?.ToString());
+            if (entry.TranslationSourceLanguages.Count > 0)
+                AppendLifecycleField(builder, "TranslationSourceLanguages", string.Join(",", entry.TranslationSourceLanguages));
             AppendLifecycleField(builder, "TranslatedBlocks", entry.TranslatedBlockCount?.ToString());
             AppendLifecycleTextDiagnostics(
                 builder,
@@ -6175,6 +6366,8 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     private void NotifyCommandStateChanged()
     {
+        OnPropertyChanged(nameof(LaunchReadinessText));
+        OnPropertyChanged(nameof(WorkspaceTitle));
         ((RelayCommand)BeginCreateProfileCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)RefreshProfilesCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)SaveProfileCommand).RaiseCanExecuteChanged();
@@ -6198,6 +6391,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         ((AsyncRelayCommand)InstallOcrLanguagePackCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)CheckOcrLanguagePackChecklistCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)InstallTesseractLanguagePackChecklistCommand).RaiseCanExecuteChanged();
+        ((AsyncRelayCommand)InstallAllTesseractLanguagesCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)ShowWindowsOcrLanguagePackHelpCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)RunTranslationPipelineCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)StartLiveTranslationCommand).RaiseCanExecuteChanged();

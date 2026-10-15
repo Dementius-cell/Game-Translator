@@ -11,6 +11,7 @@ using GameTranslator.Domain.Profiles;
 
 namespace GameTranslator.Tests.Smoke;
 
+[Collection(WpfResourceCollection.Name)]
 public sealed class OverlayDpiTests
 {
     [Fact]

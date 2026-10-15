@@ -21,7 +21,9 @@ Keep application use cases and contracts independent from concrete UI, platform,
 - Cache lookup remains part of normal translation flow before provider calls; the default TTL policy stays 30 days unless a Decision Record changes it.
 - Keep OCR contracts engine-neutral. Windows OCR and Tesseract remain mandatory product capabilities implemented outside this layer.
 - Keep translator contracts provider-neutral. Credentialed Google, Azure, and Yandex remain the supported provider set unless a Decision Record changes it.
+- Resolve combined Tesseract model lists by their component writing systems. Bound horizontal candidate stacks by original detector-member heights (maximum 2:1) so large titles cannot absorb small captions through intermediate lines.
 - Preserve raw OCR block geometry for diagnostics and masking; semantic grouping may create translation groups without destroying source geometry. Candidate requests may carry immutable crop-relative detector line hints; preprocessing must scale hints with pixels, and line coverage remains bounded numeric evidence rather than proof of OCR accuracy.
+- With automatic translation source enabled, preserve compact aligned dialogue lines across script changes; a script change alone is not a translation boundary. Preserve detector-region identity in projected crop sources and never merge different detector regions. Spatially independent fragments can remain separate. Han/Latin remain language-ambiguous; explicit Japanese/Korean hints require substantial kana/Hangul. Split inside a line only with complete, confident word geometry from one recognition pass. Preserve raw masks and reading order; route/cache by each group's effective source language, then restore output order. Manual-source profiles retain their grouping behavior.
 
 ## Work Guidance
 
@@ -40,3 +42,5 @@ Keep application use cases and contracts independent from concrete UI, platform,
 No nested `AGENTS.md` files are currently defined below this directory.
 
 ADR-033 expanded overlay layout preserves source height where unobstructed and optionally fits font size through IOverlayTextMeasurer; the bounded in-memory font-fit cache does not replace translation caching.
+
+Explicit user cache clearing removes all memory and persistent translations with translation stopped; ordinary expiry and the 30-day TTL remain unchanged. Translation and diagnostic reading order honor resolved OCR source orientation before request-level Auto, independently for projected detector regions.

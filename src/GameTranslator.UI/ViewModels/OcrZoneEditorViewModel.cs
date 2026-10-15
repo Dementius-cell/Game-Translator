@@ -8,6 +8,8 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
     public const int ReferenceSurfaceHeight = 1080;
     public const double PreviewSurfaceWidth = 640;
     public const double PreviewSurfaceHeight = 360;
+    public int CoordinateReferenceWidth { get; private set; } = ReferenceSurfaceWidth;
+    public int CoordinateReferenceHeight { get; private set; } = ReferenceSurfaceHeight;
     private const double RelativeBoundsTolerance = 0.000001;
 
     private readonly List<string> absoluteOverlapErrors = new();
@@ -408,13 +410,13 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         $"Horizontal lines: {(UseAutomaticHorizontalCandidateGroupingLimit ? "Auto" : MaximumHorizontalCandidateLines)}"
         + $" | Vertical columns: {(UseAutomaticVerticalCandidateGroupingLimit ? "Auto" : MaximumVerticalCandidateColumns)}";
 
-    public double SurfaceX => Math.Round(AbsoluteX * PreviewSurfaceWidth / ReferenceSurfaceWidth, 2);
+    public double SurfaceX => Math.Round(AbsoluteX * PreviewSurfaceWidth / CoordinateReferenceWidth, 2);
 
-    public double SurfaceY => Math.Round(AbsoluteY * PreviewSurfaceHeight / ReferenceSurfaceHeight, 2);
+    public double SurfaceY => Math.Round(AbsoluteY * PreviewSurfaceHeight / CoordinateReferenceHeight, 2);
 
-    public double SurfaceWidth => Math.Round(AbsoluteWidth * PreviewSurfaceWidth / ReferenceSurfaceWidth, 2);
+    public double SurfaceWidth => Math.Round(AbsoluteWidth * PreviewSurfaceWidth / CoordinateReferenceWidth, 2);
 
-    public double SurfaceHeight => Math.Round(AbsoluteHeight * PreviewSurfaceHeight / ReferenceSurfaceHeight, 2);
+    public double SurfaceHeight => Math.Round(AbsoluteHeight * PreviewSurfaceHeight / CoordinateReferenceHeight, 2);
 
     public double SurfaceHandleX => Math.Max(0, SurfaceWidth - 10);
 
@@ -448,6 +450,8 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         return new OcrZoneEditorViewModel
         {
             Id = zone.Id,
+            CoordinateReferenceWidth = InferReference(zone.AbsoluteBounds.X + zone.AbsoluteBounds.Width, zone.RelativeBounds.X + zone.RelativeBounds.Width, ReferenceSurfaceWidth),
+            CoordinateReferenceHeight = InferReference(zone.AbsoluteBounds.Y + zone.AbsoluteBounds.Height, zone.RelativeBounds.Y + zone.RelativeBounds.Height, ReferenceSurfaceHeight),
             Name = zone.Name,
             AbsoluteX = zone.AbsoluteBounds.X,
             AbsoluteY = zone.AbsoluteBounds.Y,
@@ -540,6 +544,8 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         return new OcrZoneEditorViewModel
         {
             Name = name,
+            CoordinateReferenceWidth = CoordinateReferenceWidth,
+            CoordinateReferenceHeight = CoordinateReferenceHeight,
             AbsoluteX = AbsoluteX,
             AbsoluteY = AbsoluteY,
             AbsoluteWidth = AbsoluteWidth,
@@ -564,6 +570,21 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
             TranslationGroupingMode = TranslationGroupingMode,
             TextGroupMergeDistancePercent = TextGroupMergeDistancePercent,
         };
+    }
+
+    public void SetCoordinateReference(int width, int height)
+    {
+        CoordinateReferenceWidth = Math.Max(1, width);
+        CoordinateReferenceHeight = Math.Max(1, height);
+        NotifyDerivedPropertiesChanged();
+    }
+
+    private static int InferReference(int absoluteEdge, double relativeEdge, int fallback)
+    {
+        var reference = absoluteEdge / relativeEdge;
+        return double.IsFinite(reference) && reference >= 1 && reference <= int.MaxValue
+            ? (int)Math.Round(reference)
+            : fallback;
     }
 
     private void Validate()

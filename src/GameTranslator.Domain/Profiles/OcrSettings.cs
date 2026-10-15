@@ -12,6 +12,20 @@ public sealed record OcrSettings
 
     public string Engine { get; init; } = WindowsEngineId;
 
+    public bool ExperimentalMultilingual { get; init; }
+
+    public string MultilingualLanguages { get; init; } = ExperimentalMultilingualLanguages;
+
+    public const string ExperimentalMultilingualLanguages = "jpn+kor+chi_sim+eng";
+
+    public static string? GetMultilingualConfigurationError(bool enabled, string engine, OcrOrientationMode orientation, string provider)
+    {
+        if (!enabled) return null;
+        if (!string.Equals(engine, TesseractEngineId, StringComparison.OrdinalIgnoreCase))
+            return "Experimental multilingual OCR requires Tesseract.";
+        return null;
+    }
+
     public OcrOrientationMode OrientationMode { get; init; } = OcrOrientationMode.Auto;
 
     public static bool IsSupportedEngine(string? engine)

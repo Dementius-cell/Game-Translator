@@ -11,11 +11,13 @@ using GameTranslator.Application.Overlay;
 using GameTranslator.Application.Profiles;
 using GameTranslator.Application.Settings;
 using GameTranslator.Application.Updates;
+using GameTranslator.Domain.Profiles;
 using Microsoft.Extensions.DependencyInjection;
 using WpfPath = System.Windows.Shapes.Path;
 
 namespace GameTranslator.Tests.Smoke;
 
+[Collection(WpfResourceCollection.Name)]
 public sealed class PresentationCompositionTests
 {
     [Fact]
@@ -94,13 +96,16 @@ public sealed class PresentationCompositionTests
             textMeasurerField!.GetValue(positioningService)?.GetType().FullName);
     }
 
-    [Fact]
-    public void ShellView_CreatesAndMeasuresResponsiveVisualTreeAtSupportedWindowSizesWithoutShowingAWindow()
+    [Theory]
+    [InlineData("ru-RU")]
+    [InlineData("en-US")]
+    public void ShellView_CreatesAndMeasuresResponsiveVisualTreeAtSupportedWindowSizesWithoutShowingAWindow(string uiCulture)
     {
         Exception? failure = null;
         var completed = false;
         var thread = new Thread(() =>
         {
+            System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.GetCultureInfo(uiCulture);
             var rootDirectory = Path.Combine(
                 Path.GetTempPath(),
                 "GameTranslator.Tests",
@@ -131,7 +136,18 @@ public sealed class PresentationCompositionTests
                     () => resetWelcomeTourSpotlightMethod.Invoke(shell, null));
                 Assert.Null(earlyTemplateResetException?.InnerException ?? earlyTemplateResetException);
                 var navigation = shell.DataContext!.GetType().GetProperty("Navigation")!.GetValue(shell.DataContext)!;
+                shell.DataContext.GetType().GetProperty("ReportNotice")!.SetValue(shell.DataContext,
+                    "Предыдущий запуск завершился неожиданно. Отчёт: C:\\A-long-application-directory\\Reports\\crash-01234567890123456789012345678901.txt");
                 var currentViewModel = navigation.GetType().GetProperty("CurrentViewModel")!.GetValue(navigation)!;
+                var profiles = (System.Collections.IList)currentViewModel.GetType().GetProperty("Profiles")!.GetValue(currentViewModel)!;
+                foreach (var language in new[] { "en", "ja", "ko", "zh" })
+                    profiles.Add(new GameProfile
+                    {
+                        Name = $"{language.ToUpperInvariant()} → RU",
+                        TranslatorSettings = new TranslatorSettings { Provider = "GoogleWeb", SourceLanguage = language, TargetLanguage = "ru" },
+                        OcrZones = new[] { new OcrZone { Name = "Диалоги", AbsoluteBounds = new AbsoluteRectangle(160, 720, 1600, 260), RelativeBounds = new RelativeRectangle(160d / 1920, 720d / 1080, 1600d / 1920, 260d / 1080) } },
+                    });
+                currentViewModel.GetType().GetProperty("SelectedProfile")!.SetValue(currentViewModel, profiles[1]);
                 var selectedTabProperty = currentViewModel.GetType().GetProperty("SelectedWorkspaceTabIndex")!;
                 var showWelcomeTourCommand = Assert.IsAssignableFrom<ICommand>(
                     currentViewModel.GetType().GetProperty("ShowWelcomeTourCommand")!.GetValue(currentViewModel));
@@ -147,6 +163,7 @@ public sealed class PresentationCompositionTests
                     [3] = new[] { "ZoneLiveWorkspaceCard" },
                     [4] = new[] { "OcrPacksCard" },
                     [5] = new[] { "HotkeysSettingsCard" },
+                    [6] = new[] { "OcrPreprocessingCard" },
                 };
 
                 var supportedSizes = new[]
@@ -158,6 +175,11 @@ public sealed class PresentationCompositionTests
                     new Size(2560, 1440),
                 };
 
+                var theme = shell.GetType().GetProperty("Theme")!.GetValue(shell)!;
+                var themeMode = theme.GetType().GetProperty("SelectedMode")!;
+                foreach (var themeName in new[] { "Light", "Dark" })
+                {
+                themeMode.SetValue(theme, Enum.Parse(themeMode.PropertyType, themeName));
                 foreach (var size in supportedSizes)
                 {
                     shell.Width = size.Width;
@@ -170,12 +192,56 @@ public sealed class PresentationCompositionTests
                         shell.Arrange(new Rect(new Point(0, 0), size));
                         shell.UpdateLayout();
 
+                        if (tab.Key == 5)
+                        {
+                            var themeSelector = FindVisualDescendantByName<System.Windows.Controls.ComboBox>(shell, "ApplicationThemeSelector")!;
+                            Assert.Equal(3, themeSelector.Items.Count);
+                            themeSelector.SelectedValue = Enum.Parse(themeMode.PropertyType, "System");
+                            Assert.Equal("System", themeMode.GetValue(theme)!.ToString());
+                            themeSelector.SelectedValue = Enum.Parse(themeMode.PropertyType, themeName);
+                            Assert.Equal(themeName, themeMode.GetValue(theme)!.ToString());
+                            shell.UpdateLayout();
+                        }
+
+                        if (tab.Key == 3)
+                        {
+                            var reportButton = FindVisualDescendantByName<System.Windows.Controls.Button>(shell, "CreateBugReportButton")!;
+                            // No presentation source is shown by this headless layout test.
+                            Assert.Equal(Visibility.Visible, reportButton.Visibility);
+                            Assert.Equal(Visibility.Visible, FindVisualDescendantByName<FrameworkElement>(shell, "DiagnosticReportCard")!.Visibility);
+                            Assert.True(reportButton.ActualWidth > 0 && reportButton.ActualHeight > 0);
+                            Assert.NotNull(reportButton.Command);
+                            Assert.Same(shell.DataContext.GetType().GetProperty("CreateBugReportCommand")!.GetValue(shell.DataContext), reportButton.Command);
+                            AssertFitsHorizontally(shell, reportButton, size.Width);
+                        }
+
+                        var evidenceDirectory = Environment.GetEnvironmentVariable("GAME_TRANSLATOR_UI_EVIDENCE");
+                        if (!string.IsNullOrWhiteSpace(evidenceDirectory) && size.Width == 1600)
+                        {
+                            var noticeProperty = shell.DataContext.GetType().GetProperty("ReportNotice")!;
+                            var notice = noticeProperty.GetValue(shell.DataContext);
+                            noticeProperty.SetValue(shell.DataContext, string.Empty);
+                            shell.UpdateLayout();
+                            Directory.CreateDirectory(evidenceDirectory);
+                            var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)size.Width, (int)size.Height, 96, 96, PixelFormats.Pbgra32);
+                            bitmap.Render(shell);
+                            var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                            encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+                            using var output = File.Create(Path.Combine(evidenceDirectory, $"{uiCulture}-{themeName}-workspace-{tab.Key}.png"));
+                            encoder.Save(output);
+                            noticeProperty.SetValue(shell.DataContext, notice);
+                            shell.UpdateLayout();
+                        }
+
                         foreach (var cardName in tab.Value)
                         {
                             var card = FindVisualDescendantByName<FrameworkElement>(shell, cardName);
                             Assert.NotNull(card);
                             Assert.Equal(Visibility.Visible, card!.Visibility);
                             AssertFitsHorizontally(shell, card, size.Width);
+                            var workspace = FindVisualDescendantByName<FrameworkElement>(shell, "WorkspaceScrollViewer")!;
+                            var cardLeft = card.TranslatePoint(new Point(), workspace).X;
+                            Assert.InRange(cardLeft, 17, 19);
                         }
                     }
 
@@ -186,20 +252,48 @@ public sealed class PresentationCompositionTests
 
                     var responsivePanel = FindVisualDescendantByName<FrameworkElement>(shell, "ZoneResponsivePanels");
                     var surfaceCard = FindVisualDescendantByName<FrameworkElement>(shell, "ZoneSurfaceCard");
-                    var preprocessingCard = FindVisualDescendantByName<FrameworkElement>(shell, "OcrPreprocessingCard");
-                    var parametersPanel = FindVisualDescendantByName<FrameworkElement>(shell, "SelectedZoneParametersPanel");
+                    var inspector = FindVisualDescendantByName<FrameworkElement>(shell, "ZoneInspector");
+                    var zoneList = FindVisualDescendantByName<FrameworkElement>(shell, "ZoneList");
                     var headerActions = FindVisualDescendantByName<FrameworkElement>(shell, "WorkspaceHeaderActions");
 
                     Assert.NotNull(responsivePanel);
                     Assert.NotNull(surfaceCard);
-                    Assert.NotNull(preprocessingCard);
-                    Assert.NotNull(parametersPanel);
+                    Assert.NotNull(inspector);
+                    Assert.NotNull(zoneList);
                     Assert.NotNull(headerActions);
                     AssertFitsHorizontally(shell, responsivePanel!, size.Width);
                     AssertFitsHorizontally(shell, surfaceCard!, size.Width);
-                    AssertFitsHorizontally(shell, preprocessingCard!, size.Width);
-                    AssertFitsHorizontally(shell, parametersPanel!, size.Width);
+                    AssertFitsHorizontally(shell, inspector!, size.Width);
+                    AssertFitsHorizontally(shell, zoneList!, size.Width);
                     AssertFitsHorizontally(shell, headerActions!, size.Width);
+                    var reportBanner = FindVisualDescendantByName<FrameworkElement>(shell, "BugReportNotice")!;
+                    Assert.Equal(Visibility.Visible, reportBanner.Visibility);
+                    AssertFitsHorizontally(shell, reportBanner, size.Width);
+                    var expander = FindVisualDescendantByName<System.Windows.Controls.Expander>(shell, "ZoneSurfaceExpander")!;
+                    var expandedHeight = surfaceCard!.ActualHeight;
+                    expander.IsExpanded = false;
+                    shell.UpdateLayout();
+                    Assert.True(surfaceCard.ActualHeight < expandedHeight);
+                    expander.IsExpanded = true;
+                    shell.UpdateLayout();
+
+                    var advanced = FindVisualDescendantByName<System.Windows.Controls.Expander>(shell, "AdvancedZoneSettings")!;
+                    advanced.IsExpanded = true;
+                    shell.UpdateLayout();
+                    var advancedEditor = FindVisualDescendantByName<FrameworkElement>(shell, "SelectedZoneParametersPanel")!;
+                    Assert.True(advancedEditor.ActualHeight > 0);
+                    AssertFitsHorizontally(shell, advancedEditor, size.Width);
+                    var advancedLeft = advancedEditor.TranslatePoint(new Point(), advanced).X;
+                    Assert.InRange(advancedLeft, 0, 4);
+                    advanced.IsExpanded = false;
+                    shell.UpdateLayout();
+
+                    var surfaceTop = surfaceCard!.TransformToAncestor(shell).Transform(new Point()).Y;
+                    var inspectorTop = inspector!.TransformToAncestor(shell).Transform(new Point()).Y;
+                    if (size.Width >= 1280)
+                        Assert.InRange(Math.Abs(surfaceTop - inspectorTop), 0, 1);
+                    else
+                        Assert.True(inspectorTop > surfaceTop + surfaceCard.ActualHeight);
 
                     showWelcomeTourCommand.Execute(null);
                     for (var welcomeTourStep = 1; welcomeTourStep <= 7; welcomeTourStep++)
@@ -250,20 +344,10 @@ public sealed class PresentationCompositionTests
 
                     closeWelcomeTourCommand.Execute(null);
 
-                    var surfaceTop = surfaceCard!.TransformToAncestor(shell).Transform(new Point()).Y;
-                    var preprocessingTop = preprocessingCard!.TransformToAncestor(shell).Transform(new Point()).Y;
-                    if (size.Width >= 1600)
-                    {
-                        Assert.InRange(Math.Abs(surfaceTop - preprocessingTop), 0, 1);
-                    }
-                    else
-                    {
-                        Assert.True(
-                            Math.Abs(surfaceTop - preprocessingTop) > 1,
-                            $"Zone cards did not wrap at {size.Width}x{size.Height}.");
-                    }
+
                 }
 
+                }
                 completed = true;
             }
             catch (Exception exception)

@@ -1,5 +1,13 @@
 # OCR and Overlay Work Status
 
+## Current source update — 2026-10-15
+
+The source includes the revised profile workspace, editor Light/Dark/System themes, Russian/English UI localization, local bug/crash reports, selectable multilingual Tesseract models with search and package installation, automatic translation source handling, candidate-aware reading order and explicit clearing of memory/persistent translation caches. Bounded outlined-color recovery reuses Tesseract on eligible horizontal detector members and maps recovered geometry back to the original crop; it is not a general decorative-font solution.
+
+The owner authorized publishing the current source while excluding uploaded page examples. New regression text uses synthetic content. Uploaded images, OCR transcripts, local handoffs, experiment harnesses/results, runtime models and portable builds remain local-only. Publication does not update an existing portable or constitute new owner live acceptance. A clean export of the sanitized publication source passed a zero-warning Release build and all 963 tests. WPF window/theme resource tests now share a non-parallel collection after concurrent pack-resource access failed during publication verification.
+
+Earlier dated sections below describe historical delivery states.
+
 ## Current delivery status — 2026-09-22
 
 This source update publishes the owner-authorized r51–r61 implementation: watermark filtering, grouping, Bing session/connection compatibility, DPI-correct overlays, ADR-033 source height/auto font size, whole-word wrapping and render containment. Release verification passed 835 tests with zero build warnings/errors. Bing and strong watermark behavior have positive owner evidence; final r61 overlay acceptance remains pending.

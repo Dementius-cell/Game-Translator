@@ -17,7 +17,6 @@ public sealed class TesseractOcrEngine : IOcrEngine
     private const int ComicRefinementPaddingPixels = 4;
     private const double MinimumComicSourceWordConfidence = 50d;
     private const double QualityUpscaleFallbackScale = 2d;
-    private const float OrientationConfidenceThreshold = 15f;
     private const string SupportedPixelFormat = "Bgra32";
     private static readonly BoundedNativeOcrExecutor RecognitionExecutor = new(MaximumRecognitionConcurrency);
     private readonly string tessdataPath;
@@ -64,6 +63,12 @@ public sealed class TesseractOcrEngine : IOcrEngine
                 request.Language,
                 request.OrientationMode);
             var language = MapLanguage(request.Language, recognitionOrientationMode);
+            if (language.Contains('+'))
+            {
+                var missing = language.Split('+').Where(code => !File.Exists(Path.Combine(tessdataPath, code + ".traineddata"))).ToArray();
+                if (missing.Length > 0)
+                    throw new OcrEngineException($"Multilingual OCR requires all selected language packs. Missing: {string.Join(", ", missing)}.");
+            }
             using var engine = new Engine(tessdataPath, language, EngineMode.Default);
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -89,11 +94,20 @@ public sealed class TesseractOcrEngine : IOcrEngine
             var recognitionPassId = CreateRecognitionPassId(pageSegMode);
             IReadOnlyList<OcrTextBlock> textBlocks;
             IReadOnlyList<OcrWord> words;
+            double confidence;
             using (var page = engine.Process(image, pageSegMode))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 textBlocks = CreateTextBlocks(page, request.Frame.Width, request.Frame.Height);
                 words = CreateWords(page, request.Frame.Width, request.Frame.Height, recognitionPassId);
+                confidence = page.MeanConfidence;
+            }
+
+            if (TryRecognizeOutlinedLines(request, engine, recognitionOrientationMode, confidence,
+                cancellationToken, out var outlinedBlocks, out var outlinedWords))
+            {
+                textBlocks = outlinedBlocks;
+                words = outlinedWords;
             }
 
             if (textBlocks.Count == 0
@@ -145,6 +159,70 @@ public sealed class TesseractOcrEngine : IOcrEngine
                 "Tesseract OCR failed to recognize text from the captured frame.",
                 exception);
         }
+    }
+
+    private static bool TryRecognizeOutlinedLines(OcrRequest request, Engine engine,
+        OcrOrientationMode orientation, double originalConfidence, CancellationToken cancellationToken,
+        out IReadOnlyList<OcrTextBlock> textBlocks, out IReadOnlyList<OcrWord> words)
+    {
+        textBlocks = Array.Empty<OcrTextBlock>();
+        words = Array.Empty<OcrWord>();
+        var lines = ResolveOutlinedDetectorLines(request, orientation, originalConfidence);
+        if (lines.Length == 0) return false;
+
+        var prepared = new List<CapturedFrame>(lines.Length);
+        foreach (var bounds in lines)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var frame = OutlinedTextPreprocessor.TryPrepare(CreateCroppedFrame(request.Frame, bounds), cancellationToken);
+            // Never replace a mixed group using a partial recovery of only its decorative lines.
+            if (frame is null) return false;
+            prepared.Add(frame);
+        }
+
+        var recoveredBlocks = new List<OcrTextBlock>();
+        var recoveredWords = new List<OcrWord>();
+        for (var index = 0; index < lines.Length; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var frame = prepared[index];
+            var bounds = lines[index];
+            // Oversized decorative glyphs remain unstable even after separating the outline.
+            // Normalize only this recovery image, mapping all geometry back to the original crop.
+            var scale = frame.Height > 100 ? .5 : 1d;
+            var recognitionFrame = scale < 1 ? ScaleFrameBilinear(frame, scale) : frame;
+            using var image = PixImage.LoadFromMemory(CreateBitmapBytes(recognitionFrame));
+            using var page = engine.Process(image, PageSegMode.RawLine);
+            var blocks = MapTextBlocksFromPreprocessedFrame(
+                CreateTextBlocks(page, recognitionFrame.Width, recognitionFrame.Height),
+                frame.Width, frame.Height, scale);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (blocks.Count != 1 || !IsOutlinedRecoveryConfidenceAccepted(originalConfidence, page.MeanConfidence))
+                return false;
+            recoveredBlocks.Add(new OcrTextBlock(blocks[0].Text,
+                TranslateBounds(blocks[0].Bounds, bounds.X, bounds.Y)));
+            recoveredWords.AddRange(TranslateWords(MapWordsFromPreprocessedFrame(
+                CreateWords(page, recognitionFrame.Width, recognitionFrame.Height,
+                    "tesseract:RawLine:outline-recovery"), frame.Width, frame.Height, scale), bounds.X, bounds.Y));
+        }
+        textBlocks = recoveredBlocks;
+        words = recoveredWords;
+        return true;
+    }
+
+    internal static bool IsOutlinedRecoveryConfidenceAccepted(double original, double recovered) =>
+        double.IsFinite(original) && double.IsFinite(recovered) && recovered >= .90f && recovered >= original + .02;
+
+    internal static BoundingBox[] ResolveOutlinedDetectorLines(OcrRequest request,
+        OcrOrientationMode orientation, double originalConfidence)
+    {
+        if (orientation != OcrOrientationMode.Horizontal || !double.IsFinite(originalConfidence)
+            || originalConfidence >= .95 || request.DetectorLineBounds.Count is < 1 or > 12
+            || request.DetectorLineBounds.Sum(bound => (long)bound.Width * bound.Height) > OutlinedTextPreprocessor.MaximumPixels)
+            return Array.Empty<BoundingBox>();
+        var lines = request.DetectorLineBounds.OrderBy(bound => bound.Y).ThenBy(bound => bound.X).ToArray();
+        return lines.Zip(lines.Skip(1)).Any(pair => pair.First.Bottom - pair.Second.Y
+            > Math.Min(pair.First.Height, pair.Second.Height) * .15) ? Array.Empty<BoundingBox>() : lines;
     }
 
     internal static IReadOnlyList<BoundingBox> ResolveKoreanDetectorLines(
@@ -302,14 +380,18 @@ public sealed class TesseractOcrEngine : IOcrEngine
         {
             var horizontalLanguage = MapLanguage(languageTag, OcrOrientationMode.Horizontal);
             using var engine = new Engine(tessdataPath, horizontalLanguage, EngineMode.Default);
-            using var orientationPage = engine.Process(image, PageSegMode.OsdOnly);
-            orientationPage.DetectOrientation(out var orientationDegrees, out var confidence);
-            if (confidence < OrientationConfidenceThreshold)
+            // Rotation is not writing direction: upright Japanese columns can be vertical.
+            // The normal pipeline invokes this separately for each detected text region.
+            using var orientationPage = engine.Process(image, PageSegMode.Auto);
+            long verticalArea = 0, horizontalArea = 0;
+            foreach (var block in orientationPage.Layout)
             {
-                return OcrOrientationMode.Horizontal;
+                if (block.BoundingBox is not { } bounds) continue;
+                var area = (long)bounds.Width * bounds.Height;
+                if (block.Properties.WritingDirection == WritingDirection.TopToBottom) verticalArea += area;
+                else horizontalArea += area;
             }
-
-            return orientationDegrees is 90 or 270
+            return verticalArea > horizontalArea
                 ? OcrOrientationMode.Vertical
                 : OcrOrientationMode.Horizontal;
         }

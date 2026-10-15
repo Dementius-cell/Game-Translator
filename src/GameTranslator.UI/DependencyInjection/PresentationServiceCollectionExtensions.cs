@@ -3,6 +3,9 @@ using GameTranslator.Application.Debug;
 using GameTranslator.Application.Hotkeys;
 using GameTranslator.Application.Overlay;
 using GameTranslator.UI.Services;
+using GameTranslator.UI.Diagnostics;
+using System.IO;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using GameTranslator.UI.ViewModels;
 using GameTranslator.UI.Views;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,6 +19,8 @@ public static class PresentationServiceCollectionExtensions
         services.AddSingleton<IApplicationLogger, SerilogApplicationLogger>();
         services.AddSingleton<IDialogService, DialogService>();
         services.AddSingleton<ISettingsService, InMemorySettingsService>();
+        services.AddSingleton<IWindowsThemeSource, WindowsThemeSource>();
+        services.AddSingleton<ThemeService>();
         services.AddSingleton<INavigationService, NavigationService>();
         services.AddSingleton<IDebugResourceMonitor, ProcessDebugResourceMonitor>();
         services.AddSingleton<IScreenRegionPickerService, WpfScreenRegionPickerService>();
@@ -25,6 +30,11 @@ public static class PresentationServiceCollectionExtensions
 
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<ShellViewModel>();
+        services.AddSingleton<IApplicationInfoService, WindowsApplicationInfoService>();
+        services.AddSingleton<ApplicationInfoViewModel>();
+        services.TryAddSingleton<IBugReportService>(_ => new BugReportService(
+            AppContext.BaseDirectory,
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GameTranslator", "Reports")));
 
         services.AddSingleton<ShellView>();
         services.AddSingleton<OverlayWindow>();

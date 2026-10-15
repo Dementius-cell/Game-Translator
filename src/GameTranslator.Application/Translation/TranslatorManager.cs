@@ -29,7 +29,7 @@ public sealed class TranslatorManager
         var provider = GetProvider(settings.Provider);
         var request = new TranslateRequest(
             texts,
-            settings.SourceLanguage,
+            settings.ResolveSourceLanguage(),
             settings.TargetLanguage,
             credentials,
             diagnostics);

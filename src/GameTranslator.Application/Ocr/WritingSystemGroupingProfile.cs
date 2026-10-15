@@ -31,6 +31,18 @@ public static class WritingSystemGroupingProfileResolver
             throw new ArgumentOutOfRangeException(nameof(orientationMode));
         }
 
+        var languages = language.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (languages.Length > 1)
+        {
+            var profiles = languages.Select(item => Resolve(item, orientationMode)).ToArray();
+            if (profiles.Contains(WritingSystemGroupingProfile.CjkVertical))
+                return WritingSystemGroupingProfile.CjkVertical;
+            if (profiles.Contains(WritingSystemGroupingProfile.CjkHorizontalOrHybrid))
+                return WritingSystemGroupingProfile.CjkHorizontalOrHybrid;
+            // A mixed set without CJK keeps a common cohort only when unambiguous.
+            return profiles.Distinct().Count() == 1 ? profiles[0] : WritingSystemGroupingProfile.SpacedLeftToRight;
+        }
+
         var normalizedLanguage = NormalizeLanguage(language);
         if (normalizedLanguage is "jpn_vert" or "chi_sim_vert" or "chi_tra_vert"
             || (orientationMode is OcrOrientationMode.Vertical

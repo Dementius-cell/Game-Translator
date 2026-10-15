@@ -11,9 +11,10 @@ public partial class MainWindow : Window
 {
     private readonly WpfGlobalHotkeyRegistrar hotkeyRegistrar;
 
-    public MainWindow(ShellView shellView, WpfGlobalHotkeyRegistrar hotkeyRegistrar)
+    public MainWindow(ShellView shellView, WpfGlobalHotkeyRegistrar hotkeyRegistrar, ThemeService theme)
     {
         InitializeComponent();
+        theme.Attach(this);
         this.hotkeyRegistrar = hotkeyRegistrar;
         ShellHost.Content = shellView;
         SourceInitialized += OnSourceInitialized;

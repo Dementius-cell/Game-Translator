@@ -14,6 +14,21 @@ namespace GameTranslator.Tests.Infrastructure;
 public sealed class TesseractOcrEngineTests
 {
     [Fact]
+    public void ExperimentalLanguageSet_MapsToAllFourHorizontalModels()
+    {
+        Assert.Equal("jpn+kor+chi_sim+eng", TesseractOcrEngine.MapLanguage(OcrSettings.ExperimentalMultilingualLanguages, OcrOrientationMode.Horizontal));
+    }
+
+    [Fact]
+    public async Task MultilingualOcr_WithMissingModels_FailsBeforePartialNativeRecognition()
+    {
+        var engine = new TesseractOcrEngine(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
+        var request = new OcrRequest(CreateRequest().Frame, OcrSettings.ExperimentalMultilingualLanguages,
+            engineId: "Tesseract", orientationMode: OcrOrientationMode.Horizontal);
+        var error = await Assert.ThrowsAsync<OcrEngineException>(() => engine.RecognizeAsync(request));
+        Assert.Contains("Missing: jpn, kor, chi_sim, eng", error.Message);
+    }
+    [Fact]
     public void InfrastructureServiceModule_RegistersTesseractOcrEngine()
     {
         var services = new ServiceCollection();
@@ -262,14 +277,14 @@ public sealed class TesseractOcrEngineTests
         Assert.Contains("PageSegMode.SingleBlock", source, StringComparison.Ordinal);
         Assert.Contains("PageSegMode.SingleLine", source, StringComparison.Ordinal);
         Assert.Contains("PageSegMode.SparseText", source, StringComparison.Ordinal);
-        Assert.Contains("PageSegMode.OsdOnly", source, StringComparison.Ordinal);
+        Assert.Contains("PageSegMode.Auto", source, StringComparison.Ordinal);
         Assert.Contains("PageSegMode.SingleBlockVertText", source, StringComparison.Ordinal);
-        Assert.Contains("DetectOrientation", source, StringComparison.Ordinal);
+        Assert.Contains("WritingDirection.TopToBottom", source, StringComparison.Ordinal);
         Assert.Contains("SelectRecognitionOrientationMode", source, StringComparison.Ordinal);
         Assert.Contains("jpn_vert", source, StringComparison.Ordinal);
         Assert.Contains("chi_sim_vert", source, StringComparison.Ordinal);
         Assert.Contains("chi_tra_vert", source, StringComparison.Ordinal);
-        Assert.Contains("OrientationConfidenceThreshold", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("orientationDegrees is 90 or 270", source, StringComparison.Ordinal);
         Assert.Contains("catch (TesseractException)", source, StringComparison.Ordinal);
         Assert.Contains("page.Layout", source, StringComparison.Ordinal);
         Assert.Contains("textLine.BoundingBox", source, StringComparison.Ordinal);

@@ -7,6 +7,36 @@ namespace GameTranslator.Tests.Application;
 public sealed class TranslationCacheServiceTests
 {
     [Fact]
+    public async Task ClearAsync_RemovesFreshMemoryAndPersistentEntriesAndNextRequestTranslates()
+    {
+        var repository = new InMemoryTranslationCacheRepository();
+        var service = CreateService(repository);
+        await service.GetOrAddAsync(CreateSettings(), new[] { "Hello" },
+            _ => Task.FromResult(new TranslateResponse(new[] { "Old" }, Now)), Now);
+        await service.ClearAsync();
+        Assert.Empty(repository.Entries);
+        var result = await service.GetOrAddAsync(CreateSettings(), new[] { "Hello" },
+            _ => Task.FromResult(new TranslateResponse(new[] { "New" }, Now)), Now);
+        Assert.Equal(1, result.MissCount);
+        Assert.Equal("New", Assert.Single(result.TranslatedTexts));
+    }
+
+    [Fact]
+    public async Task AutoSource_HasSeparateCacheAndIgnoresRetainedManualLanguage()
+    {
+        var service = CreateService(new InMemoryTranslationCacheRepository());
+        var settings = CreateSettings() with { SourceLanguage = "en", AutoDetectSourceLanguage = false };
+        await service.GetOrAddAsync(settings, new[] { "Hello" }, _ => Task.FromResult(new TranslateResponse(new[] { "manual" }, Now)), Now);
+        var auto = settings with { AutoDetectSourceLanguage = true };
+        var miss = await service.GetOrAddAsync(auto, new[] { "Hello" }, _ => Task.FromResult(new TranslateResponse(new[] { "automatic" }, Now)), Now);
+        Assert.Equal(1, miss.MissCount);
+        var hit = await service.GetOrAddAsync(auto with { SourceLanguage = "zh" }, new[] { "Hello" },
+            _ => throw new InvalidOperationException("Auto cache should not depend on retained manual language."), Now);
+        Assert.Equal(1, hit.MemoryHitCount);
+        Assert.Equal("automatic", Assert.Single(hit.TranslatedTexts));
+    }
+
+    [Fact]
     public async Task KoreanSpaces_AreSentToProviderAndCachedSeparately()
     {
         var repository = new InMemoryTranslationCacheRepository();
@@ -410,6 +440,14 @@ public sealed class TranslationCacheServiceTests
         {
             Entries[entry.Key] = entry;
             return Task.CompletedTask;
+        }
+
+        public Task<int> DeleteAllAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var count = Entries.Count;
+            Entries.Clear();
+            return Task.FromResult(count);
         }
 
         public Task<int> DeleteExpiredAsync(

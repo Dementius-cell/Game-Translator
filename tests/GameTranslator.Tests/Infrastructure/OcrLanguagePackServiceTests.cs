@@ -10,6 +10,21 @@ namespace GameTranslator.Tests.Infrastructure;
 public sealed class OcrLanguagePackServiceTests
 {
     [Fact]
+    public async Task MultilingualAuto_ChecksHorizontalAndVerticalModels()
+    {
+        using var workspace = new TemporaryDirectory();
+        foreach (var code in new[] { "jpn", "kor", "chi_sim", "eng" })
+            File.WriteAllText(Path.Combine(workspace.Path, code + ".traineddata"), "test");
+        var service = new OcrLanguagePackService(new HttpClient(), workspace.Path);
+        var status = await service.CheckAsync("Tesseract", OcrSettings.ExperimentalMultilingualLanguages, OcrOrientationMode.Auto);
+        Assert.False(status.IsReady);
+        Assert.Contains("jpn_vert.traineddata", status.Message);
+        Assert.Contains("chi_sim_vert.traineddata", status.Message);
+        foreach (var code in new[] { "jpn_vert", "chi_sim_vert" })
+            File.WriteAllText(Path.Combine(workspace.Path, code + ".traineddata"), "test");
+        Assert.True((await service.CheckAsync("Tesseract", OcrSettings.ExperimentalMultilingualLanguages, OcrOrientationMode.Auto)).IsReady);
+    }
+    [Fact]
     public async Task CheckAsync_WhenTesseractChineseVerticalDataMissing_ReportsRequiredVertModel()
     {
         using var workspace = new TemporaryDirectory();

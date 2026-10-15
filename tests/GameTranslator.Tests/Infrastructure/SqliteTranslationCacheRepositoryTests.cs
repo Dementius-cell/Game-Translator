@@ -6,6 +6,17 @@ namespace GameTranslator.Tests.Infrastructure;
 
 public sealed class SqliteTranslationCacheRepositoryTests : IDisposable
 {
+    [Fact]
+    public async Task DeleteAllAsync_RemovesUnexpiredEntriesAcrossInstances()
+    {
+        var repository = CreateRepository();
+        var key = new TranslationCacheKey("BingWeb", "auto", "ru", "Hello");
+        await repository.SaveAsync(new TranslationCacheEntry(key, "Old", Now, Now.AddDays(30), Now, 0));
+        Assert.Equal(1, await repository.DeleteAllAsync());
+        Assert.Null(await CreateRepository().GetAsync(key, Now));
+        Assert.Equal(0, await repository.DeleteAllAsync());
+    }
+
     private static readonly DateTimeOffset Now = new(2026, 6, 19, 12, 0, 0, TimeSpan.Zero);
     private readonly string workingDirectory = Path.Combine(
         Path.GetTempPath(),

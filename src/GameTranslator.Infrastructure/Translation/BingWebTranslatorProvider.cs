@@ -132,8 +132,8 @@ public sealed class BingWebTranslatorProvider : ITranslatorProvider, IDisposable
         httpRequest.Content = new FormUrlEncodedContent(
             new Dictionary<string, string>
             {
-                // ScreTran calls GTranslate without a source language, so Bing detects it.
-                ["fromLang"] = "auto-detect",
+                ["fromLang"] = string.Equals(request.SourceLanguage, "auto", StringComparison.OrdinalIgnoreCase)
+                    ? "auto-detect" : BingHotPatch(NormalizeLanguageTag(request.SourceLanguage)),
                 ["text"] = text,
                 ["to"] = BingHotPatch(NormalizeLanguageTag(request.TargetLanguage)),
                 ["token"] = credentialsSnapshot.Token,

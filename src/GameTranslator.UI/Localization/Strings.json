@@ -1,0 +1,3272 @@
+[
+  {
+    "Source": "Clearing all translation cache entries...",
+    "Ru": "Очистка всего кэша перевода…",
+    "En": "Clearing all translation cache entries...",
+    "Key": "CacheClearProgress"
+  },
+  {
+    "Source": "Translation cache cleared from memory and disk.",
+    "Ru": "Кэш перевода очищен в памяти и на диске.",
+    "En": "Translation cache cleared from memory and disk.",
+    "Key": "CacheClearComplete"
+  },
+  {
+    "Source": "Clear translation cache",
+    "Ru": "Очистить кэш перевода",
+    "En": "Clear translation cache",
+    "Key": "CacheClearButton"
+  },
+  {
+    "Source": "Stop live translation before clearing all cached translations from memory and disk.",
+    "Ru": "Остановите перевод, чтобы удалить весь кэш перевода из памяти и с диска.",
+    "En": "Stop live translation before clearing all cached translations from memory and disk.",
+    "Key": "CacheClearTip"
+  },
+  {
+    "Source": "i",
+    "Ru": "i",
+    "En": "i",
+    "Key": "Tde7d1b721a1e"
+  },
+  {
+    "Source": "Профили",
+    "Ru": "Профили",
+    "En": "Profiles",
+    "Key": "T30c61037264b"
+  },
+  {
+    "Source": "Новый",
+    "Ru": "Новый",
+    "En": "New",
+    "Key": "Tf9a506077fa0"
+  },
+  {
+    "Source": "Импорт",
+    "Ru": "Импорт",
+    "En": "Import",
+    "Key": "T6e5142c48f0b"
+  },
+  {
+    "Source": "Экспорт",
+    "Ru": "Экспорт",
+    "En": "Export",
+    "Key": "Td2ab5a1bb639"
+  },
+  {
+    "Source": "Обновить",
+    "Ru": "Обновить",
+    "En": "Refresh",
+    "Key": "T603e460bf59c"
+  },
+  {
+    "Source": "Double-click the profile name to rename it.",
+    "Ru": "Дважды щёлкните название профиля, чтобы переименовать его.",
+    "En": "Double-click the profile name to rename it.",
+    "Key": "T443c0ff1f8ab"
+  },
+  {
+    "Source": " → ",
+    "Ru": " → ",
+    "En": " → ",
+    "Key": "T592f6fd0750e"
+  },
+  {
+    "Source": "Копировать",
+    "Ru": "Копировать",
+    "En": "Duplicate",
+    "Key": "T1ecddf40bfeb"
+  },
+  {
+    "Source": "Удалить",
+    "Ru": "Удалить",
+    "En": "Delete",
+    "Key": "Tbe99b1361201"
+  },
+  {
+    "Source": "Настройки приложения",
+    "Ru": "Настройки приложения",
+    "En": "Application settings",
+    "Key": "T39176dbb613c"
+  },
+  {
+    "Source": "Диагностика и отчёты",
+    "Ru": "Диагностика и отчёты",
+    "En": "Diagnostics & reports",
+    "Key": "Te81a6952f15b"
+  },
+  {
+    "Source": "О приложении",
+    "Ru": "О приложении",
+    "En": "About",
+    "Key": "Teca626bab07b"
+  },
+  {
+    "Source": "← К профилю",
+    "Ru": "← К профилю",
+    "En": "← Back to profile",
+    "Key": "T584fe761b056"
+  },
+  {
+    "Source": "Профиль: ",
+    "Ru": "Профиль: ",
+    "En": "Profile: ",
+    "Key": "Tf107b5dcc071"
+  },
+  {
+    "Source": "Начать перевод",
+    "Ru": "Начать перевод",
+    "En": "Start translation",
+    "Key": "T2c8607273884"
+  },
+  {
+    "Source": "Start live translation for the active profile.",
+    "Ru": "Запустить перевод для активного профиля.",
+    "En": "Start live translation for the active profile.",
+    "Key": "T3590dcafd229"
+  },
+  {
+    "Source": "Остановить",
+    "Ru": "Остановить",
+    "En": "Stop",
+    "Key": "T3396400da0c4"
+  },
+  {
+    "Source": "Stop live translation and save the automatic stop report.",
+    "Ru": "Остановить перевод и сохранить отчёт о сеансе.",
+    "En": "Stop live translation and save the automatic stop report.",
+    "Key": "Ta35b76871761"
+  },
+  {
+    "Source": "Открыть приветственный тур",
+    "Ru": "Открыть приветственный тур",
+    "En": "Open welcome tour",
+    "Key": "Tbb5647a2e9be"
+  },
+  {
+    "Source": "? Тур",
+    "Ru": "? Тур",
+    "En": "? Tour",
+    "Key": "T2e4dcb28ddee"
+  },
+  {
+    "Source": "Открыть приветственный тур по базовой настройке профиля.",
+    "Ru": "Открыть приветственный тур по базовой настройке профиля.",
+    "En": "Open the introductory profile setup tour.",
+    "Key": "Tb6f261d33544"
+  },
+  {
+    "Source": "Отменить правки",
+    "Ru": "Отменить правки",
+    "En": "Reset changes",
+    "Key": "T878560af3db6"
+  },
+  {
+    "Source": "Сохранить",
+    "Ru": "Сохранить",
+    "En": "Save",
+    "Key": "Tb4d30cae5289"
+  },
+  {
+    "Source": "Изменения профиля сохраняются кнопкой «Сохранить»",
+    "Ru": "Изменения профиля сохраняются кнопкой «Сохранить»",
+    "En": "Click Save to store profile changes",
+    "Key": "Tda7092344997"
+  },
+  {
+    "Source": "Название и описание профиля",
+    "Ru": "Название и описание профиля",
+    "En": "Profile name and description",
+    "Key": "T45ad3b2d5426"
+  },
+  {
+    "Source": "Название",
+    "Ru": "Название",
+    "En": "Name",
+    "Key": "T0918b4ba9268"
+  },
+  {
+    "Source": "Имя профиля используется в списке и при сохранении. Поле обязательно; фиксированного ограничения длины нет.",
+    "Ru": "Имя профиля используется в списке и при сохранении. Поле обязательно; фиксированного ограничения длины нет.",
+    "En": "Profile name shown in the list and used when saving. Required; no fixed length limit.",
+    "Key": "Te0c0d9c99486"
+  },
+  {
+    "Source": "Описание",
+    "Ru": "Описание",
+    "En": "Description",
+    "Key": "Tb3680f2cba5f"
+  },
+  {
+    "Source": "Необязательное описание назначения профиля. Допускается пустое значение; фиксированного ограничения длины нет.",
+    "Ru": "Необязательное описание назначения профиля. Допускается пустое значение; фиксированного ограничения длины нет.",
+    "En": "Optional description of the profile. May be empty; no fixed length limit.",
+    "Key": "T868f763562aa"
+  },
+  {
+    "Source": "Зоны захвата",
+    "Ru": "Зоны захвата",
+    "En": "Capture zones",
+    "Key": "Tade70a285b16"
+  },
+  {
+    "Source": "Распознавание",
+    "Ru": "Распознавание",
+    "En": "Recognition",
+    "Key": "T7894eb1ac672"
+  },
+  {
+    "Source": "Перевод",
+    "Ru": "Перевод",
+    "En": "Translation",
+    "Key": "Tc581c83538fb"
+  },
+  {
+    "Source": "Оформление",
+    "Ru": "Оформление",
+    "En": "Appearance",
+    "Key": "T1731619efa3a"
+  },
+  {
+    "Source": "Распознавание и подготовка изображения",
+    "Ru": "Распознавание и подготовка изображения",
+    "En": "Recognition and image preprocessing",
+    "Key": "T7ee38975aace"
+  },
+  {
+    "Source": "Движок OCR",
+    "Ru": "Движок OCR",
+    "En": "OCR engine",
+    "Key": "Tf33e743a0d72"
+  },
+  {
+    "Source": "OCR-движок профиля. Допустимые значения: Windows и Tesseract. Для вертикального текста и распознавания принятых candidate crop используется Tesseract.",
+    "Ru": "OCR-движок профиля. Допустимые значения: Windows и Tesseract. Для вертикального текста и распознавания принятых candidate crop используется Tesseract.",
+    "En": "Profile OCR engine: Windows or Tesseract. Vertical text and accepted candidate crops use Tesseract.",
+    "Key": "Ta053eb0fa100"
+  },
+  {
+    "Source": "Направление текста",
+    "Ru": "Направление текста",
+    "En": "Text orientation",
+    "Key": "Tcf7f8355cb92"
+  },
+  {
+    "Source": "Направление исходного текста. Допустимые значения: Auto, Horizontal и Vertical. Vertical доступен только для поддерживаемых японских и китайских языков.",
+    "Ru": "Направление исходного текста. Допустимые значения: Auto, Horizontal и Vertical. Vertical доступен только для поддерживаемых японских и китайских языков.",
+    "En": "Source text orientation: Auto, Horizontal or Vertical. Vertical is available only for supported Japanese and Chinese languages.",
+    "Key": "T4c0218ec57c9"
+  },
+  {
+    "Source": "Фильтрация водяных знаков",
+    "Ru": "Фильтрация водяных знаков",
+    "En": "Watermark filtering",
+    "Key": "T3620487ca5ee"
+  },
+  {
+    "Source": "Чувствительность фильтра: Выключена (по умолчанию), Осторожная или Усиленная. Исключает из перевода кандидатов по сочетанию контраста, структуры логотипа, повторяемости на разных страницах и адреса сайта. Осторожная сохраняет сомнительный текст. Пиксели изображения не изменяются; контраст не является измерением прозрачности.",
+    "Ru": "Чувствительность фильтра: Выключена (по умолчанию), Осторожная или Усиленная. Исключает из перевода кандидатов по сочетанию контраста, структуры логотипа, повторяемости на разных страницах и адреса сайта. Осторожная сохраняет сомнительный текст. Пиксели изображения не изменяются; контраст не является измерением прозрачности.",
+    "En": "Filter sensitivity: Off (default), Cautious or Strong. Excludes translation candidates using contrast, logo structure, repetition across pages and website addresses together. Cautious preserves uncertain text. Image pixels are not modified; contrast does not measure transparency.",
+    "Key": "T909878b92699"
+  },
+  {
+    "Source": "Подготовка изображения",
+    "Ru": "Подготовка изображения",
+    "En": "Image preprocessing",
+    "Key": "T0a46ea73414b"
+  },
+  {
+    "Source": "Готовый набор обработки изображения: Custom, Off, Light 1,25×, Standard 1,5×, Strong 2× или Tiny source 3×. Выбор пресета заменяет ручные значения; ручная правка возвращает Custom.",
+    "Ru": "Готовый набор обработки изображения: Custom, Off, Light 1,25×, Standard 1,5×, Strong 2× или Tiny source 3×. Выбор пресета заменяет ручные значения; ручная правка возвращает Custom.",
+    "En": "Preprocessing preset: Custom, Off, Light 1.25×, Standard 1.5×, Strong 2× or Tiny source 3×. A preset replaces manual values; editing a value switches back to Custom.",
+    "Key": "T987185f7258b"
+  },
+  {
+    "Source": "Проверить язык OCR",
+    "Ru": "Проверить язык OCR",
+    "En": "Check OCR language",
+    "Key": "Tf5ba247665ce"
+  },
+  {
+    "Source": "Установить язык OCR",
+    "Ru": "Установить язык OCR",
+    "En": "Install OCR language",
+    "Key": "T1110b12a95db"
+  },
+  {
+    "Source": "Включено",
+    "Ru": "Включено",
+    "En": "Enabled",
+    "Key": "T4d1d43042e73"
+  },
+  {
+    "Source": "Включает применение выбранных параметров обработки перед OCR. Значения: включено или выключено; выключение передаёт исходный crop без этой обработки.",
+    "Ru": "Включает применение выбранных параметров обработки перед OCR. Значения: включено или выключено; выключение передаёт исходный crop без этой обработки.",
+    "En": "Apply the selected preprocessing settings before OCR. When disabled, the original crop is used.",
+    "Key": "Tb0d6c5df1906"
+  },
+  {
+    "Source": "Порог",
+    "Ru": "Порог",
+    "En": "Threshold",
+    "Key": "T5e0fb2da0adb"
+  },
+  {
+    "Source": "Включает бинаризацию по заданному порогу Threshold. Значения: включено или выключено; числовой порог используется только во включённом состоянии.",
+    "Ru": "Включает бинаризацию по заданному порогу Threshold. Значения: включено или выключено; числовой порог используется только во включённом состоянии.",
+    "En": "Enable binarisation using the Threshold value. The numeric threshold is used only when enabled.",
+    "Key": "T6327f7a2da31"
+  },
+  {
+    "Source": "Убрать шум",
+    "Ru": "Убрать шум",
+    "En": "Reduce noise",
+    "Key": "T80a366f25616"
+  },
+  {
+    "Source": "Включает шумоподавление перед распознаванием. Значения: включено или выключено; может помочь на цветном фоне, но требует проверки на мелком тексте.",
+    "Ru": "Включает шумоподавление перед распознаванием. Значения: включено или выключено; может помочь на цветном фоне, но требует проверки на мелком тексте.",
+    "En": "Reduce noise before recognition. May help on coloured backgrounds; check its effect on small text.",
+    "Key": "T756e768a1cc6"
+  },
+  {
+    "Source": "Контраст",
+    "Ru": "Контраст",
+    "En": "Contrast",
+    "Key": "Ta38ebf3ce57c"
+  },
+  {
+    "Source": "Множитель контраста перед OCR. Допустимый диапазон: 0,5–3 включительно; 1 означает отсутствие изменения контраста.",
+    "Ru": "Множитель контраста перед OCR. Допустимый диапазон: 0,5–3 включительно; 1 означает отсутствие изменения контраста.",
+    "En": "Contrast multiplier before OCR: 0.5–3 inclusive. 1 leaves contrast unchanged.",
+    "Key": "Ta37c63f93070"
+  },
+  {
+    "Source": "Яркость",
+    "Ru": "Яркость",
+    "En": "Brightness",
+    "Key": "T94b0411574ad"
+  },
+  {
+    "Source": "Смещение яркости изображения перед OCR. Допустимый диапазон: −100–100 включительно; 0 означает отсутствие изменения.",
+    "Ru": "Смещение яркости изображения перед OCR. Допустимый диапазон: −100–100 включительно; 0 означает отсутствие изменения.",
+    "En": "Brightness offset before OCR: −100–100 inclusive. 0 leaves brightness unchanged.",
+    "Key": "T2877dad7741a"
+  },
+  {
+    "Source": "Резкость",
+    "Ru": "Резкость",
+    "En": "Sharpness",
+    "Key": "T32c00b5782a6"
+  },
+  {
+    "Source": "Интенсивность повышения резкости перед OCR. Допустимый диапазон: 0–2 включительно; 0 отключает усиление резкости.",
+    "Ru": "Интенсивность повышения резкости перед OCR. Допустимый диапазон: 0–2 включительно; 0 отключает усиление резкости.",
+    "En": "Sharpening strength before OCR: 0–2 inclusive. 0 disables sharpening.",
+    "Key": "Ta64a3f0400f7"
+  },
+  {
+    "Source": "Порог бинаризации яркости. Допустимый диапазон: 0–255 включительно; применяется только при включённом флажке Threshold.",
+    "Ru": "Порог бинаризации яркости. Допустимый диапазон: 0–255 включительно; применяется только при включённом флажке Threshold.",
+    "En": "Brightness threshold: 0–255 inclusive. Used only when thresholding is enabled.",
+    "Key": "Taf8959dd3fac"
+  },
+  {
+    "Source": "Масштаб",
+    "Ru": "Масштаб",
+    "En": "Scale",
+    "Key": "Te037e967d3d8"
+  },
+  {
+    "Source": "Масштабирование crop перед OCR. Допустимый диапазон: 1–3× включительно; больший масштаб помогает мелкому тексту, но увеличивает время обработки.",
+    "Ru": "Масштабирование crop перед OCR. Допустимый диапазон: 1–3× включительно; больший масштаб помогает мелкому тексту, но увеличивает время обработки.",
+    "En": "Crop scale before OCR: 1–3× inclusive. Larger values help small text but increase processing time.",
+    "Key": "Tef5d0b62141e"
+  },
+  {
+    "Source": "Управление языковыми пакетами OCR →",
+    "Ru": "Управление языковыми пакетами OCR →",
+    "En": "Manage OCR language packs →",
+    "Key": "Tfece45cf1b8f"
+  },
+  {
+    "Source": "Проверка оформления",
+    "Ru": "Проверка оформления",
+    "En": "Appearance preview",
+    "Key": "Tb013d1605457"
+  },
+  {
+    "Source": "Показать тестовый перевод",
+    "Ru": "Показать тестовый перевод",
+    "En": "Show test overlay",
+    "Key": "T6fda545cd6d6"
+  },
+  {
+    "Source": "Скрыть перевод",
+    "Ru": "Скрыть перевод",
+    "En": "Hide overlay",
+    "Key": "T6c1a7ac65b8d"
+  },
+  {
+    "Source": "Метрики отладки",
+    "Ru": "Метрики отладки",
+    "En": "Debug metrics",
+    "Key": "Tfd12b9ad94d0"
+  },
+  {
+    "Source": "Показывает диагностические метрики поверх тестового оверлея. Значения: включено или выключено; настройка сохраняется локально.",
+    "Ru": "Показывает диагностические метрики поверх тестового оверлея. Значения: включено или выключено; настройка сохраняется локально.",
+    "En": "Show diagnostic metrics over the test overlay. The toggle is saved locally.",
+    "Key": "T4ff92b486854"
+  },
+  {
+    "Source": "Ширина вертикального текста",
+    "Ru": "Ширина вертикального текста",
+    "En": "Vertical text width",
+    "Key": "T4a1370189bf0"
+  },
+  {
+    "Source": "Начальная ширина перевода для вертикального исходного текста. Допустимый диапазон: 1,0–2,5×; стандартное значение 2,0×. Действует только в текущем сеансе.",
+    "Ru": "Начальная ширина перевода для вертикального исходного текста. Допустимый диапазон: 1,0–2,5×; стандартное значение 2,0×. Действует только в текущем сеансе.",
+    "En": "Initial translation width for vertical source text: 1.0–2.5×, default 2.0×. Applies only to this session.",
+    "Key": "Tcb314c709cb7"
+  },
+  {
+    "Source": "Session-only starting width for vertical-source translations.",
+    "Ru": "Начальная ширина вертикального перевода; действует только в текущем сеансе.",
+    "En": "Session-only starting width for vertical-source translations.",
+    "Key": "T173ef76ccc76"
+  },
+  {
+    "Source": "Оформление приложения",
+    "Ru": "Оформление приложения",
+    "En": "Application appearance",
+    "Key": "Tfea4b32d2a14"
+  },
+  {
+    "Source": "«Как в Windows» следует цвету приложений в настройках персонализации. Выбор сохраняется автоматически.",
+    "Ru": "«Как в Windows» следует цвету приложений в настройках персонализации. Выбор сохраняется автоматически.",
+    "En": "Follow Windows uses the application colour mode in Windows personalisation settings. Your choice is saved automatically.",
+    "Key": "T5ea5a01fb46b"
+  },
+  {
+    "Source": "Горячие клавиши",
+    "Ru": "Горячие клавиши",
+    "En": "Global hotkeys",
+    "Key": "T13b0a5cc9afc"
+  },
+  {
+    "Source": "Флажок включает действие, поле задаёт сочетание клавиш. Формат: необязательные Ctrl, Alt, Shift или Win и одна клавиша, например Ctrl+Alt+T; функциональные клавиши: F1–F24.",
+    "Ru": "Флажок включает действие, поле задаёт сочетание клавиш. Формат: необязательные Ctrl, Alt, Shift или Win и одна клавиша, например Ctrl+Alt+T; функциональные клавиши: F1–F24.",
+    "En": "The checkbox enables an action; the field sets its shortcut. Optional Ctrl, Alt, Shift or Win plus one key, e.g. Ctrl+Alt+T. Function keys: F1–F24.",
+    "Key": "Ta56515444596"
+  },
+  {
+    "Source": "Применить",
+    "Ru": "Применить",
+    "En": "Apply",
+    "Key": "Te15f960d93eb"
+  },
+  {
+    "Source": "Проверить обновления",
+    "Ru": "Проверить обновления",
+    "En": "Check for updates",
+    "Key": "T93b08f7b1465"
+  },
+  {
+    "Source": "Повторно покажет базовую настройку профиля и типовых облачков.",
+    "Ru": "Повторно покажет базовую настройку профиля и типовых облачков.",
+    "En": "Show the basic profile and speech-bubble setup again.",
+    "Key": "T502b67cc1d2e"
+  },
+  {
+    "Source": "Приветственный тур",
+    "Ru": "Приветственный тур",
+    "En": "Welcome tour",
+    "Key": "T363bc8baa460"
+  },
+  {
+    "Source": "Языковые пакеты OCR",
+    "Ru": "Языковые пакеты OCR",
+    "En": "OCR language packs",
+    "Key": "T931084845cd1"
+  },
+  {
+    "Source": "Check common",
+    "Ru": "Проверить основные",
+    "En": "Check common",
+    "Key": "T60ef3deb3176"
+  },
+  {
+    "Source": "Install Tesseract",
+    "Ru": "Установить Tesseract",
+    "En": "Install Tesseract",
+    "Key": "Tb75587f968d6"
+  },
+  {
+    "Source": "Windows OCR help",
+    "Ru": "Справка Windows OCR",
+    "En": "Windows OCR help",
+    "Key": "T059a39d87a21"
+  },
+  {
+    "Source": "Engine",
+    "Ru": "Движок",
+    "En": "Engine",
+    "Key": "T8e75ebbdb215"
+  },
+  {
+    "Source": "Language",
+    "Ru": "Язык",
+    "En": "Language",
+    "Key": "Ta4fe65264ef7"
+  },
+  {
+    "Source": "State",
+    "Ru": "Состояние",
+    "En": "State",
+    "Key": "Ta3b50c476732"
+  },
+  {
+    "Source": "Details",
+    "Ru": "Подробности",
+    "En": "Details",
+    "Key": "T45989de49fb7"
+  },
+  {
+    "Source": "Настройки переводчика",
+    "Ru": "Настройки переводчика",
+    "En": "Translator settings",
+    "Key": "T838cb1434721"
+  },
+  {
+    "Source": "Переводчик",
+    "Ru": "Переводчик",
+    "En": "Translator",
+    "Key": "Tbcd9cc74471b"
+  },
+  {
+    "Source": "Сервис, которому отправляется распознанный текст. Доступные варианты: Google, Azure, Yandex, GoogleWeb, BingWeb и YandexWeb. Автоматического переключения между провайдерами нет.",
+    "Ru": "Сервис, которому отправляется распознанный текст. Доступные варианты: Google, Azure, Yandex, GoogleWeb, BingWeb и YandexWeb. Автоматического переключения между провайдерами нет.",
+    "En": "Service receiving recognised text: Google, Azure, Yandex, GoogleWeb, BingWeb or YandexWeb. Providers do not switch automatically.",
+    "Key": "T7e039b6462a5"
+  },
+  {
+    "Source": "Язык оригинала",
+    "Ru": "Язык оригинала",
+    "En": "Source language",
+    "Key": "T179e40f749dd"
+  },
+  {
+    "Source": "Язык исходного текста для переводчика и базовый язык OCR. Поле обязательно; значение выбирается из списка поддерживаемых языков.",
+    "Ru": "Язык исходного текста для переводчика и базовый язык OCR. Поле обязательно; значение выбирается из списка поддерживаемых языков.",
+    "En": "Source language for translation and default OCR language. Required; choose from the supported language list.",
+    "Key": "Tcdde1d107ada"
+  },
+  {
+    "Source": "Язык перевода",
+    "Ru": "Язык перевода",
+    "En": "Target language",
+    "Key": "T16b43a4ab6ac"
+  },
+  {
+    "Source": "Язык, на который переводится распознанный текст. Поле обязательно; значение выбирается из списка поддерживаемых языков.",
+    "Ru": "Язык, на который переводится распознанный текст. Поле обязательно; значение выбирается из списка поддерживаемых языков.",
+    "En": "Language to translate recognised text into. Required; choose from the supported language list.",
+    "Key": "Tdfc19fe73992"
+  },
+  {
+    "Source": "Endpoint",
+    "Ru": "Адрес API",
+    "En": "Endpoint",
+    "Key": "T3df9726c68ba"
+  },
+  {
+    "Source": "Полный адрес API официального провайдера. Формат и обязательность определяются выбранным сервисом; обычно используется HTTPS-адрес без дополнительных параметров запроса.",
+    "Ru": "Полный адрес API официального провайдера. Формат и обязательность определяются выбранным сервисом; обычно используется HTTPS-адрес без дополнительных параметров запроса.",
+    "En": "Full API endpoint of the official provider. Format and requirement depend on the service; normally an HTTPS URL without extra query parameters.",
+    "Key": "Tab8f6ab0a66b"
+  },
+  {
+    "Source": "Project / folder id",
+    "Ru": "ID проекта / каталога",
+    "En": "Project / folder id",
+    "Key": "T7c1dfc25bb74"
+  },
+  {
+    "Source": "Идентификатор проекта или каталога в учётной записи провайдера. Допустимый формат и обязательность зависят от выбранного официального сервиса.",
+    "Ru": "Идентификатор проекта или каталога в учётной записи провайдера. Допустимый формат и обязательность зависят от выбранного официального сервиса.",
+    "En": "Project or folder ID in the provider account. Format and requirement depend on the official service.",
+    "Key": "Tb472bd16f284"
+  },
+  {
+    "Source": "Region / location",
+    "Ru": "Регион",
+    "En": "Region / location",
+    "Key": "Tcea727dc84d2"
+  },
+  {
+    "Source": "Регион или location ресурса переводчика. Допустимое значение задаётся провайдером; оставляйте поле пустым только когда выбранный сервис его не требует.",
+    "Ru": "Регион или location ресурса переводчика. Допустимое значение задаётся провайдером; оставляйте поле пустым только когда выбранный сервис его не требует.",
+    "En": "Region or location of the translator resource. Use a provider-supported value; leave empty only if the service does not require it.",
+    "Key": "T268818197110"
+  },
+  {
+    "Source": "API key / token",
+    "Ru": "Ключ API / токен",
+    "En": "API key / token",
+    "Key": "Tf9907c5fb10f"
+  },
+  {
+    "Source": "Секретный API-ключ или токен официального провайдера. Длина и формат задаются сервисом. После сохранения секрет хранится только в Windows Credential Manager и не входит в профиль или логи.",
+    "Ru": "Секретный API-ключ или токен официального провайдера. Длина и формат задаются сервисом. После сохранения секрет хранится только в Windows Credential Manager и не входит в профиль или логи.",
+    "En": "Secret API key or token. Format and length depend on the provider. Saved only in Windows Credential Manager, never in profiles or logs.",
+    "Key": "T0dd4c3396b17"
+  },
+  {
+    "Source": "Save credentials",
+    "Ru": "Сохранить ключи",
+    "En": "Save credentials",
+    "Key": "Tf412ebc3df40"
+  },
+  {
+    "Source": "Validate",
+    "Ru": "Проверить",
+    "En": "Validate",
+    "Key": "T40611abbdda2"
+  },
+  {
+    "Source": "Official providers use stored credentials. GoogleWeb, BingWeb, and YandexWeb are separate diagnostic providers without stored credentials; none is a release default or fallback.",
+    "Ru": "Официальные провайдеры используют сохранённые ключи. GoogleWeb, BingWeb и YandexWeb — отдельные диагностические провайдеры без ключей; они не выбираются автоматически или как резервные.",
+    "En": "Official providers use stored credentials. GoogleWeb, BingWeb, and YandexWeb are separate diagnostic providers without stored credentials; none is a release default or fallback.",
+    "Key": "Ta3a35fdb8317"
+  },
+  {
+    "Source": "Оформление перевода",
+    "Ru": "Оформление перевода",
+    "En": "Translation appearance",
+    "Key": "Ted8fb4bb7144"
+  },
+  {
+    "Source": "Режим подложки",
+    "Ru": "Режим подложки",
+    "En": "Mask mode",
+    "Key": "T90ec0f1542a0"
+  },
+  {
+    "Source": "Способ скрытия исходного текста. Допустимые значения: Solid — сплошная заливка; Darken — затемнение исходного изображения.",
+    "Ru": "Способ скрытия исходного текста. Допустимые значения: Solid — сплошная заливка; Darken — затемнение исходного изображения.",
+    "En": "How to hide source text: Solid fills the area; Darken dims the source image.",
+    "Key": "Tc40e60238562"
+  },
+  {
+    "Source": "Цвет подложки",
+    "Ru": "Цвет подложки",
+    "En": "Mask colour",
+    "Key": "Te10797a348fa"
+  },
+  {
+    "Source": "Цвет маски в шестнадцатеричном формате. Допустимо #RRGGBB или #AARRGGBB, где AA задаёт альфа-канал.",
+    "Ru": "Цвет маски в шестнадцатеричном формате. Допустимо #RRGGBB или #AARRGGBB, где AA задаёт альфа-канал.",
+    "En": "Hexadecimal mask colour: #RRGGBB or #AARRGGBB, where AA is the alpha channel.",
+    "Key": "T2dee9b21973f"
+  },
+  {
+    "Source": "Непрозрачность",
+    "Ru": "Непрозрачность",
+    "En": "Opacity",
+    "Key": "Ta1561a6df5f1"
+  },
+  {
+    "Source": "Непрозрачность маски: 0 делает её полностью прозрачной, 1 — полностью непрозрачной. Допустимый диапазон: 0–1 включительно.",
+    "Ru": "Непрозрачность маски: 0 делает её полностью прозрачной, 1 — полностью непрозрачной. Допустимый диапазон: 0–1 включительно.",
+    "En": "Mask opacity: 0 is fully transparent, 1 fully opaque. Range: 0–1 inclusive.",
+    "Key": "Tfc1eb45b405b"
+  },
+  {
+    "Source": "Отступ",
+    "Ru": "Отступ",
+    "En": "Padding",
+    "Key": "Tf03154d37330"
+  },
+  {
+    "Source": "Дополнительный отступ маски вокруг исходного текста в пикселях. Допустимо 0 и выше; ползунок рассчитан на быстрый выбор 0–64.",
+    "Ru": "Дополнительный отступ маски вокруг исходного текста в пикселях. Допустимо 0 и выше; ползунок рассчитан на быстрый выбор 0–64.",
+    "En": "Extra mask padding around source text in pixels. 0 or greater; the slider covers 0–64 for quick adjustment.",
+    "Key": "T025aa2977c76"
+  },
+  {
+    "Source": "Use #RRGGBB or #AARRGGBB for mask color. Sliders are for quick tuning; inputs stay available for exact values.",
+    "Ru": "Цвет подложки: #RRGGBB или #AARRGGBB. Ползунки — для быстрой настройки, поля — для точных значений.",
+    "En": "Use #RRGGBB or #AARRGGBB for mask color. Sliders are for quick tuning; inputs stay available for exact values.",
+    "Key": "T5c22694ca184"
+  },
+  {
+    "Source": "Схема экрана",
+    "Ru": "Схема экрана",
+    "En": "Screen layout",
+    "Key": "Tf7adecf0a75b"
+  },
+  {
+    "Source": "Области захвата",
+    "Ru": "Области захвата",
+    "En": "Capture areas",
+    "Key": "T3e0265c6abcb"
+  },
+  {
+    "Source": "Выделите область на экране или нарисуйте её здесь. Перемещайте зону мышью; нижний правый угол изменяет размер.",
+    "Ru": "Выделите область на экране или нарисуйте её здесь. Перемещайте зону мышью; нижний правый угол изменяет размер.",
+    "En": "Select an area on screen or draw it here. Drag a zone to move it; drag its bottom-right corner to resize it.",
+    "Key": "T4282fdc6e8db"
+  },
+  {
+    "Source": "Выделить на экране",
+    "Ru": "Выделить на экране",
+    "En": "Select on screen",
+    "Key": "T0511c7b77882"
+  },
+  {
+    "Source": "Добавить зону",
+    "Ru": "Добавить зону",
+    "En": "Add zone",
+    "Key": "T7ef2862967bd"
+  },
+  {
+    "Source": "Удалить зону",
+    "Ru": "Удалить зону",
+    "En": "Remove zone",
+    "Key": "T2be3874e5283"
+  },
+  {
+    "Source": "Ниже",
+    "Ru": "Ниже",
+    "En": "Move down",
+    "Key": "T443c49da2a36"
+  },
+  {
+    "Source": "Move the selected zone later in OCR processing order.",
+    "Ru": "Переместить выбранную зону ниже в порядке обработки OCR.",
+    "En": "Move the selected zone later in OCR processing order.",
+    "Key": "T2d0ee782a9d6"
+  },
+  {
+    "Source": "Выше",
+    "Ru": "Выше",
+    "En": "Move up",
+    "Key": "T357ccc3e75b9"
+  },
+  {
+    "Source": "Move the selected zone earlier in OCR processing order.",
+    "Ru": "Переместить выбранную зону выше в порядке обработки OCR.",
+    "En": "Move the selected zone earlier in OCR processing order.",
+    "Key": "Tc310207d75be"
+  },
+  {
+    "Source": "Зоны профиля",
+    "Ru": "Зоны профиля",
+    "En": "Profile zones",
+    "Key": "Tf306fe15afc6"
+  },
+  {
+    "Source": "Параметры зоны",
+    "Ru": "Параметры зоны",
+    "En": "Zone settings",
+    "Key": "T22e9685a8e1e"
+  },
+  {
+    "Source": "Границы на экране, px",
+    "Ru": "Границы на экране, px",
+    "En": "Screen bounds, px",
+    "Key": "T32a37a4b009e"
+  },
+  {
+    "Source": "X",
+    "Ru": "X",
+    "En": "X",
+    "Key": "T4b68ab3847fe"
+  },
+  {
+    "Source": "Y",
+    "Ru": "Y",
+    "En": "Y",
+    "Key": "T18f5384d58bc"
+  },
+  {
+    "Source": "Ширина",
+    "Ru": "Ширина",
+    "En": "Width",
+    "Key": "Ta97d46cdfee7"
+  },
+  {
+    "Source": "Высота",
+    "Ru": "Высота",
+    "En": "Height",
+    "Key": "Tcc8385071149"
+  },
+  {
+    "Source": "Content layout mode",
+    "Ru": "Режим размещения текста",
+    "En": "Content layout mode",
+    "Key": "T26639bf966f5"
+  },
+  {
+    "Source": "Шрифт перевода",
+    "Ru": "Шрифт перевода",
+    "En": "Translation font",
+    "Key": "T9321203a973e"
+  },
+  {
+    "Source": "Автоматический размер",
+    "Ru": "Автоматический размер",
+    "En": "Automatic font size",
+    "Key": "Te97bba0319f8"
+  },
+  {
+    "Source": "Язык, группировка и остальные параметры — в раскрываемом блоке под списком зон.",
+    "Ru": "Язык, группировка и остальные параметры — в раскрываемом блоке под списком зон.",
+    "En": "Language, grouping and other settings are in the expandable section below the zone list.",
+    "Key": "Tbbef0551eeda"
+  },
+  {
+    "Source": "Дополнительные параметры зоны",
+    "Ru": "Дополнительные параметры зоны",
+    "En": "Advanced zone settings",
+    "Key": "T74228c764c8b"
+  },
+  {
+    "Source": "Название зоны",
+    "Ru": "Название зоны",
+    "En": "Zone name",
+    "Key": "Tb4a5d095b402"
+  },
+  {
+    "Source": "Имя выбранной OCR-зоны в профиле. Поле обязательно; фиксированного ограничения длины нет.",
+    "Ru": "Имя выбранной OCR-зоны в профиле. Поле обязательно; фиксированного ограничения длины нет.",
+    "En": "Name of the selected OCR zone. Required; no fixed length limit.",
+    "Key": "T150ad5b06e92"
+  },
+  {
+    "Source": "Язык OCR",
+    "Ru": "Язык OCR",
+    "En": "OCR language",
+    "Key": "Tadb0c7693c16"
+  },
+  {
+    "Source": "Язык распознавания выбранной зоны. Значение выбирается из списка; пустой вариант наследует Source language. Для Tesseract должен быть установлен соответствующий traineddata.",
+    "Ru": "Язык распознавания выбранной зоны. Значение выбирается из списка; пустой вариант наследует Source language. Для Tesseract должен быть установлен соответствующий traineddata.",
+    "En": "Selected zone OCR language. An empty choice inherits Source language. Tesseract requires the corresponding traineddata file.",
+    "Key": "Te8b77ee95ef7"
+  },
+  {
+    "Source": "Координаты, px",
+    "Ru": "Координаты, px",
+    "En": "Pixel bounds",
+    "Key": "Ta6264c605c49"
+  },
+  {
+    "Source": "Координаты зоны в пикселях: X и Y задают левый верхний угол, W и H — ширину и высоту. X и Y — целые числа; W и H > 0. Зоны не должны пересекаться.",
+    "Ru": "Координаты зоны в пикселях: X и Y задают левый верхний угол, W и H — ширину и высоту. X и Y — целые числа; W и H > 0. Зоны не должны пересекаться.",
+    "En": "Pixel bounds: X and Y are the top-left corner; W and H are width and height. X and Y are integers; W and H > 0. Zones must not overlap.",
+    "Key": "Tb68596d0f224"
+  },
+  {
+    "Source": "W",
+    "Ru": "W",
+    "En": "W",
+    "Key": "Tfcb5f40df9be"
+  },
+  {
+    "Source": "H",
+    "Ru": "H",
+    "En": "H",
+    "Key": "T44bd7ae60f47"
+  },
+  {
+    "Source": "Координаты, доли",
+    "Ru": "Координаты, доли",
+    "En": "Relative bounds",
+    "Key": "Tb4d10327dba3"
+  },
+  {
+    "Source": "Доли ширины и высоты экрана для переноса зоны между разрешениями. Границы: 0 ≤ X < 1, 0 ≤ Y < 1, W и H > 0; X+W и Y+H должны быть не больше 1.",
+    "Ru": "Доли ширины и высоты экрана для переноса зоны между разрешениями. Границы: 0 ≤ X < 1, 0 ≤ Y < 1, W и H > 0; X+W и Y+H должны быть не больше 1.",
+    "En": "Fractions of screen width and height for resolution changes. 0 ≤ X < 1, 0 ≤ Y < 1, W and H > 0; X+W and Y+H must not exceed 1.",
+    "Key": "T0d7e6d3d9ea0"
+  },
+  {
+    "Source": "Content layout & overlay",
+    "Ru": "Размещение текста и оверлей",
+    "En": "Content layout & overlay",
+    "Key": "Te235fdd5b136"
+  },
+  {
+    "Source": "Font",
+    "Ru": "Шрифт",
+    "En": "Font",
+    "Key": "T64d0b3adcd2d"
+  },
+  {
+    "Source": "Шрифт перевода в выбранной зоне. Значение обязательно и выбирается из установленных в Windows семейств шрифтов.",
+    "Ru": "Шрифт перевода в выбранной зоне. Значение обязательно и выбирается из установленных в Windows семейств шрифтов.",
+    "En": "Translation font for this zone. Required; choose an installed Windows font family.",
+    "Key": "Ta9bbd56ed775"
+  },
+  {
+    "Source": "Size",
+    "Ru": "Размер",
+    "En": "Size",
+    "Key": "T1af851907331"
+  },
+  {
+    "Source": "Базовый размер шрифта перевода. Допустимый диапазон: 8–72 пунктов включительно; при нехватке места layout может уменьшить отображаемый размер.",
+    "Ru": "Базовый размер шрифта перевода. Допустимый диапазон: 8–72 пунктов включительно; при нехватке места layout может уменьшить отображаемый размер.",
+    "En": "Base translation font size: 8–72 points inclusive. Layout may shrink the rendered text if space is insufficient.",
+    "Key": "Tcd8622eb96b8"
+  },
+  {
+    "Source": "Авторазмер (8–72)",
+    "Ru": "Авторазмер (8–72)",
+    "En": "Auto size (8–72)",
+    "Key": "Tdb2fd33ebe1f"
+  },
+  {
+    "Source": "Подобрать самый крупный размер, который помещается в область перевода. Без галочки используется заданный размер.",
+    "Ru": "Подобрать самый крупный размер, который помещается в область перевода. Без галочки используется заданный размер.",
+    "En": "Use the largest font that fits the translation area. Uncheck to use the specified size.",
+    "Key": "Td0db2c31d1bc"
+  },
+  {
+    "Source": "Bold",
+    "Ru": "Полужирный",
+    "En": "Bold",
+    "Key": "T94fee62e68e2"
+  },
+  {
+    "Source": "Включает полужирное начертание перевода для выбранной зоны. Значения: включено или выключено.",
+    "Ru": "Включает полужирное начертание перевода для выбранной зоны. Значения: включено или выключено.",
+    "En": "Enable bold text for this zone.",
+    "Key": "Tf6e4e48b91d9"
+  },
+  {
+    "Source": "Italic",
+    "Ru": "Курсив",
+    "En": "Italic",
+    "Key": "T9bf37cb58a69"
+  },
+  {
+    "Source": "Включает курсивное начертание перевода для выбранной зоны. Значения: включено или выключено.",
+    "Ru": "Включает курсивное начертание перевода для выбранной зоны. Значения: включено или выключено.",
+    "En": "Enable italic text for this zone.",
+    "Key": "T6e308990a932"
+  },
+  {
+    "Source": "Политика группировки, размещения оверлея и обновления зоны. Сейчас допустим только Dialog / Comic; дополнительные режимы ещё не включены.",
+    "Ru": "Политика группировки, размещения оверлея и обновления зоны. Сейчас допустим только Dialog / Comic; дополнительные режимы ещё не включены.",
+    "En": "Zone grouping, overlay placement and refresh policy. Only Dialog / Comic is currently supported; other modes are not enabled yet.",
+    "Key": "T31ffa3827afc"
+  },
+  {
+    "Source": "Detector preset",
+    "Ru": "Пресет детектора",
+    "En": "Detector preset",
+    "Key": "Tcfafdf37a792"
+  },
+  {
+    "Source": "Порог принятия Paddle-кандидатов: Standard 0,60; Chinese test 0,65; Chinese strict test 0,70. Китайские тестовые пресеты для других языков безопасно сводятся к Standard.",
+    "Ru": "Порог принятия Paddle-кандидатов: Standard 0,60; Chinese test 0,65; Chinese strict test 0,70. Китайские тестовые пресеты для других языков безопасно сводятся к Standard.",
+    "En": "Paddle candidate acceptance threshold: Standard 0.60, Chinese test 0.65, Chinese strict test 0.70. Chinese test presets safely fall back to Standard for other languages.",
+    "Key": "Tb0803f0a0e10"
+  },
+  {
+    "Source": "Mode policy",
+    "Ru": "Правила режима",
+    "En": "Mode policy",
+    "Key": "T0cbf26a8d966"
+  },
+  {
+    "Source": "Candidate grouping - maximum horizontal lines",
+    "Ru": "Группировка — максимум горизонтальных строк",
+    "En": "Candidate grouping - maximum horizontal lines",
+    "Key": "T19479da5c093"
+  },
+  {
+    "Source": "Auto использует правила текущей письменности и продолжает только строго связанный горизонтальный блок; для SpacedLeftToRight фиксированного числа строк нет. Ручное значение задаёт жёсткий предел 1–12 строк.",
+    "Ru": "Auto использует правила текущей письменности и продолжает только строго связанный горизонтальный блок; для SpacedLeftToRight фиксированного числа строк нет. Ручное значение задаёт жёсткий предел 1–12 строк.",
+    "En": "Auto follows writing-system rules and extends only a strongly aligned horizontal block. SpacedLeftToRight has no fixed line count. A manual value sets a hard limit of 1–12 lines.",
+    "Key": "Tdccca1bd62c8"
+  },
+  {
+    "Source": "Auto",
+    "Ru": "Авто",
+    "En": "Auto",
+    "Key": "T0286249762f7"
+  },
+  {
+    "Source": "Auto keeps writing-system limits and only extends a strongly aligned bubble.",
+    "Ru": "Авто учитывает письменность и расширяет только строго выровненное облачко.",
+    "En": "Auto keeps writing-system limits and only extends a strongly aligned bubble.",
+    "Key": "Tc14b2fa1a36b"
+  },
+  {
+    "Source": "Candidate grouping - maximum vertical columns",
+    "Ru": "Группировка — максимум вертикальных колонок",
+    "En": "Candidate grouping - maximum vertical columns",
+    "Key": "Td4f4f51f3208"
+  },
+  {
+    "Source": "Auto определяет границу по геометрии; для вертикального CJK фиксированного числа колонок нет. Ручное значение задаёт жёсткий предел 1–12 колонок.",
+    "Ru": "Auto определяет границу по геометрии; для вертикального CJK фиксированного числа колонок нет. Ручное значение задаёт жёсткий предел 1–12 колонок.",
+    "En": "Auto uses geometry; vertical CJK has no fixed column count. A manual value sets a hard limit of 1–12 columns.",
+    "Key": "T21e03efb7fe3"
+  },
+  {
+    "Source": "Auto follows vertical CJK geometry without a fixed column count; a numeric value is a hard limit.",
+    "Ru": "Авто учитывает геометрию вертикального CJK без фиксированного числа колонок; число задаёт жёсткий предел.",
+    "En": "Auto follows vertical CJK geometry without a fixed column count; a numeric value is a hard limit.",
+    "Key": "Tf688ccee2338"
+  },
+  {
+    "Source": "Absolute values are pixel-based. Relative values stay within 0..1 and are useful for future resolution-aware workflows.",
+    "Ru": "Абсолютные координаты задаются в пикселях. Относительные лежат в диапазоне 0..1 и помогают переносить зоны между разрешениями.",
+    "En": "Absolute values are pixel-based. Relative values stay within 0..1 and are useful for future resolution-aware workflows.",
+    "Key": "T138ce6ce224e"
+  },
+  {
+    "Source": "Баг-репорт",
+    "Ru": "Баг-репорт",
+    "En": "Bug report",
+    "Key": "T787a839a2b9e"
+  },
+  {
+    "Source": "Сохранить локальный отчёт об ошибке. После создания появится путь к файлу и кнопка для его открытия.",
+    "Ru": "Сохранить локальный отчёт об ошибке. После создания появится путь к файлу и кнопка для его открытия.",
+    "En": "Save a local bug report. Its path and an Open file button will appear after creation.",
+    "Key": "T9beb13a9312b"
+  },
+  {
+    "Source": "Создать баг-репорт",
+    "Ru": "Создать баг-репорт",
+    "En": "Create bug report",
+    "Key": "T12b644990e5c"
+  },
+  {
+    "Source": "Сохранить диагностический отчёт в папку Reports рядом с приложением",
+    "Ru": "Сохранить диагностический отчёт в папку Reports рядом с приложением",
+    "En": "Save a diagnostic report in the Reports folder next to the application",
+    "Key": "T05605af5f4b1"
+  },
+  {
+    "Source": "Перевод в реальном времени",
+    "Ru": "Перевод в реальном времени",
+    "En": "Live translation",
+    "Key": "T70a128a1f1e3"
+  },
+  {
+    "Source": "Обновить захват",
+    "Ru": "Обновить захват",
+    "En": "Refresh capture",
+    "Key": "T70ff1cf0faf5"
+  },
+  {
+    "Source": "Измерить FPS",
+    "Ru": "Измерить FPS",
+    "En": "Measure FPS",
+    "Key": "T1bd2ee43fae3"
+  },
+  {
+    "Source": "Распознать текст",
+    "Ru": "Распознать текст",
+    "En": "Recognise text",
+    "Key": "T9b45dfe62c68"
+  },
+  {
+    "Source": "Проверить все зоны",
+    "Ru": "Проверить все зоны",
+    "En": "Run all zones",
+    "Key": "T88c852ea4277"
+  },
+  {
+    "Source": "Собрать диагностику",
+    "Ru": "Собрать диагностику",
+    "En": "Collect diagnostics",
+    "Key": "T46a685374734"
+  },
+  {
+    "Source": "Частота обновления",
+    "Ru": "Частота обновления",
+    "En": "Update timing",
+    "Key": "T106137c126ee"
+  },
+  {
+    "Source": "Баланс скорости и устойчивости live-режима. Fast: 100 мс, 2 наблюдения и 200 мс стабильности; Balanced: 125 мс, 3 и 250 мс; Conservative: 160 мс, 4 и 320 мс.",
+    "Ru": "Баланс скорости и устойчивости live-режима. Fast: 100 мс, 2 наблюдения и 200 мс стабильности; Balanced: 125 мс, 3 и 250 мс; Conservative: 160 мс, 4 и 320 мс.",
+    "En": "Balance speed and stability. Fast: 100 ms, 2 observations, 200 ms stability. Balanced: 125 ms, 3 observations, 250 ms. Conservative: 160 ms, 4 observations, 320 ms.",
+    "Key": "T09fa204bc08a"
+  },
+  {
+    "Source": "Открыть отчёты перевода",
+    "Ru": "Открыть отчёты перевода",
+    "En": "Open translation reports",
+    "Key": "Tacaa3ad882c6"
+  },
+  {
+    "Source": "Open the folder with automatically saved live-session reports.",
+    "Ru": "Открыть папку с автоматически сохранёнными отчётами сеансов перевода.",
+    "En": "Open the folder with automatically saved live-session reports.",
+    "Key": "Ta5d02ac4d79a"
+  },
+  {
+    "Source": "Диагностика",
+    "Ru": "Диагностика",
+    "En": "Diagnostics",
+    "Key": "Tda4da4e3527c"
+  },
+  {
+    "Source": "Очистить кэш",
+    "Ru": "Очистить кэш",
+    "En": "Clear cache",
+    "Key": "T99d17b2076c5"
+  },
+  {
+    "Source": "Приветственный тур по Game Translator",
+    "Ru": "Приветственный тур по Game Translator",
+    "En": "Game Translator welcome tour",
+    "Key": "Tb0887339cb2c"
+  },
+  {
+    "Source": "Быстрый старт",
+    "Ru": "Быстрый старт",
+    "En": "Quick start",
+    "Key": "Tefb0fa58e252"
+  },
+  {
+    "Source": "Закрыть приветственный тур",
+    "Ru": "Закрыть приветственный тур",
+    "En": "Close welcome tour",
+    "Key": "Ta4fd9daf2939"
+  },
+  {
+    "Source": "×",
+    "Ru": "×",
+    "En": "×",
+    "Key": "T8db71ed28b0f"
+  },
+  {
+    "Source": "Тур ничего не меняет автоматически.",
+    "Ru": "Тур ничего не меняет автоматически.",
+    "En": "The tour does not change anything automatically.",
+    "Key": "Ta2f81edd8b82"
+  },
+  {
+    "Source": "Назад",
+    "Ru": "Назад",
+    "En": "Back",
+    "Key": "T1a9fb1f3cf8e"
+  },
+  {
+    "Source": "Закрыть",
+    "Ru": "Закрыть",
+    "En": "Close",
+    "Key": "Ta7a4033657e8"
+  },
+  {
+    "Source": "Показать файл",
+    "Ru": "Показать файл",
+    "En": "Show file",
+    "Key": "T7d0c4f43dc5b"
+  },
+  {
+    "Source": "Info — Game Translator",
+    "Ru": "О приложении — Game Translator",
+    "En": "Info — Game Translator",
+    "Key": "Taea8289dc9c8"
+  },
+  {
+    "Source": "Game Translator",
+    "Ru": "Game Translator",
+    "En": "Game Translator",
+    "Key": "T465a710e7bda"
+  },
+  {
+    "Source": "Версия: ",
+    "Ru": "Версия: ",
+    "En": "Version: ",
+    "Key": "T06629efecaad"
+  },
+  {
+    "Source": "Видеоадаптеры Windows",
+    "Ru": "Видеоадаптеры Windows",
+    "En": "Windows display adapters",
+    "Key": "T23c9cf518e45"
+  },
+  {
+    "Source": "Select OCR Region",
+    "Ru": "Выделите область OCR",
+    "En": "Select OCR Region",
+    "Key": "T5ce3aadedcc2"
+  },
+  {
+    "Source": "Как в Windows",
+    "Ru": "Как в Windows",
+    "En": "Follow Windows",
+    "Key": "Ta8d9bce75966"
+  },
+  {
+    "Source": "Светлая",
+    "Ru": "Светлая",
+    "En": "Light",
+    "Key": "Tf0cd3a603372"
+  },
+  {
+    "Source": "Тёмная",
+    "Ru": "Тёмная",
+    "En": "Dark",
+    "Key": "T1eecfcaa7bdb"
+  },
+  {
+    "Source": "Новый профиль",
+    "Ru": "Новый профиль",
+    "En": "New profile",
+    "Key": "Taaed1e96af70"
+  },
+  {
+    "Source": "Перевод запущен",
+    "Ru": "Перевод запущен",
+    "En": "Translation is running",
+    "Key": "T75aa9d407898"
+  },
+  {
+    "Source": "Выполняется операция…",
+    "Ru": "Выполняется операция…",
+    "En": "Operation in progress…",
+    "Key": "T43df0183fcb5"
+  },
+  {
+    "Source": "Проверьте параметры профиля",
+    "Ru": "Проверьте параметры профиля",
+    "En": "Check the profile settings",
+    "Key": "T28c0f83927c7"
+  },
+  {
+    "Source": "Выделите область с текстом",
+    "Ru": "Выделите область с текстом",
+    "En": "Select an area containing text",
+    "Key": "Tbfb35dc96a6b"
+  },
+  {
+    "Source": "Профиль настроен · можно запустить проверку перевода",
+    "Ru": "Профиль настроен · можно запустить проверку перевода",
+    "En": "Profile configured · ready to test translation",
+    "Key": "Ta9d4450d3744"
+  },
+  {
+    "Source": "Завершите настройку профиля",
+    "Ru": "Завершите настройку профиля",
+    "En": "Complete the profile settings",
+    "Key": "T40a1cefc7544"
+  },
+  {
+    "Source": "Масштаб схемы соответствует сохранённым границам зон.",
+    "Ru": "Масштаб схемы соответствует сохранённым границам зон.",
+    "En": "The preview scale matches the saved zone bounds.",
+    "Key": "T3f36140fe2aa"
+  },
+  {
+    "Source": "No active profile",
+    "Ru": "Нет активного профиля",
+    "En": "No active profile",
+    "Key": "Tee3e198aa826"
+  },
+  {
+    "Source": "Ready to manage game profiles.",
+    "Ru": "Готово к работе с профилями.",
+    "En": "Ready to manage game profiles.",
+    "Key": "T2e68e4b32521"
+  },
+  {
+    "Source": "No capture preview yet.",
+    "Ru": "Захват ещё не выполнен.",
+    "En": "No capture preview yet.",
+    "Key": "Tae87144b1bbc"
+  },
+  {
+    "Source": "Refresh rate not measured.",
+    "Ru": "Частота обновления ещё не измерена.",
+    "En": "Refresh rate not measured.",
+    "Key": "T39e4d24e5e96"
+  },
+  {
+    "Source": "No OCR preview yet.",
+    "Ru": "Распознавание ещё не выполнено.",
+    "En": "No OCR preview yet.",
+    "Key": "T4f92c73b7762"
+  },
+  {
+    "Source": "OCR language pack status not checked.",
+    "Ru": "Языковой пакет OCR ещё не проверен.",
+    "En": "OCR language pack status not checked.",
+    "Key": "T0beee6794249"
+  },
+  {
+    "Source": "Overlay preview hidden.",
+    "Ru": "Тестовый перевод скрыт.",
+    "En": "Overlay preview hidden.",
+    "Key": "T0468b0d5e836"
+  },
+  {
+    "Source": "Full translation pipeline not run yet.",
+    "Ru": "Полная цепочка перевода ещё не запускалась.",
+    "En": "Full translation pipeline not run yet.",
+    "Key": "T9b3039ebb5e2"
+  },
+  {
+    "Source": "Translation cache not cleaned yet.",
+    "Ru": "Кэш перевода ещё не очищался.",
+    "En": "Translation cache not cleaned yet.",
+    "Key": "Td96bb9a4bc42"
+  },
+  {
+    "Source": "Update check not run yet.",
+    "Ru": "Обновления ещё не проверялись.",
+    "En": "Update check not run yet.",
+    "Key": "T280335c7516c"
+  },
+  {
+    "Source": "Global hotkeys not registered yet.",
+    "Ru": "Горячие клавиши ещё не зарегистрированы.",
+    "En": "Global hotkeys not registered yet.",
+    "Key": "T2b8ba121d3bd"
+  },
+  {
+    "Source": "Debug overlay disabled.",
+    "Ru": "Отладочный оверлей выключен.",
+    "En": "Debug overlay disabled.",
+    "Key": "Tb33b3520cb4c"
+  },
+  {
+    "Source": "Debug overlay enabled.",
+    "Ru": "Отладочный оверлей включён.",
+    "En": "Debug overlay enabled.",
+    "Key": "T5fedaabdb68e"
+  },
+  {
+    "Source": "Translator credentials not checked.",
+    "Ru": "Ключи переводчика ещё не проверены.",
+    "En": "Translator credentials not checked.",
+    "Key": "T8079604705df"
+  },
+  {
+    "Source": "Profile name is required.",
+    "Ru": "Укажите название профиля.",
+    "En": "Profile name is required.",
+    "Key": "T5ee0a47b4c5a"
+  },
+  {
+    "Source": "Translator provider is required.",
+    "Ru": "Выберите переводчик.",
+    "En": "Translator provider is required.",
+    "Key": "Te121aa251010"
+  },
+  {
+    "Source": "Source language is required.",
+    "Ru": "Выберите язык оригинала.",
+    "En": "Source language is required.",
+    "Key": "T55f6e61c2ab7"
+  },
+  {
+    "Source": "Target language is required.",
+    "Ru": "Выберите язык перевода.",
+    "En": "Target language is required.",
+    "Key": "Tbcddba8facbc"
+  },
+  {
+    "Source": "Zone name is required.",
+    "Ru": "Укажите название зоны.",
+    "En": "Zone name is required.",
+    "Key": "T4c87ad0824f8"
+  },
+  {
+    "Source": "Not checked",
+    "Ru": "Не проверено",
+    "En": "Not checked",
+    "Key": "Td16948e73a68"
+  },
+  {
+    "Source": "Not checked.",
+    "Ru": "Не проверено.",
+    "En": "Not checked.",
+    "Key": "Tea3be8409255"
+  },
+  {
+    "Source": "Ready",
+    "Ru": "Готово",
+    "En": "Ready",
+    "Key": "T5fa7aac5375c"
+  },
+  {
+    "Source": "Missing",
+    "Ru": "Не установлен",
+    "En": "Missing",
+    "Key": "T6be36ca49ee8"
+  },
+  {
+    "Source": "Unavailable",
+    "Ru": "Недоступно",
+    "En": "Unavailable",
+    "Key": "Tca1844969742"
+  },
+  {
+    "Source": "Installed",
+    "Ru": "Установлен",
+    "En": "Installed",
+    "Key": "Tf8b32f4e92bd"
+  },
+  {
+    "Source": "Failed",
+    "Ru": "Ошибка",
+    "En": "Failed",
+    "Key": "T031a8f0f659d"
+  },
+  {
+    "Source": "Horizontal",
+    "Ru": "Горизонтально",
+    "En": "Horizontal",
+    "Key": "T0abba441f16e"
+  },
+  {
+    "Source": "Vertical",
+    "Ru": "Вертикально",
+    "En": "Vertical",
+    "Key": "T727cd3a64d79"
+  },
+  {
+    "Source": "Solid",
+    "Ru": "Сплошная заливка",
+    "En": "Solid",
+    "Key": "Tb8b311b0f273"
+  },
+  {
+    "Source": "Darken",
+    "Ru": "Затемнение",
+    "En": "Darken",
+    "Key": "Td540e5346b75"
+  },
+  {
+    "Source": "Fast",
+    "Ru": "Быстро",
+    "En": "Fast",
+    "Key": "T6c582b62e0e5"
+  },
+  {
+    "Source": "Balanced",
+    "Ru": "Сбалансированно",
+    "En": "Balanced",
+    "Key": "T5386ea5db81c"
+  },
+  {
+    "Source": "Conservative",
+    "Ru": "Осторожно",
+    "En": "Conservative",
+    "Key": "T75e1783e4e51"
+  },
+  {
+    "Source": "Custom",
+    "Ru": "Вручную",
+    "En": "Custom",
+    "Key": "T494ca78f7374"
+  },
+  {
+    "Source": "Off",
+    "Ru": "Выключено",
+    "En": "Off",
+    "Key": "Tca7981b46ecf"
+  },
+  {
+    "Source": "Light (1.25x)",
+    "Ru": "Лёгкая (1,25×)",
+    "En": "Light (1.25x)",
+    "Key": "T4d1f46e41cf1"
+  },
+  {
+    "Source": "Standard (1.5x)",
+    "Ru": "Стандартная (1,5×)",
+    "En": "Standard (1.5x)",
+    "Key": "T7d4b70f2b841"
+  },
+  {
+    "Source": "Strong (2x)",
+    "Ru": "Усиленная (2×)",
+    "En": "Strong (2x)",
+    "Key": "T53af59ec3741"
+  },
+  {
+    "Source": "Tiny source - heavy (3x)",
+    "Ru": "Мелкий текст — сильная (3×)",
+    "En": "Tiny source - heavy (3x)",
+    "Key": "Tb86b8712f283"
+  },
+  {
+    "Source": "Manual OCR preprocessing values.",
+    "Ru": "Ручная настройка подготовки изображения.",
+    "En": "Manual OCR preprocessing values.",
+    "Key": "T580b827b18b3"
+  },
+  {
+    "Source": "No OCR preprocessing.",
+    "Ru": "Без подготовки изображения.",
+    "En": "No OCR preprocessing.",
+    "Key": "T7afee416ba41"
+  },
+  {
+    "Source": "Light contrast and scaling for readable UI text.",
+    "Ru": "Небольшое усиление контраста и масштаба для читаемого текста интерфейса.",
+    "En": "Light contrast and scaling for readable UI text.",
+    "Key": "T56d39805b2d9"
+  },
+  {
+    "Source": "Moderate cleanup for subtitles, dialogue, and mixed UI.",
+    "Ru": "Умеренная очистка для субтитров, диалогов и смешанного интерфейса.",
+    "En": "Moderate cleanup for subtitles, dialogue, and mixed UI.",
+    "Key": "T11f6d826045d"
+  },
+  {
+    "Source": "Strong cleanup for small, low-contrast, or noisy text.",
+    "Ru": "Сильная очистка для мелкого, бледного или зашумлённого текста.",
+    "En": "Strong cleanup for small, low-contrast, or noisy text.",
+    "Key": "T3c12ba273ab8"
+  },
+  {
+    "Source": "Explicit 3x upscale and strong cleanup for tiny source text; slower and not automatic.",
+    "Ru": "Увеличение в 3 раза и сильная очистка мелкого текста; медленнее и включается вручную.",
+    "En": "Explicit 3x upscale and strong cleanup for tiny source text; slower and not automatic.",
+    "Key": "T91b474b45050"
+  },
+  {
+    "Source": "Dialog / Comic",
+    "Ru": "Диалог / комикс",
+    "En": "Dialog / Comic",
+    "Key": "T1fc9f2ab8eec"
+  },
+  {
+    "Source": "Standard — box 0.60",
+    "Ru": "Стандартный — порог 0,60",
+    "En": "Standard — box 0.60",
+    "Key": "T318a661c0af9"
+  },
+  {
+    "Source": "Chinese test — box 0.65",
+    "Ru": "Китайский тестовый — порог 0,65",
+    "En": "Chinese test — box 0.65",
+    "Key": "Tb93362b8a7bf"
+  },
+  {
+    "Source": "Chinese strict test — box 0.70",
+    "Ru": "Китайский строгий — порог 0,70",
+    "En": "Chinese strict test — box 0.70",
+    "Key": "Ta8adcc6e2c6e"
+  },
+  {
+    "Source": "Automatic bounded writing-system grouping; centered per-region overlay; refresh on every live cycle.",
+    "Ru": "Автоматическая ограниченная группировка по письменности; центрированный оверлей для каждой области; обновление в каждом цикле.",
+    "En": "Automatic bounded writing-system grouping; centered per-region overlay; refresh on every live cycle.",
+    "Key": "Tf25c1634f1ba"
+  },
+  {
+    "Source": "No policy is available for this content layout mode.",
+    "Ru": "Для этого режима нет правил размещения.",
+    "En": "No policy is available for this content layout mode.",
+    "Key": "T6a6b8652e8b1"
+  },
+  {
+    "Source": "Standard detector post-processing (box threshold 0.60).",
+    "Ru": "Стандартная обработка детектора (порог области 0,60).",
+    "En": "Standard detector post-processing (box threshold 0.60).",
+    "Key": "T818517a5edbe"
+  },
+  {
+    "Source": "Chinese-only test preset (box threshold 0.65); other languages use Standard.",
+    "Ru": "Тестовый пресет только для китайского (порог 0,65); для других языков используется стандартный.",
+    "En": "Chinese-only test preset (box threshold 0.65); other languages use Standard.",
+    "Key": "T4139c9fbb6c6"
+  },
+  {
+    "Source": "Chinese-only strict test preset (box threshold 0.70); other languages use Standard.",
+    "Ru": "Строгий тестовый пресет только для китайского (порог 0,70); для других языков используется стандартный.",
+    "En": "Chinese-only strict test preset (box threshold 0.70); other languages use Standard.",
+    "Key": "Tc2df6ce2ede8"
+  },
+  {
+    "Source": "Unsupported detector preset.",
+    "Ru": "Неподдерживаемый пресет детектора.",
+    "En": "Unsupported detector preset.",
+    "Key": "Tb352b180063f"
+  },
+  {
+    "Source": "Inherit translator source language",
+    "Ru": "Наследовать язык оригинала",
+    "En": "Inherit translator source language",
+    "Key": "T6fa83d4e5097"
+  },
+  {
+    "Source": "Выключена",
+    "Ru": "Выключена",
+    "En": "Off",
+    "Key": "T1e4b68699013"
+  },
+  {
+    "Source": "Осторожная",
+    "Ru": "Осторожная",
+    "En": "Cautious",
+    "Key": "T784dc0e60025"
+  },
+  {
+    "Source": "Усиленная",
+    "Ru": "Усиленная",
+    "En": "Strong",
+    "Key": "T289eb2f49d71"
+  },
+  {
+    "Source": "Squirrel.Windows installation was not detected; update check skipped.",
+    "Ru": "Установка Squirrel.Windows не обнаружена; проверка обновлений пропущена.",
+    "En": "Squirrel.Windows installation was not detected; update check skipped.",
+    "Key": "Tbe5eda2330eb"
+  },
+  {
+    "Source": "Select a translator provider to save credentials.",
+    "Ru": "Выберите переводчик для сохранения ключей.",
+    "En": "Select a translator provider to save credentials.",
+    "Key": "Tb775c2ff0e35"
+  },
+  {
+    "Source": "Select a translator provider to check credentials.",
+    "Ru": "Выберите переводчик для проверки ключей.",
+    "En": "Select a translator provider to check credentials.",
+    "Key": "Tdbd98a3bd8f5"
+  },
+  {
+    "Source": "Select a translator provider to delete credentials.",
+    "Ru": "Выберите переводчик для удаления ключей.",
+    "En": "Select a translator provider to delete credentials.",
+    "Key": "T44bb1fffbe2f"
+  },
+  {
+    "Source": "Translator credential fields are incomplete.",
+    "Ru": "Заполните поля ключей переводчика.",
+    "En": "Translator credential fields are incomplete.",
+    "Key": "T14bbd525ca69"
+  },
+  {
+    "Source": "Translator credential save failed. Check logs for details.",
+    "Ru": "Не удалось сохранить ключи переводчика. Подробности в журнале.",
+    "En": "Translator credential save failed. Check logs for details.",
+    "Key": "T4f51c9f58232"
+  },
+  {
+    "Source": "Translator credential validation failed. Check logs for details.",
+    "Ru": "Не удалось проверить ключи переводчика. Подробности в журнале.",
+    "En": "Translator credential validation failed. Check logs for details.",
+    "Key": "T1c70b8cba459"
+  },
+  {
+    "Source": "Translator credential delete failed. Check logs for details.",
+    "Ru": "Не удалось удалить ключи переводчика. Подробности в журнале.",
+    "En": "Translator credential delete failed. Check logs for details.",
+    "Key": "Tbb5cb8469628"
+  },
+  {
+    "Source": "{0} is experimental and does not use stored credentials.",
+    "Ru": "{0} — экспериментальный провайдер без сохранённых ключей.",
+    "En": "{0} is experimental and does not use stored credentials.",
+    "Key": "Tbaa2e128fc3a"
+  },
+  {
+    "Source": "{0} is experimental and does not store credentials.",
+    "Ru": "{0} — экспериментальный провайдер, ключи не сохраняются.",
+    "En": "{0} is experimental and does not store credentials.",
+    "Key": "T2dfd35d3abd5"
+  },
+  {
+    "Source": "Stored translator credentials for {0}.",
+    "Ru": "Ключи переводчика {0} сохранены.",
+    "En": "Stored translator credentials for {0}.",
+    "Key": "T013431fa4964"
+  },
+  {
+    "Source": "No stored translator credentials for {0}.",
+    "Ru": "Нет сохранённых ключей для {0}.",
+    "En": "No stored translator credentials for {0}.",
+    "Key": "T7260be4dbebb"
+  },
+  {
+    "Source": "Deleted translator credentials for {0}.",
+    "Ru": "Ключи переводчика {0} удалены.",
+    "En": "Deleted translator credentials for {0}.",
+    "Key": "Tce20b42a254e"
+  },
+  {
+    "Source": "WebAuto is no longer supported. Choose another translator provider.",
+    "Ru": "WebAuto больше не поддерживается. Выберите другой переводчик.",
+    "En": "WebAuto is no longer supported. Choose another translator provider.",
+    "Key": "T0bbc515e4043"
+  },
+  {
+    "Source": "Select an OCR zone to preview capture.",
+    "Ru": "Выберите зону OCR для захвата.",
+    "En": "Select an OCR zone to preview capture.",
+    "Key": "T17033980e73e"
+  },
+  {
+    "Source": "Captured {0}x{1} at {2}.",
+    "Ru": "Получен кадр {0}×{1} в {2}.",
+    "En": "Captured {0}x{1} at {2}.",
+    "Key": "T899197699cc8"
+  },
+  {
+    "Source": "Capture preview failed: {0}",
+    "Ru": "Ошибка захвата: {0}",
+    "En": "Capture preview failed: {0}",
+    "Key": "Tb78021f0dbda"
+  },
+  {
+    "Source": "Capture preview canceled.",
+    "Ru": "Захват отменён.",
+    "En": "Capture preview canceled.",
+    "Key": "Tc0240dd95a20"
+  },
+  {
+    "Source": "Capture preview failed. Check logs for details.",
+    "Ru": "Не удалось выполнить захват. Подробности в журнале.",
+    "En": "Capture preview failed. Check logs for details.",
+    "Key": "T046b4a6238bb"
+  },
+  {
+    "Source": "Select an OCR engine, OCR zone, and OCR language first.",
+    "Ru": "Сначала выберите движок OCR, зону и язык распознавания.",
+    "En": "Select an OCR engine, OCR zone, and OCR language first.",
+    "Key": "T73d70697d68b"
+  },
+  {
+    "Source": "Checking {0} OCR language '{1}' for '{2}'...",
+    "Ru": "Проверка языка {1} в {0} для зоны «{2}»…",
+    "En": "Checking {0} OCR language '{1}' for '{2}'...",
+    "Key": "T9ca87dfc404d"
+  },
+  {
+    "Source": "Installing {0} OCR language '{1}' for '{2}'...",
+    "Ru": "Установка языка {1} в {0} для зоны «{2}»…",
+    "En": "Installing {0} OCR language '{1}' for '{2}'...",
+    "Key": "T76ef0e4929b0"
+  },
+  {
+    "Source": "OCR language pack check failed. Check logs for details.",
+    "Ru": "Не удалось проверить пакет OCR. Подробности в журнале.",
+    "En": "OCR language pack check failed. Check logs for details.",
+    "Key": "Tc31a2337f44e"
+  },
+  {
+    "Source": "OCR language pack installation failed. Check logs for details.",
+    "Ru": "Не удалось установить пакет OCR. Подробности в журнале.",
+    "En": "OCR language pack installation failed. Check logs for details.",
+    "Key": "T6b7abd126600"
+  },
+  {
+    "Source": "Stop live translation before checking OCR language packs.",
+    "Ru": "Остановите перевод перед проверкой пакетов OCR.",
+    "En": "Stop live translation before checking OCR language packs.",
+    "Key": "T99ba0107fef9"
+  },
+  {
+    "Source": "Stop live translation before installing OCR language packs.",
+    "Ru": "Остановите перевод перед установкой пакетов OCR.",
+    "En": "Stop live translation before installing OCR language packs.",
+    "Key": "Ta0dc4487c524"
+  },
+  {
+    "Source": "Registered {0} global hotkey(s).",
+    "Ru": "Зарегистрировано горячих клавиш: {0}.",
+    "En": "Registered {0} global hotkey(s).",
+    "Key": "T1823b440be88"
+  },
+  {
+    "Source": "Created zone '{0}' from screen selection.",
+    "Ru": "Зона «{0}» создана из выделенной области экрана.",
+    "En": "Created zone '{0}' from screen selection.",
+    "Key": "T2c2e5c778ec2"
+  },
+  {
+    "Source": "Loaded {0} profile(s).",
+    "Ru": "Загружено профилей: {0}.",
+    "En": "Loaded {0} profile(s).",
+    "Key": "T399fd275c191"
+  },
+  {
+    "Source": "Saved profile '{0}'.",
+    "Ru": "Профиль «{0}» сохранён.",
+    "En": "Saved profile '{0}'.",
+    "Key": "Tf72476c911b0"
+  },
+  {
+    "Source": "Deleted profile '{0}'.",
+    "Ru": "Профиль «{0}» удалён.",
+    "En": "Deleted profile '{0}'.",
+    "Key": "T6808247debc7"
+  },
+  {
+    "Source": "Start / pause",
+    "Ru": "Запуск / пауза",
+    "En": "Start / pause",
+    "Key": "T9fd44b921003"
+  },
+  {
+    "Source": "Recognize OCR",
+    "Ru": "Распознать текст",
+    "En": "Recognize OCR",
+    "Key": "Tc4b668e8958c"
+  },
+  {
+    "Source": "Collect debug info",
+    "Ru": "Собрать диагностику",
+    "En": "Collect debug info",
+    "Key": "T53e402b50268"
+  },
+  {
+    "Source": "Show / hide overlay",
+    "Ru": "Показать / скрыть перевод",
+    "En": "Show / hide overlay",
+    "Key": "Tb733022b6e7a"
+  },
+  {
+    "Source": "Settings",
+    "Ru": "Настройки",
+    "En": "Settings",
+    "Key": "T74a883a037bc"
+  },
+  {
+    "Source": "Exit",
+    "Ru": "Выход",
+    "En": "Exit",
+    "Key": "Td17d84a60499"
+  },
+  {
+    "Source": "Определение видеоадаптеров…",
+    "Ru": "Определение видеоадаптеров…",
+    "En": "Detecting display adapters…",
+    "Key": "Tb2698d0e65c1"
+  },
+  {
+    "Source": "Windows не сообщил о доступных видеоадаптерах.",
+    "Ru": "Windows не сообщил о доступных видеоадаптерах.",
+    "En": "Windows did not report any available display adapters.",
+    "Key": "T443fef4e8214"
+  },
+  {
+    "Source": "Не удалось получить список видеоадаптеров. Закройте Info и попробуйте снова.",
+    "Ru": "Не удалось получить список видеоадаптеров. Закройте Info и попробуйте снова.",
+    "En": "Could not retrieve display adapters. Close About and try again.",
+    "Key": "Te6e21109f4fa"
+  },
+  {
+    "Source": "Создание баг-репорта…",
+    "Ru": "Создание баг-репорта…",
+    "En": "Creating bug report…",
+    "Key": "T709042c3795d"
+  },
+  {
+    "Source": "Не удалось создать баг-репорт. Проверьте доступ к папке отчётов и свободное место.",
+    "Ru": "Не удалось создать баг-репорт. Проверьте доступ к папке отчётов и свободное место.",
+    "En": "Could not create a bug report. Check folder permissions and free disk space.",
+    "Key": "T6e47aa0cf556"
+  },
+  {
+    "Source": "Не удалось создать баг-репорт.",
+    "Ru": "Не удалось создать баг-репорт.",
+    "En": "Could not create a bug report.",
+    "Key": "Ta86657955259"
+  },
+  {
+    "Source": "Баг-репорт сохранён: {0}. Отправка не выполнялась. {1}",
+    "Ru": "Баг-репорт сохранён: {0}. Отправка не выполнялась. {1}",
+    "En": "Bug report saved: {0}. Nothing was uploaded. {1}",
+    "Key": "Te765c8823812"
+  },
+  {
+    "Source": "Не удалось открыть отчёт в Проводнике. Путь: {0}",
+    "Ru": "Не удалось открыть отчёт в Проводнике. Путь: {0}",
+    "En": "Could not reveal the report in File Explorer. Path: {0}",
+    "Key": "Tbae8bc465d25"
+  },
+  {
+    "Source": "Шаг {0} из {1}",
+    "Ru": "Шаг {0} из {1}",
+    "En": "Step {0} of {1}",
+    "Key": "T889285d021e8"
+  },
+  {
+    "Source": "Далее",
+    "Ru": "Далее",
+    "En": "Next",
+    "Key": "Tdc9450d2c273"
+  },
+  {
+    "Source": "Готово",
+    "Ru": "Готово",
+    "En": "Done",
+    "Key": "Tef05d57959cf"
+  },
+  {
+    "Source": "Добро пожаловать в Game Translator",
+    "Ru": "Добро пожаловать в Game Translator",
+    "En": "Welcome to Game Translator",
+    "Key": "T728edcbf81be"
+  },
+  {
+    "Source": "1. Создайте профиль игры",
+    "Ru": "1. Создайте профиль игры",
+    "En": "1. Create a game profile",
+    "Key": "T4efd4a71c84d"
+  },
+  {
+    "Source": "2. Выберите переводчик и языки",
+    "Ru": "2. Выберите переводчик и языки",
+    "En": "2. Choose translator and languages",
+    "Key": "T00d14bdfa958"
+  },
+  {
+    "Source": "3. Выделите OCR-зону",
+    "Ru": "3. Выделите OCR-зону",
+    "En": "3. Select an OCR zone",
+    "Key": "Tb5678e1a9544"
+  },
+  {
+    "Source": "4. Настройте OCR для облачков",
+    "Ru": "4. Настройте OCR для облачков",
+    "En": "4. Configure OCR for speech bubbles",
+    "Key": "T9e62e4001d6c"
+  },
+  {
+    "Source": "5. Проверьте маску и читаемость",
+    "Ru": "5. Проверьте маску и читаемость",
+    "En": "5. Check the mask and readability",
+    "Key": "T524b40a7e3d2"
+  },
+  {
+    "Source": "6. Сохраните профиль и запустите live",
+    "Ru": "6. Сохраните профиль и запустите live",
+    "En": "6. Save the profile and start translation",
+    "Key": "T0121138c221f"
+  },
+  {
+    "Source": "Fast: poll every 100 ms; require 2 matching grouping and OCR observations, each held for at least 200 ms.",
+    "Ru": "Быстро: опрос каждые 100 мс; 2 совпадающих наблюдения группировки и OCR, каждое стабильно не менее 200 мс.",
+    "En": "Fast: poll every 100 ms; require 2 matching grouping and OCR observations, each held for at least 200 ms.",
+    "Key": "Tc25ac2ae0c2a"
+  },
+  {
+    "Source": "Balanced: poll every 125 ms; require 3 matching grouping and OCR observations, each held for at least 250 ms.",
+    "Ru": "Сбалансированно: опрос каждые 125 мс; 3 совпадающих наблюдения группировки и OCR, каждое стабильно не менее 250 мс.",
+    "En": "Balanced: poll every 125 ms; require 3 matching grouping and OCR observations, each held for at least 250 ms.",
+    "Key": "Tb7b4e7b5c9db"
+  },
+  {
+    "Source": "Conservative: poll every 160 ms; require 4 matching grouping and OCR observations, each held for at least 320 ms.",
+    "Ru": "Осторожно: опрос каждые 160 мс; 4 совпадающих наблюдения группировки и OCR, каждое стабильно не менее 320 мс.",
+    "En": "Conservative: poll every 160 ms; require 4 matching grouping and OCR observations, each held for at least 320 ms.",
+    "Key": "T34d97b8aa90e"
+  },
+  {
+    "Source": "Приложение захватывает выбранную область экрана, находит текст, распознаёт его, переводит и показывает перевод поверх оригинала. Сам тур не запускает захват и ничего не отправляет переводчику.",
+    "Ru": "Приложение захватывает выбранную область экрана, находит текст, распознаёт его, переводит и показывает перевод поверх оригинала. Сам тур не запускает захват и ничего не отправляет переводчику.",
+    "En": "The app captures a screen area, detects text, recognises and translates it, then overlays the translation. The tour does not capture anything or send text to a translator.",
+    "Key": "Tf956d02eaf4e"
+  },
+  {
+    "Source": "Нажимайте «Далее»: нужная рабочая вкладка под этой карточкой будет открываться автоматически.",
+    "Ru": "Нажимайте «Далее»: нужная рабочая вкладка под этой карточкой будет открываться автоматически.",
+    "En": "Click Next: the relevant workspace tab opens automatically beneath this card.",
+    "Key": "T878fdecaa1f4"
+  },
+  {
+    "Source": "Нажмите «Новый», задайте понятное имя и при необходимости описание. Один профиль хранит зоны, языки, переводчик, OCR и внешний вид оверлея для конкретной игры или типа страниц.",
+    "Ru": "Нажмите «Новый», задайте понятное имя и при необходимости описание. Один профиль хранит зоны, языки, переводчик, OCR и внешний вид оверлея для конкретной игры или типа страниц.",
+    "En": "Click New and enter a name and optional description. A profile stores zones, languages, translator, OCR and overlay appearance for a game or page type.",
+    "Key": "T51fd6f3b042d"
+  },
+  {
+    "Source": "После настройки нажмите Сохранить. Несохранённый черновик также хранится локально, но для постоянной работы лучше сохранить профиль.",
+    "Ru": "После настройки нажмите Сохранить. Несохранённый черновик также хранится локально, но для постоянной работы лучше сохранить профиль.",
+    "En": "Click Save after configuration. An unsaved draft is also stored locally, but save a profile for regular use.",
+    "Key": "T43535c5bf41e"
+  },
+  {
+    "Source": "Во вкладке «Перевод» выберите переводчик, язык оригинала и язык перевода. Официальным Google, Azure и Yandex нужны credentials; диагностические GoogleWeb, BingWeb и YandexWeb работают без сохранённых ключей.",
+    "Ru": "Во вкладке «Перевод» выберите переводчик, язык оригинала и язык перевода. Официальным Google, Azure и Yandex нужны credentials; диагностические GoogleWeb, BingWeb и YandexWeb работают без сохранённых ключей.",
+    "En": "On Translation, choose a provider and source and target languages. Official Google, Azure and Yandex require credentials; diagnostic GoogleWeb, BingWeb and YandexWeb work without saved keys.",
+    "Key": "Tf71627656a58"
+  },
+  {
+    "Source": "Провайдеры не переключаются автоматически. Проверьте правильность исходного языка: от него также зависит выбор OCR-настроек по умолчанию.",
+    "Ru": "Провайдеры не переключаются автоматически. Проверьте правильность исходного языка: от него также зависит выбор OCR-настроек по умолчанию.",
+    "En": "Providers do not switch automatically. Check the source language: it also determines default OCR settings.",
+    "Key": "T847bcfa9a76f"
+  },
+  {
+    "Source": "Вернитесь в «Зоны захвата» и нажмите «Выделить на экране». Для типовых облачков выделите область игры или страницы, где они появляются: оставьте небольшой запас по краям, но не захватывайте лишние панели и декоративный текст.",
+    "Ru": "Вернитесь в «Зоны захвата» и нажмите «Выделить на экране». Для типовых облачков выделите область игры или страницы, где они появляются: оставьте небольшой запас по краям, но не захватывайте лишние панели и декоративный текст.",
+    "En": "Go to Capture zones and click Select on screen. Select the area containing the game or speech bubbles, leaving a small margin but excluding unrelated panels and decorative text.",
+    "Key": "T733bd12f4114"
+  },
+  {
+    "Source": "Если текст появляется в нескольких постоянных местах, создайте отдельные зоны. Сохранённые зоны не должны пересекаться; внутри зоны detector сам найдёт текущие облачка.",
+    "Ru": "Если текст появляется в нескольких постоянных местах, создайте отдельные зоны. Сохранённые зоны не должны пересекаться; внутри зоны detector сам найдёт текущие облачка.",
+    "En": "Create separate zones for fixed text areas. Saved zones must not overlap; the detector finds current speech bubbles inside each zone.",
+    "Key": "T95d257211dee"
+  },
+  {
+    "Source": "Во вкладке «Распознавание» выберите движок и направление текста. Нажмите «Проверить язык OCR», чтобы проверить локальный языковой пакет. Язык отдельной зоны доступен в её дополнительных параметрах.",
+    "Ru": "Во вкладке «Распознавание» выберите движок и направление текста. Нажмите «Проверить язык OCR», чтобы проверить локальный языковой пакет. Язык отдельной зоны доступен в её дополнительных параметрах.",
+    "En": "On Recognition, choose the engine and orientation. Click Check OCR language to verify the local language pack. Per-zone language is in advanced zone settings.",
+    "Key": "Tf1dfb68d8ce5"
+  },
+  {
+    "Source": "Если проверка показала Missing, нажмите Установить язык OCR, дождитесь завершения установки и снова нажмите Проверить язык OCR. Безопасная отправная точка: Detector preset = Standard, candidate grouping = Auto, preprocessing = Light 1,25× или Standard 1,5×. Ручные лимиты и строгие китайские пресеты нужны только для сравнительного теста.",
+    "Ru": "Если проверка показала Missing, нажмите Установить язык OCR, дождитесь завершения установки и снова нажмите Проверить язык OCR. Безопасная отправная точка: Detector preset = Standard, candidate grouping = Auto, preprocessing = Light 1,25× или Standard 1,5×. Ручные лимиты и строгие китайские пресеты нужны только для сравнительного теста.",
+    "En": "If the result is Missing, click Install OCR language, wait and check again. Start with Standard detector preset, Auto grouping, and Light 1.25× or Standard 1.5× preprocessing. Manual limits and strict Chinese presets are for comparison tests.",
+    "Key": "T1a06d0f1d3be"
+  },
+  {
+    "Source": "Во вкладке «Оформление» выберите Solid или Darken, цвет и непрозрачность маски. Для каждой зоны можно выбрать шрифт, размер, жирность и курсив. Показать тестовый перевод показывает результат без запуска live-перевода.",
+    "Ru": "Во вкладке «Оформление» выберите Solid или Darken, цвет и непрозрачность маски. Для каждой зоны можно выбрать шрифт, размер, жирность и курсив. Показать тестовый перевод показывает результат без запуска live-перевода.",
+    "En": "On Appearance, choose Solid or Darken, colour and opacity. Each zone has font, size, bold and italic settings. Show test overlay previews the result without starting live translation.",
+    "Key": "T3d1de85321cf"
+  },
+  {
+    "Source": "Маска должна полностью закрывать оригинал, а перевод — читаться на фоне игры. Для начала используйте непрозрачность 1 и умеренный Padding.",
+    "Ru": "Маска должна полностью закрывать оригинал, а перевод — читаться на фоне игры. Для начала используйте непрозрачность 1 и умеренный Padding.",
+    "En": "The mask should cover the source completely and the translation should be readable against the game. Start with opacity 1 and moderate padding.",
+    "Key": "T3b5cab22f45b"
+  },
+  {
+    "Source": "Нажмите Сохранить, затем откройте «Диагностика и отчёты» и выберите «Начать перевод». Готовые стабильные текстовые регионы будут переводиться независимо; «Остановить» завершает сеанс и сохраняет локальный отчёт.",
+    "Ru": "Нажмите Сохранить, затем откройте «Диагностика и отчёты» и выберите «Начать перевод». Готовые стабильные текстовые регионы будут переводиться независимо; «Остановить» завершает сеанс и сохраняет локальный отчёт.",
+    "En": "Click Save, then open Diagnostics & reports and Start translation. Stable text regions are translated independently; Stop ends the session and saves a local report.",
+    "Key": "T9dd01a1904f8"
+  },
+  {
+    "Source": "Если перевод не появился, сначала проверьте Pipeline status, OCR language packs и Открыть отчёты перевода. Отчёты автоматически не загружаются в интернет.",
+    "Ru": "Если перевод не появился, сначала проверьте Pipeline status, OCR language packs и Открыть отчёты перевода. Отчёты автоматически не загружаются в интернет.",
+    "En": "If translation does not appear, check pipeline status, OCR packs and Open translation reports. Reports are not uploaded automatically.",
+    "Key": "Tcfc9b252426f"
+  },
+  {
+    "Source": "Afrikaans",
+    "Ru": "Африкаанс",
+    "En": "Afrikaans",
+    "Key": "T6884e4dc7300"
+  },
+  {
+    "Source": "Amharic",
+    "Ru": "Амхарский",
+    "En": "Amharic",
+    "Key": "Te1b6cb2bfcfa"
+  },
+  {
+    "Source": "Arabic",
+    "Ru": "Арабский",
+    "En": "Arabic",
+    "Key": "Tbafb66f32cd7"
+  },
+  {
+    "Source": "Azerbaijani",
+    "Ru": "Азербайджанский",
+    "En": "Azerbaijani",
+    "Key": "T717455722060"
+  },
+  {
+    "Source": "Belarusian",
+    "Ru": "Белорусский",
+    "En": "Belarusian",
+    "Key": "T70964175569e"
+  },
+  {
+    "Source": "Bulgarian",
+    "Ru": "Болгарский",
+    "En": "Bulgarian",
+    "Key": "Tecd986094baf"
+  },
+  {
+    "Source": "Bengali",
+    "Ru": "Бенгальский",
+    "En": "Bengali",
+    "Key": "Te7f4fe2631bb"
+  },
+  {
+    "Source": "Bosnian",
+    "Ru": "Боснийский",
+    "En": "Bosnian",
+    "Key": "T1d25285d7182"
+  },
+  {
+    "Source": "Catalan",
+    "Ru": "Каталанский",
+    "En": "Catalan",
+    "Key": "T843c489421f4"
+  },
+  {
+    "Source": "Cebuano",
+    "Ru": "Себуанский",
+    "En": "Cebuano",
+    "Key": "Tcee40b573e2d"
+  },
+  {
+    "Source": "Corsican",
+    "Ru": "Корсиканский",
+    "En": "Corsican",
+    "Key": "T74f2aa6e5186"
+  },
+  {
+    "Source": "Czech",
+    "Ru": "Чешский",
+    "En": "Czech",
+    "Key": "T8b463ea23a7e"
+  },
+  {
+    "Source": "Welsh",
+    "Ru": "Валлийский",
+    "En": "Welsh",
+    "Key": "T28886b7d4e9c"
+  },
+  {
+    "Source": "Danish",
+    "Ru": "Датский",
+    "En": "Danish",
+    "Key": "Tfe4338ad620c"
+  },
+  {
+    "Source": "German",
+    "Ru": "Немецкий",
+    "En": "German",
+    "Key": "Ta659b60d246d"
+  },
+  {
+    "Source": "Greek",
+    "Ru": "Греческий",
+    "En": "Greek",
+    "Key": "T5c74e5b8100c"
+  },
+  {
+    "Source": "English",
+    "Ru": "Английский",
+    "En": "English",
+    "Key": "Tba118bf7fc9c"
+  },
+  {
+    "Source": "Esperanto",
+    "Ru": "Эсперанто",
+    "En": "Esperanto",
+    "Key": "T95b5272c7aab"
+  },
+  {
+    "Source": "Spanish",
+    "Ru": "Испанский",
+    "En": "Spanish",
+    "Key": "T3411059cb8e0"
+  },
+  {
+    "Source": "Estonian",
+    "Ru": "Эстонский",
+    "En": "Estonian",
+    "Key": "T4d8bdb8972a2"
+  },
+  {
+    "Source": "Basque",
+    "Ru": "Баскский",
+    "En": "Basque",
+    "Key": "T6d0d15d95ec4"
+  },
+  {
+    "Source": "Persian",
+    "Ru": "Персидский",
+    "En": "Persian",
+    "Key": "T7428909a1062"
+  },
+  {
+    "Source": "Finnish",
+    "Ru": "Финский",
+    "En": "Finnish",
+    "Key": "T5710b435f90a"
+  },
+  {
+    "Source": "French",
+    "Ru": "Французский",
+    "En": "French",
+    "Key": "T7458199fe97a"
+  },
+  {
+    "Source": "Frisian",
+    "Ru": "Фризский",
+    "En": "Frisian",
+    "Key": "T246136c3fd45"
+  },
+  {
+    "Source": "Irish",
+    "Ru": "Ирландский",
+    "En": "Irish",
+    "Key": "Td65819e43e55"
+  },
+  {
+    "Source": "Scottish Gaelic",
+    "Ru": "Шотландский гэльский",
+    "En": "Scottish Gaelic",
+    "Key": "T1435d07cdf1c"
+  },
+  {
+    "Source": "Galician",
+    "Ru": "Галисийский",
+    "En": "Galician",
+    "Key": "T9363fa206c21"
+  },
+  {
+    "Source": "Gujarati",
+    "Ru": "Гуджарати",
+    "En": "Gujarati",
+    "Key": "Taa1324f5df47"
+  },
+  {
+    "Source": "Hausa",
+    "Ru": "Хауса",
+    "En": "Hausa",
+    "Key": "Tad9ffa0196ff"
+  },
+  {
+    "Source": "Hawaiian",
+    "Ru": "Гавайский",
+    "En": "Hawaiian",
+    "Key": "Tef9b85dc15ff"
+  },
+  {
+    "Source": "Hebrew",
+    "Ru": "Иврит",
+    "En": "Hebrew",
+    "Key": "T33e00df2aac3"
+  },
+  {
+    "Source": "Hindi",
+    "Ru": "Хинди",
+    "En": "Hindi",
+    "Key": "T63c2dc51d089"
+  },
+  {
+    "Source": "Hmong",
+    "Ru": "Хмонг",
+    "En": "Hmong",
+    "Key": "Td4a866412866"
+  },
+  {
+    "Source": "Croatian",
+    "Ru": "Хорватский",
+    "En": "Croatian",
+    "Key": "T754787c2f88c"
+  },
+  {
+    "Source": "Haitian Creole",
+    "Ru": "Гаитянский креольский",
+    "En": "Haitian Creole",
+    "Key": "Tec18adfbe988"
+  },
+  {
+    "Source": "Hungarian",
+    "Ru": "Венгерский",
+    "En": "Hungarian",
+    "Key": "T58801e6907f0"
+  },
+  {
+    "Source": "Armenian",
+    "Ru": "Армянский",
+    "En": "Armenian",
+    "Key": "T676f73a9f00a"
+  },
+  {
+    "Source": "Indonesian",
+    "Ru": "Индонезийский",
+    "En": "Indonesian",
+    "Key": "T4fe1bb67f3b9"
+  },
+  {
+    "Source": "Igbo",
+    "Ru": "Игбо",
+    "En": "Igbo",
+    "Key": "Tf5d590be06b2"
+  },
+  {
+    "Source": "Icelandic",
+    "Ru": "Исландский",
+    "En": "Icelandic",
+    "Key": "T2bca68c58bb4"
+  },
+  {
+    "Source": "Italian",
+    "Ru": "Итальянский",
+    "En": "Italian",
+    "Key": "Tfe1d9c7db376"
+  },
+  {
+    "Source": "Japanese",
+    "Ru": "Японский",
+    "En": "Japanese",
+    "Key": "Tbe4ee906d3ef"
+  },
+  {
+    "Source": "Javanese",
+    "Ru": "Яванский",
+    "En": "Javanese",
+    "Key": "T1d8b8d4e409f"
+  },
+  {
+    "Source": "Georgian",
+    "Ru": "Грузинский",
+    "En": "Georgian",
+    "Key": "T9ef3f1385ffb"
+  },
+  {
+    "Source": "Kazakh",
+    "Ru": "Казахский",
+    "En": "Kazakh",
+    "Key": "T601883e0a2f7"
+  },
+  {
+    "Source": "Khmer",
+    "Ru": "Кхмерский",
+    "En": "Khmer",
+    "Key": "T08d72ec6a16a"
+  },
+  {
+    "Source": "Kannada",
+    "Ru": "Каннада",
+    "En": "Kannada",
+    "Key": "T4829406f52d7"
+  },
+  {
+    "Source": "Korean",
+    "Ru": "Корейский",
+    "En": "Korean",
+    "Key": "T04656c6fe003"
+  },
+  {
+    "Source": "Kurdish",
+    "Ru": "Курдский",
+    "En": "Kurdish",
+    "Key": "T4ebb3cbb4139"
+  },
+  {
+    "Source": "Kyrgyz",
+    "Ru": "Киргизский",
+    "En": "Kyrgyz",
+    "Key": "Tf2c01dba334f"
+  },
+  {
+    "Source": "Latin",
+    "Ru": "Латинский",
+    "En": "Latin",
+    "Key": "T2d38c456a2ec"
+  },
+  {
+    "Source": "Luxembourgish",
+    "Ru": "Люксембургский",
+    "En": "Luxembourgish",
+    "Key": "T75a593f5abaa"
+  },
+  {
+    "Source": "Lao",
+    "Ru": "Лаосский",
+    "En": "Lao",
+    "Key": "T6d2138c6f2f6"
+  },
+  {
+    "Source": "Lithuanian",
+    "Ru": "Литовский",
+    "En": "Lithuanian",
+    "Key": "T8625f6a2065b"
+  },
+  {
+    "Source": "Latvian",
+    "Ru": "Латышский",
+    "En": "Latvian",
+    "Key": "T28fa038bb8bc"
+  },
+  {
+    "Source": "Malagasy",
+    "Ru": "Малагасийский",
+    "En": "Malagasy",
+    "Key": "T2307308da4f1"
+  },
+  {
+    "Source": "Maori",
+    "Ru": "Маори",
+    "En": "Maori",
+    "Key": "Tab9dd2ac725d"
+  },
+  {
+    "Source": "Macedonian",
+    "Ru": "Македонский",
+    "En": "Macedonian",
+    "Key": "Td20a89f64554"
+  },
+  {
+    "Source": "Malayalam",
+    "Ru": "Малаялам",
+    "En": "Malayalam",
+    "Key": "T2247ef59ce64"
+  },
+  {
+    "Source": "Mongolian",
+    "Ru": "Монгольский",
+    "En": "Mongolian",
+    "Key": "Tad3f6d016da6"
+  },
+  {
+    "Source": "Marathi",
+    "Ru": "Маратхи",
+    "En": "Marathi",
+    "Key": "T6bbef3a79c78"
+  },
+  {
+    "Source": "Malay",
+    "Ru": "Малайский",
+    "En": "Malay",
+    "Key": "Tcd43b2d3b020"
+  },
+  {
+    "Source": "Maltese",
+    "Ru": "Мальтийский",
+    "En": "Maltese",
+    "Key": "Tb0e05b8c6e0c"
+  },
+  {
+    "Source": "Myanmar (Burmese)",
+    "Ru": "Бирманский",
+    "En": "Myanmar (Burmese)",
+    "Key": "T1bcd80754b3f"
+  },
+  {
+    "Source": "Nepali",
+    "Ru": "Непальский",
+    "En": "Nepali",
+    "Key": "T0112367e107e"
+  },
+  {
+    "Source": "Dutch",
+    "Ru": "Нидерландский",
+    "En": "Dutch",
+    "Key": "T45f16144c18c"
+  },
+  {
+    "Source": "Norwegian",
+    "Ru": "Норвежский",
+    "En": "Norwegian",
+    "Key": "T71f4cf5c7a23"
+  },
+  {
+    "Source": "Chichewa",
+    "Ru": "Чичева",
+    "En": "Chichewa",
+    "Key": "Tec063a81d971"
+  },
+  {
+    "Source": "Odia",
+    "Ru": "Ория",
+    "En": "Odia",
+    "Key": "T5296eefab076"
+  },
+  {
+    "Source": "Punjabi",
+    "Ru": "Панджаби",
+    "En": "Punjabi",
+    "Key": "T9e61f8c4fbca"
+  },
+  {
+    "Source": "Polish",
+    "Ru": "Польский",
+    "En": "Polish",
+    "Key": "T770341d6e89e"
+  },
+  {
+    "Source": "Pashto",
+    "Ru": "Пушту",
+    "En": "Pashto",
+    "Key": "T3913ff16273b"
+  },
+  {
+    "Source": "Portuguese",
+    "Ru": "Португальский",
+    "En": "Portuguese",
+    "Key": "T98b01b890687"
+  },
+  {
+    "Source": "Romanian",
+    "Ru": "Румынский",
+    "En": "Romanian",
+    "Key": "T096b861df653"
+  },
+  {
+    "Source": "Russian",
+    "Ru": "Русский",
+    "En": "Russian",
+    "Key": "T5bcc40adf6e0"
+  },
+  {
+    "Source": "Sindhi",
+    "Ru": "Синдхи",
+    "En": "Sindhi",
+    "Key": "Tb80021ded1cc"
+  },
+  {
+    "Source": "Sinhala",
+    "Ru": "Сингальский",
+    "En": "Sinhala",
+    "Key": "T0354f368e7cd"
+  },
+  {
+    "Source": "Slovak",
+    "Ru": "Словацкий",
+    "En": "Slovak",
+    "Key": "Te2922f6751d4"
+  },
+  {
+    "Source": "Slovenian",
+    "Ru": "Словенский",
+    "En": "Slovenian",
+    "Key": "Tdea070feef80"
+  },
+  {
+    "Source": "Samoan",
+    "Ru": "Самоанский",
+    "En": "Samoan",
+    "Key": "Tab416cbd66b2"
+  },
+  {
+    "Source": "Shona",
+    "Ru": "Шона",
+    "En": "Shona",
+    "Key": "T6fce7ae36a72"
+  },
+  {
+    "Source": "Somali",
+    "Ru": "Сомалийский",
+    "En": "Somali",
+    "Key": "T07175458d0a9"
+  },
+  {
+    "Source": "Albanian",
+    "Ru": "Албанский",
+    "En": "Albanian",
+    "Key": "T9d0367457cdd"
+  },
+  {
+    "Source": "Serbian",
+    "Ru": "Сербский",
+    "En": "Serbian",
+    "Key": "Tb4a077dadb30"
+  },
+  {
+    "Source": "Sesotho",
+    "Ru": "Сесото",
+    "En": "Sesotho",
+    "Key": "T558eb70abdfc"
+  },
+  {
+    "Source": "Sundanese",
+    "Ru": "Сунданский",
+    "En": "Sundanese",
+    "Key": "T7f6a41629fdd"
+  },
+  {
+    "Source": "Swedish",
+    "Ru": "Шведский",
+    "En": "Swedish",
+    "Key": "Ta89a9329d3d4"
+  },
+  {
+    "Source": "Swahili",
+    "Ru": "Суахили",
+    "En": "Swahili",
+    "Key": "Tef13b74e5743"
+  },
+  {
+    "Source": "Tamil",
+    "Ru": "Тамильский",
+    "En": "Tamil",
+    "Key": "T135d78ac8f56"
+  },
+  {
+    "Source": "Telugu",
+    "Ru": "Телугу",
+    "En": "Telugu",
+    "Key": "Ta4504b3d0ff7"
+  },
+  {
+    "Source": "Tajik",
+    "Ru": "Таджикский",
+    "En": "Tajik",
+    "Key": "T63288751bc8a"
+  },
+  {
+    "Source": "Thai",
+    "Ru": "Тайский",
+    "En": "Thai",
+    "Key": "Tad705ee19c04"
+  },
+  {
+    "Source": "Turkish",
+    "Ru": "Турецкий",
+    "En": "Turkish",
+    "Key": "T6e7aac65db01"
+  },
+  {
+    "Source": "Ukrainian",
+    "Ru": "Украинский",
+    "En": "Ukrainian",
+    "Key": "T6f424303fa12"
+  },
+  {
+    "Source": "Urdu",
+    "Ru": "Урду",
+    "En": "Urdu",
+    "Key": "T2c6ef73fc9e2"
+  },
+  {
+    "Source": "Uzbek",
+    "Ru": "Узбекский",
+    "En": "Uzbek",
+    "Key": "Tea2f3df3ff0b"
+  },
+  {
+    "Source": "Vietnamese",
+    "Ru": "Вьетнамский",
+    "En": "Vietnamese",
+    "Key": "Tf25499e9df5c"
+  },
+  {
+    "Source": "Xhosa",
+    "Ru": "Коса",
+    "En": "Xhosa",
+    "Key": "T92f6d1a5c22a"
+  },
+  {
+    "Source": "Yiddish",
+    "Ru": "Идиш",
+    "En": "Yiddish",
+    "Key": "Te9c5219cbfac"
+  },
+  {
+    "Source": "Yoruba",
+    "Ru": "Йоруба",
+    "En": "Yoruba",
+    "Key": "T4fbaf98ad285"
+  },
+  {
+    "Source": "Chinese (Simplified)",
+    "Ru": "Китайский (упрощённый)",
+    "En": "Chinese (Simplified)",
+    "Key": "T237635fca547"
+  },
+  {
+    "Source": "Chinese (Traditional)",
+    "Ru": "Китайский (традиционный)",
+    "En": "Chinese (Traditional)",
+    "Key": "T086e0a73e924"
+  },
+  {
+    "Source": "Zulu",
+    "Ru": "Зулу",
+    "En": "Zulu",
+    "Key": "T5cd8645e8311"
+  },
+  {
+    "Source": "Live translation overlay hidden.",
+    "Ru": "Оверлей перевода скрыт.",
+    "En": "Live translation overlay hidden.",
+    "Key": "T04b7943f2c88"
+  },
+  {
+    "Source": "Cleaning expired translation cache entries...",
+    "Ru": "Удаление устаревших записей кэша перевода…",
+    "En": "Cleaning expired translation cache entries...",
+    "Key": "Tabe689397c86"
+  },
+  {
+    "Source": "Translation cache cleanup removed {0} expired entries.",
+    "Ru": "Удалено устаревших записей кэша: {0}.",
+    "En": "Translation cache cleanup removed {0} expired entries.",
+    "Key": "Te9e5f14cddf0"
+  },
+  {
+    "Source": "Translation cache cleanup removed {0} expired entry.",
+    "Ru": "Удалено устаревших записей кэша: {0}.",
+    "En": "Translation cache cleanup removed {0} expired entry.",
+    "Key": "T75201cef8d13"
+  },
+  {
+    "Source": "Translation cache cleanup failed. Check logs for details.",
+    "Ru": "Не удалось очистить кэш перевода. Подробности в журнале.",
+    "En": "Translation cache cleanup failed. Check logs for details.",
+    "Key": "T8327b0ab4cd0"
+  },
+  {
+    "Source": "Application update check canceled.",
+    "Ru": "Проверка обновлений отменена.",
+    "En": "Application update check canceled.",
+    "Key": "T954c35c807bd"
+  },
+  {
+    "Source": "Application update check failed. Check logs for details.",
+    "Ru": "Не удалось проверить обновления. Подробности в журнале.",
+    "En": "Application update check failed. Check logs for details.",
+    "Key": "Te792dd993d49"
+  },
+  {
+    "Source": "Fix invalid global hotkeys before applying.",
+    "Ru": "Исправьте неверные сочетания клавиш перед применением.",
+    "En": "Fix invalid global hotkeys before applying.",
+    "Key": "Tc8c4008645b5"
+  },
+  {
+    "Source": "Global hotkeys were not applied. Check values and try again.",
+    "Ru": "Горячие клавиши не применены. Проверьте значения и повторите попытку.",
+    "En": "Global hotkeys were not applied. Check values and try again.",
+    "Key": "T70647ff94bad"
+  },
+  {
+    "Source": "Pipeline hotkey received while an operation is already running.",
+    "Ru": "Команда перевода получена во время выполнения другой операции.",
+    "En": "Pipeline hotkey received while an operation is already running.",
+    "Key": "T3042b5751ff1"
+  },
+  {
+    "Source": "OCR hotkey received while an operation is already running.",
+    "Ru": "Команда распознавания получена во время выполнения другой операции.",
+    "En": "OCR hotkey received while an operation is already running.",
+    "Key": "Te02f5faf40e8"
+  },
+  {
+    "Source": "Debug info hotkey received while an operation is already running.",
+    "Ru": "Команда сбора диагностики получена во время выполнения другой операции.",
+    "En": "Debug info hotkey received while an operation is already running.",
+    "Key": "T2e2655d756d8"
+  },
+  {
+    "Source": "Settings hotkey focused the main window.",
+    "Ru": "Главное окно открыто горячей клавишей настроек.",
+    "En": "Settings hotkey focused the main window.",
+    "Key": "T88a5a02b4659"
+  },
+  {
+    "Source": "Overlay preview failed. Check logs for details.",
+    "Ru": "Не удалось показать оверлей. Подробности в журнале.",
+    "En": "Overlay preview failed. Check logs for details.",
+    "Key": "T3036ba8db103"
+  },
+  {
+    "Source": "Overlay preview hide failed. Check logs for details.",
+    "Ru": "Не удалось скрыть оверлей. Подробности в журнале.",
+    "En": "Overlay preview hide failed. Check logs for details.",
+    "Key": "T495feef2f92b"
+  },
+  {
+    "Source": "No OCR zone captured successfully.",
+    "Ru": "Не удалось захватить ни одну зону распознавания.",
+    "En": "No OCR zone captured successfully.",
+    "Key": "T46cedfe38ba5"
+  },
+  {
+    "Source": "No OCR results available.",
+    "Ru": "Результатов распознавания пока нет.",
+    "En": "No OCR results available.",
+    "Key": "T33ddc437b89e"
+  },
+  {
+    "Source": "Overlay preview restore failed. Check logs for details.",
+    "Ru": "Не удалось восстановить оверлей. Подробности в журнале.",
+    "En": "Overlay preview restore failed. Check logs for details.",
+    "Key": "Tb109d8959fb2"
+  },
+  {
+    "Source": "No profiles found. Create the first one.",
+    "Ru": "Профили не найдены. Создайте первый профиль.",
+    "En": "No profiles found. Create the first one.",
+    "Key": "T9e5e29397487"
+  },
+  {
+    "Source": "Profile operation failed. Check logs for details.",
+    "Ru": "Ошибка операции с профилем. Подробности в журнале.",
+    "En": "Profile operation failed. Check logs for details.",
+    "Key": "T5fe35dca510c"
+  },
+  {
+    "Source": "Translator credentials were not saved.",
+    "Ru": "Учётные данные переводчика не сохранены.",
+    "En": "Translator credentials were not saved.",
+    "Key": "T65eaae0e4103"
+  },
+  {
+    "Source": "Translator credentials were not deleted.",
+    "Ru": "Учётные данные переводчика не удалены.",
+    "En": "Translator credentials were not deleted.",
+    "Key": "Tb7833118da4b"
+  },
+  {
+    "Source": "Drag on the surface to create an OCR zone.",
+    "Ru": "Нарисуйте область на схеме, чтобы создать зону распознавания.",
+    "En": "Drag on the surface to create an OCR zone.",
+    "Key": "Tea2980678985"
+  },
+  {
+    "Source": "Zone selection canceled.",
+    "Ru": "Выбор зоны отменён.",
+    "En": "Zone selection canceled.",
+    "Key": "Tc6a07d423aec"
+  },
+  {
+    "Source": "Created zone '{0}' from the surface.",
+    "Ru": "Зона «{0}» создана на схеме.",
+    "En": "Created zone '{0}' from the surface.",
+    "Key": "T3e4bcf8ca2bc"
+  },
+  {
+    "Source": "Resize '{0}' using the surface handle.",
+    "Ru": "Измените размер зоны «{0}», потянув за угол на схеме.",
+    "En": "Resize '{0}' using the surface handle.",
+    "Key": "T3a14d3d169fd"
+  },
+  {
+    "Source": "Resized zone '{0}'.",
+    "Ru": "Размер зоны «{0}» изменён.",
+    "En": "Resized zone '{0}'.",
+    "Key": "T8708415305dc"
+  },
+  {
+    "Source": "Move '{0}' by dragging it on the surface.",
+    "Ru": "Перетащите зону «{0}» на схеме.",
+    "En": "Move '{0}' by dragging it on the surface.",
+    "Key": "Tfb53edde5d18"
+  },
+  {
+    "Source": "Moved zone '{0}'.",
+    "Ru": "Зона «{0}» перемещена.",
+    "En": "Moved zone '{0}'.",
+    "Key": "Tb061106c433d"
+  },
+  {
+    "Source": "Enter a new profile name. Press Enter to save or Escape to cancel.",
+    "Ru": "Введите новое имя профиля. Enter — сохранить, Escape — отменить.",
+    "En": "Enter a new profile name. Press Enter to save or Escape to cancel.",
+    "Key": "T11880e4b2fe1"
+  },
+  {
+    "Source": "A profile named '{0}' already exists.",
+    "Ru": "Профиль «{0}» уже существует.",
+    "En": "A profile named '{0}' already exists.",
+    "Key": "T8c441cbcfd87"
+  },
+  {
+    "Source": "Profile name was not changed.",
+    "Ru": "Имя профиля не изменено.",
+    "En": "Profile name was not changed.",
+    "Key": "Tab5bcfbf9bb2"
+  },
+  {
+    "Source": "Profile renamed to '{0}'.",
+    "Ru": "Профиль переименован в «{0}».",
+    "En": "Profile renamed to '{0}'.",
+    "Key": "T2a66c620a668"
+  },
+  {
+    "Source": "Profile rename canceled.",
+    "Ru": "Переименование профиля отменено.",
+    "En": "Profile rename canceled.",
+    "Key": "Ta7fc7e99c532"
+  },
+  {
+    "Source": "Drafting a new profile.",
+    "Ru": "Создание нового профиля.",
+    "En": "Drafting a new profile.",
+    "Key": "T7a5599289b30"
+  },
+  {
+    "Source": "Profile '{0}' saved.",
+    "Ru": "Профиль «{0}» сохранён.",
+    "En": "Profile '{0}' saved.",
+    "Key": "T8144eb7e5280"
+  },
+  {
+    "Source": "Profile import canceled.",
+    "Ru": "Импорт профиля отменён.",
+    "En": "Profile import canceled.",
+    "Key": "T85e228e1460d"
+  },
+  {
+    "Source": "Profile '{0}' exported.",
+    "Ru": "Профиль «{0}» экспортирован.",
+    "En": "Profile '{0}' exported.",
+    "Key": "Tf91122963ba5"
+  },
+  {
+    "Source": "Profile '{0}' created.",
+    "Ru": "Профиль «{0}» создан.",
+    "En": "Profile '{0}' created.",
+    "Key": "Tc2d4febef5d1"
+  },
+  {
+    "Source": "Profile '{0}' deleted.",
+    "Ru": "Профиль «{0}» удалён.",
+    "En": "Profile '{0}' deleted.",
+    "Key": "Tfc68ee01e411"
+  },
+  {
+    "Source": "Reset editor for '{0}'.",
+    "Ru": "Правки профиля «{0}» отменены.",
+    "En": "Reset editor for '{0}'.",
+    "Key": "T5c8ae9a33f47"
+  },
+  {
+    "Source": "Select an OCR zone on the screen.",
+    "Ru": "Выделите зону распознавания на экране.",
+    "En": "Select an OCR zone on the screen.",
+    "Key": "Taf526a6f9a2c"
+  },
+  {
+    "Source": "Screen zone selection canceled.",
+    "Ru": "Выбор зоны на экране отменён.",
+    "En": "Screen zone selection canceled.",
+    "Key": "T4f0545d8b3b9"
+  },
+  {
+    "Source": "Screen zone selection failed. Check logs for details.",
+    "Ru": "Не удалось выбрать зону на экране. Подробности в журнале.",
+    "En": "Screen zone selection failed. Check logs for details.",
+    "Key": "Tab4f4363e0f3"
+  },
+  {
+    "Source": "Capturing preview for '{0}'...",
+    "Ru": "Захват предпросмотра зоны «{0}»…",
+    "En": "Capturing preview for '{0}'...",
+    "Key": "Tc169a57a591f"
+  },
+  {
+    "Source": "Measuring capture refresh for '{0}'...",
+    "Ru": "Измерение частоты захвата зоны «{0}»…",
+    "En": "Measuring capture refresh for '{0}'...",
+    "Key": "T9ea8b83f8763"
+  },
+  {
+    "Source": "Предыдущий запуск завершился неожиданно. Найдено отчётов: {0}. Отчёт: {1}. {2}",
+    "Ru": "Предыдущий запуск завершился неожиданно. Найдено отчётов: {0}. Отчёт: {1}. {2}",
+    "En": "The previous session ended unexpectedly. Reports found: {0}. Report: {1}. {2}",
+    "Key": "T995628079a9a"
+  },
+  {
+    "Source": "Checking common OCR language packs...",
+    "Ru": "Проверка основных языковых пакетов…",
+    "En": "Checking common OCR language packs...",
+    "Key": "Ta243a3c1c6ec"
+  },
+  {
+    "Source": "Stop live translation before installing Tesseract OCR language packs.",
+    "Ru": "Остановите перевод перед установкой языковых пакетов Tesseract.",
+    "En": "Stop live translation before installing Tesseract OCR language packs.",
+    "Key": "T235694c4ad0c"
+  },
+  {
+    "Source": "Installing missing common Tesseract traineddata files...",
+    "Ru": "Установка недостающих основных языковых файлов Tesseract…",
+    "En": "Installing missing common Tesseract traineddata files...",
+    "Key": "Te5bce91601fe"
+  },
+  {
+    "Source": "Stop live translation before opening Windows OCR language pack help.",
+    "Ru": "Остановите перевод перед открытием справки по языковым пакетам Windows OCR.",
+    "En": "Stop live translation before opening Windows OCR language pack help.",
+    "Key": "T560a1ce91275"
+  },
+  {
+    "Source": "Windows OCR packs require an elevated PowerShell command outside the app.",
+    "Ru": "Для установки пакетов Windows OCR выполните команду PowerShell от имени администратора вне приложения.",
+    "En": "Windows OCR packs require an elevated PowerShell command outside the app.",
+    "Key": "T7f57945e6ba5"
+  },
+  {
+    "Source": "Select an OCR zone to recognize text.",
+    "Ru": "Выберите зону для распознавания текста.",
+    "En": "Select an OCR zone to recognize text.",
+    "Key": "T447a9f7f8334"
+  },
+  {
+    "Source": "OCR language is required for preview.",
+    "Ru": "Для предпросмотра укажите язык распознавания.",
+    "En": "OCR language is required for preview.",
+    "Key": "T420ccadcbb16"
+  },
+  {
+    "Source": "Recognizing text for '{0}'...",
+    "Ru": "Распознавание текста зоны «{0}»…",
+    "En": "Recognizing text for '{0}'...",
+    "Key": "T5ac825259714"
+  },
+  {
+    "Source": "OCR preview capture failed: {0}",
+    "Ru": "Ошибка захвата для распознавания: {0}",
+    "En": "OCR preview capture failed: {0}",
+    "Key": "T2200ea5e41c1"
+  },
+  {
+    "Source": "OCR preview failed: {0}",
+    "Ru": "Ошибка предпросмотра распознавания: {0}",
+    "En": "OCR preview failed: {0}",
+    "Key": "T3e16a267fa7a"
+  },
+  {
+    "Source": "OCR preview canceled.",
+    "Ru": "Предпросмотр распознавания отменён.",
+    "En": "OCR preview canceled.",
+    "Key": "T0251ee658f0e"
+  },
+  {
+    "Source": "OCR preview failed. Check logs for details.",
+    "Ru": "Не удалось выполнить распознавание. Подробности в журнале.",
+    "En": "OCR preview failed. Check logs for details.",
+    "Key": "T450ecab9dfc6"
+  },
+  {
+    "Source": "Debug info export canceled.",
+    "Ru": "Экспорт диагностики отменён.",
+    "En": "Debug info export canceled.",
+    "Key": "Te498b303f4a5"
+  },
+  {
+    "Source": "Debug info exported to '{0}'.",
+    "Ru": "Диагностика сохранена в «{0}».",
+    "En": "Debug info exported to '{0}'.",
+    "Key": "T9130d4096bb3"
+  },
+  {
+    "Source": "Debug info export failed: {0}",
+    "Ru": "Ошибка экспорта диагностики: {0}",
+    "En": "Debug info export failed: {0}",
+    "Key": "Taf16ab61914b"
+  },
+  {
+    "Source": "Opened live diagnostics folder: {0}",
+    "Ru": "Открыта папка диагностики перевода: {0}",
+    "En": "Opened live diagnostics folder: {0}",
+    "Key": "T2765aa994422"
+  },
+  {
+    "Source": "Could not open live diagnostics folder. Check logs for details.",
+    "Ru": "Не удалось открыть папку диагностики. Подробности в журнале.",
+    "En": "Could not open live diagnostics folder. Check logs for details.",
+    "Key": "Tc6c8b795e35c"
+  },
+  {
+    "Source": "Add at least one OCR zone before running the full pipeline.",
+    "Ru": "Добавьте хотя бы одну зону распознавания перед проверкой перевода.",
+    "En": "Add at least one OCR zone before running the full pipeline.",
+    "Key": "Tc72d9fd36bf5"
+  },
+  {
+    "Source": "Running full pipeline for {0} OCR zone(s)...",
+    "Ru": "Проверка перевода для зон: {0}…",
+    "En": "Running full pipeline for {0} OCR zone(s)...",
+    "Key": "Tf4b2f0b45573"
+  },
+  {
+    "Source": "Full translation pipeline canceled.",
+    "Ru": "Проверка перевода отменена.",
+    "En": "Full translation pipeline canceled.",
+    "Key": "Tdb457d0d1c7d"
+  },
+  {
+    "Source": "Full translation pipeline failed. Check logs for details.",
+    "Ru": "Ошибка проверки перевода. Подробности в журнале.",
+    "En": "Full translation pipeline failed. Check logs for details.",
+    "Key": "T3764d6811f6a"
+  },
+  {
+    "Source": "Live translation is already running.",
+    "Ru": "Перевод уже запущен.",
+    "En": "Live translation is already running.",
+    "Key": "Tfc0f4fdd0777"
+  },
+  {
+    "Source": "Add at least one OCR zone before starting live translation.",
+    "Ru": "Добавьте хотя бы одну зону распознавания перед запуском перевода.",
+    "En": "Add at least one OCR zone before starting live translation.",
+    "Key": "T964bde859631"
+  },
+  {
+    "Source": "Stopping live translation...",
+    "Ru": "Остановка перевода…",
+    "En": "Stopping live translation...",
+    "Key": "Tf0a3a6b4197e"
+  },
+  {
+    "Source": "Live translation running: no OCR zones completed.",
+    "Ru": "Перевод запущен: ни одна зона ещё не обработана.",
+    "En": "Live translation running: no OCR zones completed.",
+    "Key": "T35f87f6b1419"
+  },
+  {
+    "Source": "Live translation running across {0} OCR zone(s): no text recognized.",
+    "Ru": "Перевод запущен для зон: {0}. Текст не распознан.",
+    "En": "Live translation running across {0} OCR zone(s): no text recognized.",
+    "Key": "T43b78105c2d9"
+  },
+  {
+    "Source": "Live translation waiting for stable OCR text ({0} text block(s) recognized).",
+    "Ru": "Ожидание стабильного текста. Распознано блоков: {0}.",
+    "En": "Live translation waiting for stable OCR text ({0} text block(s) recognized).",
+    "Key": "T04877de2c171"
+  },
+  {
+    "Source": "Live translation updated {0} translated text block(s) across {1} OCR zone(s).",
+    "Ru": "Обновлено блоков перевода: {0}. Обработано зон: {1}.",
+    "En": "Live translation updated {0} translated text block(s) across {1} OCR zone(s).",
+    "Key": "T22f26ee48cd7"
+  },
+  {
+    "Source": "Full pipeline failed for all {0} OCR zone(s).",
+    "Ru": "Ошибка перевода во всех зонах: {0}.",
+    "En": "Full pipeline failed for all {0} OCR zone(s).",
+    "Key": "T93f661a17add"
+  },
+  {
+    "Source": "Full pipeline completed for {0} OCR zone(s) with no recognized text.",
+    "Ru": "Проверка перевода завершена для зон: {0}. Текст не распознан.",
+    "En": "Full pipeline completed for {0} OCR zone(s) with no recognized text.",
+    "Key": "T2b68eff4bdc6"
+  },
+  {
+    "Source": "Full pipeline translated {0} text block(s) across {1} OCR zone(s).",
+    "Ru": "Переведено блоков текста: {0}. Обработано зон: {1}.",
+    "En": "Full pipeline translated {0} text block(s) across {1} OCR zone(s).",
+    "Key": "T1e90eadb54bb"
+  },
+  {
+    "Source": "Не удалось создать папку отчётов. Проверьте доступ к папке приложения и свободное место.",
+    "Ru": "Не удалось создать папку отчётов. Проверьте доступ к папке приложения и свободное место.",
+    "En": "Could not create the reports folder. Check application folder permissions and free disk space.",
+    "Key": "T3e9cec5f6f94"
+  },
+  {
+    "Source": "Папка приложения недоступна для записи. Отчёты сохраняются в: {0}",
+    "Ru": "Папка приложения недоступна для записи. Отчёты сохраняются в: {0}",
+    "En": "The application folder is not writable. Reports are saved in: {0}",
+    "Key": "T5662e4c4c283"
+  },
+  {
+    "Source": "Не удалось включить обнаружение аварийного завершения. Проверьте доступ и свободное место: {0}",
+    "Ru": "Не удалось включить обнаружение аварийного завершения. Проверьте доступ и свободное место: {0}",
+    "En": "Could not enable crash detection. Check folder permissions and free disk space: {0}",
+    "Key": "Tbbf1862291a8"
+  },
+  {
+    "Key": "T785911b8d9b4",
+    "Source": "Auto — OCR language (JA + KO + ZH + EN)",
+    "En": "Auto — OCR language",
+    "Ru": "Auto — язык OCR"
+  },
+  {
+    "Key": "T080754fe5b27",
+    "Source": "Experimental Tesseract language set. Text orientation is selected separately. Translation source Auto is configured on the Translation tab.",
+    "En": "Select only the languages present on the page. Downloading packs does not select them for Auto OCR.",
+    "Ru": "Выберите только языки, встречающиеся на странице. Загрузка пакетов не включает их в Auto OCR."
+  },
+  {
+    "Key": "T804f790a059a",
+    "Source": "Experimental multilingual OCR requires Tesseract.",
+    "En": "Experimental multilingual OCR requires Tesseract.",
+    "Ru": "Тестовый многоязычный OCR требует Tesseract."
+  },
+  {
+    "Key": "Td18fa237098d",
+    "Source": "Experimental multilingual translation currently supports GoogleWeb, BingWeb and YandexWeb. Select one explicitly or disable the experiment.",
+    "En": "Experimental multilingual translation currently supports GoogleWeb, BingWeb and YandexWeb. Select one explicitly or disable the experiment.",
+    "Ru": "Тестовый многоязычный перевод пока поддерживает GoogleWeb, BingWeb и YandexWeb. Выберите один из них вручную или выключите эксперимент."
+  },
+  {
+    "Key": "T6fde339e535f",
+    "Source": "Multilingual OCR requires all selected language packs. Missing: {0}.",
+    "En": "Multilingual OCR requires all selected language packs. Missing: {0}.",
+    "Ru": "Для многоязычного OCR нужны все выбранные языковые пакеты. Отсутствуют: {0}."
+  },
+  {
+    "Key": "T0cf6ae6e8658",
+    "Source": "OCR preview failed: Multilingual OCR requires all selected language packs. Missing: {0}.",
+    "En": "OCR preview failed: Multilingual OCR requires all selected language packs. Missing: {0}.",
+    "Ru": "Ошибка распознавания: для многоязычного OCR нужны все выбранные языковые пакеты. Отсутствуют: {0}."
+  },
+  {
+    "Key": "TAutoTranslationSource",
+    "Source": "Auto — translation source language",
+    "En": "Auto — translation source language",
+    "Ru": "Auto — исходный язык перевода"
+  },
+  {
+    "Key": "TAutoTranslationHint",
+    "Source": "With Auto enabled, the provider detects the language for each translation group. The language below is retained for manual translation and OCR inheritance. Auto currently supports GoogleWeb, BingWeb and YandexWeb.",
+    "En": "With Auto enabled, the provider detects the language for each translation group. The language below is retained for manual translation and OCR inheritance. Auto currently supports GoogleWeb, BingWeb and YandexWeb.",
+    "Ru": "При включённом Auto переводчик определяет язык каждой группы текста. Выбранный язык сохраняется для ручного перевода и наследования языком OCR. Auto поддерживает GoogleWeb, BingWeb и YandexWeb."
+  },
+  {
+    "Key": "TAutoTranslationError",
+    "Source": "Automatic translation source language currently supports GoogleWeb, BingWeb and YandexWeb.",
+    "En": "Automatic translation source language currently supports GoogleWeb, BingWeb and YandexWeb.",
+    "Ru": "Автоопределение исходного языка перевода пока поддерживает GoogleWeb, BingWeb и YandexWeb."
+  },
+  {
+    "Key": "AutoOcrLanguages",
+    "Source": "Languages for Auto OCR",
+    "En": "Languages for Auto OCR",
+    "Ru": "Языки для Auto OCR"
+  },
+  {
+    "Key": "DownloadAllTesseract",
+    "Source": "Download all Tesseract languages",
+    "En": "Download all Tesseract languages",
+    "Ru": "Скачать все языки Tesseract"
+  },
+  {
+    "Key": "CancelAllTesseract",
+    "Source": "Cancel download",
+    "En": "Cancel download",
+    "Ru": "Остановить загрузку"
+  },
+  {
+    "Key": "AutoOcrRequired",
+    "Source": "Select at least one supported language for Auto OCR.",
+    "En": "Select at least one supported language for Auto OCR.",
+    "Ru": "Выберите хотя бы один поддерживаемый язык для Auto OCR."
+  },
+  {
+    "Key": "TesseractAllDone",
+    "Source": "Tesseract download complete: {0}/{1}; failed: {2}.",
+    "En": "Tesseract download complete: {0}/{1}; failed: {2}.",
+    "Ru": "Загрузка Tesseract завершена: {0}/{1}; ошибок: {2}."
+  },
+  {
+    "Key": "TesseractAllStopped",
+    "Source": "Tesseract download stopped: {0}/{1}; failed: {2}.",
+    "En": "Tesseract download stopped: {0}/{1}; failed: {2}.",
+    "Ru": "Загрузка Tesseract остановлена: {0}/{1}; ошибок: {2}."
+  },
+  {
+    "Key": "AutoOcrSearch",
+    "Source": "Search by language name or code",
+    "En": "Search by language name or code",
+    "Ru": "Поиск по названию или коду языка"
+  },
+  {
+    "Key": "AutoOcrSelected",
+    "Source": "Selected languages (uncheck to remove)",
+    "En": "Selected languages (uncheck to remove)",
+    "Ru": "Выбранные языки (снимите флажок для удаления)"
+  }
+]

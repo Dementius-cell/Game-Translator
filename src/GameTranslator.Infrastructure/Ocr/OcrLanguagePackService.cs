@@ -203,8 +203,10 @@ public sealed class OcrLanguagePackService : IOcrLanguagePackService
 
     private static string[] GetRequiredTesseractLanguages(string languageTag, OcrOrientationMode orientationMode)
     {
-        return TesseractOcrEngine
-            .MapLanguage(languageTag, orientationMode)
+        var languages = TesseractOcrEngine.MapLanguage(languageTag, orientationMode);
+        if (orientationMode == OcrOrientationMode.Auto)
+            languages += "+" + TesseractOcrEngine.MapLanguage(languageTag, OcrOrientationMode.Vertical);
+        return languages
             .Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Distinct(StringComparer.Ordinal)
             .ToArray();

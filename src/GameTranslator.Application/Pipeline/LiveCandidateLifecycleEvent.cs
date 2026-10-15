@@ -96,7 +96,8 @@ public sealed class LiveCandidateLifecycleEvent
         TimeSpan? emptyOcrRetryDelay = null,
         bool? emptyOcrGroupingReset = null,
         OcrLineRecognitionDiagnostics? ocrLineRecognition = null,
-        WatermarkDecision? watermarkDecision = null)
+        WatermarkDecision? watermarkDecision = null,
+        IEnumerable<string>? translationSourceLanguages = null)
     {
         if (sequence < 1)
         {
@@ -319,6 +320,8 @@ public sealed class LiveCandidateLifecycleEvent
         OcrTexts = boundedOcrTexts.Values;
         OcrTextCount = boundedOcrTexts.Count;
         TranslationInputTexts = boundedTranslationInputTexts.Values;
+        TranslationSourceLanguages = (translationSourceLanguages ?? Array.Empty<string>())
+            .Take(MaximumDiagnosticTextEntries).Select(language => language is "ja" or "ko" or "zh" or "en" or "auto" ? language : "manual").ToArray();
         TranslationInputTextCount = boundedTranslationInputTexts.Count;
         TranslatedTexts = boundedTranslatedTexts.Values;
         TranslatedTextCount = boundedTranslatedTexts.Count;
@@ -495,6 +498,8 @@ public sealed class LiveCandidateLifecycleEvent
     public OcrLineRecognitionDiagnostics? OcrLineRecognition { get; }
 
     public IReadOnlyList<string> TranslationInputTexts { get; }
+
+    public IReadOnlyList<string> TranslationSourceLanguages { get; }
 
     public int TranslationInputTextCount { get; }
 

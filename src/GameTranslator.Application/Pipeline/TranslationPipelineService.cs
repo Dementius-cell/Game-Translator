@@ -423,7 +423,7 @@ public sealed class TranslationPipelineService
         var ocrMeasurement = await RunTimedStageAsync(
             TranslationPipelineStage.Ocr,
             () => runOptions.EnableCandidateDetectorPilot
-                ? RecognizeCandidateRegionsAsync(request, cancellationToken)
+                ? RecognizeCandidateRegionsAsync(request, cancellationToken, profile.TranslatorSettings.AutoDetectSourceLanguage == true)
                 : ocrService.RecognizeAsync(request, cancellationToken));
         var sourceResult = ocrMeasurement.Value;
         ocrElapsed = ocrMeasurement.Elapsed;
@@ -456,7 +456,7 @@ public sealed class TranslationPipelineService
 
         var groupingMeasurement = await RunTimedStageAsync(
             TranslationPipelineStage.Grouping,
-            () => Task.FromResult(TranslationTextGroupingService.CreateTranslationSourceResult(sourceResult, zone)));
+            () => Task.FromResult(TranslationTextGroupingService.CreateTranslationSourceResult(sourceResult, zone, profile.TranslatorSettings.AutoDetectSourceLanguage == true)));
         var translationSourceResult = groupingMeasurement.Value;
         if (translationSourceResult.TextBlocks.Count == 0)
         {
@@ -555,11 +555,12 @@ public sealed class TranslationPipelineService
 
         try
         {
-            var texts = translationSourceResult.TextBlocks.Select(block => block.Text).ToArray();
+
             var cacheMeasurement = await RunTimedStageAsync(
                 TranslationPipelineStage.Cache,
-                () => cacheService.GetOrAddAsync(
-                    profile.TranslatorSettings,
+                () => LanguageTranslationBatcher.RunAsync(profile.TranslatorSettings, translationSourceResult.TextBlocks,
+                    (batchSettings, texts) => cacheService.GetOrAddAsync(
+                    batchSettings,
                     texts,
                     async missingTexts =>
                     {
@@ -579,7 +580,7 @@ public sealed class TranslationPipelineService
                             credentialsElapsed += credentialsMeasurement.Elapsed;
                             var translationMeasurement = await RunTimedStageAsync(
                                 TranslationPipelineStage.Translation,
-                                () => translatorManager.TranslateAsync(profile.TranslatorSettings, missingTexts,
+                                () => translatorManager.TranslateAsync(batchSettings, missingTexts,
                                     credentialsMeasurement.Value, translationCancellation, providerRequestDiagnostics));
                             translationElapsed += translationMeasurement.Elapsed;
                             return translationMeasurement.Value;
@@ -613,7 +614,7 @@ public sealed class TranslationPipelineService
                         }
                     },
                     DateTimeOffset.UtcNow,
-                    cancellationToken));
+                    cancellationToken)));
             var cacheResult = cacheMeasurement.Value;
             cacheElapsed = cacheMeasurement.Elapsed;
             var translateResponse = cacheResult.ToTranslateResponse();
@@ -708,7 +709,8 @@ public sealed class TranslationPipelineService
 
     private async Task<OcrResult> RecognizeCandidateRegionsAsync(
         OcrRequest zoneRequest,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool preserveLines = false)
     {
         var candidateResults = new List<TextCandidateRegionOcrResult>();
         await foreach (var candidateResult in candidateRegionOcrService
@@ -721,6 +723,7 @@ public sealed class TranslationPipelineService
         var recognizedAt = candidateResults.Count == 0
             ? DateTimeOffset.UtcNow
             : candidateResults.Max(result => result.RecognizedAt);
+        if (preserveLines) return CandidateOcrProjection.PreserveLines(zoneRequest, candidateResults, recognizedAt);
         return new OcrResult(
             zoneRequest,
             candidateResults.Select(result => result.CreateSourceTextBlock()),
@@ -1254,6 +1257,7 @@ public sealed class TranslationPipelineService
 
     private static string ResolveOcrLanguage(GameProfile profile, OcrZone zone)
     {
+        if (profile.OcrSettings.ExperimentalMultilingual) return profile.OcrSettings.MultilingualLanguages;
         return zone.ResolveOcrLanguage(profile.TranslatorSettings.SourceLanguage);
     }
 
@@ -1261,9 +1265,20 @@ public sealed class TranslationPipelineService
     {
         ArgumentNullException.ThrowIfNull(profile);
 
+        if (OcrSettings.GetMultilingualConfigurationError(profile.OcrSettings.ExperimentalMultilingual,
+            profile.OcrSettings.Engine, profile.OcrSettings.OrientationMode, profile.TranslatorSettings.Provider) is { } error)
+            throw new ArgumentException(error, nameof(profile));
+        if (profile.OcrSettings.ExperimentalMultilingual &&
+            (string.IsNullOrWhiteSpace(profile.OcrSettings.MultilingualLanguages) ||
+             profile.OcrSettings.MultilingualLanguages.Split('+').Any(code => !TesseractLanguageCatalog.TryGetTrainedDataCode(code, out _))))
+            throw new ArgumentException("Select at least one supported language for Auto OCR.", nameof(profile));
+        var autoSource = profile.TranslatorSettings.AutoDetectSourceLanguage ?? profile.OcrSettings.ExperimentalMultilingual;
+        if (TranslatorSettings.GetAutoConfigurationError(autoSource, profile.TranslatorSettings.Provider) is { } autoError)
+            throw new ArgumentException(autoError, nameof(profile));
         var sourceLanguage = NormalizeTranslatorLanguageTag(profile.TranslatorSettings.SourceLanguage);
         var targetLanguage = NormalizeTranslatorLanguageTag(profile.TranslatorSettings.TargetLanguage);
-        if (string.Equals(sourceLanguage, profile.TranslatorSettings.SourceLanguage, StringComparison.Ordinal)
+        if (autoSource == profile.TranslatorSettings.AutoDetectSourceLanguage
+            && string.Equals(sourceLanguage, profile.TranslatorSettings.SourceLanguage, StringComparison.Ordinal)
             && string.Equals(targetLanguage, profile.TranslatorSettings.TargetLanguage, StringComparison.Ordinal))
         {
             return profile;
@@ -1274,6 +1289,7 @@ public sealed class TranslationPipelineService
             TranslatorSettings = profile.TranslatorSettings with
             {
                 SourceLanguage = sourceLanguage,
+                AutoDetectSourceLanguage = autoSource,
                 TargetLanguage = targetLanguage,
             },
         };
@@ -2873,13 +2889,13 @@ public sealed class TranslationPipelineService
             return overlayChanged;
         }
 
-        private static void UpdateCandidateTypewriterGrowthState(
+        private void UpdateCandidateTypewriterGrowthState(
             LiveCandidateState candidateState,
             TranslationPipelineResult result)
         {
             var translationSourceResult = TranslationTextGroupingService.CreateTranslationSourceResult(
                 result.SourceOcrResult,
-                candidateState.Zone);
+                candidateState.Zone, profile.TranslatorSettings.AutoDetectSourceLanguage == true);
             var currentTextSignature = CreateTextSignature(translationSourceResult);
             if (string.IsNullOrWhiteSpace(currentTextSignature))
             {
@@ -3130,12 +3146,11 @@ public sealed class TranslationPipelineService
             ArgumentNullException.ThrowIfNull(candidateState);
 
             var sourceOcrResult = result?.SourceOcrResult;
-            var translationInputTexts = sourceOcrResult is null
+            var translationInputBlocks = sourceOcrResult is null
                 ? null
                 : TranslationTextGroupingService
-                    .CreateTranslationSourceResult(sourceOcrResult, candidateState.Zone)
-                    .TextBlocks
-                    .Select(block => block.Text);
+                    .CreateTranslationSourceResult(sourceOcrResult, candidateState.Zone, profile.TranslatorSettings.AutoDetectSourceLanguage == true)
+                    .TextBlocks;
             WritingSystemGroupingProfile? writingSystemGroupingProfile = sourceOcrResult is null
                 ? null
                 : WritingSystemGroupingProfileResolver.Resolve(
@@ -3194,7 +3209,8 @@ public sealed class TranslationPipelineService
                 ocrOrientationMode: sourceOcrResult?.Request.OrientationMode,
                 candidateConfidence: candidateState.Region.Candidate.Confidence,
                 ocrTexts: sourceOcrResult?.TextBlocks.Select(block => block.Text),
-                translationInputTexts: translationInputTexts,
+                translationInputTexts: translationInputBlocks?.Select(block => block.Text),
+                translationSourceLanguages: translationInputBlocks?.Select(block => profile.TranslatorSettings.AutoDetectSourceLanguage == true ? block.TranslationSourceLanguage : profile.TranslatorSettings.ResolveSourceLanguage()),
                 translatedTexts: result?.TranslateResponse?.TranslatedTexts,
                 emptyOcrRetryCount: emptyOcrRetryCount,
                 emptyOcrRetryDelay: emptyOcrRetryDelay,
@@ -3279,7 +3295,8 @@ public sealed class TranslationPipelineService
             TimeSpan? emptyOcrRetryDelay = null,
             bool? emptyOcrGroupingReset = null,
             OcrLineRecognitionDiagnostics? ocrLineRecognition = null,
-            WatermarkDecision? watermarkDecision = null)
+            WatermarkDecision? watermarkDecision = null,
+            IEnumerable<string>? translationSourceLanguages = null)
         {
             if (!runOptions.EnableCandidateDetectorPilot)
             {
@@ -3371,7 +3388,8 @@ public sealed class TranslationPipelineService
                 emptyOcrRetryDelay: emptyOcrRetryDelay,
                 emptyOcrGroupingReset: emptyOcrGroupingReset,
                 ocrLineRecognition: ocrLineRecognition,
-                watermarkDecision: watermarkDecision);
+                watermarkDecision: watermarkDecision,
+                translationSourceLanguages: translationSourceLanguages);
             candidateLifecycleEvents.Enqueue(lifecycleEvent);
             candidateLifecycleEventsSinceLastUpdate.Add(lifecycleEvent);
             candidateLifecycleEventSequence = checked(candidateLifecycleEventSequence + 1);

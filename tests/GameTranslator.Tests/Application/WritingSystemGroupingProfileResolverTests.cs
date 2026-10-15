@@ -6,6 +6,18 @@ namespace GameTranslator.Tests.Application;
 public sealed class WritingSystemGroupingProfileResolverTests
 {
     [Theory]
+    [InlineData("jpn+kor+chi_sim+eng", OcrOrientationMode.Horizontal, WritingSystemGroupingProfile.CjkHorizontalOrHybrid)]
+    [InlineData("eng+chi_sim+kor+jpn", OcrOrientationMode.Auto, WritingSystemGroupingProfile.CjkHorizontalOrHybrid)]
+    [InlineData("jpn+kor+chi_sim+eng", OcrOrientationMode.Vertical, WritingSystemGroupingProfile.CjkVertical)]
+    [InlineData("eng+jpn_vert", OcrOrientationMode.Auto, WritingSystemGroupingProfile.CjkVertical)]
+    [InlineData("eng+deu", OcrOrientationMode.Horizontal, WritingSystemGroupingProfile.SpacedLeftToRight)]
+    public void Resolve_CombinedModelsUseTheirWritingSystems(string languages, OcrOrientationMode orientation,
+        WritingSystemGroupingProfile expected)
+    {
+        Assert.Equal(expected, WritingSystemGroupingProfileResolver.Resolve(languages, orientation));
+    }
+
+    [Theory]
     [InlineData("en", OcrOrientationMode.Horizontal, WritingSystemGroupingProfile.SpacedLeftToRight)]
     [InlineData("rus", OcrOrientationMode.Auto, WritingSystemGroupingProfile.SpacedLeftToRight)]
     [InlineData("ja", OcrOrientationMode.Horizontal, WritingSystemGroupingProfile.CjkHorizontalOrHybrid)]

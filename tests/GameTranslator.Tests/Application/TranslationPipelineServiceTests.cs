@@ -13,6 +13,81 @@ namespace GameTranslator.Tests.Application;
 
 public sealed class TranslationPipelineServiceTests
 {
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task AutoLanguageGroups_PreserveDialogueOrIndependentFragmentsAndCache(bool candidates, bool independent)
+    {
+        var zone = CreateZone() with { TranslationGroupingMode = TranslationGroupingMode.WholeZone };
+        var profile = CreateProfile(zone) with {
+            OcrSettings = new OcrSettings { Engine = "Tesseract", ExperimentalMultilingual = true, OrientationMode = OcrOrientationMode.Horizontal },
+            TranslatorSettings = new TranslatorSettings { Provider = "GoogleWeb", SourceLanguage = "en", TargetLanguage = "ru", AutoDetectSourceLanguage = true } };
+        var requests = new List<TranslateRequest>();
+        var translator = new FakeTranslatorProvider("GoogleWeb", translateAsync: (request, _) => {
+            requests.Add(request);
+            return Task.FromResult(new TranslateResponse(request.Texts.Select(t => request.SourceLanguage + ":" + t), TranslatedAt, "GoogleWeb")); });
+        var engine = new FakeOcrEngine { EngineId = "Tesseract", BlocksFactory = _ => new[] {
+            new OcrTextBlock("Hello", independent ? new BoundingBox(1, 1, 6, 4) : new BoundingBox(1, 1, 20, 4)),
+            new OcrTextBlock("こんにちは", independent ? new BoundingBox(9, 1, 6, 4) : new BoundingBox(1, 6, 20, 4)),
+            new OcrTextBlock("你好", independent ? new BoundingBox(17, 1, 6, 4) : new BoundingBox(1, 11, 20, 4)) } };
+        var bounds = new BoundingBox(18, 7, 30, 18);
+        var frames = new FakeCaptureFrameSource { PixelFrames = new[] { CreateCandidatePilotPixels(zone, 1, (bounds, (byte)10)) } };
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available("test", new[] { new TextCandidate(bounds, 0.95) }));
+        var service = CreateService(frames, engine, translator, new FakeOverlayService(), candidateDetector: detector);
+        var options = candidates ? TranslationPipelineRunOptions.Default : TranslationPipelineRunOptions.LegacyFullPage;
+        var result = await service.RunAsync(profile, zone, runOptions: options);
+        if (independent)
+        {
+            Assert.Equal(2, requests.Count);
+            Assert.Equal(new[] { "Hello", "你好" }, requests.Single(r => r.SourceLanguage == "auto").Texts);
+            Assert.Equal(new[] { "こんにちは" }, requests.Single(r => r.SourceLanguage == "ja").Texts);
+            Assert.Equal(new[] { "auto:Hello", "ja:こんにちは", "auto:你好" }, result.TranslateResponse!.TranslatedTexts);
+        }
+        else
+        {
+            Assert.Single(requests);
+            Assert.Equal(new[] { "Hello こんにちは你好" }, requests[0].Texts);
+            Assert.Equal(new[] { "auto:Hello こんにちは你好" }, result.TranslateResponse!.TranslatedTexts);
+        }
+        Assert.Equal(3, result.SourceOcrResult.TextBlocks.Count);
+        Assert.Equal(independent ? 3 : 1, result.TranslationInputBlockCount);
+        await service.RunAsync(profile, zone, runOptions: options);
+        Assert.Equal(independent ? 2 : 1, requests.Count);
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, true, false)]
+    [InlineData(false, false, true)]
+    [InlineData(true, false, true)]
+    [InlineData(false, true, true)]
+    [InlineData(true, true, true)]
+    [InlineData(true, true, null)]
+    public async Task MultilingualExperiment_UsesCombinedModelsAndAutoSourceWithoutChangingProfile(bool enabled, bool candidates, bool? autoSource)
+    {
+        var zone = CreateZone() with { OcrLanguage = string.Empty };
+        var profile = CreateProfile(zone) with
+        {
+            OcrSettings = new OcrSettings { Engine = "Tesseract", OrientationMode = OcrOrientationMode.Horizontal, ExperimentalMultilingual = enabled, MultilingualLanguages = "chi_tra+eng" },
+            TranslatorSettings = new TranslatorSettings { Provider = "GoogleWeb", SourceLanguage = "ja", TargetLanguage = "ru", AutoDetectSourceLanguage = autoSource },
+        };
+        var engine = new FakeOcrEngine { EngineId = "Tesseract", BlocksFactory = _ => new[] { new OcrTextBlock("Hello world", new BoundingBox(0, 0, 20, 10)) } };
+        var translator = new FakeTranslatorProvider("GoogleWeb");
+        var bounds = new BoundingBox(18, 7, 30, 18);
+        var frames = new FakeCaptureFrameSource { PixelFrames = new[] { CreateCandidatePilotPixels(zone, 1, (bounds, (byte)10)) } };
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available("test", new[] { new TextCandidate(bounds, 0.95) }));
+        var service = CreateService(frames, engine, translator, new FakeOverlayService(), candidateDetector: detector);
+        await service.RunAsync(profile, zone, runOptions: candidates ? TranslationPipelineRunOptions.Default : TranslationPipelineRunOptions.LegacyFullPage);
+        Assert.Equal(enabled ? "chi_tra+eng" : "ja", Assert.Single(engine.Requests).Language);
+        Assert.Equal((autoSource ?? enabled) ? "auto" : "ja", translator.Request!.SourceLanguage);
+        Assert.Equal("ja", profile.TranslatorSettings.SourceLanguage);
+        Assert.Equal(string.Empty, zone.OcrLanguage);
+    }
+
     private static readonly DateTimeOffset FrameTime = new(2026, 6, 19, 12, 0, 1, TimeSpan.Zero);
     private static readonly DateTimeOffset OcrTime = new(2026, 6, 19, 12, 0, 2, TimeSpan.Zero);
     private static readonly DateTimeOffset TranslatedAt = DateTimeOffset.UtcNow.AddMinutes(1);
@@ -5034,6 +5109,14 @@ public sealed class TranslationPipelineServiceTests
             }
 
             return Task.CompletedTask;
+        }
+
+        public Task<int> DeleteAllAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var count = entries.Count;
+            entries.Clear();
+            return Task.FromResult(count);
         }
 
         public Task<int> DeleteExpiredAsync(

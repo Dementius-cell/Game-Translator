@@ -5,6 +5,7 @@ using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using GameTranslator.UI.ViewModels;
+using GameTranslator.UI.Services;
 
 namespace GameTranslator.UI.Views;
 
@@ -21,6 +22,7 @@ public partial class ShellView : UserControl
     }
 
     private readonly ShellViewModel viewModel;
+    private readonly ApplicationInfoViewModel applicationInfo;
     private ZoneSurfaceInteractionMode zoneSurfaceInteractionMode;
     private UIElement? activeZoneSurfaceElement;
     private string? welcomeTourSpotlightTargetName;
@@ -49,12 +51,46 @@ public partial class ShellView : UserControl
         welcomeTourCard ??= FindVisualDescendantByName<Border>(WelcomeTourOverlay, "WelcomeTourCard")
             ?? throw new InvalidOperationException("Welcome tour card was not found in the visual tree.");
 
-    public ShellView(ShellViewModel viewModel)
+    public ThemeService Theme { get; }
+
+    public ShellView(ShellViewModel viewModel, ApplicationInfoViewModel applicationInfo, ThemeService theme)
     {
         InitializeComponent();
+        Theme = theme;
+        Theme.Attach(this);
         this.viewModel = viewModel;
+        this.applicationInfo = applicationInfo;
         DataContext = viewModel;
         Loaded += OnLoaded;
+    }
+
+    private void OnInfoClick(object sender, RoutedEventArgs e)
+    {
+        var window = new ApplicationInfoWindow(applicationInfo, viewModel.Logger) { Owner = Window.GetWindow(this) };
+        Theme.Attach(window);
+        window.ShowDialog();
+    }
+
+    private void OnWorkspaceNavigationClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string destination }
+            && int.TryParse(destination, out var index)
+            && viewModel.Navigation.CurrentViewModel is MainViewModel main)
+            main.SelectedWorkspaceTabIndex = index;
+    }
+
+    private void OnZoneWorkspaceSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (sender is not Grid grid || grid.Children.Count < 2) return;
+        var stacked = e.NewSize.Width < 820;
+        grid.ColumnDefinitions[1].Width = new GridLength(stacked ? 0 : 296);
+        var preview = (FrameworkElement)grid.Children[0];
+        var inspector = (FrameworkElement)grid.Children[1];
+        Grid.SetColumn(inspector, stacked ? 0 : 1);
+        Grid.SetRow(inspector, stacked ? 1 : 0);
+        Grid.SetColumnSpan(preview, stacked ? 2 : 1);
+        Grid.SetColumnSpan(inspector, stacked ? 2 : 1);
+        preview.Margin = stacked ? new Thickness(0, 0, 0, 16) : new Thickness(0, 0, 16, 0);
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -159,6 +195,9 @@ public partial class ShellView : UserControl
 
     private void OnProfileItemMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        if (e.ClickCount == 1 && viewModel.Navigation.CurrentViewModel is MainViewModel current
+            && !current.IsProfileWorkspace)
+            current.SelectedWorkspaceTabIndex = 0;
         if (e.ClickCount != 2
             || sender is not FrameworkElement element
             || viewModel.Navigation.CurrentViewModel is not MainViewModel mainViewModel

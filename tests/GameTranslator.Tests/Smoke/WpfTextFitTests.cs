@@ -10,6 +10,7 @@ using GameTranslator.Domain.Profiles;
 
 namespace GameTranslator.Tests.Smoke;
 
+[Collection(WpfResourceCollection.Name)]
 public sealed class WpfTextFitTests
 {
     private static Assembly LoadUi() => Assembly.LoadFrom(Environment.GetEnvironmentVariable("GAME_TRANSLATOR_DPI_UI_ASSEMBLY")

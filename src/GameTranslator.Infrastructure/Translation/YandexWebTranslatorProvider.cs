@@ -53,8 +53,9 @@ public sealed class YandexWebTranslatorProvider : ITranslatorProvider
             new Dictionary<string, string>
             {
                 ["text"] = text,
-                // ScreTran calls GTranslate without a source language, so Yandex detects it.
-                ["lang"] = YandexHotPatch(NormalizeLanguageTag(request.TargetLanguage)),
+                ["lang"] = string.Equals(request.SourceLanguage, "auto", StringComparison.OrdinalIgnoreCase)
+                    ? YandexHotPatch(NormalizeLanguageTag(request.TargetLanguage))
+                    : $"{YandexHotPatch(NormalizeLanguageTag(request.SourceLanguage))}-{YandexHotPatch(NormalizeLanguageTag(request.TargetLanguage))}",
             });
 
         using var response = await WebTranslatorAvailability.SendAsync(httpClient, httpRequest, ProviderId, cancellationToken);

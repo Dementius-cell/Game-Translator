@@ -5,6 +5,42 @@ namespace GameTranslator.Tests.Application;
 
 public sealed class BoundedTextCandidateGroupingServiceTests
 {
+    [Theory]
+    [InlineData(WritingSystemGroupingProfile.SpacedLeftToRight)]
+    [InlineData(WritingSystemGroupingProfile.CjkHorizontalOrHybrid)]
+    public void Group_LargeTitleDoesNotAbsorbEnglishCaption_FromLiveLog(WritingSystemGroupingProfile profile)
+    {
+        var title = Candidate(240, 110, 353, 172);
+        var first = Candidate(157, 322, 268, 29);
+        var second = Candidate(159, 361, 264, 29);
+        var service = new BoundedTextCandidateGroupingService();
+        foreach (var input in new[] { new[] { title, first, second }, new[] { second, title, first } })
+        {
+            var groups = service.Group(input, 1237, profile);
+            Assert.Equal(new[] { title.Bounds, new BoundingBox(157, 322, 268, 68) }, groups.Select(g => g.Bounds));
+            Assert.Equal(new[] { first.Bounds, second.Bounds }, groups[1].SourceCandidateBounds);
+        }
+    }
+
+    [Fact]
+    public void Group_MultilingualChineseDialogueRemainsOneCrop()
+    {
+        var lines = new[] { Candidate(824, 274, 93, 38), Candidate(839, 306, 65, 38),
+            Candidate(821, 336, 97, 39), Candidate(823, 370, 97, 35) };
+        var profile = WritingSystemGroupingProfileResolver.Resolve("jpn+kor+chi_sim+eng", OcrOrientationMode.Horizontal);
+        var group = Assert.Single(new BoundedTextCandidateGroupingService().Group(lines, 1237, profile));
+        Assert.Equal(new BoundingBox(821, 274, 99, 131), group.Bounds);
+        Assert.Equal(lines.Select(line => line.Bounds), group.SourceCandidateBounds);
+    }
+
+    [Fact]
+    public void Group_IntermediateLineCannotBridgeTitleToCaption()
+    {
+        var groups = new BoundedTextCandidateGroupingService().Group(new[] {
+            Candidate(0, 0, 300, 80), Candidate(0, 85, 300, 45), Candidate(0, 135, 300, 25) }, 500);
+        Assert.Equal(2, groups.Count);
+    }
+
     [Fact]
     public void Group_FormsBoundedSharedCoreGroupWithoutConnectedComponentUnion()
     {

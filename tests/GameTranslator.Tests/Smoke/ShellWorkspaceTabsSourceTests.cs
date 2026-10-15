@@ -9,13 +9,13 @@ public sealed class ShellWorkspaceTabsSourceTests
     private static readonly XNamespace Xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
 
     [Fact]
-    public void ShellView_DefinesSixWorkspaceTabsWithoutDuplicatingProfileNavigation()
+    public void ShellView_DefinesFourProfileTabsWithoutDuplicatingProfileNavigation()
     {
         var document = LoadShellView();
         var workspaceTabs = document
             .Descendants(Wpf + "TabControl")
             .Single(element => (string?)element.Attribute("SelectedIndex") ==
-                "{Binding SelectedWorkspaceTabIndex, Mode=TwoWay}");
+                "{Binding SelectedProfileTabIndex, Mode=TwoWay}");
         var headers = workspaceTabs
             .Elements(Wpf + "TabItem")
             .Select(element => (string?)element.Attribute("Header"))
@@ -24,18 +24,16 @@ public sealed class ShellWorkspaceTabsSourceTests
         Assert.Equal(
             new[]
             {
-                "Zones & OCR",
-                "Translation",
-                "Overlay",
-                "Live & Diagnostics",
-                "OCR Packs",
-                "Hotkeys & Settings",
+                "Зоны захвата",
+                "Распознавание",
+                "Перевод",
+                "Оформление",
             },
             headers);
         Assert.DoesNotContain("Profile", headers);
         Assert.DoesNotContain(
             document.Descendants(Wpf + "TextBlock")
-                .Single(element => (string?)element.Attribute("Text") == "Profiles")
+                .Single(element => (string?)element.Attribute("Text") == "Профили")
                 .Ancestors(),
             ancestor => ancestor == workspaceTabs);
         Assert.Equal(
@@ -49,12 +47,13 @@ public sealed class ShellWorkspaceTabsSourceTests
     }
 
     [Theory]
-    [InlineData("Translator settings", "IsTranslationTabSelected")]
-    [InlineData("Overlay preview", "IsOverlayTabSelected")]
-    [InlineData("Overlay settings", "IsOverlayTabSelected")]
-    [InlineData("OCR language packs", "IsOcrPacksTabSelected")]
-    [InlineData("Global hotkeys", "IsHotkeysSettingsTabSelected")]
-    [InlineData("OCR zones", "IsZonesOcrOrLiveDiagnosticsTabSelected")]
+    [InlineData("Настройки переводчика", "IsTranslationTabSelected")]
+    [InlineData("Проверка оформления", "IsOverlayTabSelected")]
+    [InlineData("Оформление перевода", "IsOverlayTabSelected")]
+    [InlineData("Языковые пакеты OCR", "IsOcrPacksTabSelected")]
+    [InlineData("Горячие клавиши", "IsHotkeysSettingsTabSelected")]
+    [InlineData("Зоны профиля", "IsZonesOcrOrLiveDiagnosticsTabSelected")]
+    [InlineData("Распознавание и подготовка изображения", "IsRecognitionTabSelected")]
     public void ShellView_RoutesMajorSectionsToTheirWorkspaceTab(string title, string visibilityProperty)
     {
         var document = LoadShellView();
@@ -76,11 +75,11 @@ public sealed class ShellWorkspaceTabsSourceTests
         var document = LoadShellView();
         var startButtons = document
             .Descendants(Wpf + "Button")
-            .Where(element => (string?)element.Attribute("Content") == "Start live")
+            .Where(element => (string?)element.Attribute("Content") == "Начать перевод")
             .ToArray();
         var stopButtons = document
             .Descendants(Wpf + "Button")
-            .Where(element => (string?)element.Attribute("Content") == "Stop live")
+            .Where(element => (string?)element.Attribute("Content") == "Остановить")
             .ToArray();
         Assert.Equal(2, startButtons.Length);
         Assert.Equal(2, stopButtons.Length);
@@ -102,7 +101,7 @@ public sealed class ShellWorkspaceTabsSourceTests
             (string?)liveSection.Attribute("Visibility"));
         Assert.Contains(
             liveSection.Descendants(Wpf + "Button"),
-            element => (string?)element.Attribute("Content") == "Open live reports");
+            element => (string?)element.Attribute("Content") == "Открыть отчёты перевода");
         Assert.Equal(
             "{StaticResource PrimaryButtonStyle}",
             (string?)startButton.Attribute("Style"));
@@ -119,7 +118,7 @@ public sealed class ShellWorkspaceTabsSourceTests
         var document = LoadShellView();
         var resources = document
             .Root!
-            .Element(Wpf + "UserControl.Resources")!;
+            .Element(Wpf + "UserControl.Resources")!.Element(Wpf + "ResourceDictionary")!;
         var resourceKeys = resources
             .Elements(Wpf + "Style")
             .Select(style => (string?)style.Attribute(XName.Get("Key", "http://schemas.microsoft.com/winfx/2006/xaml")))
@@ -132,7 +131,7 @@ public sealed class ShellWorkspaceTabsSourceTests
         Assert.Contains("WorkspaceTabItemStyle", resourceKeys);
         Assert.Contains(
             document.Descendants(Wpf + "TextBlock"),
-            element => (string?)element.Attribute("Text") == "{Binding ApplicationName}"
+            element => (string?)element.Attribute("Text") == "{Binding WorkspaceTitle}"
                 && (string?)element.Attribute("FontSize") == "22");
         Assert.Contains(
             document.Descendants(Wpf + "Run"),
@@ -140,7 +139,7 @@ public sealed class ShellWorkspaceTabsSourceTests
 
         var profileDetails = document
             .Descendants(Wpf + "Expander")
-            .Single(element => (string?)element.Attribute("Header") == "Edit profile details");
+            .Single(element => (string?)element.Attribute("Header") == "Название и описание профиля");
         Assert.Equal("False", (string?)profileDetails.Attribute("IsExpanded"));
     }
 
@@ -148,7 +147,7 @@ public sealed class ShellWorkspaceTabsSourceTests
     public void ShellView_UsesDenseReadableSpacingScaleAcrossSharedChrome()
     {
         var document = LoadShellView();
-        var resources = document.Root!.Element(Wpf + "UserControl.Resources")!;
+        var resources = document.Root!.Element(Wpf + "UserControl.Resources")!.Element(Wpf + "ResourceDictionary")!;
 
         AssertStyleSetter(resources, "ModernButtonStyle", "MinHeight", "30");
         AssertStyleSetter(resources, "ModernButtonStyle", "Padding", "10,4");
@@ -175,7 +174,7 @@ public sealed class ShellWorkspaceTabsSourceTests
             .Elements(Wpf + "ColumnDefinition")
             .Select(column => (string?)column.Attribute("Width"))
             .ToArray();
-        Assert.Equal(new[] { "280", "1", "*" }, workspaceColumns);
+        Assert.Equal(new[] { "220", "1", "*" }, workspaceColumns);
 
         var sidebar = workspaceGrid
             .Elements(Wpf + "Border")
@@ -193,14 +192,19 @@ public sealed class ShellWorkspaceTabsSourceTests
             .Elements(Wpf + "RowDefinition")
             .Select(row => (string?)row.Attribute("Height"))
             .ToArray();
-        Assert.Equal(new[] { "40", "*", "24" }, rootRows);
+        Assert.Equal(new[] { "Auto", "*", "24" }, rootRows);
+        var notice = rootGrid.Elements(Wpf + "Border")
+            .Single(element => (string?)element.Attribute(Xaml + "Name") == "BugReportNotice");
+        Assert.Equal("0", (string?)notice.Attribute("Grid.Row"));
+        Assert.Equal("{Binding HasReportNotice, Converter={StaticResource BooleanToVisibilityConverter}}",
+            (string?)notice.Attribute("Visibility"));
     }
 
     [Fact]
     public void ShellView_ProvidesHoverOnlyRussianHelpForEveryManualParameterGroup()
     {
         var document = LoadShellView();
-        var resources = document.Root!.Element(Wpf + "UserControl.Resources")!;
+        var resources = document.Root!.Element(Wpf + "UserControl.Resources")!.Element(Wpf + "ResourceDictionary")!;
         var infoStyle = resources
             .Elements(Wpf + "Style")
             .Single(style => (string?)style.Attribute(Xaml + "Key") == "ParameterInfoIconStyle");
@@ -354,12 +358,9 @@ public sealed class ShellWorkspaceTabsSourceTests
             element => (string?)element.Attribute("Command") == "{Binding ShowWelcomeTourCommand}"
                 && (string?)element.Attribute("Content") == "Приветственный тур");
 
-        var headerActions = document
-            .Descendants(Wpf + "StackPanel")
-            .Single(element => (string?)element.Attribute(Xaml + "Name") == "WorkspaceHeaderActions");
-        var headerTourButton = headerActions
-            .Elements(Wpf + "Button")
+        var headerTourButton = document.Descendants(Wpf + "Button")
             .Single(element => (string?)element.Attribute(Xaml + "Name") == "WelcomeTourHeaderButton");
+        Assert.Equal("WrapPanel", headerTourButton.Parent!.Name.LocalName);
         Assert.Equal("{Binding ShowWelcomeTourCommand}", (string?)headerTourButton.Attribute("Command"));
         Assert.Equal("? Тур", (string?)headerTourButton.Attribute("Content"));
     }
@@ -368,7 +369,7 @@ public sealed class ShellWorkspaceTabsSourceTests
     public void ShellView_ShowsPipelineWarningsAndErrorsWithDistinctStatusColors()
     {
         var document = LoadShellView();
-        var resources = document.Root!.Element(Wpf + "UserControl.Resources")!;
+        var resources = document.Root!.Element(Wpf + "UserControl.Resources")!.Element(Wpf + "ResourceDictionary")!;
         var statusStyle = resources
             .Elements(Wpf + "Style")
             .Single(style => (string?)style.Attribute(Xaml + "Key") == "PipelineStatusTextStyle");
@@ -379,8 +380,8 @@ public sealed class ShellWorkspaceTabsSourceTests
                 trigger => (string)trigger.Attribute("Value")!,
                 trigger => (string)trigger.Element(Wpf + "Setter")!.Attribute("Value")!);
 
-        Assert.Equal("#B45309", triggers["Warning"]);
-        Assert.Equal("#B91C1C", triggers["Error"]);
+        Assert.Equal("{DynamicResource ThemeWarning}", triggers["Warning"]);
+        Assert.Equal("{DynamicResource ThemeDanger}", triggers["Error"]);
         Assert.All(
             statusStyle.Element(Wpf + "Style.Triggers")!.Elements(Wpf + "DataTrigger"),
             trigger => Assert.Equal(
@@ -423,7 +424,7 @@ public sealed class ShellWorkspaceTabsSourceTests
         var document = LoadShellView();
         var translatorTitle = document
             .Descendants(Wpf + "TextBlock")
-            .Single(element => (string?)element.Attribute("Text") == "Translator settings");
+            .Single(element => (string?)element.Attribute("Text") == "Настройки переводчика");
         var translationCard = translatorTitle
             .Ancestors(Wpf + "Border")
             .First(element => element.Attribute("Visibility") is not null);
@@ -459,18 +460,18 @@ public sealed class ShellWorkspaceTabsSourceTests
 
         Assert.Contains(
             document.Descendants(Wpf + "Button"),
-            element => (string?)element.Attribute("Content") == "Earlier"
+            element => (string?)element.Attribute("Content") == "Выше"
                 && ((string?)element.Attribute("ToolTip"))?.Contains("processing order", StringComparison.OrdinalIgnoreCase) == true);
         Assert.Contains(
             document.Descendants(Wpf + "Button"),
-            element => (string?)element.Attribute("Content") == "Later"
+            element => (string?)element.Attribute("Content") == "Ниже"
                 && ((string?)element.Attribute("ToolTip"))?.Contains("processing order", StringComparison.OrdinalIgnoreCase) == true);
     }
 
     [Fact]
     public void MainWindow_OpensAtAUsableCenteredWorkspaceSize()
     {
-        var document = XDocument.Load(
+        var document = LocalizedXaml.Load(
             Path.Combine(
                 RepositoryRoot.Find(),
                 "src",
@@ -487,7 +488,7 @@ public sealed class ShellWorkspaceTabsSourceTests
 
     private static XDocument LoadShellView()
     {
-        return XDocument.Load(
+        return LocalizedXaml.Load(
             Path.Combine(
                 RepositoryRoot.Find(),
                 "src",

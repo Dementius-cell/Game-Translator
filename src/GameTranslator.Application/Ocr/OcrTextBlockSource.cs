@@ -32,4 +32,7 @@ public sealed class OcrTextBlockSource
     public IReadOnlyList<BoundingBox> MemberBounds { get; }
 
     public OcrOrientationMode OrientationMode { get; }
+
+    /// <summary>Identity of the detector region when several crops are projected into one frame.</summary>
+    public BoundingBox? CandidateRegionBounds { get; init; }
 }

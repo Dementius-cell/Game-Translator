@@ -28,6 +28,184 @@ namespace GameTranslator.Tests.Smoke;
 public sealed class ProfileManagerViewModelTests
 {
     [Fact]
+    public async Task InstallAllTesseractLanguages_UsesEntireCatalogWithoutChangingAutoSelection()
+    {
+        var packs = new TestOcrLanguagePackService();
+        var model = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService(), ocrLanguagePackService: packs);
+        SetPropertyValue(model, "AutoOcrLanguageSelection", "chi_tra+eng");
+        await InvokeTaskMethodAsync(model, "InstallAllTesseractLanguagesAsync");
+        Assert.Equal(TesseractLanguageCatalog.Languages.Select(l => l.Code), packs.Installs.Select(i => i.LanguageTag));
+        Assert.All(packs.Installs, i => Assert.Equal(OcrSettings.TesseractEngineId, i.EngineId));
+        Assert.Equal("chi_tra+eng", GetPropertyValue(model, "AutoOcrLanguageSelection"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InstallAllTesseractLanguages_HandlesFailureOrCancellationAndCanRetry(bool cancel)
+    {
+        var packs = new TestOcrLanguagePackService();
+        var model = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService(), ocrLanguagePackService: packs);
+        packs.OnInstall = () =>
+        {
+            if (cancel) ((ICommand)GetPropertyValue(model, "CancelAllTesseractLanguagesCommand")!).Execute(null);
+            else throw new IOException("Test download failure");
+        };
+        await InvokeTaskMethodAsync(model, "InstallAllTesseractLanguagesAsync");
+        Assert.Equal(cancel ? 1 : TesseractLanguageCatalog.Languages.Count, packs.Installs.Count);
+        Assert.Equal(false, GetPropertyValue(model, "IsBusy"));
+        Assert.True(((ICommand)GetPropertyValue(model, "InstallAllTesseractLanguagesCommand")!).CanExecute(null));
+        Assert.False(((ICommand)GetPropertyValue(model, "CancelAllTesseractLanguagesCommand")!).CanExecute(null));
+        packs.OnInstall = null;
+        packs.Installs.Clear();
+        await InvokeTaskMethodAsync(model, "InstallAllTesseractLanguagesAsync");
+        Assert.Equal(TesseractLanguageCatalog.Languages.Count, packs.Installs.Count);
+    }
+
+    [Fact]
+    public void AutoOcrLanguages_CheckboxesUpdateSelectionAndRejectEmptySet()
+    {
+        var model = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService());
+        ConfigureValidDraftProfile(model, "Selected languages");
+        SetPropertyValue(model, "OcrEngine", "Tesseract");
+        SetPropertyValue(model, "ExperimentalMultilingualOcr", true);
+        SetPropertyValue(model, "AutoOcrLanguageSelection", "chi_tra+eng");
+        var items = ((System.Collections.IEnumerable)GetPropertyValue(model, "AutoOcrLanguages")!).Cast<object>().ToArray();
+        Assert.Equal(new[] { "chi_tra", "eng" }, items.Where(i => (bool)GetPropertyValue(i, "IsSelected")!).Select(i => GetPropertyValue(i, "Code")));
+        SetPropertyValue(items.Single(i => (string)GetPropertyValue(i, "Code")! == "eng"), "IsSelected", false);
+        Assert.Equal("chi_tra", GetPropertyValue(model, "AutoOcrLanguageSelection"));
+        SetPropertyValue(model, "AutoOcrLanguageSearch", " JAPAN ");
+        var filtered = ((System.Collections.IEnumerable)GetPropertyValue(model, "FilteredAutoOcrLanguages")!).Cast<object>();
+        Assert.Equal("jpn", GetPropertyValue(Assert.Single(filtered), "Code"));
+        var selected = ((System.Collections.IEnumerable)GetPropertyValue(model, "SelectedAutoOcrLanguages")!).Cast<object>();
+        Assert.Equal("chi_tra", GetPropertyValue(Assert.Single(selected), "Code"));
+        SetPropertyValue(model, "AutoOcrLanguageSearch", "традиционный");
+        filtered = ((System.Collections.IEnumerable)GetPropertyValue(model, "FilteredAutoOcrLanguages")!).Cast<object>();
+        Assert.Equal("chi_tra", GetPropertyValue(Assert.Single(filtered), "Code"));
+        SetPropertyValue(model, "AutoOcrLanguageSearch", "no-such-language");
+        Assert.Empty(((System.Collections.IEnumerable)GetPropertyValue(model, "FilteredAutoOcrLanguages")!).Cast<object>());
+
+        SetPropertyValue(items.Single(i => (string)GetPropertyValue(i, "Code")! == "chi_tra"), "IsSelected", false);
+        Assert.Equal(true, GetPropertyValue(model, "HasOcrEngineValidationError"));
+    }
+
+    [Fact]
+    public void MultilingualOrientationSelector_UpdatesWhenAutoOcrTogglesWithEnglishSource()
+    {
+        var model = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService());
+        ConfigureValidDraftProfile(model, "Orientation selector");
+        SetPropertyValue(model, "SourceLanguage", "en");
+        SetPropertyValue(model, "OcrEngine", "Tesseract");
+        SetPropertyValue(model, "ExperimentalMultilingualOcr", false);
+        Assert.Equal(false, GetPropertyValue(model, "IsOcrOrientationSelectionEnabled"));
+        var changed = new List<string>();
+        ((System.ComponentModel.INotifyPropertyChanged)model).PropertyChanged += (_, e) => changed.Add(e.PropertyName!);
+        SetPropertyValue(model, "ExperimentalMultilingualOcr", true);
+        Assert.Equal(true, GetPropertyValue(model, "IsOcrOrientationSelectionEnabled"));
+        Assert.Contains("IsOcrOrientationSelectionEnabled", changed);
+        Assert.Contains("OcrOrientationSelectionToolTip", changed);
+        foreach (var mode in Enum.GetValues<OcrOrientationMode>())
+        {
+            SetPropertyValue(model, "OcrOrientationMode", mode);
+            Assert.Equal(mode, GetPropertyValue(model, "OcrOrientationMode"));
+        }
+        SetPropertyValue(model, "ExperimentalMultilingualOcr", false);
+        Assert.Equal(false, GetPropertyValue(model, "IsOcrOrientationSelectionEnabled"));
+    }
+
+    [Theory]
+    [InlineData(OcrOrientationMode.Horizontal)]
+    [InlineData(OcrOrientationMode.Auto)]
+    [InlineData(OcrOrientationMode.Vertical)]
+    public async Task MultilingualExperiment_PersistsAndDisablesWithoutChangingSavedSourceLanguage(OcrOrientationMode orientation)
+    {
+        var repository = new InMemoryProfileRepository();
+        var settings = new TestSettingsService();
+        var model = CreateMainViewModel(repository, settings);
+        ConfigureValidDraftProfile(model, "Mixed languages");
+        SetPropertyValue(model, "TranslatorProvider", "GoogleWeb");
+        SetPropertyValue(model, "SourceLanguage", "ja");
+        SetPropertyValue(model, "OcrEngine", "Tesseract");
+        SetPropertyValue(model, "ExperimentalMultilingualOcr", true);
+        SetPropertyValue(model, "AutoDetectSourceLanguage", true);
+        Assert.Equal(true, GetPropertyValue(model, "IsOcrOrientationSelectionEnabled"));
+        SetPropertyValue(model, "AutoOcrLanguageSelection", "chi_tra+eng");
+        SetPropertyValue(model, "OcrOrientationMode", orientation);
+        await InvokeTaskMethodAsync(model, "SaveAsync");
+        var stored = Assert.Single(await repository.ListAsync());
+        Assert.True(stored.OcrSettings.ExperimentalMultilingual);
+        Assert.True(stored.TranslatorSettings.AutoDetectSourceLanguage);
+        Assert.Equal("chi_tra+eng", stored.OcrSettings.MultilingualLanguages);
+        Assert.Equal(orientation, stored.OcrSettings.OrientationMode);
+        Assert.Equal("ja", stored.TranslatorSettings.SourceLanguage);
+        var reloaded = CreateMainViewModel(repository, settings);
+        await InvokeTaskMethodAsync(reloaded, "LoadAsync");
+        Assert.Equal(true, GetPropertyValue(reloaded, "ExperimentalMultilingualOcr"));
+        Assert.Equal(true, GetPropertyValue(reloaded, "IsOcrOrientationSelectionEnabled"));
+        Assert.Equal(true, GetPropertyValue(reloaded, "AutoDetectSourceLanguage"));
+        Assert.Equal("chi_tra+eng", GetPropertyValue(reloaded, "AutoOcrLanguageSelection"));
+        Assert.Equal(orientation, GetPropertyValue(reloaded, "OcrOrientationMode"));
+        SetPropertyValue(reloaded, "ExperimentalMultilingualOcr", false);
+        await InvokeTaskMethodAsync(reloaded, "SaveAsync");
+        stored = Assert.Single(await repository.ListAsync());
+        Assert.False(stored.OcrSettings.ExperimentalMultilingual);
+        Assert.True(stored.TranslatorSettings.AutoDetectSourceLanguage);
+        SetPropertyValue(reloaded, "AutoDetectSourceLanguage", false);
+        await InvokeTaskMethodAsync(reloaded, "SaveAsync");
+        Assert.False(Assert.Single(await repository.ListAsync()).TranslatorSettings.AutoDetectSourceLanguage);
+        Assert.Equal("ja", stored.TranslatorSettings.SourceLanguage);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task ApplicationInfo_ShowsVersionAdaptersAndRecoverableFailure(bool empty, bool fail)
+    {
+        var service = new TestApplicationInfoService(empty, fail);
+        var type = LoadUiAssembly().GetType("GameTranslator.UI.ViewModels.ApplicationInfoViewModel", true)!;
+        var model = Activator.CreateInstance(type, service, new TestApplicationLogger())!;
+        await InvokeTaskMethodAsync(model, "LoadAsync");
+        Assert.Equal("1.2.3-test", GetPropertyValue(model, "Version"));
+        var adapters = Assert.IsType<string>(GetPropertyValue(model, "Adapters"));
+        Assert.Contains(fail ? "Не удалось" : empty ? "Windows не сообщил" : "Test GPU", adapters);
+    }
+
+    private sealed class TestApplicationInfoService(bool empty, bool fail) : IApplicationInfoService
+    {
+        public string Version => "1.2.3-test";
+        public Task<IReadOnlyList<string>> GetDisplayAdaptersAsync() => fail
+            ? Task.FromException<IReadOnlyList<string>>(new InvalidOperationException("Test failure"))
+            : Task.FromResult<IReadOnlyList<string>>(empty ? Array.Empty<string>() : new[] { "Test GPU" });
+    }
+
+    [Fact]
+    public void ProfileNavigation_MapsFourTabsAndPreservesGlobalNavigation()
+    {
+        var model = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService());
+        var workspaceIndices = new[] { 0, 6, 1, 2 };
+        for (var index = 0; index < workspaceIndices.Length; index++)
+        {
+            SetPropertyValue(model, "SelectedProfileTabIndex", index);
+            Assert.Equal(workspaceIndices[index], GetPropertyValue(model, "SelectedWorkspaceTabIndex"));
+            Assert.Equal(index, GetPropertyValue(model, "SelectedProfileTabIndex"));
+            Assert.Equal(true, GetPropertyValue(model, "IsProfileWorkspace"));
+        }
+        foreach (var destination in new[] { 3, 4, 5 })
+        {
+            SetPropertyValue(model, "SelectedWorkspaceTabIndex", destination);
+            Assert.Equal(-1, GetPropertyValue(model, "SelectedProfileTabIndex"));
+            Assert.Equal(false, GetPropertyValue(model, "IsProfileWorkspace"));
+            SetPropertyValue(model, "SelectedProfileTabIndex", -1);
+            Assert.Equal(destination, GetPropertyValue(model, "SelectedWorkspaceTabIndex"));
+        }
+        SetPropertyValue(model, "SelectedProfileTabIndex", 1);
+        Assert.Equal(true, GetPropertyValue(model, "IsRecognitionTabSelected"));
+        SetPropertyValue(model, "ProfileName", "Имя профиля");
+        Assert.Equal("Имя профиля", GetPropertyValue(model, "WorkspaceTitle"));
+    }
+
+    [Fact]
     public void WorkspaceTabs_DefaultToZonesAndExposeOneSelectedSection()
     {
         var viewModel = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService());
@@ -117,13 +295,13 @@ public sealed class ProfileManagerViewModelTests
             {
                 Assert.Equal(5, GetPropertyValue(viewModel, "WelcomeTourStepNumber"));
                 Assert.Contains(
-                    "Check OCR language",
+                    "Проверить язык OCR",
                     Assert.IsType<string>(GetPropertyValue(viewModel, "WelcomeTourBody")),
                     StringComparison.Ordinal);
                 var ocrGuidance = Assert.IsType<string>(GetPropertyValue(viewModel, "WelcomeTourGuidance"));
                 Assert.Contains("Missing", ocrGuidance, StringComparison.Ordinal);
-                Assert.Contains("Install OCR language", ocrGuidance, StringComparison.Ordinal);
-                Assert.Contains("снова нажмите Check OCR language", ocrGuidance, StringComparison.Ordinal);
+                Assert.Contains("Установить язык OCR", ocrGuidance, StringComparison.Ordinal);
+                Assert.Contains("снова нажмите Проверить язык OCR", ocrGuidance, StringComparison.Ordinal);
             }
         }
 
@@ -724,6 +902,43 @@ public sealed class ProfileManagerViewModelTests
         Assert.Equal(new AbsoluteRectangle(96, 108, 384, 216), persistedZone.AbsoluteBounds);
         Assert.Equal(ContentLayoutMode.DialogComic, persistedZone.ContentLayoutMode);
         Assert.Equal("Created zone 'Zone 1' from screen selection.", GetPropertyValue(viewModel, "StatusMessage"));
+    }
+
+    [Theory]
+    [InlineData(1920, 1080)]
+    [InlineData(2560, 1440)]
+    [InlineData(3840, 2160)]
+    public async Task ZonePreview_KeepsScreenResolutionThroughMoveResizeAndReload(int width, int height)
+    {
+        var repository = new InMemoryProfileRepository();
+        var settings = new TestSettingsService();
+        var uiAssembly = LoadUiAssembly();
+        var picker = CreateScreenRegionPicker(uiAssembly,
+            CreateScreenRegionSelectionResult(uiAssembly, width / 4, height / 4, width / 2, height / 2, width, height));
+        var viewModel = CreateMainViewModel(repository, settings, screenRegionPickerService: picker);
+        ConfigureValidDraftProfile(viewModel, "Resolution test");
+        InvokeMethod(viewModel, "PickScreenZone");
+        var zone = GetPropertyValue(viewModel, "SelectedZone")!;
+        Assert.Equal(160d, GetPropertyValue(zone, "SurfaceX"));
+        Assert.Equal(90d, GetPropertyValue(zone, "SurfaceY"));
+        Assert.Equal(320d, GetPropertyValue(zone, "SurfaceWidth"));
+        InvokeMethodWithArguments(viewModel, "StartSelectedZoneMove", 160d, 90d);
+        InvokeMethodWithArguments(viewModel, "CompleteSelectedZoneMove", 320d, 180d);
+        Assert.Equal(width / 2, GetPropertyValue(zone, "AbsoluteX"));
+        Assert.Equal(height / 2, GetPropertyValue(zone, "AbsoluteY"));
+        InvokeMethod(viewModel, "StartSelectedZoneResize");
+        InvokeMethodWithArguments(viewModel, "CompleteSelectedZoneResize", 480d, 270d);
+        Assert.Equal(width / 4, GetPropertyValue(zone, "AbsoluteWidth"));
+        Assert.Equal(height / 4, GetPropertyValue(zone, "AbsoluteHeight"));
+        await InvokeTaskMethodAsync(viewModel, "SaveAsync");
+        var savedZone = Assert.Single(Assert.Single(await repository.ListAsync()).OcrZones);
+        var zoneType = uiAssembly.GetType("GameTranslator.UI.ViewModels.OcrZoneEditorViewModel", true)!;
+        var reloaded = zoneType.GetMethod("FromModel")!.Invoke(null, new object[] { savedZone })!;
+        Assert.Equal(width, GetPropertyValue(reloaded, "CoordinateReferenceWidth"));
+        Assert.Equal(height, GetPropertyValue(reloaded, "CoordinateReferenceHeight"));
+        Assert.Equal(320d, GetPropertyValue(reloaded, "SurfaceX"));
+        var duplicate = zoneType.GetMethod("CreateDuplicate")!.Invoke(reloaded, new object[] { "Copy" })!;
+        Assert.Equal(160d, GetPropertyValue(duplicate, "SurfaceWidth"));
     }
 
     [Fact]
@@ -2902,7 +3117,7 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
-    public async Task CleanupTranslationCacheAsync_RemovesExpiredEntriesAndUpdatesStatus()
+    public async Task CleanupTranslationCacheAsync_RemovesAllEntriesAndUpdatesStatus()
     {
         var cacheRepository = new TestTranslationCacheRepository();
         var key = new TranslationCacheKey("Google", "en", "ru", "Hello");
@@ -2911,7 +3126,7 @@ public sealed class ProfileManagerViewModelTests
                 key,
                 "Expired",
                 new DateTimeOffset(2026, 6, 1, 12, 0, 0, TimeSpan.Zero),
-                new DateTimeOffset(2026, 6, 2, 12, 0, 0, TimeSpan.Zero),
+                DateTimeOffset.UtcNow.AddDays(30),
                 new DateTimeOffset(2026, 6, 1, 12, 0, 0, TimeSpan.Zero),
                 hitCount: 0));
         var viewModel = CreateMainViewModel(
@@ -2923,7 +3138,7 @@ public sealed class ProfileManagerViewModelTests
 
         Assert.Empty(cacheRepository.Entries);
         Assert.Contains(
-            "Translation cache cleanup removed 1 expired entry.",
+            "Translation cache cleared from memory and disk.",
             GetPropertyValue(viewModel, "TranslationCacheStatus")?.ToString(),
             StringComparison.Ordinal);
     }
@@ -3665,6 +3880,7 @@ public sealed class ProfileManagerViewModelTests
 
     private sealed class TestOcrLanguagePackService : IOcrLanguagePackService
     {
+        public Action? OnInstall { get; set; }
         public List<(string EngineId, string LanguageTag, OcrOrientationMode OrientationMode)> Checks { get; } = new();
 
         public List<(string EngineId, string LanguageTag, OcrOrientationMode OrientationMode)> Installs { get; } = new();
@@ -3692,6 +3908,8 @@ public sealed class ProfileManagerViewModelTests
             CancellationToken cancellationToken = default)
         {
             Installs.Add((engineId, languageTag, orientationMode));
+            OnInstall?.Invoke();
+            cancellationToken.ThrowIfCancellationRequested();
             return Task.FromResult(new OcrLanguagePackInstallResult(
                 true,
                 $"Installed: {engineId} OCR language '{languageTag}' for {orientationMode}."));
@@ -3954,6 +4172,14 @@ public sealed class ProfileManagerViewModelTests
         {
             entries[entry.Key] = entry;
             return Task.CompletedTask;
+        }
+
+        public Task<int> DeleteAllAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var count = entries.Count;
+            entries.Clear();
+            return Task.FromResult(count);
         }
 
         public Task<int> DeleteExpiredAsync(

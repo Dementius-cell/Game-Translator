@@ -160,6 +160,7 @@ public sealed class TextCandidateRegionOcrService
             candidateResult.RecognizedAt,
             zoneRequest.OrientationMode)
         {
+            SourceResult = candidateResult,
             WatermarkDecision = zoneRequest.WatermarkFilter == WatermarkFilterMode.Off ? null
                 : WatermarkFilter.Evaluate(zoneRequest.WatermarkFilter, region.WatermarkEvidence ?? WatermarkFilter.Analyze(region), recognizedText),
         };
@@ -551,6 +552,8 @@ public sealed class TextCandidateRegionOcrResult
     public TextCandidate Candidate { get; }
 
     public WatermarkDecision? WatermarkDecision { get; init; }
+
+    public OcrResult? SourceResult { get; init; }
 
     public string RecognizedText { get; }
 

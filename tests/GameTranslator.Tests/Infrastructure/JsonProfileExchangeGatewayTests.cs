@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using GameTranslator.Application.Profiles;
 using GameTranslator.Domain.Profiles;
 using GameTranslator.Infrastructure.Profiles;
@@ -64,6 +64,29 @@ public sealed class JsonProfileExchangeGatewayTests : IDisposable
         var imported = await gateway.ImportAsync(path);
         Assert.False(imported.OcrZones[0].TextStyle.AutoFontSize);
         Assert.Equal(22, imported.OcrZones[0].TextStyle.FontSize);
+    }
+
+    [Fact]
+    public async Task PreparationOptions_RoundTrip_AndMissingFieldsPreserveLegacyDefaults()
+    {
+        var gateway = new JsonProfileExchangeGateway();
+        var path = Path.Combine(workingDirectory, "preparation.json");
+        var profile = CreateProfile("Preparation") with { OcrPreprocessingSettings = new()
+            { IsEnabled = true, Mode = OcrPreprocessingMode.Adaptive, Scale = .5, InvertColors = true, AdaptiveThresholding = true, AddWhiteBorder = true } };
+        await gateway.ExportAsync(profile, path);
+        Assert.Equal(profile.OcrPreprocessingSettings, (await gateway.ImportAsync(path)).OcrPreprocessingSettings);
+        var json = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        var settings = json["ocrPreprocessingSettings"]!.AsObject();
+        foreach (var name in new[] { "invertColors", "adaptiveThresholding", "addWhiteBorder", "mode" }) Assert.True(settings.Remove(name));
+        settings["scale"] = 1.25;
+        await File.WriteAllTextAsync(path, json.ToJsonString());
+        var legacy = (await gateway.ImportAsync(path)).OcrPreprocessingSettings;
+        Assert.Equal(OcrPreprocessingMode.Manual, legacy.ResolveMode());
+        Assert.Equal(OcrPreprocessingMode.None, new OcrPreprocessingSettings().ResolveMode());
+        Assert.False(legacy.InvertColors);
+        Assert.False(legacy.AdaptiveThresholding);
+        Assert.False(legacy.AddWhiteBorder);
+        Assert.Equal(1.25, legacy.Scale);
     }
 
     public void Dispose()

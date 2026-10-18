@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Ocr;
 using GameTranslator.Domain.Profiles;
@@ -57,7 +57,8 @@ public sealed class TesseractOcrEngine : IOcrEngine
             var bitmapBytes = CreateBitmapBytes(request.Frame);
 
             using var image = PixImage.LoadFromMemory(bitmapBytes);
-            var recognitionOrientationMode = SelectRecognitionOrientationMode(
+            var detectorOrientation = SelectDetectorOrientation(request);
+            var recognitionOrientationMode = detectorOrientation ?? SelectRecognitionOrientationMode(
                 tessdataPath,
                 image,
                 request.Language,
@@ -110,6 +111,23 @@ public sealed class TesseractOcrEngine : IOcrEngine
                 words = outlinedWords;
             }
 
+            if (textBlocks.Count == 0 && detectorOrientation == OcrOrientationMode.Vertical
+                && request.DetectorLineBounds.Count == 1 && request.Frame.Width >= 48)
+            {
+                // Large upright glyphs can produce an empty vertical segmentation. Retry
+                // only this bounded column at half size; retain original crop coordinates.
+                cancellationToken.ThrowIfCancellationRequested();
+                var reduced = ScaleFrameBilinear(request.Frame, .5);
+                using var reducedImage = PixImage.LoadFromMemory(CreateBitmapBytes(reduced));
+                using var page = engine.Process(reducedImage, pageSegMode);
+                cancellationToken.ThrowIfCancellationRequested();
+                textBlocks = MapTextBlocksFromPreprocessedFrame(
+                    CreateTextBlocks(page, reduced.Width, reduced.Height), request.Frame.Width, request.Frame.Height, .5);
+                words = MapWordsFromPreprocessedFrame(
+                    CreateWords(page, reduced.Width, reduced.Height, CreateRecognitionPassId(pageSegMode, "vertical-downscale")),
+                    request.Frame.Width, request.Frame.Height, .5);
+            }
+
             if (textBlocks.Count == 0
                 && TryCreateQualityUpscaleFallback(
                     request,
@@ -124,6 +142,23 @@ public sealed class TesseractOcrEngine : IOcrEngine
             {
                 textBlocks = qualityTextBlocks;
                 words = qualityWords;
+            }
+
+            foreach (var bounds in ResolveMissingVerticalColumns(request, recognitionOrientationMode, textBlocks))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var column = CreateCroppedFrame(request.Frame, bounds);
+                using var columnImage = PixImage.LoadFromMemory(CreateBitmapBytes(column));
+                using var page = engine.Process(columnImage, pageSegMode);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (page.MeanConfidence < .8) continue;
+                var recovered = CreateTextBlocks(page, column.Width, column.Height);
+                if (recovered.Count == 0) continue;
+                textBlocks = textBlocks.Concat(recovered.Select(block => new OcrTextBlock(
+                    block.Text, TranslateBounds(block.Bounds, bounds.X, bounds.Y))))
+                    .OrderByDescending(block => block.Bounds.X).ThenBy(block => block.Bounds.Y).ToArray();
+                words = words.Concat(TranslateWords(CreateWords(page, column.Width, column.Height,
+                    CreateRecognitionPassId(pageSegMode, "missing-vertical-column")), bounds.X, bounds.Y)).ToArray();
             }
 
             return new ApplicationOcrResult(
@@ -223,6 +258,28 @@ public sealed class TesseractOcrEngine : IOcrEngine
         var lines = request.DetectorLineBounds.OrderBy(bound => bound.Y).ThenBy(bound => bound.X).ToArray();
         return lines.Zip(lines.Skip(1)).Any(pair => pair.First.Bottom - pair.Second.Y
             > Math.Min(pair.First.Height, pair.Second.Height) * .15) ? Array.Empty<BoundingBox>() : lines;
+    }
+
+    internal static IReadOnlyList<BoundingBox> ResolveMissingVerticalColumns(
+        OcrRequest request, OcrOrientationMode orientation, IReadOnlyList<OcrTextBlock> blocks)
+    {
+        if (request.OrientationMode != OcrOrientationMode.Auto || orientation != OcrOrientationMode.Vertical
+            || request.LayoutMode is not (OcrLayoutMode.Auto or OcrLayoutMode.Dialog)
+            || MapLanguage(request.Language, OcrOrientationMode.Horizontal) != "jpn"
+            || request.DetectorLineBounds.Count is < 2 or > 8 || blocks.Count == 0
+            || (long)request.Frame.Width * request.Frame.Height > 1_000_000)
+            return Array.Empty<BoundingBox>();
+        var lines = request.DetectorLineBounds;
+        if (lines.Any(line => line.X < 0 || line.Y < 0 || line.Right > request.Frame.Width
+            || line.Bottom > request.Frame.Height || line.Width < 8 || line.Height < line.Width * 1.3)
+            || lines.Count(line => line.Height >= line.Width * 2) < 2)
+            return Array.Empty<BoundingBox>();
+        // Only recover wholly absent, substantial columns. Short interjections and
+        // partly recognized columns retain the original result to avoid duplication.
+        return lines.Where(line => line.Height >= line.Width * 2 && line.Height <= line.Width * 20
+            && !blocks.Any(block => Math.Min(block.Bounds.Right, line.Right) - Math.Max(block.Bounds.X, line.X)
+                > Math.Min(block.Bounds.Width, line.Width) * .5))
+            .OrderByDescending(line => line.X).Take(4).ToArray();
     }
 
     internal static IReadOnlyList<BoundingBox> ResolveKoreanDetectorLines(
@@ -363,6 +420,30 @@ public sealed class TesseractOcrEngine : IOcrEngine
         }
 
         return bitmapBytes;
+    }
+
+    internal static OcrOrientationMode? SelectDetectorOrientation(OcrRequest request)
+    {
+        if (request.OrientationMode != OcrOrientationMode.Auto
+            || request.LayoutMode is not (OcrLayoutMode.Auto or OcrLayoutMode.Dialog)
+            || request.DetectorLineBounds.Count is 0 or > 32
+            || (long)request.Frame.Width * request.Frame.Height > 1_000_000)
+            return null;
+
+        var languages = MapLanguage(request.Language, OcrOrientationMode.Horizontal).Split('+');
+        if (!languages.Any(code => code is "jpn" or "jpn_vert" or "chi_sim" or "chi_sim_vert" or "chi_tra" or "chi_tra_vert")
+            || languages.Any(code => code is not ("jpn" or "jpn_vert" or "chi_sim" or "chi_sim_vert" or "chi_tra" or "chi_tra_vert" or "eng")))
+            return null;
+
+        // Use each detected line, never the enclosing multi-line rectangle: a tall
+        // stack of horizontal lines is still horizontal. Ambiguity retains native Auto.
+        var lines = request.DetectorLineBounds;
+        if (lines.Any(line => Math.Min(line.Width, line.Height) < 8)) return null;
+        if (lines.All(line => (long)line.Height >= 2L * line.Width && (long)line.Height <= 20L * line.Width))
+            return OcrOrientationMode.Vertical;
+        if (lines.All(line => (long)line.Width >= 2L * line.Height && (long)line.Width <= 20L * line.Height))
+            return OcrOrientationMode.Horizontal;
+        return null;
     }
 
     private static OcrOrientationMode SelectRecognitionOrientationMode(

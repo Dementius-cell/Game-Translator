@@ -1,4 +1,4 @@
-namespace GameTranslator.Domain.Profiles;
+﻿namespace GameTranslator.Domain.Profiles;
 
 public sealed class ProfileValidator
 {
@@ -205,6 +205,9 @@ public sealed class ProfileValidator
         List<ProfileValidationError> errors)
     {
         var value = settings ?? OcrPreprocessingSettings.Default;
+        if (value.Mode is { } mode && !Enum.IsDefined(mode))
+            errors.Add(new ProfileValidationError(ProfileValidationErrorCodes.InvalidOcrPreprocessingSettings,
+                "OCR preprocessing mode is not supported."));
 
         if (value.Contrast is < 0.5 or > 3)
         {
@@ -227,11 +230,11 @@ public sealed class ProfileValidator
                 "OCR preprocessing sharpness must be between 0 and 2."));
         }
 
-        if (value.Scale is < 1 or > 3)
+        if (!double.IsFinite(value.Scale) || value.Scale is < 0.5 or > 3)
         {
             errors.Add(new ProfileValidationError(
                 ProfileValidationErrorCodes.InvalidOcrPreprocessingSettings,
-                "OCR preprocessing scale must be between 1 and 3."));
+                "OCR preprocessing scale must be between 0.5 and 3."));
         }
     }
 }

@@ -1,4 +1,4 @@
-<UserControl
+﻿<UserControl
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:loc="clr-namespace:GameTranslator.UI.Localization"
@@ -845,13 +845,27 @@
                                                     Content="{loc:Text T4c0218ec57c9}"/>
                                             </StackPanel>
                                             <ComboBox
+                                                x:Name="OcrOrientationSelector"
                                                 Padding="6,3"
                                                 IsEnabled="{Binding IsOcrOrientationSelectionEnabled}"
                                                 ItemsSource="{Binding OcrOrientations}"
                                                 SelectedItem="{Binding OcrOrientationMode, Mode=TwoWay}"
                                                 ToolTip="{Binding OcrOrientationSelectionToolTip, Converter={StaticResource LocalizedText}}">
+                                                <ComboBox.Style>
+                                                    <Style TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding ShouldRecommendAutoOrientation}" Value="True">
+                                                                <Setter Property="BorderBrush" Value="{DynamicResource ThemeDanger}"/>
+                                                                <Setter Property="BorderThickness" Value="2"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </ComboBox.Style>
 <ComboBox.ItemTemplate><DataTemplate><TextBlock Foreground="{DynamicResource ThemeText}" Text="{Binding Converter={StaticResource LocalizedText}}"/></DataTemplate></ComboBox.ItemTemplate>
 </ComboBox>
+                                            <TextBlock Text="{loc:Text AutoOcrOrientationNotice}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                                       Foreground="{DynamicResource ThemeDanger}"
+                                                       Visibility="{Binding ShouldRecommendAutoOrientation, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                                             <StackPanel Margin="0,6,0,2" Orientation="Horizontal">
                                                 <TextBlock Foreground="{DynamicResource ThemeMuted}" Text="{loc:Text T3620487ca5ee}"/>
                                                 <ContentControl
@@ -880,6 +894,7 @@
                                             </StackPanel>
                                             <ComboBox
                                                 Padding="6,3"
+                                                x:Name="OcrPreparationPresetSelector"
                                                 ItemsSource="{Binding OcrPreprocessingPresets}"
                                                 SelectedItem="{Binding SelectedOcrPreprocessingPreset, Mode=TwoWay}"
                                                 ToolTip="{Binding OcrPreprocessingPresetSummary, Converter={StaticResource LocalizedText}}">
@@ -909,13 +924,17 @@
                                             Text="{Binding OcrLanguagePackStatus, Converter={StaticResource LocalizedText}}"
                                             TextWrapping="Wrap"/>
                                         <StackPanel Grid.Row="3" Grid.Column="0" Margin="0,4,6,0" Orientation="Horizontal">
-                                            <CheckBox Content="{loc:Text T4d1d43042e73}" IsChecked="{Binding OcrPreprocessingEnabled, Mode=TwoWay}"/>
+                                            <ComboBox x:Name="OcrPreparationModeSelector" MinWidth="160" SelectedIndex="{Binding OcrPreprocessingModeIndex, Mode=TwoWay}" ToolTip="{loc:Text OcrPreparationModesHint}">
+                                                <ComboBoxItem Content="{loc:Text OcrPreparationNone}"/>
+                                                <ComboBoxItem Content="{loc:Text OcrPreparationManual}"/>
+                                                <ComboBoxItem Content="{loc:Text OcrPreparationAdaptive}"/>
+                                            </ComboBox>
                                             <ContentControl
                                                 Style="{StaticResource ParameterInfoIconStyle}"
                                                 Tag="OcrPreprocessingEnabled"
                                                 Content="{loc:Text Tb0d6c5df1906}"/>
                                         </StackPanel>
-                                        <StackPanel Grid.Row="3" Grid.Column="1" Margin="0,4,6,0" Orientation="Horizontal">
+                                        <StackPanel IsEnabled="{Binding IsManualOcrPreparation}" Grid.Row="3" Grid.Column="1" Margin="0,4,6,0" Orientation="Horizontal">
                                             <CheckBox
                                                 Content="{loc:Text T5e0fb2da0adb}"
                                                 IsChecked="{Binding OcrPreprocessingThresholdingEnabled, Mode=TwoWay}"/>
@@ -924,7 +943,7 @@
                                                 Tag="OcrThresholdingEnabled"
                                                 Content="{loc:Text T6327f7a2da31}"/>
                                         </StackPanel>
-                                        <StackPanel Grid.Row="3" Grid.Column="2" Margin="0,4,0,0" Orientation="Horizontal">
+                                        <StackPanel IsEnabled="{Binding IsManualOcrPreparation}" Grid.Row="3" Grid.Column="2" Margin="0,4,0,0" Orientation="Horizontal">
                                             <CheckBox
                                                 Content="{loc:Text T80a366f25616}"
                                                 IsChecked="{Binding OcrPreprocessingNoiseReductionEnabled, Mode=TwoWay}"/>
@@ -933,7 +952,7 @@
                                                 Tag="OcrNoiseReductionEnabled"
                                                 Content="{loc:Text T756e768a1cc6}"/>
                                         </StackPanel>
-                                        <UniformGrid Grid.Row="4" Grid.ColumnSpan="3" Margin="0,4,0,0" Columns="5">
+                                        <UniformGrid IsEnabled="{Binding IsManualOcrPreparation}" Grid.Row="4" Grid.ColumnSpan="3" Margin="0,4,0,0" Columns="5">
                                             <StackPanel Margin="0,0,4,0">
                                                 <StackPanel Margin="0,0,0,2" Orientation="Horizontal">
                                                     <TextBlock VerticalAlignment="Center" Foreground="{DynamicResource ThemeMuted}" Text="{loc:Text Ta38ebf3ce57c}"/>
@@ -996,9 +1015,26 @@
                                             </StackPanel>
                                         </UniformGrid>
                                     <StackPanel Grid.Row="5" Grid.ColumnSpan="3" Margin="0,12,0,0">
+                                            <TextBlock Text="{loc:Text OcrPreparationModesHint}" TextWrapping="Wrap" Margin="0,0,0,8" Foreground="{DynamicResource ThemeMuted}"/>
+                                            <Expander Header="{loc:Text OcrAdvancedPreparation}" Margin="0,0,0,10" IsEnabled="{Binding IsManualOcrPreparation}">
+                                                <StackPanel Margin="0,6,0,0">
+                                                    <TextBlock Text="{loc:Text OcrAdvancedPreparationHint}" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                                                    <CheckBox Content="{loc:Text OcrInvertColors}" IsChecked="{Binding OcrPreprocessingInvertColors, Mode=TwoWay}"/>
+                                                    <CheckBox Content="{loc:Text OcrAdaptiveThresholding}" IsChecked="{Binding OcrPreprocessingAdaptiveThresholding, Mode=TwoWay}" Margin="0,4,0,0"/>
+                                                    <CheckBox Content="{loc:Text OcrAddWhiteBorder}" IsChecked="{Binding OcrPreprocessingAddWhiteBorder, Mode=TwoWay}" Margin="0,4,0,0"/>
+                                                </StackPanel>
+                                            </Expander>
                                             <CheckBox x:Name="ExperimentalMultilingualOcrToggle" Content="{loc:Text T785911b8d9b4}" IsChecked="{Binding ExperimentalMultilingualOcr, Mode=TwoWay}"/>
                                             <TextBlock Margin="0,4,0,0" TextWrapping="Wrap" Foreground="{DynamicResource ThemeMuted}" Text="{loc:Text T080754fe5b27}"/>
-                                            <Expander HorizontalContentAlignment="Stretch" Header="{loc:Text AutoOcrLanguages}" IsEnabled="{Binding ExperimentalMultilingualOcr}" Margin="0,8,0,0">
+                                            <TextBlock x:Name="AutoOcrLanguageAdviceHint" Margin="0,6,0,0" HorizontalAlignment="Left"
+                                                       Text="{loc:Text AutoOcrAdviceLabel}" Foreground="{DynamicResource ThemeMuted}"
+                                                       Cursor="Help" Focusable="True" ToolTipService.ShowDuration="60000"
+                                                       Visibility="{Binding ExperimentalMultilingualOcr, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <TextBlock.ToolTip>
+                                                    <ToolTip><TextBlock MaxWidth="420" TextWrapping="Wrap" Text="{Binding AutoOcrLanguageAdvice}"/></ToolTip>
+                                                </TextBlock.ToolTip>
+                                            </TextBlock>
+                                            <Expander x:Name="AutoOcrLanguagesExpander" HorizontalContentAlignment="Stretch" Header="{loc:Text AutoOcrLanguages}" Visibility="{Binding ExperimentalMultilingualOcr, Converter={StaticResource BooleanToVisibilityConverter}}" Margin="0,8,0,0">
                                                 <Grid Margin="0,6,0,0">
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="*"/>
@@ -1008,7 +1044,7 @@
                                                         <TextBlock Text="{loc:Text AutoOcrSearch}" Margin="0,0,0,4"/>
                                                         <TextBox Text="{Binding AutoOcrLanguageSearch, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,6"/>
                                                         <ScrollViewer Height="220" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                                                            <ItemsControl ItemsSource="{Binding FilteredAutoOcrLanguages}">
+                                                            <ItemsControl x:Name="AvailableAutoOcrLanguagesList" ItemsSource="{Binding FilteredAutoOcrLanguages}">
                                                                 <ItemsControl.ItemTemplate><DataTemplate>
                                                                     <CheckBox Content="{Binding DisplayName}" IsChecked="{Binding IsSelected, Mode=TwoWay}" Margin="4"/>
                                                                 </DataTemplate></ItemsControl.ItemTemplate>
@@ -1018,7 +1054,7 @@
                                                     <StackPanel Grid.Column="1">
                                                         <TextBlock Text="{loc:Text AutoOcrSelected}" Margin="0,0,0,6"/>
                                                         <ScrollViewer Height="260" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                                                            <ItemsControl ItemsSource="{Binding SelectedAutoOcrLanguages}">
+                                                            <ItemsControl x:Name="SelectedAutoOcrLanguagesList" ItemsSource="{Binding SelectedAutoOcrLanguages}">
                                                                 <ItemsControl.ItemTemplate><DataTemplate>
                                                                     <CheckBox Content="{Binding DisplayName}" IsChecked="{Binding IsSelected, Mode=TwoWay}" Margin="4"/>
                                                                 </DataTemplate></ItemsControl.ItemTemplate>

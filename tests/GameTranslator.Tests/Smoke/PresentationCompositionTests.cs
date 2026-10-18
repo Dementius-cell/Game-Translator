@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Windows;
@@ -20,6 +20,64 @@ namespace GameTranslator.Tests.Smoke;
 [Collection(WpfResourceCollection.Name)]
 public sealed class PresentationCompositionTests
 {
+    [Fact]
+    public void OcrSelectedLanguages_UncheckingBoundItemKeepsDispatcherResponsive()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var services = new ServiceCollection();
+                services.AddApplicationServices();
+                var root = Path.Combine(Path.GetTempPath(), "GameTranslator.Tests", Guid.NewGuid().ToString("N"));
+                services.AddSingleton(new ProfileStorageOptions(root));
+                services.AddSingleton(new SettingsStorageOptions(Path.Combine(root, "settings.json")));
+                services.AddSingleton(new TranslationCacheStorageOptions(Path.Combine(root, "cache.db")));
+                InvokePresentationCompositionRoot(services);
+                InvokeExternalServiceModules(services);
+                using var provider = services.BuildServiceProvider();
+                var model = provider.GetRequiredService(LoadUiAssembly().GetType("GameTranslator.UI.ViewModels.MainViewModel", true)!);
+                var selection = model.GetType().GetProperty("AutoOcrLanguageSelection")!;
+                selection.SetValue(model, "eng+jpn+chi_sim");
+                var panel = (System.Windows.Controls.StackPanel)System.Windows.Markup.XamlReader.Parse("""
+                    <StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
+                      <ItemsControl ItemsSource="{Binding FilteredAutoOcrLanguages}">
+                        <ItemsControl.ItemTemplate><DataTemplate><CheckBox Content="{Binding Code}" IsChecked="{Binding IsSelected, Mode=TwoWay}"/></DataTemplate></ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                      <ItemsControl ItemsSource="{Binding SelectedAutoOcrLanguages}">
+                        <ItemsControl.ItemTemplate><DataTemplate><CheckBox Content="{Binding Code}" IsChecked="{Binding IsSelected, Mode=TwoWay}"/></DataTemplate></ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </StackPanel>
+                    """);
+                panel.DataContext = model;
+                var selected = (System.Windows.Controls.ItemsControl)panel.Children[1];
+                void Layout()
+                {
+                    panel.Measure(new Size(500, 5000));
+                    panel.Arrange(new Rect(0, 0, 500, 5000));
+                    panel.UpdateLayout();
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ContextIdle);
+                }
+                Layout();
+                for (var remaining = 2; remaining >= 0; remaining--)
+                {
+                    var container = selected.ItemContainerGenerator.ContainerFromIndex(0);
+                    var checkbox = FindVisualDescendantByName<System.Windows.Controls.CheckBox>(container, "")!;
+                    checkbox.SetCurrentValue(System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty, false);
+                    Layout();
+                    Assert.Equal(remaining, selected.Items.Count);
+                }
+                Assert.Equal(string.Empty, selection.GetValue(model));
+            }
+            catch (Exception exception) { failure = exception; }
+        }) { IsBackground = true };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(15)), "OCR checkbox update blocked the WPF dispatcher.");
+        Assert.Null(failure);
+    }
+
     [Fact]
     public void PresentationCompositionRoot_RegistersShellAndNavigationServices()
     {
@@ -347,6 +405,78 @@ public sealed class PresentationCompositionTests
 
                 }
 
+                }
+                selectedTabProperty.SetValue(currentViewModel, 1);
+                currentViewModel.GetType().GetProperty("ExperimentalMultilingualOcr")!.SetValue(currentViewModel, true);
+                currentViewModel.GetType().GetProperty("AutoOcrLanguageSelection")!.SetValue(currentViewModel, "eng+jpn+chi_sim");
+                shell.Measure(new Size(1280, 900));
+                shell.Arrange(new Rect(0, 0, 1280, 900));
+                shell.UpdateLayout();
+                var languagesExpander = FindVisualDescendantByName<System.Windows.Controls.Expander>(shell, "AutoOcrLanguagesExpander")!;
+                Assert.Equal(Visibility.Visible, languagesExpander.Visibility);
+                var orientationSelector = FindVisualDescendantByName<System.Windows.Controls.ComboBox>(shell, "OcrOrientationSelector")!;
+                Assert.True(orientationSelector.IsEnabled);
+                currentViewModel.GetType().GetProperty("OcrOrientationMode")!.SetValue(currentViewModel, GameTranslator.Domain.Profiles.OcrOrientationMode.Horizontal);
+                shell.UpdateLayout();
+                Assert.Equal(new Thickness(2), orientationSelector.BorderThickness);
+                Assert.Equal(orientationSelector.FindResource("ThemeDanger"), orientationSelector.BorderBrush);
+                currentViewModel.GetType().GetProperty("OcrOrientationMode")!.SetValue(currentViewModel, GameTranslator.Domain.Profiles.OcrOrientationMode.Auto);
+                shell.UpdateLayout();
+                Assert.Equal(false, currentViewModel.GetType().GetProperty("ShouldRecommendAutoOrientation")!.GetValue(currentViewModel));
+
+                currentViewModel.GetType().GetProperty("ExperimentalMultilingualOcr")!.SetValue(currentViewModel, false);
+                shell.UpdateLayout();
+                Assert.Equal(Visibility.Collapsed, languagesExpander.Visibility);
+                Assert.Equal("eng+jpn+chi_sim", currentViewModel.GetType().GetProperty("AutoOcrLanguageSelection")!.GetValue(currentViewModel));
+                currentViewModel.GetType().GetProperty("ExperimentalMultilingualOcr")!.SetValue(currentViewModel, true);
+                shell.UpdateLayout();
+                Assert.Equal(Visibility.Visible, languagesExpander.Visibility);
+                var preparationMode = FindVisualDescendantByName<System.Windows.Controls.ComboBox>(shell, "OcrPreparationModeSelector")!;
+                Assert.NotNull(preparationMode);
+                foreach (var mode in new[] { 0, 1, 2, 1 })
+                {
+                    preparationMode.SetCurrentValue(System.Windows.Controls.Primitives.Selector.SelectedIndexProperty, mode);
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ContextIdle);
+                    Assert.True(preparationMode.IsEnabled);
+                    Assert.Equal(mode, currentViewModel.GetType().GetProperty("OcrPreprocessingModeIndex")!.GetValue(currentViewModel));
+                    Assert.Equal(mode == 1, currentViewModel.GetType().GetProperty("IsManualOcrPreparation")!.GetValue(currentViewModel));
+                }
+                var preparationPreset = FindVisualDescendantByName<System.Windows.Controls.ComboBox>(shell, "OcrPreparationPresetSelector")!;
+                foreach (var presetId in new[] { "off", "fast", "off", "balanced" })
+                {
+                    Assert.True(preparationMode.IsEnabled);
+                    Assert.True(preparationPreset.IsEnabled);
+                    var preset = preparationPreset.Items.Cast<object>().Single(item =>
+                        (string)item.GetType().GetProperty("Id")!.GetValue(item)! == presetId);
+                    preparationPreset.SetCurrentValue(System.Windows.Controls.Primitives.Selector.SelectedItemProperty, preset);
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ContextIdle);
+                    Assert.Equal(presetId == "off" ? 0 : 1, preparationMode.SelectedIndex);
+                    Assert.True(preparationPreset.IsEnabled);
+                    Assert.True(preparationMode.IsEnabled);
+                }
+                languagesExpander.IsExpanded = true;
+                shell.UpdateLayout();
+                var selectedLanguages = FindVisualDescendantByName<System.Windows.Controls.ItemsControl>(shell, "SelectedAutoOcrLanguagesList")!;
+                var availableLanguages = FindVisualDescendantByName<System.Windows.Controls.ItemsControl>(shell, "AvailableAutoOcrLanguagesList")!;
+                var english = availableLanguages.Items.Cast<object>().Single(item => (string)item.GetType().GetProperty("Code")!.GetValue(item)! == "eng");
+                var englishContainer = availableLanguages.ItemContainerGenerator.ContainerFromItem(english);
+                var englishCheckbox = FindVisualDescendantByName<System.Windows.Controls.CheckBox>(englishContainer, "")!;
+                var click = typeof(System.Windows.Controls.CheckBox).GetMethod("OnClick", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                for (var iteration = 0; iteration < 6; iteration++)
+                {
+                    click.Invoke(englishCheckbox, null);
+                    shell.UpdateLayout();
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ContextIdle);
+                    Assert.Equal(iteration % 2 == 0 ? 2 : 3, selectedLanguages.Items.Count);
+                }
+                for (var remaining = 2; remaining >= 0; remaining--)
+                {
+                    var container = selectedLanguages.ItemContainerGenerator.ContainerFromIndex(0);
+                    var checkbox = FindVisualDescendantByName<System.Windows.Controls.CheckBox>(container, "")!;
+                    checkbox.SetCurrentValue(System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty, false);
+                    shell.UpdateLayout();
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ContextIdle);
+                    Assert.Equal(remaining, selectedLanguages.Items.Count);
                 }
                 completed = true;
             }

@@ -18,6 +18,7 @@ Keep concrete external integrations isolated behind Application contracts.
 ## Local Contracts
 
 - Infrastructure may depend on Application and Domain, but must not depend on UI.
+- For Auto Japanese/Chinese (optionally with English), bounded consistent detector-line geometry may resolve writing direction before native layout analysis. Judge individual members, not the enclosing group. Ambiguous/mixed geometry, other language sets, explicit directions, legacy requests without hints and explicit Comic segmentation retain existing behavior. Only an empty, large, single vertical column resolved this way receives one half-size retry; map blocks and words back to original crop coordinates. Do not globally tune Tesseract textord thresholds or add another recognizer.
 - Implement Application interfaces without changing their public semantics unless the matching Application contract is intentionally changed and tested.
 - Do not remove Windows OCR or Tesseract support, and do not make the product depend on only one OCR engine. Korean horizontal detector-line recognition is limited to the measured eligible geometry; other crops retain the existing recognition path. Preserve raw OCR coordinates and report expected/recognized line counts without introducing automatic recognizer or provider fallback.
 - Outlined-color recovery stays within horizontal detector-member crops and the existing Tesseract engine. It requires detached interior glyphs, a thin enclosing component, bounded pixel work and high improved recognition confidence for every member; partial recovery cannot replace a group. Map resized recognition geometry back to each original member. Ordinary, vertical and legacy requests retain their existing path.
@@ -41,3 +42,5 @@ Keep concrete external integrations isolated behind Application contracts.
 ## Child Instruction Index
 
 No nested `AGENTS.md` files are currently defined below this directory.
+
+For Auto Japanese crops already resolved as vertical, recover up to four wholly missing long detector columns with the same engine only when 2–8 bounded vertical hints agree and the crop is at most one million pixels. Require native mean confidence >= 0.8; retain existing blocks, map recovered blocks/words back and order columns right to left. Do not retry short interjections, partially recognized columns, explicit directions or other language sets.

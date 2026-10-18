@@ -1,5 +1,16 @@
 # OCR and Overlay Work Status
 
+## Accepted preprocessing modes — 2026-10-18
+
+ADR-034 records the owner-approved None/Manual/Adaptive preprocessing contract. Adaptive starts from original crop pixels without inherited manual filters; nullable mode preserves legacy profiles. Its current heuristics remain experimental. UI mode/preset selectors remain usable after Off; Auto OCR with a manual direction now shows a red recommendation to select Auto. User selection of two or more Auto OCR languages enables translation Auto without changing provider or losing the saved manual language. Delivery is tracked in [issue #58](https://github.com/Dementius-cell/Game-Translator/issues/58). Private pages, OCR transcripts, runtime files and build outputs remain excluded.
+
+
+## Auto direction update — 2026-10-16
+
+For bounded Japanese/Chinese candidate crops (optionally English), Auto uses consistent per-member line geometry before native layout analysis. Ambiguous, mixed, tiny or extreme geometry retains the native decision. Manual directions, explicit Comic segmentation, other language combinations and legacy no-hint requests remain unchanged. An empty large single vertical column can receive one half-size recognition pass with coordinates mapped back. No recognizer, detector, provider or global Tesseract threshold changes were introduced.
+
+Local-only owner-page comparison at 75/100/125/150% scale: 28/28 known vertical-region directions resolved correctly versus 18/28 before. This is direction accuracy on one page, not character accuracy or general acceptance. Threshold experiments at 0.25 and 0.75 did not change results versus default 0.5. All 72 synthetic controls retained identical OCR text, block bounds and source orientation. Decorative text, character substitutions and a missed horizontal caption at 75% remain unresolved. Evidence and private transcripts stay under ignored work/japanese-auto-comparison, work/japanese-mixed-20261016 and work/auto-orientation-controls.
+
 ## Current source update — 2026-10-15
 
 The source includes the revised profile workspace, editor Light/Dark/System themes, Russian/English UI localization, local bug/crash reports, selectable multilingual Tesseract models with search and package installation, automatic translation source handling, candidate-aware reading order and explicit clearing of memory/persistent translation caches. Bounded outlined-color recovery reuses Tesseract on eligible horizontal detector members and maps recovered geometry back to the original crop; it is not a general decorative-font solution.

@@ -44,3 +44,7 @@ No nested `AGENTS.md` files are currently defined below this directory.
 ADR-033 expanded overlay layout preserves source height where unobstructed and optionally fits font size through IOverlayTextMeasurer; the bounded in-memory font-fit cache does not replace translation caching.
 
 Explicit user cache clearing removes all memory and persistent translations with translation stopped; ordinary expiry and the 30-day TTL remain unchanged. Translation and diagnostic reading order honor resolved OCR source orientation before request-level Auto, independently for projected detector regions.
+
+Opt-in OCR preparation applies inversion before Sauvola (31 px window, k=0.2, R=128); Sauvola replaces the fixed threshold and is capped at four million source pixels with cancellation. OcrService adds 10 px white borders after scaling, shifts detector hints and removes padding from blocks, members, words and candidate bounds before returning the original scaled coordinate system. Preserve pass IDs, orientation, confidence and zone metadata. Existing profiles perform the original single OCR pass; no recognizer/provider fallback is introduced.
+
+Three-way preparation selects effective settings before any filtering. Adaptive analyzes original pixels with bounded sampling; it constructs fresh neutral manual settings and never inherits stored filters. It uses crop hints for scale/padding and conservative luminance/color heuristics for inversion/Sauvola. No new OCR retries. Returned OCR requests carry effective settings for diagnostics.

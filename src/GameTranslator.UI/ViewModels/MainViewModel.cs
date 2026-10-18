@@ -1,4 +1,4 @@
-using GameTranslator.UI.Localization;
+﻿using GameTranslator.UI.Localization;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -107,6 +107,9 @@ public sealed class MainViewModel : ValidatableObservableObject
     private const string DraftOverlayPaddingSettingKey = "shell.draft.overlay.padding";
     private const string DraftOcrEngineSettingKey = "shell.draft.ocr.engine";
     private const string DraftOcrOrientationModeSettingKey = "shell.draft.ocr.orientationMode";
+    private const string DraftOcrPreprocessingInvertColorsSettingKey = "shell.draft.ocr.preprocessing.InvertColors";
+    private const string DraftOcrPreprocessingAdaptiveThresholdingSettingKey = "shell.draft.ocr.preprocessing.AdaptiveThresholding";
+    private const string DraftOcrPreprocessingAddWhiteBorderSettingKey = "shell.draft.ocr.preprocessing.AddWhiteBorder";
     private const string DraftOcrPreprocessingEnabledSettingKey = "shell.draft.ocr.preprocessing.enabled";
     private const string DraftOcrPreprocessingContrastSettingKey = "shell.draft.ocr.preprocessing.contrast";
     private const string DraftOcrPreprocessingBrightnessSettingKey = "shell.draft.ocr.preprocessing.brightness";
@@ -511,6 +514,10 @@ public sealed class MainViewModel : ValidatableObservableObject
     private double ocrPreprocessingScale = OcrPreprocessingSettings.Default.Scale;
     private bool ocrPreprocessingNoiseReductionEnabled;
     private OcrPreprocessingPresetOption selectedOcrPreprocessingPreset = SupportedOcrPreprocessingPresetOptions[0];
+    private bool ocrPreprocessingInvertColors;
+    private bool ocrPreprocessingAdaptiveThresholding;
+    private bool ocrPreprocessingAddWhiteBorder;
+    private OcrPreprocessingMode? ocrPreprocessingMode;
     private bool isApplyingOcrPreprocessingPreset;
     private bool isSyncingOcrPreprocessingPresetSelection;
     private int selectedWorkspaceTabIndex;
@@ -719,9 +726,12 @@ public sealed class MainViewModel : ValidatableObservableObject
                 autoOcrLanguageSelection.Split('+').Contains(language.Code),
                 () => AutoOcrLanguageSelection = string.Join("+", AutoOcrLanguages.Where(item => item.IsSelected).Select(item => item.Code))))
             .ToArray();
+        foreach (var item in AutoOcrLanguages.Where(item => item.IsSelected))
+            selectedAutoOcrLanguages.Add(item);
+        SelectedAutoOcrLanguages = new ReadOnlyObservableCollection<OcrAutoLanguageItemViewModel>(selectedAutoOcrLanguages);
         InstallAllTesseractLanguagesCommand = new AsyncRelayCommand(InstallAllTesseractLanguagesAsync, CanManageOcrLanguagePackChecklist);
         CancelAllTesseractLanguagesCommand = new RelayCommand(() => allLanguagesCancellation?.Cancel(), () => allLanguagesCancellation is not null);
-        BeginCreateProfileCommand = new RelayCommand(BeginCreateProfile, () => !IsBusy);
+        BeginCreateProfileCommand = new AsyncRelayCommand(CreateNewProfileAsync, () => !IsBusy);
         RefreshProfilesCommand = new AsyncRelayCommand(RefreshProfilesAsync, () => !IsBusy);
         SaveProfileCommand = new AsyncRelayCommand(SaveAsync, CanSaveProfile);
         ImportProfileCommand = new AsyncRelayCommand(ImportProfileAsync, () => !IsBusy);
@@ -945,6 +955,8 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public IReadOnlyList<OcrOrientationMode> OcrOrientations => SupportedOcrOrientations;
 
+    public bool ShouldRecommendAutoOrientation => ExperimentalMultilingualOcr && OcrOrientationMode != OcrOrientationMode.Auto;
+
     public bool IsOcrOrientationSelectionEnabled => ExperimentalMultilingualOcr || SupportsVerticalOcrLayout();
 
     public bool IsVerticalOcrOrientation => OcrOrientationMode == OcrOrientationMode.Vertical;
@@ -1156,8 +1168,24 @@ public sealed class MainViewModel : ValidatableObservableObject
     }
     public IEnumerable<OcrAutoLanguageItemViewModel> FilteredAutoOcrLanguages =>
         AutoOcrLanguages.Where(item => item.Matches(AutoOcrLanguageSearch));
-    public IEnumerable<OcrAutoLanguageItemViewModel> SelectedAutoOcrLanguages =>
-        AutoOcrLanguages.Where(item => item.IsSelected);
+    private readonly ObservableCollection<OcrAutoLanguageItemViewModel> selectedAutoOcrLanguages = new();
+    public ReadOnlyObservableCollection<OcrAutoLanguageItemViewModel> SelectedAutoOcrLanguages { get; }
+
+    public string AutoOcrLanguageAdvice
+    {
+        get
+        {
+            var codes = AutoOcrLanguageSelection.Split('+', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            bool Has(string code) => codes.Contains(code) || codes.Contains(code + "_vert");
+            var tips = new List<string> { UiText.Get("AutoOcrAdviceGeneral") };
+            if (Has("jpn") && (Has("chi_sim") || Has("chi_tra")))
+                tips.Add(UiText.Get("AutoOcrAdviceJapaneseChinese"));
+            if (Has("chi_sim") && Has("chi_tra"))
+                tips.Add(UiText.Get("AutoOcrAdviceChineseVariants"));
+            return string.Join("\n\n", tips);
+        }
+    }
 
     private string autoOcrLanguageSelection = OcrSettings.ExperimentalMultilingualLanguages;
     public string AutoOcrLanguageSelection
@@ -1168,12 +1196,29 @@ public sealed class MainViewModel : ValidatableObservableObject
             if (!SetProperty(ref autoOcrLanguageSelection, value)) return;
             var selected = value.Split('+').ToHashSet(StringComparer.OrdinalIgnoreCase);
             foreach (var item in AutoOcrLanguages) item.SetSelected(selected.Contains(item.Code));
-            OnPropertyChanged(nameof(SelectedAutoOcrLanguages));
+            for (var index = selectedAutoOcrLanguages.Count - 1; index >= 0; index--)
+                if (!selectedAutoOcrLanguages[index].IsSelected)
+                    selectedAutoOcrLanguages.RemoveAt(index);
+            var selectedIndex = 0;
+            foreach (var item in AutoOcrLanguages.Where(item => item.IsSelected))
+            {
+                if (selectedIndex >= selectedAutoOcrLanguages.Count || selectedAutoOcrLanguages[selectedIndex] != item)
+                    selectedAutoOcrLanguages.Insert(selectedIndex, item);
+                selectedIndex++;
+            }
+            OnPropertyChanged(nameof(AutoOcrLanguageAdvice));
+            EnableTranslationAutoForMultipleOcrLanguages();
             ResetOcrLanguagePackStatus();
             PersistDraftShellStateIfNeeded();
             RefreshValidationState();
-            NotifyCommandStateChanged();
         }
+    }
+
+    private void EnableTranslationAutoForMultipleOcrLanguages()
+    {
+        if (!suppressDraftStatePersistence && ExperimentalMultilingualOcr
+            && SelectedAutoOcrLanguages.Count >= 2)
+            AutoDetectSourceLanguage = true;
     }
 
     public bool ExperimentalMultilingualOcr
@@ -1182,6 +1227,8 @@ public sealed class MainViewModel : ValidatableObservableObject
         set
         {
             if (!SetProperty(ref experimentalMultilingualOcr, value)) return;
+            OnPropertyChanged(nameof(ShouldRecommendAutoOrientation));
+            EnableTranslationAutoForMultipleOcrLanguages();
             OnPropertyChanged(nameof(IsOcrOrientationSelectionEnabled));
             OnPropertyChanged(nameof(OcrOrientationSelectionToolTip));
             ResetOcrLanguagePackStatus();
@@ -1199,6 +1246,7 @@ public sealed class MainViewModel : ValidatableObservableObject
             var normalizedValue = NormalizeOcrOrientationMode(value);
             if (SetProperty(ref ocrOrientationMode, normalizedValue))
             {
+                OnPropertyChanged(nameof(ShouldRecommendAutoOrientation));
                 OnPropertyChanged(nameof(IsVerticalOcrOrientation));
                 OnPropertyChanged(nameof(IsHorizontalOcrOrientation));
                 OnPropertyChanged(nameof(ProfileSummary));
@@ -1346,6 +1394,29 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     public string OcrPreprocessingPresetSummary => SelectedOcrPreprocessingPreset.Description;
 
+    public int OcrPreprocessingModeIndex
+    {
+        get => (int)(ocrPreprocessingMode ?? (ocrPreprocessingEnabled ? OcrPreprocessingMode.Manual : OcrPreprocessingMode.None));
+        set
+        {
+            if (value is < 0 or > 2) return;
+            ocrPreprocessingMode = (OcrPreprocessingMode)value;
+            ocrPreprocessingEnabled = value != 0;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(OcrPreprocessingEnabled));
+            OnPropertyChanged(nameof(IsManualOcrPreparation));
+            OnPropertyChanged(nameof(OcrPreprocessingModeName));
+            PersistDraftShellStateIfNeeded();
+            SyncOcrPreprocessingPresetSelection();
+        }
+    }
+
+    public bool IsManualOcrPreparation => OcrPreprocessingModeIndex == 1;
+    public string OcrPreprocessingModeName => OcrPreprocessingModeIndex switch
+    {
+        1 => "Manual preprocessing", 2 => "Adaptive preprocessing", _ => "No preprocessing",
+    };
+
     public bool OcrPreprocessingEnabled
     {
         get => ocrPreprocessingEnabled;
@@ -1353,6 +1424,10 @@ public sealed class MainViewModel : ValidatableObservableObject
         {
             if (SetProperty(ref ocrPreprocessingEnabled, value))
             {
+                ocrPreprocessingMode = null;
+                OnPropertyChanged(nameof(OcrPreprocessingModeIndex));
+                OnPropertyChanged(nameof(IsManualOcrPreparation));
+                OnPropertyChanged(nameof(OcrPreprocessingModeName));
                 PersistDraftShellStateIfNeeded();
                 OnPropertyChanged(nameof(ProfileSummary));
                 SyncOcrPreprocessingPresetSelection();
@@ -1439,6 +1514,45 @@ public sealed class MainViewModel : ValidatableObservableObject
             {
                 PersistDraftShellStateIfNeeded();
                 RefreshValidationState();
+                SyncOcrPreprocessingPresetSelection();
+            }
+        }
+    }
+
+    public bool OcrPreprocessingInvertColors
+    {
+        get => ocrPreprocessingInvertColors;
+        set
+        {
+            if (SetProperty(ref ocrPreprocessingInvertColors, value))
+            {
+                PersistDraftShellStateIfNeeded();
+                SyncOcrPreprocessingPresetSelection();
+            }
+        }
+    }
+
+    public bool OcrPreprocessingAdaptiveThresholding
+    {
+        get => ocrPreprocessingAdaptiveThresholding;
+        set
+        {
+            if (SetProperty(ref ocrPreprocessingAdaptiveThresholding, value))
+            {
+                PersistDraftShellStateIfNeeded();
+                SyncOcrPreprocessingPresetSelection();
+            }
+        }
+    }
+
+    public bool OcrPreprocessingAddWhiteBorder
+    {
+        get => ocrPreprocessingAddWhiteBorder;
+        set
+        {
+            if (SetProperty(ref ocrPreprocessingAddWhiteBorder, value))
+            {
+                PersistDraftShellStateIfNeeded();
                 SyncOcrPreprocessingPresetSelection();
             }
         }
@@ -2376,6 +2490,31 @@ public sealed class MainViewModel : ValidatableObservableObject
         StatusMessage = "Profile rename canceled.";
     }
 
+    public async Task CreateNewProfileAsync()
+    {
+        if (IsBusy)
+        {
+            return;
+        }
+
+        await RunProfileOperationAsync("Creating profile...", async () =>
+        {
+            var existingProfiles = await profileService.ListAsync();
+            var names = existingProfiles.Select(profile => profile.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var name = "new";
+            for (var suffix = 2; names.Contains(name); suffix++)
+            {
+                name = $"new ({suffix})";
+            }
+
+            var profile = await profileService.CreateAsync(new GameProfile { Name = name });
+            ClearSurfaceInteractionState();
+            await RefreshProfilesAsync(profile.Id);
+            logger.Information($"Profile '{profile.Name}' saved.");
+            StatusMessage = $"Profile '{profile.Name}' saved.";
+        });
+    }
+
     public void BeginCreateProfile()
     {
         selectedProfile = null;
@@ -3238,7 +3377,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         var liveTiming = CreateLiveTranslationTiming(LiveTranslationTimingPreset);
         lastLiveTranslationTiming = liveTiming;
         lastLiveTranslationTimingPreset = LiveTranslationTimingPreset;
-        lastLiveOcrPreprocessingPreset = SelectedOcrPreprocessingPreset.DisplayName;
+        lastLiveOcrPreprocessingPreset = $"{OcrPreprocessingModeName}: {SelectedOcrPreprocessingPreset.DisplayName}";
         lastLiveTranslatorProvider = profile.TranslatorSettings.Provider;
         lastLiveSourceLanguage = profile.TranslatorSettings.ResolveSourceLanguage();
         lastLiveConfiguredSourceLanguage = profile.TranslatorSettings.SourceLanguage;
@@ -4502,12 +4641,16 @@ public sealed class MainViewModel : ValidatableObservableObject
         return new OcrPreprocessingSettings
         {
             IsEnabled = OcrPreprocessingEnabled,
+            Mode = ocrPreprocessingMode,
             Contrast = OcrPreprocessingContrast,
             Brightness = OcrPreprocessingBrightness,
             Sharpness = OcrPreprocessingSharpness,
             ThresholdingEnabled = OcrPreprocessingThresholdingEnabled,
             Threshold = (byte)Math.Clamp(OcrPreprocessingThreshold, byte.MinValue, byte.MaxValue),
             Scale = OcrPreprocessingScale,
+            InvertColors = OcrPreprocessingInvertColors,
+            AdaptiveThresholding = OcrPreprocessingAdaptiveThresholding,
+            AddWhiteBorder = OcrPreprocessingAddWhiteBorder,
             NoiseReductionEnabled = OcrPreprocessingNoiseReductionEnabled,
         };
     }
@@ -4524,7 +4667,11 @@ public sealed class MainViewModel : ValidatableObservableObject
             OcrPreprocessingThresholdingEnabled = settings.ThresholdingEnabled;
             OcrPreprocessingThreshold = settings.Threshold;
             OcrPreprocessingScale = settings.Scale;
+            OcrPreprocessingInvertColors = settings.InvertColors;
+            OcrPreprocessingAdaptiveThresholding = settings.AdaptiveThresholding;
+            OcrPreprocessingAddWhiteBorder = settings.AddWhiteBorder;
             OcrPreprocessingNoiseReductionEnabled = settings.NoiseReductionEnabled;
+            OcrPreprocessingModeIndex = (int)settings.ResolveMode();
         }
         finally
         {
@@ -4564,13 +4711,16 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     private static bool AreEquivalent(OcrPreprocessingSettings left, OcrPreprocessingSettings right)
     {
-        return left.IsEnabled == right.IsEnabled
+        return left.ResolveMode() == right.ResolveMode()
             && Math.Abs(left.Contrast - right.Contrast) < 0.001
             && left.Brightness == right.Brightness
             && Math.Abs(left.Sharpness - right.Sharpness) < 0.001
             && left.ThresholdingEnabled == right.ThresholdingEnabled
             && left.Threshold == right.Threshold
             && Math.Abs(left.Scale - right.Scale) < 0.001
+            && left.InvertColors == right.InvertColors
+            && left.AdaptiveThresholding == right.AdaptiveThresholding
+            && left.AddWhiteBorder == right.AddWhiteBorder
             && left.NoiseReductionEnabled == right.NoiseReductionEnabled;
     }
 
@@ -4625,7 +4775,11 @@ public sealed class MainViewModel : ValidatableObservableObject
             OcrPreprocessingThresholdingEnabled = profile.OcrPreprocessingSettings.ThresholdingEnabled;
             OcrPreprocessingThreshold = profile.OcrPreprocessingSettings.Threshold;
             OcrPreprocessingScale = profile.OcrPreprocessingSettings.Scale;
+            OcrPreprocessingInvertColors = profile.OcrPreprocessingSettings.InvertColors;
+            OcrPreprocessingAdaptiveThresholding = profile.OcrPreprocessingSettings.AdaptiveThresholding;
+            OcrPreprocessingAddWhiteBorder = profile.OcrPreprocessingSettings.AddWhiteBorder;
             OcrPreprocessingNoiseReductionEnabled = profile.OcrPreprocessingSettings.NoiseReductionEnabled;
+            OcrPreprocessingModeIndex = (int)profile.OcrPreprocessingSettings.ResolveMode();
             ReplaceZones(profile.OcrZones.Select(OcrZoneEditorViewModel.FromModel));
             WatermarkFilterMode = profile.OcrSettings.WatermarkFilter;
             ExperimentalMultilingualOcr = profile.OcrSettings.ExperimentalMultilingual;
@@ -4667,7 +4821,12 @@ public sealed class MainViewModel : ValidatableObservableObject
             OcrPreprocessingThresholdingEnabled = settings.GetValue<bool?>(DraftOcrPreprocessingThresholdingSettingKey) ?? OcrPreprocessingSettings.Default.ThresholdingEnabled;
             OcrPreprocessingThreshold = settings.GetValue<int?>(DraftOcrPreprocessingThresholdSettingKey) ?? OcrPreprocessingSettings.Default.Threshold;
             OcrPreprocessingScale = settings.GetValue<double?>(DraftOcrPreprocessingScaleSettingKey) ?? OcrPreprocessingSettings.Default.Scale;
+            OcrPreprocessingInvertColors = settings.GetValue<bool?>(DraftOcrPreprocessingInvertColorsSettingKey) ?? false;
+            OcrPreprocessingAdaptiveThresholding = settings.GetValue<bool?>(DraftOcrPreprocessingAdaptiveThresholdingSettingKey) ?? false;
+            OcrPreprocessingAddWhiteBorder = settings.GetValue<bool?>(DraftOcrPreprocessingAddWhiteBorderSettingKey) ?? false;
             OcrPreprocessingNoiseReductionEnabled = settings.GetValue<bool?>(DraftOcrPreprocessingNoiseReductionSettingKey) ?? OcrPreprocessingSettings.Default.NoiseReductionEnabled;
+            OcrPreprocessingModeIndex = (int)(settings.GetValue<OcrPreprocessingMode?>("shell.draft.ocr.preprocessing.mode")
+                ?? (OcrPreprocessingEnabled ? OcrPreprocessingMode.Manual : OcrPreprocessingMode.None));
             ReplaceZones(draftZones.Select(OcrZoneEditorViewModel.FromModel));
             WatermarkFilterMode = settings.GetValue<WatermarkFilterMode?>("shell.draft.ocr.watermarkFilter") ?? WatermarkFilterMode.Off;
             ExperimentalMultilingualOcr = settings.GetValue<bool?>("shell.draft.ocr.experimentalMultilingual") ?? false;
@@ -5075,12 +5234,16 @@ public sealed class MainViewModel : ValidatableObservableObject
         settings.SetValue(DraftOverlayOpacitySettingKey, OverlayOpacity);
         settings.SetValue(DraftOverlayPaddingSettingKey, OverlayPadding);
         settings.SetValue(DraftOcrPreprocessingEnabledSettingKey, OcrPreprocessingEnabled);
+        settings.SetValue("shell.draft.ocr.preprocessing.mode", (OcrPreprocessingMode)OcrPreprocessingModeIndex);
         settings.SetValue(DraftOcrPreprocessingContrastSettingKey, OcrPreprocessingContrast);
         settings.SetValue(DraftOcrPreprocessingBrightnessSettingKey, OcrPreprocessingBrightness);
         settings.SetValue(DraftOcrPreprocessingSharpnessSettingKey, OcrPreprocessingSharpness);
         settings.SetValue(DraftOcrPreprocessingThresholdingSettingKey, OcrPreprocessingThresholdingEnabled);
         settings.SetValue(DraftOcrPreprocessingThresholdSettingKey, OcrPreprocessingThreshold);
         settings.SetValue(DraftOcrPreprocessingScaleSettingKey, OcrPreprocessingScale);
+        settings.SetValue(DraftOcrPreprocessingInvertColorsSettingKey, OcrPreprocessingInvertColors);
+        settings.SetValue(DraftOcrPreprocessingAdaptiveThresholdingSettingKey, OcrPreprocessingAdaptiveThresholding);
+        settings.SetValue(DraftOcrPreprocessingAddWhiteBorderSettingKey, OcrPreprocessingAddWhiteBorder);
         settings.SetValue(DraftOcrPreprocessingNoiseReductionSettingKey, OcrPreprocessingNoiseReductionEnabled);
         settings.SetValue(DraftOcrZonesSettingKey, OcrZones.Select(zone => zone.ToModel()).ToArray());
         settings.SetValue(DraftSelectedZoneIdSettingKey, SelectedZone?.Id);
@@ -5191,8 +5354,8 @@ public sealed class MainViewModel : ValidatableObservableObject
                 : Array.Empty<string>());
         SetErrors(
             nameof(OcrPreprocessingScale),
-            OcrPreprocessingScale is < 1 or > 3
-                ? new[] { "OCR preprocessing scale must be between 1 and 3." }
+            !double.IsFinite(OcrPreprocessingScale) || OcrPreprocessingScale is < 0.5 or > 3
+                ? new[] { "OCR preprocessing scale must be between 0.5 and 3." }
                 : Array.Empty<string>());
         var overlapErrorsByZoneId = OcrZones.ToDictionary(zone => zone.Id, _ => new List<string>(), StringComparer.Ordinal);
 
@@ -6368,7 +6531,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     {
         OnPropertyChanged(nameof(LaunchReadinessText));
         OnPropertyChanged(nameof(WorkspaceTitle));
-        ((RelayCommand)BeginCreateProfileCommand).RaiseCanExecuteChanged();
+        ((AsyncRelayCommand)BeginCreateProfileCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)RefreshProfilesCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)SaveProfileCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)ImportProfileCommand).RaiseCanExecuteChanged();

@@ -1,4 +1,4 @@
-using GameTranslator.Application.Capture;
+﻿using GameTranslator.Application.Capture;
 using GameTranslator.Application.Ocr;
 using GameTranslator.Domain.Profiles;
 
@@ -308,6 +308,140 @@ public sealed class OcrServiceTests
         Assert.Throws<ArgumentException>(() => new OcrRequest(CreateFrame(FirstRegion), string.Empty, "zone-a"));
     }
 
+    [Fact]
+    public async Task WhiteBorder_WithDownscale_RestoresCropCoordinatesAndDetectorHints()
+    {
+        var engine = new FakeOcrEngine { BlocksFactory = request => new[]
+        {
+            new OcrTextBlock("inside", new BoundingBox(12, 13, 10, 5)),
+            new OcrTextBlock("padding only", new BoundingBox(0, 0, 4, 4)),
+        } };
+        var request = new OcrRequest(CreateFrame(FirstRegion), "en", "zone-a",
+            new OcrPreprocessingSettings { IsEnabled = true, Scale = .5, AddWhiteBorder = true })
+            { DetectorLineBounds = new[] { new BoundingBox(4, 6, 20, 10) } };
+        var result = await new OcrService(engine).RecognizeAsync(request);
+        var processed = Assert.Single(engine.Requests);
+        Assert.Equal(70, processed.Frame.Width);
+        Assert.Equal(40, processed.Frame.Height);
+        Assert.Equal(new BoundingBox(12, 13, 10, 5), Assert.Single(processed.DetectorLineBounds));
+        Assert.Equal(255, processed.Frame.PixelData.Span[0]);
+        Assert.Equal(50, result.InputWidth);
+        Assert.Equal(20, result.InputHeight);
+        Assert.Equal(FirstRegion, result.Region);
+        Assert.Equal("zone-a", result.ZoneId);
+        Assert.Equal(new BoundingBox(2, 3, 10, 5), Assert.Single(result.TextBlocks).Bounds);
+        Assert.Equal(new BoundingBox(2, 3, 10, 5), Assert.Single(result.TextBlockSources).SemanticBounds);
+    }
+
+    [Fact]
+    public async Task WhiteBorder_RestoresWordsAndVerticalSources()
+    {
+        var request = new OcrRequest(CreateFrame(FirstRegion), "ja", "zone-a",
+            new OcrPreprocessingSettings { IsEnabled = true, AddWhiteBorder = true });
+        var bounds = new BoundingBox(10, 10, 20, 20);
+        var engine = new FakeOcrEngine { ResultFactory = padded => new OcrResult(padded,
+            new[] { new OcrTextBlock("text", bounds) }, FrameTime,
+            new[] { new OcrTextBlockSource(bounds, new[] { bounds }, OcrOrientationMode.Vertical) { CandidateRegionBounds = bounds } },
+            new[] { new OcrWord("word", bounds, 92, "test-pass") }) };
+        var restored = await new OcrService(engine).RecognizeAsync(request);
+        Assert.Equal(new BoundingBox(0, 0, 20, 20), Assert.Single(restored.Words).Bounds);
+        Assert.Equal(92, restored.Words[0].Confidence);
+        Assert.Equal("test-pass", restored.Words[0].RecognitionPassId);
+        Assert.Equal(OcrOrientationMode.Vertical, restored.TextBlockSources[0].OrientationMode);
+        Assert.Equal(new BoundingBox(0, 0, 20, 20), restored.TextBlockSources[0].CandidateRegionBounds);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RecognizeAsync_DoesNotRequireCallingDispatcher(bool border)
+    {
+        var context = new NonPumpingContext();
+        var previous = SynchronizationContext.Current;
+        Task<OcrResult> pending;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(context);
+            pending = new OcrService(new AsyncOcrEngine()).RecognizeAsync(new OcrRequest(CreateFrame(FirstRegion), "en",
+                preprocessingSettings: new OcrPreprocessingSettings { IsEnabled = border, AddWhiteBorder = border }));
+        }
+        finally { SynchronizationContext.SetSynchronizationContext(previous); }
+        await pending.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(0, context.PostCount);
+    }
+
+    private sealed class NonPumpingContext : SynchronizationContext
+    {
+        public int PostCount;
+        public override void Post(SendOrPostCallback callback, object? state) => Interlocked.Increment(ref PostCount);
+    }
+
+    private sealed class AsyncOcrEngine : IOcrEngine
+    {
+        public string EngineId => OcrSettings.WindowsEngineId;
+        public async Task<OcrResult> RecognizeAsync(OcrRequest request, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(30, cancellationToken).ConfigureAwait(false);
+            return new OcrResult(request, Array.Empty<OcrTextBlock>(), FrameTime);
+        }
+    }
+
+    [Fact]
+    public async Task AdaptiveMode_IgnoresManualFiltersAndPreservesLanguageAndDirection()
+    {
+        var frame = CreateFrame(FirstRegion);
+        var engine = new FakeOcrEngine();
+        var service = new OcrService(engine);
+        var aggressive = new OcrPreprocessingSettings { Mode = OcrPreprocessingMode.Adaptive,
+            IsEnabled = true, Contrast = 3, Brightness = 100, Sharpness = 2, Scale = 3,
+            InvertColors = true, AdaptiveThresholding = true, ThresholdingEnabled = true,
+            NoiseReductionEnabled = true, AddWhiteBorder = true };
+        await service.RecognizeAsync(new OcrRequest(frame, "ja", preprocessingSettings: aggressive,
+            orientationMode: OcrOrientationMode.Vertical));
+        await service.RecognizeAsync(new OcrRequest(frame, "ja", preprocessingSettings: new() { Mode = OcrPreprocessingMode.Adaptive },
+            orientationMode: OcrOrientationMode.Vertical));
+        Assert.Equal(engine.Requests[0].Frame.PixelData.ToArray(), engine.Requests[1].Frame.PixelData.ToArray());
+        Assert.Equal(frame.Width, engine.Requests[0].Frame.Width);
+        Assert.Equal("ja", engine.Requests[0].Language);
+        Assert.Equal(OcrOrientationMode.Vertical, engine.Requests[0].OrientationMode);
+    }
+
+    [Fact]
+    public async Task ExplicitNone_IgnoresAllRetainedManualOptions()
+    {
+        var frame = CreateFrame(FirstRegion);
+        var engine = new FakeOcrEngine();
+        await new OcrService(engine).RecognizeAsync(new OcrRequest(frame, "en", preprocessingSettings: new()
+            { Mode = OcrPreprocessingMode.None, IsEnabled = true, Scale = 3, InvertColors = true, AddWhiteBorder = true }));
+        Assert.Same(frame, Assert.Single(engine.Requests).Frame);
+    }
+
+    [Fact]
+    public async Task AdaptiveMode_DetectsLightTextOnDarkBackgroundAndAddsCropBorder()
+    {
+        var pixels = new byte[100 * 40 * 4];
+        for (var y = 0; y < 40; y++)
+        for (var x = 0; x < 100; x++)
+        {
+            var offset = (y * 100 + x) * 4;
+            var value = x is >= 20 and < 80 && y is >= 10 and < 30 ? (byte)255 : (byte)0;
+            pixels[offset] = pixels[offset + 1] = pixels[offset + 2] = value;
+            pixels[offset + 3] = 255;
+        }
+        var frame = new CapturedFrame(FirstRegion, 100, 40, 400, "Bgra32", pixels, FrameTime);
+        var engine = new FakeOcrEngine();
+        await new OcrService(engine).RecognizeAsync(new OcrRequest(frame, "en",
+            preprocessingSettings: new() { Mode = OcrPreprocessingMode.Adaptive })
+            { DetectorLineBounds = new[] { new BoundingBox(20, 10, 60, 20) } });
+        var actual = Assert.Single(engine.Requests);
+        Assert.True(actual.PreprocessingSettings.InvertColors);
+        Assert.False(actual.PreprocessingSettings.NoiseReductionEnabled);
+        Assert.Equal(120, actual.Frame.Width);
+        Assert.Equal(255, actual.Frame.PixelData.Span[(10 * 120 + 10) * 4]);
+        Assert.Equal(0, actual.Frame.PixelData.Span[(25 * 120 + 35) * 4]);
+        Assert.Equal(0, frame.PixelData.Span[0]);
+    }
+
     private static OcrRequest CreateRequest(CaptureRegion region, string language, string zoneId)
     {
         return new OcrRequest(CreateFrame(region), language, zoneId);
@@ -338,6 +472,8 @@ public sealed class OcrServiceTests
 
         public Exception? Failure { get; init; }
 
+        public Func<OcrRequest, OcrResult>? ResultFactory { get; init; }
+
         public Func<OcrRequest, IReadOnlyList<OcrTextBlock>>? BlocksFactory { get; init; }
 
         public Task<OcrResult> RecognizeAsync(OcrRequest request, CancellationToken cancellationToken = default)
@@ -351,6 +487,7 @@ public sealed class OcrServiceTests
 
             Requests.Add(request);
 
+            if (ResultFactory is not null) return Task.FromResult(ResultFactory(request));
             var blocks = BlocksFactory?.Invoke(request) ?? Array.Empty<OcrTextBlock>();
             return Task.FromResult(new OcrResult(request, blocks, FrameTime.AddMilliseconds(Requests.Count)));
         }

@@ -27,14 +27,19 @@ Keep the WPF presentation layer ergonomic, testable, and separated from infrastr
 
 - Keep code-behind limited to WPF lifecycle, visual interaction glue, and view-specific plumbing.
 - Keep view models deterministic and testable with Application-level fakes.
+- The New profile button immediately persists and selects a fresh default profile named `new` (then `new (2)`, etc. on name collisions). Keep draft initialization separate: startup and editor reset must not create profiles.
 - Keep four profile tabs (zones, recognition, translation, appearance) separate from global settings/diagnostics navigation. Preserve access to advanced zone parameters in the collapsed editor and validate responsive layout headlessly at supported window sizes.
-- Auto OCR model search filters the available list only; it must not clear hidden selections. Keep the selected list independently visible and synchronize it with the model-code selection, saved profile and draft settings. Preserve selected models across search, profile reload and independent OCR/translation Auto toggles; reject empty or unsupported selections before starting work.
-- Keep multilingual OCR and automatic translation-source controls independent, retaining the manual source language. Loading legacy profiles may resolve the nullable translation Auto setting from the OCR flag; changing an OCR toggle must not overwrite an explicit translation choice. Installation of all catalog packs is an explicit cancellable action with progress and failure counts, not a side effect of search or selection.
+- Auto OCR model search filters the available list only; it must not clear hidden selections. Show the language selector and its advice only while Auto OCR is enabled; hiding them must preserve selections. Keep the selected list independent of search filtering and synchronize it with the model-code selection, saved profile and draft settings. Preserve selected models across search, profile reload and independent OCR/translation Auto toggles; reject empty or unsupported selections before starting work.
+- Keep multilingual OCR and automatic translation-source controls independent, retaining the manual source language. Loading legacy profiles may resolve the nullable translation Auto setting from the OCR flag; when the user enables Auto OCR with two or more selected models, or changes the enabled selection to two or more models, enable translation Auto while retaining the manual source language. Loading profiles/drafts must preserve their saved translation choice; reducing the list or disabling OCR Auto must not switch translation Auto off. Keep provider validation and never silently change providers. Installation of all catalog packs is an explicit cancellable action with progress and failure counts, not a side effect of search or selection.
 - Editor themes default to the Windows app colour mode; persist explicit Light/Dark/System preference via ISettingsService. ThemeService owns editor-scoped dynamic resources and marshals system notifications to each UI dispatcher. Never apply these dictionaries to Application.Resources or the translation overlay. Verify both themes and dispose static Windows event subscriptions.
 - Preserve click-through, capture exclusion, always-on-top, and overlay positioning behavior when touching overlay code.
 - Prefer clear recoverable user states for capture, OCR language packs, providers, and overlay failures.
 
 ## Verification
+
+Language-selection advice is localized, informational and selection-dependent. Do not turn it into forbidden language pairs, automatic deselection, reordering or profile validation without separate evidence and scope.
+
+Keep the selected OCR language collection stable and apply item-level notifications when checkboxes change. Exercise both bound lists with WPF controls; model-only toggles do not cover UI collection updates during clicks.
 
 - For view-model behavior changes, run UI smoke/view-model tests.
 - For OCR model selection changes, cover filtering without selection loss, the independent selected list, save/reload and draft persistence, invalid selections, separate Auto controls and cancellable package installation as applicable.
@@ -50,3 +55,9 @@ The zone editor owns the ADR-033 AutoFontSize toggle and its model/duplicate rou
 Overlay TextFormatter and TextBlock must use matching whole-word wrapping. Expanded rendering may only scale down to contain actual text; report word overflow to the Application sizing policy.
 
 UI labels and application-owned display messages use Localization/Strings.json via loc:Text or LocalizedTextConverter. Select ru for the Windows user UI language ru, otherwise en at startup; do not change CurrentCulture. Keep profile names, zone names, recognized text, credentials and provider identifiers unchanged. Verify both UI languages with both editor themes.
+
+Additional OCR preparation controls persist in profiles and drafts and participate in preset matching. They require preprocessing enabled; show that Sauvola supersedes the fixed threshold. Support manual scale 0.5–3. New options remain off by default and are independent from Auto OCR language selection.
+
+The preparation selector owns None/Manual/Adaptive. Manual filter controls are disabled outside Manual but their values remain saved. Keep both mode and preset selectors enabled in all three modes: choosing the Off preset must never disable the control needed to select another preset. Loading legacy profiles resolves the old enabled flag; persist explicit mode in profiles and drafts. Auto OCR languages remain a separate setting.
+
+When Auto OCR is enabled with a manual reading direction, retain the orientation selector but highlight its border with ThemeDanger and recommend Auto in localized text. Remove the warning when orientation is Auto or OCR Auto is disabled; do not force a direction change.

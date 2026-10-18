@@ -1,5 +1,29 @@
 [
   {
+    "Source": "Language selection tips ⓘ",
+    "Ru": "Советы по выбору языков ⓘ",
+    "En": "Language selection tips ⓘ",
+    "Key": "AutoOcrAdviceLabel"
+  },
+  {
+    "Source": "Select only languages present in the image. More models do not guarantee better recognition and may increase processing time. Mixed-language text is a valid reason to select several languages; English does not need to be excluded. These tips do not block any combination.",
+    "Ru": "Выбирайте только языки, которые есть на изображении. Больше моделей не гарантирует лучшего распознавания и может увеличить время обработки. Для смешанного текста можно выбрать несколько языков; исключать английский не требуется. Эти советы не запрещают сочетания.",
+    "En": "Select only languages present in the image. More models do not guarantee better recognition and may increase processing time. Mixed-language text is a valid reason to select several languages; English does not need to be excluded. These tips do not block any combination.",
+    "Key": "AutoOcrAdviceGeneral"
+  },
+  {
+    "Source": "Japanese + Chinese: Japanese kanji alone are not a reason to add Chinese. For Japanese text, start with Japanese; keep Chinese selected if the image also contains Chinese text.",
+    "Ru": "Японский + китайский: японские кандзи сами по себе не повод добавлять китайский. Для японского текста начните с японского; оставьте китайский, если на изображении есть и китайский текст.",
+    "En": "Japanese + Chinese: Japanese kanji alone are not a reason to add Chinese. For Japanese text, start with Japanese; keep Chinese selected if the image also contains Chinese text.",
+    "Key": "AutoOcrAdviceJapaneseChinese"
+  },
+  {
+    "Source": "Simplified + Traditional Chinese: if the text uses only one form, start with the matching model. Keep both for mixed text or while checking which form is present; this combination is not an error.",
+    "Ru": "Упрощённый + традиционный китайский: если текст использует только одну форму письма, начните с соответствующей модели. Оставьте обе для смешанного текста или пока уточняете форму письма; это сочетание не является ошибкой.",
+    "En": "Simplified + Traditional Chinese: if the text uses only one form, start with the matching model. Keep both for mixed text or while checking which form is present; this combination is not an error.",
+    "Key": "AutoOcrAdviceChineseVariants"
+  },
+  {
     "Source": "Clearing all translation cache entries...",
     "Ru": "Очистка всего кэша перевода…",
     "En": "Clearing all translation cache entries...",
@@ -379,8 +403,8 @@
   },
   {
     "Source": "Масштабирование crop перед OCR. Допустимый диапазон: 1–3× включительно; больший масштаб помогает мелкому тексту, но увеличивает время обработки.",
-    "Ru": "Масштабирование crop перед OCR. Допустимый диапазон: 1–3× включительно; больший масштаб помогает мелкому тексту, но увеличивает время обработки.",
-    "En": "Crop scale before OCR: 1–3× inclusive. Larger values help small text but increase processing time.",
+    "Ru": "Масштаб перед OCR: 0,5–3× включительно. Уменьшайте крупные буквы или увеличивайте мелкий текст; больший масштаб повышает время обработки.",
+    "En": "Crop scale before OCR: 0.5–3× inclusive. Reduce large lettering or enlarge small text; larger values increase processing time.",
     "Key": "Tef5d0b62141e"
   },
   {
@@ -3268,5 +3292,83 @@
     "Source": "Selected languages (uncheck to remove)",
     "En": "Selected languages (uncheck to remove)",
     "Ru": "Выбранные языки (снимите флажок для удаления)"
+  },
+  {
+    "Key": "OcrAdvancedPreparation",
+    "Source": "Additional text preparation",
+    "En": "Additional text preparation",
+    "Ru": "Дополнительная подготовка текста"
+  },
+  {
+    "Key": "OcrAdvancedPreparationHint",
+    "Source": "Enable preprocessing above. For light text, try inversion. For uneven backgrounds, try Sauvola (replaces the fixed threshold). White borders help tightly cropped text. Use scale 0.5–1 for large lettering. These options are manual and may reduce quality on other text.",
+    "En": "Select manual preprocessing above. For light text, try inversion. For uneven backgrounds, try Sauvola (replaces the fixed threshold). White borders help tightly cropped text. Use scale 0.5–1 for large lettering. These options are manual and may reduce quality on other text.",
+    "Ru": "Выберите ручной режим выше. Для светлого текста попробуйте инверсию, для неравномерного фона — Sauvola (заменяет фиксированный порог). Белые поля помогают при тесной обрезке. Для крупных букв используйте масштаб 0,5–1. Настройки включаются вручную и могут ухудшить другой текст."
+  },
+  {
+    "Key": "OcrInvertColors",
+    "Source": "Invert colors (light text on dark background)",
+    "En": "Invert colors (light text on dark background)",
+    "Ru": "Инверсия цветов (светлый текст на тёмном фоне)"
+  },
+  {
+    "Key": "OcrAdaptiveThresholding",
+    "Source": "Adaptive threshold (Sauvola)",
+    "En": "Adaptive threshold (Sauvola)",
+    "Ru": "Адаптивный порог (Sauvola)"
+  },
+  {
+    "Key": "OcrAddWhiteBorder",
+    "Source": "Add white borders around OCR crops",
+    "En": "Add white borders around OCR crops",
+    "Ru": "Белые поля вокруг фрагментов OCR"
+  },
+  {
+    "Key": "OcrAdaptiveLimit",
+    "Source": "Adaptive thresholding supports OCR crops up to 4 million pixels.",
+    "En": "Adaptive thresholding supports OCR crops up to 4 million pixels.",
+    "Ru": "Адаптивный порог поддерживает фрагменты OCR до 4 миллионов пикселей."
+  },
+  {
+    "Key": "OcrScaleRange",
+    "Source": "OCR preprocessing scale must be between 0.5 and 3.",
+    "En": "OCR preprocessing scale must be between 0.5 and 3.",
+    "Ru": "Масштаб предобработки OCR должен быть от 0,5 до 3."
+  },
+  {
+    "Key": "OcrPreparationNone",
+    "Source": "No preprocessing",
+    "En": "No preprocessing",
+    "Ru": "Без предобработки"
+  },
+  {
+    "Key": "OcrPreparationManual",
+    "Source": "Manual preprocessing",
+    "En": "Manual preprocessing",
+    "Ru": "Ручная"
+  },
+  {
+    "Key": "OcrPreparationAdaptive",
+    "Source": "Adaptive preprocessing",
+    "En": "Adaptive preprocessing",
+    "Ru": "Адаптивная"
+  },
+  {
+    "Key": "OcrPreparationModesHint",
+    "Source": "Manual uses the saved filters. Adaptive analyzes each original crop and independently selects inversion, local threshold, scale and borders; manual filters are ignored but retained. Language and reading direction still apply. Adaptive is experimental and may not improve decorative text.",
+    "En": "Manual uses the saved filters. Adaptive analyzes each original crop and independently selects inversion, local threshold, scale and borders; manual filters are ignored but retained. Language and reading direction still apply. Adaptive is experimental and may not improve decorative text.",
+    "Ru": "Ручная использует сохранённые фильтры. Адаптивная анализирует исходный фрагмент и отдельно выбирает инверсию, локальный порог, масштаб и поля; ручные фильтры не применяются, но сохраняются. Язык и направление чтения учитываются. Адаптивная обработка экспериментальная и не гарантирует улучшения декоративного текста."
+  },
+  {
+    "Key": "OcrPreparationInvalid",
+    "Source": "OCR preprocessing mode is not supported.",
+    "En": "OCR preprocessing mode is not supported.",
+    "Ru": "Режим предобработки OCR не поддерживается."
+  },
+  {
+    "Key": "AutoOcrOrientationNotice",
+    "Source": "We recommend Auto orientation: Auto OCR is enabled, but the reading direction is set manually.",
+    "En": "We recommend Auto orientation: Auto OCR is enabled, but the reading direction is set manually.",
+    "Ru": "Рекомендуем выбрать Auto для ориентации: Auto OCR включён, но направление чтения задано вручную."
   }
 ]

@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Reflection;
@@ -27,6 +27,37 @@ namespace GameTranslator.Tests.Smoke;
 
 public sealed class ProfileManagerViewModelTests
 {
+    [Theory]
+    [InlineData("ru-RU", "jpn+chi_sim+chi_tra", 3)]
+    [InlineData("en-US", "jpn+chi_sim+chi_tra", 3)]
+    [InlineData("ru-RU", "jpn+eng", 1)]
+    [InlineData("en-US", "rus+eng", 1)]
+    [InlineData("en-US", "chi_sim+chi_tra", 2)]
+    [InlineData("ru-RU", "jpn_vert+chi_tra_vert", 2)]
+    [InlineData("en-US", "", 1)]
+    public void AutoOcrAdvice_ExplainsSelectionWithoutChangingIt(string culture, string selection, int paragraphs)
+    {
+        var previous = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo(culture);
+            var model = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService());
+            var changed = new List<string>();
+            ((System.ComponentModel.INotifyPropertyChanged)model).PropertyChanged += (_, e) => changed.Add(e.PropertyName!);
+            SetPropertyValue(model, "AutoOcrLanguageSelection", selection);
+            var advice = (string)GetPropertyValue(model, "AutoOcrLanguageAdvice")!;
+            Assert.Equal(paragraphs, advice.Split("\n\n").Length);
+            Assert.StartsWith(culture == "ru-RU" ? "Выбирайте" : "Select only", advice);
+            Assert.Equal(selection, GetPropertyValue(model, "AutoOcrLanguageSelection"));
+            Assert.Contains("AutoOcrLanguageAdvice", changed);
+            SetPropertyValue(model, "AutoOcrLanguageSearch", "no-such-language");
+            Assert.Equal(advice, GetPropertyValue(model, "AutoOcrLanguageAdvice"));
+            SetPropertyValue(model, "AutoOcrLanguageSelection", "eng");
+            Assert.Single(((string)GetPropertyValue(model, "AutoOcrLanguageAdvice")!).Split("\n\n"));
+        }
+        finally { CultureInfo.CurrentUICulture = previous; }
+    }
+
     [Fact]
     public async Task InstallAllTesseractLanguages_UsesEntireCatalogWithoutChangingAutoSelection()
     {
@@ -71,8 +102,13 @@ public sealed class ProfileManagerViewModelTests
         SetPropertyValue(model, "ExperimentalMultilingualOcr", true);
         SetPropertyValue(model, "AutoOcrLanguageSelection", "chi_tra+eng");
         var items = ((System.Collections.IEnumerable)GetPropertyValue(model, "AutoOcrLanguages")!).Cast<object>().ToArray();
+        var selectedCollection = GetPropertyValue(model, "SelectedAutoOcrLanguages")!;
+        var changes = new List<System.Collections.Specialized.NotifyCollectionChangedAction>();
+        ((System.Collections.Specialized.INotifyCollectionChanged)selectedCollection).CollectionChanged += (_, e) => changes.Add(e.Action);
         Assert.Equal(new[] { "chi_tra", "eng" }, items.Where(i => (bool)GetPropertyValue(i, "IsSelected")!).Select(i => GetPropertyValue(i, "Code")));
         SetPropertyValue(items.Single(i => (string)GetPropertyValue(i, "Code")! == "eng"), "IsSelected", false);
+        Assert.Same(selectedCollection, GetPropertyValue(model, "SelectedAutoOcrLanguages"));
+        Assert.Equal(new[] { System.Collections.Specialized.NotifyCollectionChangedAction.Remove }, changes);
         Assert.Equal("chi_tra", GetPropertyValue(model, "AutoOcrLanguageSelection"));
         SetPropertyValue(model, "AutoOcrLanguageSearch", " JAPAN ");
         var filtered = ((System.Collections.IEnumerable)GetPropertyValue(model, "FilteredAutoOcrLanguages")!).Cast<object>();
@@ -337,6 +373,103 @@ public sealed class ProfileManagerViewModelTests
         Assert.NotNull(selectedProfile);
         Assert.Equal(beta.Id, GetPropertyValue(selectedProfile!, "Id"));
         Assert.Equal("Beta", GetPropertyValue(viewModel, "ActiveProfileName"));
+    }
+
+    [Fact]
+    public async Task CreateNewProfileAsync_CreatesDistinctProfilesAndPersistsSelection()
+    {
+        var repository = new InMemoryProfileRepository();
+        var settings = new TestSettingsService();
+        var viewModel = CreateMainViewModel(repository, settings);
+        Assert.Empty(await repository.ListAsync());
+
+        await InvokeTaskMethodAsync(viewModel, "CreateNewProfileAsync");
+        var first = Assert.Single(await repository.ListAsync());
+        Assert.Equal("new", first.Name);
+        Assert.Equal(first.Id, settings.GetValue<string>("profiles.selectedId"));
+        Assert.Equal(first.Id, GetPropertyValue(GetPropertyValue(viewModel, "SelectedProfile")!, "Id"));
+
+        SetPropertyValue(viewModel, "ProfileName", "Unsaved edit");
+        await InvokeTaskMethodAsync(viewModel, "CreateNewProfileAsync");
+        var profiles = await repository.ListAsync();
+        Assert.Equal(2, profiles.Count);
+        Assert.Contains(profiles, profile => profile.Id == first.Id && profile.Name == "new");
+        var second = Assert.Single(profiles, profile => profile.Name == "new (2)");
+        Assert.NotEqual(first.Id, second.Id);
+        Assert.Equal(second.Id, settings.GetValue<string>("profiles.selectedId"));
+        Assert.Equal("new (2)", GetPropertyValue(viewModel, "ProfileName"));
+    }
+
+    [Fact]
+    public void MultipleAutoOcrLanguages_EnableTranslationAutoOnlyOnSelectionChanges()
+    {
+        var model = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService());
+        SetPropertyValue(model, "TranslatorProvider", "BingWeb");
+        SetPropertyValue(model, "SourceLanguage", "ja");
+        SetPropertyValue(model, "AutoOcrLanguageSelection", "jpn");
+        SetPropertyValue(model, "AutoDetectSourceLanguage", false);
+        SetPropertyValue(model, "ExperimentalMultilingualOcr", true);
+        Assert.Equal(false, GetPropertyValue(model, "AutoDetectSourceLanguage"));
+        SetPropertyValue(model, "AutoOcrLanguageSelection", "eng+jpn");
+        Assert.Equal(true, GetPropertyValue(model, "AutoDetectSourceLanguage"));
+        Assert.Equal("ja", GetPropertyValue(model, "SourceLanguage"));
+        SetPropertyValue(model, "AutoOcrLanguageSelection", "jpn");
+        Assert.Equal(true, GetPropertyValue(model, "AutoDetectSourceLanguage"));
+        SetPropertyValue(model, "ExperimentalMultilingualOcr", false);
+        SetPropertyValue(model, "AutoDetectSourceLanguage", false);
+        SetPropertyValue(model, "AutoOcrLanguageSelection", "eng+jpn");
+        Assert.Equal(false, GetPropertyValue(model, "AutoDetectSourceLanguage"));
+        SetPropertyValue(model, "ExperimentalMultilingualOcr", true);
+        Assert.Equal(true, GetPropertyValue(model, "AutoDetectSourceLanguage"));
+    }
+
+    [Fact]
+    public void PreparationModeSwitch_RetainsManualValuesAndPersistsAdaptiveDraft()
+    {
+        var repository = new InMemoryProfileRepository();
+        var settings = new TestSettingsService();
+        var model = CreateMainViewModel(repository, settings);
+        SetPropertyValue(model, "OcrPreprocessingModeIndex", 1);
+        SetPropertyValue(model, "OcrPreprocessingContrast", 2.5);
+        SetPropertyValue(model, "OcrPreprocessingScale", 2d);
+        SetPropertyValue(model, "OcrPreprocessingModeIndex", 2);
+        Assert.Equal(false, GetPropertyValue(model, "IsManualOcrPreparation"));
+        var restored = CreateMainViewModel(repository, settings);
+        Assert.Equal(2, GetPropertyValue(restored, "OcrPreprocessingModeIndex"));
+        Assert.Equal(2.5, GetPropertyValue(restored, "OcrPreprocessingContrast"));
+        SetPropertyValue(restored, "OcrPreprocessingModeIndex", 0);
+        SetPropertyValue(restored, "OcrPreprocessingModeIndex", 1);
+        Assert.Equal(true, GetPropertyValue(restored, "IsManualOcrPreparation"));
+        Assert.Equal(2d, GetPropertyValue(restored, "OcrPreprocessingScale"));
+    }
+
+    [Fact]
+    public async Task PreparationOptions_PersistDraftAndSavedProfile()
+    {
+        var repository = new InMemoryProfileRepository();
+        var settings = new TestSettingsService();
+        var model = CreateMainViewModel(repository, settings);
+        SetPropertyValue(model, "OcrPreprocessingEnabled", true);
+        SetPropertyValue(model, "OcrPreprocessingInvertColors", true);
+        SetPropertyValue(model, "OcrPreprocessingAdaptiveThresholding", true);
+        SetPropertyValue(model, "OcrPreprocessingAddWhiteBorder", true);
+        SetPropertyValue(model, "OcrPreprocessingScale", .5);
+        var restored = CreateMainViewModel(repository, settings);
+        Assert.Equal(true, GetPropertyValue(restored, "OcrPreprocessingInvertColors"));
+        Assert.Equal(true, GetPropertyValue(restored, "OcrPreprocessingAdaptiveThresholding"));
+        Assert.Equal(true, GetPropertyValue(restored, "OcrPreprocessingAddWhiteBorder"));
+        Assert.Equal(.5, GetPropertyValue(restored, "OcrPreprocessingScale"));
+        SetPropertyValue(restored, "ProfileName", "Preparation");
+        SetPropertyValue(restored, "TranslatorProvider", "Google");
+        SetPropertyValue(restored, "SourceLanguage", "ja");
+        SetPropertyValue(restored, "TargetLanguage", "en");
+        await InvokeTaskMethodAsync(restored, "SaveAsync");
+        var profile = Assert.Single(await repository.ListAsync());
+        Assert.True(profile.OcrPreprocessingSettings.InvertColors);
+        Assert.True(profile.OcrPreprocessingSettings.AdaptiveThresholding);
+        Assert.True(profile.OcrPreprocessingSettings.AddWhiteBorder);
+        Assert.Equal(.5, profile.OcrPreprocessingSettings.Scale);
+        Assert.Equal(true, GetPropertyValue(restored, "OcrPreprocessingAddWhiteBorder"));
     }
 
     [Fact]

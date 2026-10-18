@@ -38,3 +38,7 @@ Keep the domain layer small, deterministic, and independent from frameworks and 
 No nested `AGENTS.md` files are currently defined below this directory.
 
 Overlay text style includes optional AutoFontSize (default false); absent values preserve schema-1 fixed-font behavior under ADR-033.
+
+Optional schema-1 preprocessing flags InvertColors, AdaptiveThresholding and AddWhiteBorder default to false when absent. The finite manual scale range is 0.5–3; retain legacy JSON import/export behavior.
+
+Preprocessing Mode is nullable for legacy profiles: null maps IsEnabled to Manual/None. Explicit None/Manual/Adaptive takes precedence. Reject unknown enum values; retain manual parameters when selecting Adaptive.

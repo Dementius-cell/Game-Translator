@@ -1,3 +1,5 @@
+﻿using GameTranslator.Domain.Profiles;
+
 namespace GameTranslator.Application.Ocr;
 
 public sealed class OcrService
@@ -36,20 +38,23 @@ public sealed class OcrService
         this.preprocessor = preprocessor ?? throw new ArgumentNullException(nameof(preprocessor));
     }
 
-    public Task<OcrResult> RecognizeAsync(OcrRequest request, CancellationToken cancellationToken = default)
+    public async Task<OcrResult> RecognizeAsync(OcrRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
         var engine = SelectEngine(request.EngineId);
-        var preprocessedFrame = preprocessor.Apply(request.Frame, request.PreprocessingSettings);
+        var preparation = request.PreprocessingSettings.ResolveMode() == OcrPreprocessingMode.Adaptive
+            ? AdaptiveOcrPreparation.Select(request.Frame, request.DetectorLineBounds, cancellationToken)
+            : request.PreprocessingSettings;
+        var preprocessedFrame = preprocessor.Apply(request.Frame, preparation, cancellationToken);
         var preprocessedRequest = ReferenceEquals(preprocessedFrame, request.Frame)
             ? request
             : new OcrRequest(
                 preprocessedFrame,
                 request.Language,
                 request.ZoneId,
-                request.PreprocessingSettings,
+                preparation,
                 request.EngineId,
                 request.OrientationMode,
                 request.LayoutMode,
@@ -57,11 +62,20 @@ public sealed class OcrService
                 request.CandidateGroupingSettings)
             {
                 DetectorPreset = request.DetectorPreset,
+                WatermarkFilter = request.WatermarkFilter,
                 DetectorLineBounds = request.DetectorLineBounds.Select(bounds => ScaleBounds(
                     bounds, request.Frame, preprocessedFrame)).ToArray(),
             };
 
-        return engine.RecognizeAsync(preprocessedRequest, cancellationToken);
+        if (preparation.ResolveMode() != OcrPreprocessingMode.None && preparation.AddWhiteBorder
+            && preprocessedFrame.PixelFormat == "Bgra32")
+        {
+            var paddedRequest = OcrFrameBorder.Add(preprocessedRequest, cancellationToken);
+            var result = await engine.RecognizeAsync(paddedRequest, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            return OcrFrameBorder.Remove(result, preprocessedRequest);
+        }
+        return await engine.RecognizeAsync(preprocessedRequest, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<OcrResult>> RecognizeAsync(

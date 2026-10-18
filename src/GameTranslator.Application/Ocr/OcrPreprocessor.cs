@@ -1,16 +1,19 @@
-using GameTranslator.Application.Capture;
+﻿using GameTranslator.Application.Capture;
 using GameTranslator.Domain.Profiles;
 
 namespace GameTranslator.Application.Ocr;
 
 public sealed class OcrPreprocessor
 {
-    public CapturedFrame Apply(CapturedFrame frame, OcrPreprocessingSettings settings)
+    public CapturedFrame Apply(CapturedFrame frame, OcrPreprocessingSettings settings, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(frame);
         ArgumentNullException.ThrowIfNull(settings);
 
-        if (!settings.IsEnabled)
+        cancellationToken.ThrowIfCancellationRequested();
+        if (settings.ResolveMode() == OcrPreprocessingMode.Adaptive)
+            settings = AdaptiveOcrPreparation.Select(frame, Array.Empty<BoundingBox>(), cancellationToken);
+        if (settings.ResolveMode() == OcrPreprocessingMode.None)
         {
             return frame;
         }
@@ -33,7 +36,25 @@ public sealed class OcrPreprocessor
             pixels = ApplySharpness(pixels, frame.Stride, frame.Width, frame.Height, settings.Sharpness);
         }
 
-        if (settings.ThresholdingEnabled)
+        if (settings.InvertColors)
+        {
+            for (var y = 0; y < frame.Height; y++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                for (var x = 0; x < frame.Width; x++)
+                for (var channel = 0; channel < 3; channel++)
+                {
+                    var index = y * frame.Stride + x * 4 + channel;
+                    pixels[index] = (byte)(255 - pixels[index]);
+                }
+            }
+        }
+
+        if (settings.AdaptiveThresholding)
+        {
+            SauvolaThreshold.Apply(pixels, frame.Width, frame.Height, frame.Stride, cancellationToken);
+        }
+        else if (settings.ThresholdingEnabled)
         {
             ApplyThreshold(pixels, frame.Stride, frame.Width, frame.Height, settings.Threshold);
         }

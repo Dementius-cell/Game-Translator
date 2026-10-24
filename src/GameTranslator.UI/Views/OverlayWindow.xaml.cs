@@ -249,6 +249,7 @@ public partial class OverlayWindow : Window
             FontWeight fontWeight,
             FontStyle fontStyle,
             bool usesExpandedLayout,
+            bool keepsSourceBounds,
             bool usesCalloutPresentation)
         {
             Text = text;
@@ -262,6 +263,7 @@ public partial class OverlayWindow : Window
             FontWeight = fontWeight;
             FontStyle = fontStyle;
             UsesExpandedLayout = usesExpandedLayout;
+            KeepsSourceBounds = keepsSourceBounds;
             UsesCalloutPresentation = usesCalloutPresentation;
         }
 
@@ -289,9 +291,11 @@ public partial class OverlayWindow : Window
 
         public bool UsesExpandedLayout { get; }
 
+        public bool KeepsSourceBounds { get; }
+
         public bool UsesCalloutPresentation { get; }
 
-        public bool UsesFitToSourceBounds => !UsesExpandedLayout;
+        public bool UsesFitToSourceBounds => !UsesExpandedLayout && !KeepsSourceBounds;
 
         public static OverlayWindowTextItemViewModel FromDevicePixels(
             OverlayTextItem item,
@@ -309,6 +313,11 @@ public partial class OverlayWindow : Window
             var screenHeight = Math.Max(1, SystemParameters.PrimaryScreenHeight);
             var width = Math.Min(screenWidth, Math.Max(MinReadableItemWidth * scaleX, rawWidth + PreviewPadding * 2 * scaleX));
             var height = Math.Min(screenHeight, Math.Max(MinReadableItemHeight * scaleY, rawHeight + PreviewPadding * 2 * scaleY));
+            if (item.TextStyle.LayoutMode == OverlayTextLayoutMode.KeepWithinSourceBounds)
+            {
+                width = rawWidth;
+                height = rawHeight;
+            }
 
             return new OverlayWindowTextItemViewModel(
                 item.Text,
@@ -326,7 +335,9 @@ public partial class OverlayWindow : Window
                 ExpandedTextHorizontalPadding * scaleX,
                 item.TextStyle.IsBold ? FontWeights.Bold : FontWeights.Normal,
                 item.TextStyle.IsItalic ? FontStyles.Italic : FontStyles.Normal,
-                item.TextStyle.LayoutMode == OverlayTextLayoutMode.ExpandFromSourceCenter,
+                item.TextStyle.LayoutMode != OverlayTextLayoutMode.FitToSourceBounds
+                    && item.TextStyle.LayoutMode != OverlayTextLayoutMode.KeepWithinSourceBounds,
+                item.TextStyle.LayoutMode == OverlayTextLayoutMode.KeepWithinSourceBounds,
                 item.UseCalloutPresentation);
         }
 

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using GameTranslator.Application.Capture;
 using Windows.Graphics.Capture;
 using Windows.Graphics.DirectX;
@@ -6,7 +7,7 @@ using Windows.Storage.Streams;
 
 namespace GameTranslator.Infrastructure.Capture;
 
-public sealed class WindowsGraphicsCaptureFrameSource : ICaptureFrameSource, IDisposable
+public sealed class WindowsGraphicsCaptureFrameSource : IRecentCaptureFrameSource, IDisposable
 {
     private const int BytesPerPixel = 4;
     private static readonly TimeSpan FrameTimeout = TimeSpan.FromSeconds(3);
@@ -16,12 +17,29 @@ public sealed class WindowsGraphicsCaptureFrameSource : ICaptureFrameSource, IDi
     private readonly Lazy<GraphicsCaptureItem> primaryMonitorItem = new(GraphicsCaptureItemFactory.CreateForPrimaryMonitor);
     private readonly SemaphoreSlim captureGate = new(1, 1);
     private readonly object pendingCaptureLock = new();
+    private readonly Guid sourceId = Guid.NewGuid();
+    private readonly RecentFrameAcquisition recentFrameAcquisition = new();
+    private int captureGeneration;
+    private bool itemClosed;
+    private bool closedHandlerRegistered;
     private CaptureState? captureState;
     private PendingCapture? pendingCapture;
     private FullFrameSnapshot? latestFrame;
     private bool disposed;
+    private readonly CaptureFrameDiagnosticRecorder? frameDiagnostics = CaptureFrameDiagnosticRecorder.CreateIfEnabled();
 
-    public async Task<CapturedFrame> CaptureAsync(CaptureRegion region, CancellationToken cancellationToken = default)
+    public Task<CapturedFrame> CaptureAsync(CaptureRegion region, CancellationToken cancellationToken = default) =>
+        CaptureCoreAsync(region, null, cancellationToken);
+
+    public Task<CapturedFrame> CaptureRecentAsync(
+        CaptureRegion region, TimeSpan maximumSourceAge, CancellationToken cancellationToken = default)
+    {
+        if (maximumSourceAge <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(maximumSourceAge));
+        return CaptureCoreAsync(region, maximumSourceAge, cancellationToken);
+    }
+
+    private async Task<CapturedFrame> CaptureCoreAsync(
+        CaptureRegion region, TimeSpan? maximumSourceAge, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ObjectDisposedException.ThrowIf(disposed, this);
@@ -36,14 +54,25 @@ public sealed class WindowsGraphicsCaptureFrameSource : ICaptureFrameSource, IDi
             await captureGate.WaitAsync(cancellationToken);
             try
             {
-                return await CaptureNextFrameAsync(region, cancellationToken);
+                CapturedFrame captured;
+                if (maximumSourceAge is { } maximumAge)
+                    captured = await recentFrameAcquisition.AcquireAsync(maximumAge,
+                        token => CaptureNextFrameAsync(region, token), RestartCapture,
+                        MonotonicNow, cancellationToken);
+                else captured = await CaptureNextFrameAsync(region, cancellationToken);
+                frameDiagnostics?.TryRecord(captured);
+                return captured;
             }
             finally
             {
                 captureGate.Release();
             }
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
         {
             throw new CaptureFrameSourceException("Timed out waiting for a Windows Graphics Capture frame.");
         }
@@ -62,7 +91,6 @@ public sealed class WindowsGraphicsCaptureFrameSource : ICaptureFrameSource, IDi
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(latestFrame is null ? FrameTimeout : CachedFrameRefreshInterval);
 
-        EnsureCaptureState();
         var frameCompletion = new TaskCompletionSource<CapturedFrame>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var request = new PendingCapture(region, frameCompletion);
@@ -76,68 +104,141 @@ public sealed class WindowsGraphicsCaptureFrameSource : ICaptureFrameSource, IDi
 
         lock (pendingCaptureLock)
         {
+            ThrowIfSourceUnavailable();
             pendingCapture = request;
         }
 
         try
         {
+            // Register the waiter before StartCapture: a static source may produce only its first frame.
+            EnsureCaptureState();
             return await frameCompletion.Task.WaitAsync(timeout.Token);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && TryCreateCachedFrame(region, out var cachedFrame))
         {
-            ClearPendingCapture(request);
             return cachedFrame;
+        }
+        finally
+        {
+            ClearPendingCapture(request);
         }
     }
 
     private void EnsureCaptureState()
     {
-        captureState ??= CaptureState.Start(
-            direct3DDevice.Value,
-            primaryMonitorItem.Value,
-            OnFrameArrived);
+        lock (pendingCaptureLock)
+        {
+            ThrowIfSourceUnavailable();
+            if (captureState is not null) return;
+            if (!closedHandlerRegistered)
+            {
+                primaryMonitorItem.Value.Closed += OnItemClosed;
+                closedHandlerRegistered = true;
+            }
+            var generation = captureGeneration;
+            captureState = CaptureState.Start(
+                direct3DDevice.Value,
+                primaryMonitorItem.Value,
+                (sender, args) => OnFrameArrived(sender, args, generation));
+        }
+    }
+
+    private static TimeSpan MonotonicNow() =>
+        TimeSpan.FromSeconds((double)Stopwatch.GetTimestamp() / Stopwatch.Frequency);
+
+    private void RestartCapture()
+    {
+        CaptureState? previous;
+        lock (pendingCaptureLock)
+        {
+            ThrowIfSourceUnavailable();
+            captureGeneration++;
+            latestFrame = null;
+            previous = captureState;
+            captureState = null;
+        }
+        previous?.Dispose();
+    }
+
+    private void ThrowIfSourceUnavailable()
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (itemClosed) throw new CaptureFrameSourceException("The captured item has closed.");
+    }
+
+    private void OnItemClosed(GraphicsCaptureItem sender, object args)
+    {
+        lock (pendingCaptureLock)
+        {
+            itemClosed = true;
+            captureGeneration++;
+            latestFrame = null;
+            pendingCapture?.Completion.TrySetException(new CaptureFrameSourceException("The captured item has closed."));
+            pendingCapture = null;
+        }
     }
 
     public void Dispose()
     {
-        if (disposed)
+        CaptureState? previous;
+        lock (pendingCaptureLock)
         {
-            return;
+            if (disposed) return;
+            disposed = true;
+            captureGeneration++;
+            latestFrame = null;
+            pendingCapture?.Completion.TrySetCanceled();
+            pendingCapture = null;
+            previous = captureState;
+            captureState = null;
         }
-
-        disposed = true;
-        captureState?.Dispose();
-        captureGate.Dispose();
+        if (closedHandlerRegistered) primaryMonitorItem.Value.Closed -= OnItemClosed;
+        previous?.Dispose();
+        // An in-flight caller must still release the gate after cancellation.
     }
 
-    private async void OnFrameArrived(Direct3D11CaptureFramePool sender, object args)
+    private async void OnFrameArrived(Direct3D11CaptureFramePool sender, object args, int generation)
     {
         PendingCapture? request;
         lock (pendingCaptureLock)
         {
+            if (disposed || itemClosed || generation != captureGeneration) return;
             request = pendingCapture;
             pendingCapture = null;
         }
 
-        using var frame = sender.TryGetNextFrame();
-        if (request is null)
-        {
-            return;
-        }
-
         try
         {
-            var snapshot = await CopyFrameAsync(frame, CancellationToken.None);
-            latestFrame = snapshot;
-            request.Completion.TrySetResult(snapshot.Crop(request.Region, DateTimeOffset.UtcNow));
+            using var frame = sender.TryGetNextFrame();
+            if (request is null) return;
+            if (frame is null)
+                throw new CaptureFrameSourceException("The capture frame pool returned no frame.");
+            var sourceTimestamp = frame.SystemRelativeTime;
+            var observedAt = MonotonicNow();
+            var sourceAge = observedAt - sourceTimestamp;
+            var origin = new CaptureFrameOrigin(sourceId, sourceTimestamp,
+                DateTimeOffset.UtcNow - (sourceAge > TimeSpan.Zero ? sourceAge : TimeSpan.Zero))
+                { ObservedAtTimestamp = observedAt };
+            var snapshot = await CopyFrameAsync(frame, origin, CancellationToken.None);
+            lock (pendingCaptureLock)
+            {
+                if (disposed || itemClosed || generation != captureGeneration)
+                {
+                    request.Completion.TrySetCanceled();
+                    return;
+                }
+                if (latestFrame is null || latestFrame.Origin.SourceTimestamp <= sourceTimestamp)
+                    latestFrame = snapshot;
+                request.Completion.TrySetResult(snapshot.Crop(request.Region, DateTimeOffset.UtcNow));
+            }
         }
         catch (OperationCanceledException)
         {
-            request.Completion.TrySetCanceled();
+            request?.Completion.TrySetCanceled();
         }
         catch (Exception exception)
         {
-            request.Completion.TrySetException(exception);
+            request?.Completion.TrySetException(exception);
         }
     }
 
@@ -154,11 +255,15 @@ public sealed class WindowsGraphicsCaptureFrameSource : ICaptureFrameSource, IDi
 
     private bool TryCreateCachedFrame(CaptureRegion region, out CapturedFrame frame)
     {
-        var snapshot = latestFrame;
-        if (snapshot is not null && snapshot.Contains(region))
+        lock (pendingCaptureLock)
         {
-            frame = snapshot.Crop(region, DateTimeOffset.UtcNow);
-            return true;
+            ThrowIfSourceUnavailable();
+            var snapshot = latestFrame;
+            if (snapshot is not null && snapshot.Contains(region))
+            {
+                frame = snapshot.Crop(region, DateTimeOffset.UtcNow, isCachedReuse: true);
+                return true;
+            }
         }
 
         frame = null!;
@@ -167,6 +272,7 @@ public sealed class WindowsGraphicsCaptureFrameSource : ICaptureFrameSource, IDi
 
     private static async Task<FullFrameSnapshot> CopyFrameAsync(
         Direct3D11CaptureFrame frame,
+        CaptureFrameOrigin origin,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -194,7 +300,7 @@ public sealed class WindowsGraphicsCaptureFrameSource : ICaptureFrameSource, IDi
             var sourceStride = checked(bitmapToCopy.PixelWidth * BytesPerPixel);
             var fullFrameBytes = CopyBitmapBytes(bitmapToCopy, sourceStride, bitmapToCopy.PixelHeight);
 
-            return new FullFrameSnapshot(availableWidth, availableHeight, sourceStride, fullFrameBytes);
+            return new FullFrameSnapshot(availableWidth, availableHeight, sourceStride, fullFrameBytes, origin);
         }
         finally
         {
@@ -239,14 +345,15 @@ public sealed class WindowsGraphicsCaptureFrameSource : ICaptureFrameSource, IDi
         CaptureRegion Region,
         TaskCompletionSource<CapturedFrame> Completion);
 
-    private sealed class FullFrameSnapshot
+    internal sealed class FullFrameSnapshot
     {
-        public FullFrameSnapshot(int width, int height, int stride, byte[] pixelData)
+        public FullFrameSnapshot(int width, int height, int stride, byte[] pixelData, CaptureFrameOrigin origin)
         {
             Width = width;
             Height = height;
             Stride = stride;
             PixelData = pixelData;
+            Origin = origin;
         }
 
         public int Width { get; }
@@ -257,13 +364,15 @@ public sealed class WindowsGraphicsCaptureFrameSource : ICaptureFrameSource, IDi
 
         public byte[] PixelData { get; }
 
+        public CaptureFrameOrigin Origin { get; }
+
         public bool Contains(CaptureRegion region)
         {
             return region.X + region.Width <= Width
                 && region.Y + region.Height <= Height;
         }
 
-        public CapturedFrame Crop(CaptureRegion region, DateTimeOffset capturedAt)
+        public CapturedFrame Crop(CaptureRegion region, DateTimeOffset deliveredAt, bool isCachedReuse = false)
         {
             if (!Contains(region))
             {
@@ -281,12 +390,15 @@ public sealed class WindowsGraphicsCaptureFrameSource : ICaptureFrameSource, IDi
                 targetStride,
                 "Bgra32",
                 croppedBytes,
-                capturedAt);
+                deliveredAt,
+                Origin,
+                isCachedReuse);
         }
     }
 
     private sealed class CaptureState : IDisposable
     {
+        private bool disposed;
         private readonly Direct3D11CaptureFramePool framePool;
         private readonly GraphicsCaptureSession session;
 
@@ -306,16 +418,27 @@ public sealed class WindowsGraphicsCaptureFrameSource : ICaptureFrameSource, IDi
                 DirectXPixelFormat.B8G8R8A8UIntNormalized,
                 2,
                 item.Size);
-            var session = framePool.CreateCaptureSession(item);
-            session.IsCursorCaptureEnabled = false;
-            framePool.FrameArrived += frameArrivedHandler;
-            session.StartCapture();
-
-            return new CaptureState(framePool, session);
+            GraphicsCaptureSession? session = null;
+            try
+            {
+                session = framePool.CreateCaptureSession(item);
+                session.IsCursorCaptureEnabled = false;
+                framePool.FrameArrived += frameArrivedHandler;
+                session.StartCapture();
+                return new CaptureState(framePool, session);
+            }
+            catch
+            {
+                session?.Dispose();
+                framePool.Dispose();
+                throw;
+            }
         }
 
         public void Dispose()
         {
+            if (disposed) return;
+            disposed = true;
             session.Dispose();
             framePool.Dispose();
         }

@@ -8,6 +8,8 @@ public sealed class CapturePublicSeamTests
     public void ApplicationLayer_ExposesCaptureAbstractionsAsPublicSeams()
     {
         AssertPublicApplicationType<ICaptureFrameSource>();
+        AssertPublicApplicationType<IRecentCaptureFrameSource>();
+        AssertPublicApplicationType<CaptureFrameOrigin>();
         AssertPublicApplicationType<CaptureRegion>();
         AssertPublicApplicationType<CapturedFrame>();
         AssertPublicApplicationType<CaptureSession>();
@@ -34,6 +36,8 @@ public sealed class CapturePublicSeamTests
         var captureTypes = new[]
         {
             typeof(ICaptureFrameSource),
+            typeof(IRecentCaptureFrameSource),
+            typeof(CaptureFrameOrigin),
             typeof(CaptureRegion),
             typeof(CapturedFrame),
             typeof(CaptureSession),

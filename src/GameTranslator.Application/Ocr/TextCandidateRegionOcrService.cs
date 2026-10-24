@@ -98,13 +98,22 @@ public sealed class TextCandidateRegionOcrService
 
         var contentPolicy = ContentLayoutPolicyResolver.Resolve(zoneRequest.ContentLayoutMode);
         var candidates = FilterCandidates(detection.Candidates, zoneRequest.Frame);
-        var regions = SelectCandidates(
+        if (zoneRequest.ContentLayoutMode == ContentLayoutMode.StaticMenu
+            && zoneRequest.OrientationMode != OcrOrientationMode.Vertical
+            && zoneRequest.CandidateGroupingSettings?.MaximumHorizontalLines is null)
+        {
+            candidates = MenuDescriptionCandidateGrouping.Group(candidates);
+        }
+        var selectedCandidates = SelectCandidates(
                 groupingService.Group(
                     candidates,
                     zoneRequest.Frame.Height,
                     ResolveWritingSystemGroupingProfile(zoneRequest, contentPolicy),
-                    zoneRequest.CandidateGroupingSettings),
-                zoneRequest.Frame)
+                    ResolveGroupingSettings(zoneRequest, contentPolicy)),
+                zoneRequest.Frame,
+                zoneRequest.ContentLayoutMode == ContentLayoutMode.StaticMenu
+                    && zoneRequest.OrientationMode != OcrOrientationMode.Vertical);
+        var regions = MenuValueRowEvidence.Annotate(selectedCandidates, zoneRequest)
             .Select(candidate => new TextCandidateRegion(candidate, CreateCroppedFrame(zoneRequest.Frame, candidate.Bounds)))
             .ToArray();
         if (zoneRequest.WatermarkFilter != WatermarkFilterMode.Off)
@@ -129,12 +138,27 @@ public sealed class TextCandidateRegionOcrService
     {
         return contentPolicy.CandidateGrouping switch
         {
-            ContentCandidateGroupingPolicy.BoundedWritingSystem => WritingSystemGroupingProfileResolver.Resolve(
+            ContentCandidateGroupingPolicy.BoundedWritingSystem or ContentCandidateGroupingPolicy.SeparateMenuElements => WritingSystemGroupingProfileResolver.Resolve(
                 zoneRequest.Language,
                 zoneRequest.OrientationMode),
             _ => throw new InvalidOperationException(
                 $"Candidate grouping policy '{contentPolicy.CandidateGrouping}' is not supported."),
         };
+    }
+
+    private static OcrCandidateGroupingSettings ResolveGroupingSettings(
+        OcrRequest request, ContentLayoutPolicy policy)
+    {
+        var settings = request.CandidateGroupingSettings ?? OcrCandidateGroupingSettings.Default;
+        // Auto paragraphs were already bounded separately; do not merge their neighbors.
+        // Explicit limits retain the existing per-zone writing-system grouping behavior.
+        return policy.CandidateGrouping == ContentCandidateGroupingPolicy.SeparateMenuElements
+            ? settings with
+            {
+                MaximumHorizontalLines = settings.MaximumHorizontalLines ?? 1,
+                MaximumVerticalColumns = settings.MaximumVerticalColumns ?? 1,
+            }
+            : settings;
     }
 
     private async Task<TextCandidateRegionOcrResult?> RecognizeCandidateAsync(
@@ -200,7 +224,8 @@ public sealed class TextCandidateRegionOcrService
             return false;
         }
 
-        return !ShouldApplyCjkTargetPostFilter(request.Language, request.OrientationMode)
+        return request.ContentLayoutMode == ContentLayoutMode.StaticMenu
+            || !ShouldApplyCjkTargetPostFilter(request.Language, request.OrientationMode)
             || IsCjkTargetCandidate(candidate, sourceZoneHeight, recognizedText);
     }
 
@@ -215,7 +240,8 @@ public sealed class TextCandidateRegionOcrService
 
     private IReadOnlyList<TextCandidate> SelectCandidates(
         IEnumerable<TextCandidate> candidates,
-        CapturedFrame frame)
+        CapturedFrame frame,
+        bool preserveMenuEdgeOverlap)
     {
         ArgumentNullException.ThrowIfNull(candidates);
         ArgumentNullException.ThrowIfNull(frame);
@@ -223,7 +249,8 @@ public sealed class TextCandidateRegionOcrService
         var selected = new List<TextCandidate>();
         foreach (var candidate in FilterCandidates(candidates, frame))
         {
-            if (selected.Any(existing => Intersects(existing.Bounds, candidate.Bounds)))
+            if (selected.Any(existing => Intersects(existing.Bounds, candidate.Bounds)
+                && !(preserveMenuEdgeOverlap && IsSmallHorizontalEdgeOverlap(existing.Bounds, candidate.Bounds))))
             {
                 continue;
             }
@@ -297,7 +324,7 @@ public sealed class TextCandidateRegionOcrService
             targetStride,
             frame.PixelFormat,
             pixels,
-            frame.CapturedAt);
+            frame.CapturedAt, frame.Origin, frame.IsCachedReuse);
     }
 
     private static bool Intersects(BoundingBox left, BoundingBox right)
@@ -306,6 +333,19 @@ public sealed class TextCandidateRegionOcrService
             && right.X < left.Right
             && left.Y < right.Bottom
             && right.Y < left.Bottom;
+    }
+
+    private static bool IsSmallHorizontalEdgeOverlap(BoundingBox left, BoundingBox right)
+    {
+        var height = Math.Min(left.Height, right.Height);
+        var overlap = Math.Min(left.Right, right.Right) - Math.Max(left.X, right.X);
+        // Detector padding can overlap in the whitespace between adjacent menu items.
+        // Do not discard a whole item for that overlap; nested/stacked regions still conflict.
+        return left.Width > left.Height && right.Width > right.Height
+            && Math.Max(left.Height, right.Height) <= height * 1.35
+            && Math.Abs((left.Y + left.Height / 2.0) - (right.Y + right.Height / 2.0)) <= height * .25
+            && overlap > 0 && overlap <= height * .4
+            && overlap <= Math.Min(left.Width, right.Width) * .1;
     }
 
     private static bool HasSubstantialOverlap(BoundingBox left, BoundingBox right)
@@ -461,6 +501,7 @@ public sealed class TextCandidateRegion
             zoneRequest.CandidateGroupingSettings)
         {
             DetectorPreset = zoneRequest.DetectorPreset,
+            HasMenuValueRowEvidence = Candidate.HasMenuValueRowEvidence,
             DetectorLineBounds = CreateDetectorLineBounds(Candidate),
         };
     }

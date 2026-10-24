@@ -126,7 +126,7 @@ public sealed class OverlayPositioningService
             .Select(item => item.TextItem)
             .ToArray();
 
-        if (previousSnapshot is not null)
+        if (previousSnapshot is not null && effectiveTextStyle.LayoutMode != OverlayTextLayoutMode.KeepWithinSourceBounds)
         {
             textItems = StabilizeTextItems(textItems, previousSnapshot.TextItems);
         }
@@ -136,7 +136,7 @@ public sealed class OverlayPositioningService
             .Select(item => CreateMaskItem(item.MaskBounds, settings))
             .ToArray();
 
-        if (previousSnapshot is not null)
+        if (previousSnapshot is not null && effectiveTextStyle.LayoutMode != OverlayTextLayoutMode.KeepWithinSourceBounds)
         {
             maskItems = StabilizeMaskItems(maskItems, textItems, previousSnapshot);
         }
@@ -324,6 +324,23 @@ public sealed class OverlayPositioningService
         OverlayPlacementConstraints? placementConstraints)
     {
         var sourceBounds = ScaleBounds(result, source.SemanticBounds);
+        if (textStyle.LayoutMode == OverlayTextLayoutMode.KeepWithinSourceBounds)
+        {
+            var item = new OverlayTextItem(block.Text, sourceBounds.X, sourceBounds.Y,
+                sourceBounds.Width, sourceBounds.Height, textStyle);
+            if (textStyle.AutoFontSize)
+            {
+                item = new OverlayTextItem(block.Text, item.X, item.Y, item.Width, item.Height,
+                    textStyle with { FontSize = FindAutoFontSize(item) });
+            }
+            var measured = MeasureText(block.Text, item.TextStyle, Math.Max(1, item.Width - 16));
+            var warnings = measured.Height + 4 > item.Height || measured.Lines.Any(line => line.HasOverflowed)
+                ? new[] { "Overlay fit warning: menu text may be truncated inside its source element; the selected font size is preserved." }
+                : Array.Empty<string>();
+            return new OverlayPositionedTextItem(item,
+                new OverlayMaskBounds(sourceBounds.X, sourceBounds.Y, sourceBounds.Width, sourceBounds.Height),
+                sourceBounds, warnings);
+        }
         var memberBounds = source.MemberBounds
             .Select(bounds => ScaleBounds(result, bounds))
             .ToArray();
@@ -818,6 +835,10 @@ public sealed class OverlayPositioningService
         IReadOnlyList<OverlayLayoutBounds> placedTranslationBounds,
         OverlayLayoutBounds regionBounds)
     {
+        if (item.TextItem.TextStyle.LayoutMode == OverlayTextLayoutMode.KeepWithinSourceBounds)
+        {
+            return item;
+        }
         var clamped = ClampTextItemToBounds(item.TextItem, regionBounds);
         var debugMetricLines = item.DebugMetricLines;
         if (clamped.Width != item.TextItem.Width || clamped.Height != item.TextItem.Height)

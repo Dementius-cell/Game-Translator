@@ -27,6 +27,39 @@ namespace GameTranslator.Tests.Smoke;
 
 public sealed class ProfileManagerViewModelTests
 {
+    [Fact]
+    public async Task TranslateOnceHotkey_WhenBusy_DoesNotStartOrStopWork()
+    {
+        var model = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService());
+        SetPropertyValue(model, "IsBusy", true);
+        var method = model.GetType().GetMethod("HandleGlobalHotkeyAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        await (Task)method.Invoke(model, new object[] { GlobalHotkeyAction.TranslateOnce })!;
+        Assert.True((bool)GetPropertyValue(model, "IsBusy")!);
+        Assert.Contains("wait for the current operation", (string)GetPropertyValue(model, "StatusMessage")!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StaticMenu_PersistsPerZoneAndSurvivesEditorReload()
+    {
+        var repository = new InMemoryProfileRepository();
+        var model = CreateMainViewModel(repository, new TestSettingsService());
+        InvokeMethod(model, "BeginCreateProfile");
+        SetPropertyValue(model, "ProfileName", "Synthetic menu");
+        SetPropertyValue(model, "TranslatorProvider", "Google");
+        SetPropertyValue(model, "SourceLanguage", "en");
+        SetPropertyValue(model, "TargetLanguage", "ru");
+        InvokeMethod(model, "AddZone");
+        var zone = GetPropertyValue(model, "SelectedZone")!;
+        SetPropertyValue(zone, "ContentLayoutMode", ContentLayoutMode.StaticMenu);
+        Assert.Equal("Menu / Interface", GetPropertyValue(zone, "ContentLayoutModeSummary"));
+        await InvokeTaskMethodAsync(model, "SaveAsync");
+        var saved = Assert.Single(await repository.ListAsync());
+        Assert.Equal(ContentLayoutMode.StaticMenu, Assert.Single(saved.OcrZones).ContentLayoutMode);
+        var editorType = zone.GetType();
+        var reloaded = editorType.GetMethod("FromModel")!.Invoke(null, new object[] { saved.OcrZones[0] })!;
+        Assert.Equal(ContentLayoutMode.StaticMenu, GetPropertyValue(reloaded, "ContentLayoutMode"));
+    }
+
     [Theory]
     [InlineData("ru-RU", "jpn+chi_sim+chi_tra", 3)]
     [InlineData("en-US", "jpn+chi_sim+chi_tra", 3)]
@@ -2824,7 +2857,11 @@ public sealed class ProfileManagerViewModelTests
         lifecycleEvents.Add(new LiveCandidateLifecycleEvent(
             sequence: 5, refreshSequence: 4, occurredAt: DateTimeOffset.UnixEpoch.AddSeconds(6),
             kind: LiveCandidateLifecycleEventKind.CandidateWorkCompleted,
-            ocrLineRecognition: new OcrLineRecognitionDiagnostics(2, 1)));
+            ocrLineRecognition: new OcrLineRecognitionDiagnostics(2, 1))
+        {
+            Menu = new MenuLiveDiagnostics(7, 3, Guid.Empty, 1200, 500, true, 2, true, true,
+                1, 1, 14, 0, "text-observed", 250),
+        });
         var appendMethod = viewModel.GetType().GetMethod(
             "AppendLiveCandidateLifecycleDebugInfo",
             BindingFlags.NonPublic | BindingFlags.Instance)
@@ -2834,6 +2871,12 @@ public sealed class ProfileManagerViewModelTests
         appendMethod.Invoke(viewModel, new object[] { builder });
 
         var report = builder.ToString();
+        Assert.Contains("MenuGeneration=7", report, StringComparison.Ordinal);
+        Assert.Contains("MenuTextVersion=3", report, StringComparison.Ordinal);
+        Assert.Contains("MenuSourceAgeMs=500.0", report, StringComparison.Ordinal);
+        Assert.Contains("MenuCachedReuse=True", report, StringComparison.Ordinal);
+        Assert.Contains("MenuReplacedPending=14", report, StringComparison.Ordinal);
+        Assert.Contains("MenuDecision=text-observed", report, StringComparison.Ordinal);
         Assert.Contains("WritingSystemProfile=CjkVertical", report, StringComparison.Ordinal);
         Assert.Contains("OcrOrientation=Vertical", report, StringComparison.Ordinal);
         Assert.Contains("DetectorPresetRequested=ChineseExperimental", report, StringComparison.Ordinal);

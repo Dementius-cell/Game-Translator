@@ -71,7 +71,7 @@ public sealed class OcrPreprocessor
             frame.Stride,
             frame.PixelFormat,
             pixels,
-            frame.CapturedAt);
+            frame.CapturedAt, frame.Origin, frame.IsCachedReuse);
     }
 
     private static void ApplyBrightnessContrast(byte[] pixels, int stride, int width, int height, int brightness, double contrast)
@@ -199,7 +199,7 @@ public sealed class OcrPreprocessor
             scaledStride,
             source.PixelFormat,
             scaledPixels,
-            source.CapturedAt);
+            source.CapturedAt, source.Origin, source.IsCachedReuse);
     }
 
     private static byte AdjustChannel(byte value, int brightness, double contrast)

@@ -11,7 +11,7 @@ using GameTranslator.Domain.Profiles;
 
 namespace GameTranslator.Application.Pipeline;
 
-public sealed class TranslationPipelineService
+public sealed partial class TranslationPipelineService
 {
     private static readonly TimeSpan CjkVerticalTypewriterGrowthAdditionalQuietInterval =
         TimeSpan.FromMilliseconds(300);
@@ -333,7 +333,9 @@ public sealed class TranslationPipelineService
         OverlayPlacementConstraints? overlayPlacementConstraints = null,
         SemaphoreSlim? candidateTranslationLimiter = null,
         CandidateRecognitionContext? candidateRecognitionContext = null,
-        ProviderRequestDiagnosticsCollector? providerRequestDiagnosticsCollector = null)
+        ProviderRequestDiagnosticsCollector? providerRequestDiagnosticsCollector = null,
+        bool recognitionOnly = false,
+        OcrResult? preparedSourceResult = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(zone);
@@ -351,6 +353,10 @@ public sealed class TranslationPipelineService
         var translationElapsed = TimeSpan.Zero;
         var cacheElapsed = TimeSpan.Zero;
         var overlayElapsed = TimeSpan.Zero;
+
+        var effectiveTextStyle = zone.ContentLayoutMode == ContentLayoutMode.StaticMenu
+            ? zone.TextStyle with { LayoutMode = ContentLayoutPolicyResolver.Resolve(zone.ContentLayoutMode).CandidateOverlayLayout }
+            : zone.TextStyle;
 
         CapturedFrame frame;
         if (capturedFrame is null)
@@ -372,6 +378,11 @@ public sealed class TranslationPipelineService
         }
 
         var optimizationContext = CreateOptimizationContext(profile, zone, frame, runOptions);
+        if (recognitionOnly || preparedSourceResult is not null)
+            optimizationContext = optimizationContext with { ShouldReusePreviousResult = false };
+        // A scheduled menu recheck must observe text, even when whole-crop pixel differences are small.
+        if (candidateRecognitionContext is not null && zone.ContentLayoutMode == ContentLayoutMode.StaticMenu)
+            optimizationContext = optimizationContext with { ShouldReusePreviousResult = false };
         if (candidateRecognitionContext?.WatermarkEvidence is { } currentWatermark
             && optimizationContext.PreviousState?.Result.SourceOcrResult.WatermarkDecision is { } previousWatermark
             && previousWatermark.EvidenceKey != WatermarkFilter.CreateEvidenceKey(profile.OcrSettings.WatermarkFilter, currentWatermark))
@@ -422,12 +433,13 @@ public sealed class TranslationPipelineService
         var request = CreateOcrRequest(profile, zone, frame, candidateRecognitionContext?.Candidate);
         var ocrMeasurement = await RunTimedStageAsync(
             TranslationPipelineStage.Ocr,
-            () => runOptions.EnableCandidateDetectorPilot
+            () => preparedSourceResult is not null ? Task.FromResult(preparedSourceResult) : runOptions.EnableCandidateDetectorPilot
                 ? RecognizeCandidateRegionsAsync(request, cancellationToken, profile.TranslatorSettings.AutoDetectSourceLanguage == true)
                 : ocrService.RecognizeAsync(request, cancellationToken));
         var sourceResult = ocrMeasurement.Value;
         ocrElapsed = ocrMeasurement.Elapsed;
-        providerRequestDiagnosticsCollector?.RecordOcrCompleted(sourceResult.TextBlocks.Count, ocrElapsed);
+        if (preparedSourceResult is null)
+            providerRequestDiagnosticsCollector?.RecordOcrCompleted(sourceResult.TextBlocks.Count, ocrElapsed);
 
         if (candidateRecognitionContext is { } candidateContext
             && !candidateRegionOcrService.IsRecognizedCandidateAccepted(
@@ -458,6 +470,15 @@ public sealed class TranslationPipelineService
             TranslationPipelineStage.Grouping,
             () => Task.FromResult(TranslationTextGroupingService.CreateTranslationSourceResult(sourceResult, zone, profile.TranslatorSettings.AutoDetectSourceLanguage == true)));
         var translationSourceResult = groupingMeasurement.Value;
+        if (recognitionOnly)
+        {
+            return new TranslationPipelineResult(profile.Id, zone.Id, frame, sourceResult, null,
+                CreateEmptySnapshot(sourceResult.RecognizedAt, profile.OverlaySettings),
+                timings: CreateTimings(captureElapsed, ocrElapsed, credentialsElapsed, translationElapsed,
+                    cacheElapsed, overlayElapsed, totalStopwatch.Elapsed),
+                optimization: new TranslationPipelineOptimizationInfo(false, true, true, null),
+                translationInputBlockCount: translationSourceResult.TextBlocks.Count);
+        }
         if (translationSourceResult.TextBlocks.Count == 0)
         {
             ClearTextStabilityState(optimizationContext.StateKey);
@@ -465,7 +486,7 @@ public sealed class TranslationPipelineService
                 translationSourceResult,
                 sourceResult.RecognizedAt,
                 previousSnapshot,
-                zone.TextStyle,
+                effectiveTextStyle,
                 profile.OverlaySettings,
                 overlayPlacementConstraints);
             if (showOverlay)
@@ -515,7 +536,8 @@ public sealed class TranslationPipelineService
             typewriterGrowthGuardApplied);
         if (!textStability.IsStable)
         {
-            var pendingSnapshot = runOptions.PreservePreviousOverlayWhileWaitingForStableText
+            var pendingSnapshot = zone.ContentLayoutMode != ContentLayoutMode.StaticMenu
+                && runOptions.PreservePreviousOverlayWhileWaitingForStableText
                 ? previousSnapshot ?? CreateEmptySnapshot(sourceResult.RecognizedAt, profile.OverlaySettings)
                 : CreateEmptySnapshot(sourceResult.RecognizedAt, profile.OverlaySettings);
             if (showOverlay)
@@ -629,12 +651,17 @@ public sealed class TranslationPipelineService
                     sourceResult);
             }
 
+            if (zone.ContentLayoutMode == ContentLayoutMode.StaticMenu)
+            {
+                translateResponse = MenuTranslationIntegrity.Validate(
+                    translationSourceResult.TextBlocks.Select(block => block.Text).ToArray(), translateResponse);
+            }
             var translatedResult = CreateTranslatedResult(translationSourceResult, translateResponse);
             var snapshot = overlayPositioningService.CreateSnapshot(
                 translatedResult,
                 translateResponse.TranslatedAt,
                 previousSnapshot,
-                zone.TextStyle,
+                effectiveTextStyle,
                 profile.OverlaySettings,
                 overlayPlacementConstraints);
             if (showOverlay)
@@ -689,7 +716,9 @@ public sealed class TranslationPipelineService
         OverlayPlacementConstraints? overlayPlacementConstraints = null,
         SemaphoreSlim? candidateTranslationLimiter = null,
         CandidateRecognitionContext? candidateRecognitionContext = null,
-        ProviderRequestDiagnosticsCollector? providerRequestDiagnosticsCollector = null)
+        ProviderRequestDiagnosticsCollector? providerRequestDiagnosticsCollector = null,
+        bool recognitionOnly = false,
+        OcrResult? preparedSourceResult = null)
     {
         return RunZoneAsync(
             profile,
@@ -704,7 +733,9 @@ public sealed class TranslationPipelineService
             overlayPlacementConstraints: overlayPlacementConstraints,
             candidateTranslationLimiter: candidateTranslationLimiter,
             candidateRecognitionContext: candidateRecognitionContext,
-            providerRequestDiagnosticsCollector: providerRequestDiagnosticsCollector);
+            providerRequestDiagnosticsCollector: providerRequestDiagnosticsCollector,
+            recognitionOnly: recognitionOnly,
+            preparedSourceResult: preparedSourceResult);
     }
 
     private async Task<OcrResult> RecognizeCandidateRegionsAsync(
@@ -754,6 +785,7 @@ public sealed class TranslationPipelineService
         {
             DetectorPreset = zone.DetectorPreset,
             WatermarkFilter = profile.OcrSettings.WatermarkFilter,
+            HasMenuValueRowEvidence = candidate?.HasMenuValueRowEvidence ?? false,
             DetectorLineBounds = candidate is null ? Array.Empty<BoundingBox>()
                 : TextCandidateRegion.CreateDetectorLineBounds(candidate),
         };
@@ -1602,7 +1634,7 @@ public sealed class TranslationPipelineService
         }
     }
 
-    public sealed class LiveTranslationSession : IDisposable
+    public sealed partial class LiveTranslationSession : IDisposable
     {
         // The trace remains in memory only for the duration of a live session. The automatic
         // report writer independently enforces its 99 MB UTF-8 file limit.
@@ -1725,28 +1757,10 @@ public sealed class TranslationPipelineService
             var cancelledZoneIds = new List<string>();
             ResetWorkCompletionSignalForCollection();
             var overlayChanged = await CollectCompletedWorkAsync();
-            IReadOnlyList<LiveCapturedZone> capturedZones;
-            try
-            {
-                capturedZones = await CaptureZonesAsync(cancellationToken);
-            }
-            catch (TranslationPipelineException exception)
-                when (exception.Stage == TranslationPipelineStage.Capture
-                    && runOptions.EnableCandidateDetectorPilot)
-            {
-                overlayChanged |= InvalidateCandidatesForCaptureLoss(
-                    exception.Message,
-                    cancelledZoneIds);
-                var captureLossBatchResult = CreateBatchResult();
-                overlayChanged = PublishOverlaySnapshotIfReady(captureLossBatchResult, overlayChanged);
+            var captureBatch = await CaptureZonesAsync(cancelledZoneIds, cancellationToken);
+            overlayChanged |= captureBatch.OverlayChanged;
 
-                return CreateLiveUpdate(
-                    captureLossBatchResult,
-                    overlayChanged,
-                    cancelledZoneIds);
-            }
-
-            foreach (var capturedZone in capturedZones)
+            foreach (var capturedZone in captureBatch.Zones)
             {
                 overlayChanged |= await ReconcileCapturedZoneAsync(
                     capturedZone,
@@ -1990,6 +2004,10 @@ public sealed class TranslationPipelineService
 
             disposed = true;
             cancellationSource.Cancel();
+            menuScheduler.Dispose();
+            foreach (var work in menuOcrWork)
+                _ = work.Task.ContinueWith(task => { _ = task.Exception; work.Cancellation.Dispose(); },
+                    CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             foreach (var state in zoneStates.Values)
             {
                 CancelActiveWork(state);
@@ -2003,27 +2021,24 @@ public sealed class TranslationPipelineService
         }
 
         private bool InvalidateCandidatesForCaptureLoss(
-            string unavailableReason,
+            LiveZoneState state,
             ICollection<string> cancelledZoneIds)
         {
             InvalidateTransientEmptyOverlayRetention();
             var overlayChanged = false;
-            foreach (var state in zoneStates.Values)
+            foreach (var candidateState in state.CandidateStates.Values.ToArray())
             {
-                foreach (var candidateState in state.CandidateStates.Values.ToArray())
-                {
-                    overlayChanged |= CancelAndRemoveCandidate(
-                        state,
-                        candidateState,
-                        cancelledZoneIds,
-                        LiveCandidateCancellationReason.CaptureLost);
-                }
+                overlayChanged |= CancelAndRemoveCandidate(
+                    state,
+                    candidateState,
+                    cancelledZoneIds,
+                    LiveCandidateCancellationReason.CaptureLost);
             }
-
+            forceImmediateEmptyOverlayPublication |= overlayChanged;
             return overlayChanged;
         }
 
-        private async Task<IReadOnlyList<LiveCapturedZone>> CaptureZonesAsync(CancellationToken cancellationToken)
+        private async Task<LiveCaptureBatch> CaptureZonesAsync(ICollection<string> cancelledZoneIds, CancellationToken cancellationToken)
         {
             var refreshAt = DateTimeOffset.UtcNow;
             var zonesToCapture = profile.OcrZones
@@ -2031,7 +2046,7 @@ public sealed class TranslationPipelineService
                 .ToArray();
             if (zonesToCapture.Length == 0)
             {
-                return Array.Empty<LiveCapturedZone>();
+                return new LiveCaptureBatch([], false);
             }
 
             var snapshotToRestore = service.overlayService.CurrentSnapshot;
@@ -2049,6 +2064,8 @@ public sealed class TranslationPipelineService
                 service.overlayService.Hide();
             }
 
+            var overlayChanged = false;
+            var hadCaptureFailure = false;
             try
             {
                 var capturedZones = new List<LiveCapturedZone>(zonesToCapture.Length);
@@ -2057,29 +2074,49 @@ public sealed class TranslationPipelineService
                     RecordLifecycleEvent(
                         LiveCandidateLifecycleEventKind.CaptureStarted,
                         zoneId: zone.Id);
-                    var frameMeasurement = await RunTimedStageAsync(
-                        TranslationPipelineStage.Capture,
-                        () => service.captureService.CaptureAsync(CreateCaptureRegion(zone), cancellationToken));
-                    zoneStates[zone.Id].LastRefreshAt = refreshAt;
-                    RecordLifecycleEvent(
-                        LiveCandidateLifecycleEventKind.CaptureCompleted,
-                        zoneId: zone.Id,
-                        frameCapturedAt: frameMeasurement.Value.CapturedAt,
-                        elapsed: frameMeasurement.Elapsed);
-                    capturedZones.Add(new LiveCapturedZone(zone, frameMeasurement.Value, frameMeasurement.Elapsed));
+                    try
+                    {
+                        var frameMeasurement = await RunTimedStageAsync(
+                            TranslationPipelineStage.Capture,
+                            () => runOptions.EnableCandidateDetectorPilot && zone.ContentLayoutMode == ContentLayoutMode.StaticMenu
+                                ? service.captureService.CaptureRecentAsync(CreateCaptureRegion(zone), TimeSpan.FromMilliseconds(500), cancellationToken)
+                                : service.captureService.CaptureAsync(CreateCaptureRegion(zone), cancellationToken));
+                        cancellationToken.ThrowIfCancellationRequested();
+                        ThrowIfDisposed();
+                        zoneStates[zone.Id].LastRefreshAt = refreshAt;
+                        RecordLifecycleEvent(
+                            LiveCandidateLifecycleEventKind.CaptureCompleted,
+                            zoneId: zone.Id,
+                            frameCapturedAt: frameMeasurement.Value.CapturedAt,
+                            elapsed: frameMeasurement.Elapsed);
+                        capturedZones.Add(new LiveCapturedZone(zone, frameMeasurement.Value, frameMeasurement.Elapsed));
+                    }
+                    catch (TranslationPipelineException exception) when (
+                        exception.Stage == TranslationPipelineStage.Capture && runOptions.EnableCandidateDetectorPilot)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        ThrowIfDisposed();
+                        hadCaptureFailure = true;
+                        overlayChanged |= InvalidateCandidatesForCaptureLoss(zoneStates[zone.Id], cancelledZoneIds);
+                        RecordLifecycleEvent(LiveCandidateLifecycleEventKind.CaptureFailed, zoneId: zone.Id,
+                            failureStage: exception.Stage, failureExceptionType: exception.InnerException?.GetType().FullName,
+                            failureExceptionMessage: exception.Message);
+                    }
                 }
 
-                return capturedZones;
+                return new LiveCaptureBatch(capturedZones, overlayChanged);
             }
             finally
             {
-                if (shouldRestoreOverlay)
+                if (shouldRestoreOverlay && !disposed && !cancellationToken.IsCancellationRequested)
                 {
-                    service.overlayService.Show(snapshotToRestore!);
+                    // A failed zone has lost authority even while the other zones are still being captured.
+                    var restore = hadCaptureFailure ? CreateBatchResult().OverlaySnapshot : snapshotToRestore!;
+                    service.overlayService.Show(restore);
                     RecordLifecycleEvent(
                         LiveCandidateLifecycleEventKind.PreviousOverlayRestoredAfterCapture,
-                        overlayTextItemCount: snapshotToRestore!.TextItems.Count,
-                        overlayMaskItemCount: snapshotToRestore.MaskItems.Count);
+                        overlayTextItemCount: restore.TextItems.Count,
+                        overlayMaskItemCount: restore.MaskItems.Count);
                 }
             }
         }
@@ -2179,6 +2216,8 @@ public sealed class TranslationPipelineService
             if (profile.OcrSettings.WatermarkFilter != WatermarkFilterMode.Off)
                 state.WatermarkHistory.Observe(capturedZone.Frame, orderedRegions);
             ValidateTransientEmptyOverlayRetention(state, orderedRegions);
+            if (state.Zone.ContentLayoutMode == ContentLayoutMode.StaticMenu)
+                return ReconcileMenuRegions(state, capturedZone, orderedRegions, cancelledZoneIds);
             foreach (var region in orderedRegions)
             {
                 var candidateId = CreateCandidateId(state.Zone, region.Candidate.Bounds);
@@ -2232,7 +2271,19 @@ public sealed class TranslationPipelineService
                     candidateState.GeometrySignature,
                     geometrySignature,
                     StringComparison.Ordinal);
-                var sourceChanged = !candidateState.SourceIdentity.Matches(region.Frame);
+                var pixelsChanged = !candidateState.SourceIdentity.Matches(region.Frame);
+                var backgroundOnly = pixelsChanged && !geometryChanged && !watermarkChanged
+                    && candidateState.Zone.ContentLayoutMode == ContentLayoutMode.StaticMenu
+                    && candidateState.SourceIdentity.MatchesMenuStructure(region.Frame);
+                var sourceChanged = pixelsChanged && !backgroundOnly;
+                if (backgroundOnly)
+                {
+                    candidateState.Region = region;
+                    if (!candidateState.MenuBackgroundChanged)
+                        RecordCandidateLifecycleEvent(LiveCandidateLifecycleEventKind.CandidateMenuBackgroundChanged,
+                            candidateState, frameCapturedAt: capturedZone.Frame.CapturedAt);
+                    candidateState.MenuBackgroundChanged = true;
+                }
                 if (geometryChanged
                     && (matchedGeometryJitter
                         || (!sourceChanged
@@ -2253,6 +2304,8 @@ public sealed class TranslationPipelineService
                 else if (geometryChanged)
                 {
                     var hadPublishedResult = candidateState.Result is not null || candidateState.Failure is not null;
+                    if (candidateState.Zone.ContentLayoutMode == ContentLayoutMode.StaticMenu)
+                        forceImmediateEmptyOverlayPublication = true;
                     if (candidateState.ActiveWork is not null)
                     {
                         cancelledZoneIds.Add(candidateState.Id);
@@ -2314,6 +2367,8 @@ public sealed class TranslationPipelineService
                 if (sourceChanged || watermarkChanged)
                 {
                     var hadPublishedResult = candidateState.Result is not null || candidateState.Failure is not null;
+                    if (candidateState.Zone.ContentLayoutMode == ContentLayoutMode.StaticMenu)
+                        forceImmediateEmptyOverlayPublication = true;
                     if (candidateState.ActiveWork is not null)
                     {
                         cancelledZoneIds.Add(candidateState.Id);
@@ -2507,7 +2562,19 @@ public sealed class TranslationPipelineService
             bool allowTransientOverlayRetention = false)
         {
             var hadPublishedResult = candidateState.Result is not null || candidateState.Failure is not null;
-            if (allowTransientOverlayRetention
+            if (candidateState.Menu is not null)
+            {
+                if (menuScheduler.HasActive(candidateState.Id) && candidateState.ActiveWork is null)
+                {
+                    cancelledZoneIds.Add(candidateState.Id);
+                    RecordCandidateLifecycleEvent(LiveCandidateLifecycleEventKind.CandidateWorkCancelled,
+                        candidateState, cancellationReason: cancellationReason);
+                }
+                menuScheduler.Remove(candidateState.Id);
+            }
+            if (candidateState.Zone.ContentLayoutMode == ContentLayoutMode.StaticMenu)
+                forceImmediateEmptyOverlayPublication = true;
+            if (allowTransientOverlayRetention && candidateState.Zone.ContentLayoutMode != ContentLayoutMode.StaticMenu
                 && cancellationReason == LiveCandidateCancellationReason.CandidateDisappeared)
             {
                 RegisterTransientEmptyOverlayRetention(candidateState);
@@ -2537,6 +2604,9 @@ public sealed class TranslationPipelineService
             TimeSpan captureElapsed,
             OverlayPlacementConstraints overlayPlacementConstraints)
         {
+            candidateState.SourceIdentity = FrameFingerprint.FromFrame(candidateState.Region.Frame);
+            candidateState.MenuBackgroundChanged = false;
+            candidateState.LastWorkStartedAt = service.timeProvider.GetUtcNow();
             var candidateCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationSource.Token);
             var providerRequestDiagnostics = new ProviderRequestDiagnosticsCollector();
             candidateState.WorkAttempt = checked(candidateState.WorkAttempt + 1);
@@ -2656,8 +2726,11 @@ public sealed class TranslationPipelineService
 
         private bool ShouldProcessStableFrame(LiveCandidateState state)
         {
+            var menuRecheck = state.Zone.ContentLayoutMode == ContentLayoutMode.StaticMenu
+                && state.MenuBackgroundChanged
+                && service.timeProvider.GetUtcNow() - state.LastWorkStartedAt >= TimeSpan.FromSeconds(1);
             return (state.Failure is null || state.TranslationRetry.IsDue(service.timeProvider.GetUtcNow()))
-                && (state.Result is null || state.Result.Optimization.TranslationSkipped);
+                && (state.Result is null || state.Result.Optimization.TranslationSkipped || menuRecheck);
         }
 
         private bool IsCandidateGroupingConfirmed(LiveCandidateState state)
@@ -2766,7 +2839,7 @@ public sealed class TranslationPipelineService
 
         private async Task<bool> CollectCompletedWorkAsync()
         {
-            var overlayChanged = false;
+            var overlayChanged = await CollectMenuWorkAsync();
             while (retiredCandidateProviderDiagnostics.TryDequeue(out var retiredDiagnostics))
             {
                 RecordCandidateProviderRequestDiagnostics(
@@ -2809,6 +2882,7 @@ public sealed class TranslationPipelineService
 
                 foreach (var candidateState in state.CandidateStates.Values.ToArray())
                 {
+                    if (candidateState.Menu is not null) continue;
                     var candidateWork = candidateState.ActiveWork;
                     if (candidateWork is not null) CollectCandidateProgress(candidateState, candidateWork);
                     if (candidateWork is null || !candidateWork.Task.IsCompleted)
@@ -2826,7 +2900,9 @@ public sealed class TranslationPipelineService
                                 candidateState.GeometrySignature,
                                 StringComparison.Ordinal)
                             || candidateWork.CandidateSourceIdentity is null
-                            || !candidateWork.CandidateSourceIdentity.Matches(candidateState.Region.Frame))
+                            || !(candidateWork.CandidateSourceIdentity.Matches(candidateState.Region.Frame)
+                                || (candidateState.Zone.ContentLayoutMode == ContentLayoutMode.StaticMenu
+                                    && candidateWork.CandidateSourceIdentity.MatchesMenuStructure(candidateState.Region.Frame))))
                         {
                             RecordCandidateLifecycleEvent(
                                 LiveCandidateLifecycleEventKind.CandidateWorkCancelled,
@@ -2835,6 +2911,9 @@ public sealed class TranslationPipelineService
                             continue;
                         }
 
+                        if (candidateState.Zone.ContentLayoutMode == ContentLayoutMode.StaticMenu
+                            && completedResult.OverlaySnapshot.TextItems.Count == 0)
+                            forceImmediateEmptyOverlayPublication = true;
                         candidateState.Result = completedResult;
                         UpdateCandidateTypewriterGrowthState(candidateState, completedResult);
                         UpdateCandidateEmptyOcrRetryState(candidateState, completedResult);
@@ -3296,7 +3375,8 @@ public sealed class TranslationPipelineService
             bool? emptyOcrGroupingReset = null,
             OcrLineRecognitionDiagnostics? ocrLineRecognition = null,
             WatermarkDecision? watermarkDecision = null,
-            IEnumerable<string>? translationSourceLanguages = null)
+            IEnumerable<string>? translationSourceLanguages = null,
+            MenuLiveDiagnostics? menuDiagnostics = null)
         {
             if (!runOptions.EnableCandidateDetectorPilot)
             {
@@ -3389,7 +3469,7 @@ public sealed class TranslationPipelineService
                 emptyOcrGroupingReset: emptyOcrGroupingReset,
                 ocrLineRecognition: ocrLineRecognition,
                 watermarkDecision: watermarkDecision,
-                translationSourceLanguages: translationSourceLanguages);
+                translationSourceLanguages: translationSourceLanguages) { Menu = menuDiagnostics };
             candidateLifecycleEvents.Enqueue(lifecycleEvent);
             candidateLifecycleEventsSinceLastUpdate.Add(lifecycleEvent);
             candidateLifecycleEventSequence = checked(candidateLifecycleEventSequence + 1);
@@ -3549,6 +3629,7 @@ public sealed class TranslationPipelineService
 
         private sealed class LiveCandidateState
         {
+            public MenuCandidateState? Menu { get; set; }
             public LiveCandidateState(
                 string id,
                 string sourceZoneId,
@@ -3573,7 +3654,7 @@ public sealed class TranslationPipelineService
 
             public string SourceZoneId { get; }
 
-            public OcrZone Zone { get; }
+            public OcrZone Zone { get; set; }
 
             public TextCandidateRegion Region { get; set; }
 
@@ -3584,6 +3665,10 @@ public sealed class TranslationPipelineService
             public BoundingBox AnchorBounds { get; }
 
             public FrameFingerprint SourceIdentity { get; set; }
+
+            public bool MenuBackgroundChanged { get; set; }
+
+            public DateTimeOffset LastWorkStartedAt { get; set; }
 
             public string GeometrySignature { get; set; }
 
@@ -3629,6 +3714,8 @@ public sealed class TranslationPipelineService
             string? CandidateGeometrySignature = null,
             FrameFingerprint? CandidateSourceIdentity = null,
             ProviderRequestDiagnosticsCollector? ProviderRequestDiagnostics = null);
+
+        private sealed record LiveCaptureBatch(IReadOnlyList<LiveCapturedZone> Zones, bool OverlayChanged);
 
         private sealed record LiveCapturedZone(
             OcrZone Zone,
@@ -3700,6 +3787,11 @@ public sealed class TranslationPipelineService
                 frame.PixelFormat,
                 frame.PixelData.ToArray());
         }
+
+        public bool MatchesMenuStructure(CapturedFrame frame) =>
+            Width == frame.Width && Height == frame.Height && Stride == frame.Stride
+            && PixelFormat == "Bgra32" && frame.PixelFormat == "Bgra32"
+            && MenuTextStructure.Matches(PixelData, frame.PixelData.Span, Width, Height, Stride);
 
         public bool Matches(CapturedFrame frame)
         {

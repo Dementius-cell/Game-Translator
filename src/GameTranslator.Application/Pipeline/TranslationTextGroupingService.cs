@@ -1,4 +1,5 @@
 using GameTranslator.Application.Ocr;
+using GameTranslator.Application.Content;
 using GameTranslator.Domain.Profiles;
 
 namespace GameTranslator.Application.Pipeline;
@@ -24,11 +25,14 @@ public static partial class TranslationTextGroupingService
         // Only the translation projection excludes standalone punctuation noise.
         var excludedBounds = sourceResult.WatermarkCandidates.Where(c => c.Decision.Excluded)
             .Select(c => c.Bounds).ToHashSet();
-        if (excludedBounds.Count > 0 || sourceResult.TextBlocks.Any(block => IsPunctuationNoise(block.Text)))
+        bool Exclude(string text) => IsPunctuationNoise(text)
+            || (zone.ContentLayoutMode == ContentLayoutMode.StaticMenu
+                && (MenuTranslationIntegrity.IsNumericDisplay(text) || MenuTranslationIntegrity.IsStandaloneControlHint(text)));
+        if (excludedBounds.Count > 0 || sourceResult.TextBlocks.Any(block => Exclude(block.Text)))
         {
             var retained = sourceResult.TextBlocks
                 .Select((block, index) => (block, index))
-                .Where(item => !IsPunctuationNoise(item.block.Text) && !excludedBounds.Contains(item.block.Bounds))
+                .Where(item => !Exclude(item.block.Text) && !excludedBounds.Contains(item.block.Bounds))
                 .ToArray();
             sourceResult = new OcrResult(
                 sourceResult.Request,
@@ -40,6 +44,14 @@ public static partial class TranslationTextGroupingService
                 LineRecognition = sourceResult.LineRecognition,
             };
         }
+
+        if (zone.ContentLayoutMode == ContentLayoutMode.StaticMenu
+            && MenuControlTextProjection.TryCreate(sourceResult) is { } menuActions)
+            return menuActions;
+
+        if (zone.ContentLayoutMode == ContentLayoutMode.StaticMenu
+            && MenuMetricTextProjection.TryCreate(sourceResult) is { } menuMetrics)
+            return menuMetrics;
 
         if (separateLanguages)
             return CreateLanguageAwareResult(sourceResult, zone);

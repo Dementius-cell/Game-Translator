@@ -388,11 +388,14 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
     public string ContentLayoutModeSummary => ContentLayoutMode switch
     {
         ContentLayoutMode.DialogComic => "Dialog / Comic",
+        ContentLayoutMode.StaticMenu => "Menu / Interface",
         _ => "Unsupported content layout mode",
     };
 
     public string ContentLayoutPolicySummary => ContentLayoutMode switch
     {
+        ContentLayoutMode.StaticMenu =>
+            "Separate menu elements; translation stays inside each element. Auto grouping keeps one line or column; set an explicit limit for a description zone. Translate once: Ctrl+Shift+F7 (configurable).",
         ContentLayoutMode.DialogComic =>
             "Automatic bounded writing-system grouping; centered per-region overlay; refresh on every live cycle.",
         _ => "No policy is available for this content layout mode.",

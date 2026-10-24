@@ -7,6 +7,24 @@ namespace GameTranslator.Tests.Infrastructure;
 
 public sealed class JsonProfileExchangeGatewayTests : IDisposable
 {
+    [Fact]
+    public async Task ExportAndImportAsync_PreservesMixedMenuAndDialogueZones()
+    {
+        var gateway = new JsonProfileExchangeGateway();
+        var profile = CreateProfile("Synthetic menu");
+        profile = profile with { OcrZones = new[]
+        {
+            profile.OcrZones[0],
+            profile.OcrZones[0] with { Id = "menu", ContentLayoutMode = ContentLayoutMode.StaticMenu },
+        } };
+        var path = Path.Combine(workingDirectory, "menu.json");
+        await gateway.ExportAsync(profile, path);
+        var imported = await gateway.ImportAsync(path);
+        Assert.Equal(ContentLayoutMode.DialogComic, imported.OcrZones[0].ContentLayoutMode);
+        Assert.Equal(ContentLayoutMode.StaticMenu, imported.OcrZones[1].ContentLayoutMode);
+        Assert.Equal(profile.SchemaVersion, imported.SchemaVersion);
+    }
+
     private readonly string workingDirectory = Path.Combine(
         Path.GetTempPath(),
         "GameTranslator.Tests",

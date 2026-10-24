@@ -17,6 +17,7 @@ public sealed class GlobalHotkeyService
         new(GlobalHotkeyAction.ToggleOverlay, new GlobalHotkeyGesture(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Alt, "O")),
         new(GlobalHotkeyAction.ShowSettings, new GlobalHotkeyGesture(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Alt, "S")),
         new(GlobalHotkeyAction.ExitApplication, new GlobalHotkeyGesture(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Alt, "Q")),
+        new(GlobalHotkeyAction.TranslateOnce, new GlobalHotkeyGesture(GlobalHotkeyModifiers.Control | GlobalHotkeyModifiers.Shift, "F7")),
     };
 
     private readonly ISettingsService settings;

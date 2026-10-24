@@ -15,6 +15,20 @@ public sealed class CapturedFrame
         string pixelFormat,
         ReadOnlyMemory<byte> pixelData,
         DateTimeOffset capturedAt)
+        : this(region, width, height, stride, pixelFormat, pixelData, capturedAt, null, false)
+    {
+    }
+
+    public CapturedFrame(
+        CaptureRegion region,
+        int width,
+        int height,
+        int stride,
+        string pixelFormat,
+        ReadOnlyMemory<byte> pixelData,
+        DateTimeOffset capturedAt,
+        CaptureFrameOrigin? origin,
+        bool isCachedReuse = false)
     {
         if (width <= 0)
         {
@@ -48,6 +62,8 @@ public sealed class CapturedFrame
         PixelFormat = pixelFormat;
         this.pixelData = pixelData.ToArray();
         CapturedAt = capturedAt;
+        Origin = origin;
+        IsCachedReuse = isCachedReuse;
     }
 
     public CaptureRegion Region { get; }
@@ -62,5 +78,10 @@ public sealed class CapturedFrame
 
     public ReadOnlyMemory<byte> PixelData => pixelData;
 
+    /// <summary>Legacy delivery timestamp. Use Origin for real source-frame freshness.</summary>
     public DateTimeOffset CapturedAt { get; }
+
+    public CaptureFrameOrigin? Origin { get; }
+
+    public bool IsCachedReuse { get; }
 }

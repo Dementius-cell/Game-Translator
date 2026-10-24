@@ -13,6 +13,20 @@ namespace GameTranslator.Tests.Infrastructure;
 
 public sealed class TesseractOcrEngineTests
 {
+    [Theory]
+    [InlineData(ContentLayoutMode.StaticMenu, OcrOrientationMode.Horizontal, 1, PageSegMode.SingleLine)]
+    [InlineData(ContentLayoutMode.StaticMenu, OcrOrientationMode.Horizontal, 2, PageSegMode.SingleBlock)]
+    [InlineData(ContentLayoutMode.StaticMenu, OcrOrientationMode.Vertical, 1, PageSegMode.SingleBlockVertText)]
+    [InlineData(ContentLayoutMode.DialogComic, OcrOrientationMode.Horizontal, 1, PageSegMode.SingleBlock)]
+    public void CandidateSegmentation_ChangesOnlySingleHorizontalMenuLines(ContentLayoutMode content,
+        OcrOrientationMode orientation, int count, PageSegMode expected)
+    {
+        var request = new OcrRequest(CreateRequest().Frame, "eng", layoutMode: OcrLayoutMode.Dialog, contentLayoutMode: content)
+        { DetectorLineBounds = Enumerable.Range(0, count).Select(i => new BoundingBox(0, i, 2, 1)).ToArray() };
+        var method = typeof(TesseractOcrEngine).GetMethod("MapCandidateLayoutMode", BindingFlags.Static | BindingFlags.NonPublic)!;
+        Assert.Equal(expected, (PageSegMode)method.Invoke(null, new object[] { request, orientation })!);
+    }
+
     [Fact]
     public void ExperimentalLanguageSet_MapsToAllFourHorizontalModels()
     {

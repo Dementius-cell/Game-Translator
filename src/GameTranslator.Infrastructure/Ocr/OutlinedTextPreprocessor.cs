@@ -75,7 +75,7 @@ internal static class OutlinedTextPreprocessor
                     result[index * 4 + 3] = 255;
                 }
                 return new CapturedFrame(frame.Region, width, height, width * 4,
-                    frame.PixelFormat, result, frame.CapturedAt);
+                    frame.PixelFormat, result, frame.CapturedAt, frame.Origin, frame.IsCachedReuse);
             }
         }
         return null;

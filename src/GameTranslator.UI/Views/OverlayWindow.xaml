@@ -85,6 +85,7 @@
                         Width="{Binding Width}"
                         Height="{Binding Height}"
                         Background="Transparent"
+                        ClipToBounds="{Binding KeepsSourceBounds}"
                         BorderBrush="#F1F5F9"
                         BorderThickness="1"
                         RenderOptions.ClearTypeHint="Enabled"
@@ -129,6 +130,22 @@
                                 TextTrimming="None"
                                 TextWrapping="WrapWithOverflow" />
                             </Viewbox>
+                            <!-- Menu sizing is owned by the font policy. A Viewbox here
+                                 would silently shrink below its minimum font size. -->
+                            <TextBlock
+                                Width="{Binding ContentWidth}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Stretch"
+                                Foreground="#FFFFFF"
+                                FontFamily="{Binding FontFamily}"
+                                FontSize="{Binding FontSize}"
+                                FontStyle="{Binding FontStyle}"
+                                FontWeight="{Binding FontWeight}"
+                                Text="{Binding Text}"
+                                TextAlignment="Center"
+                                TextTrimming="CharacterEllipsis"
+                                TextWrapping="WrapWithOverflow"
+                                Visibility="{Binding KeepsSourceBounds, Converter={StaticResource BooleanToVisibilityConverter}}" />
                         </Grid>
                     </Border>
                 </DataTemplate>

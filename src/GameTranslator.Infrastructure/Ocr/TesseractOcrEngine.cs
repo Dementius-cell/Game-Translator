@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Ocr;
 using GameTranslator.Domain.Profiles;
@@ -90,7 +90,7 @@ public sealed class TesseractOcrEngine : IOcrEngine
                     cancellationToken);
             }
 
-            var pageSegMode = MapLayoutMode(request.LayoutMode, recognitionOrientationMode);
+            var pageSegMode = MapCandidateLayoutMode(request, recognitionOrientationMode);
             engine.DefaultPageSegMode = pageSegMode;
             var recognitionPassId = CreateRecognitionPassId(pageSegMode);
             IReadOnlyList<OcrTextBlock> textBlocks;
@@ -357,6 +357,12 @@ public sealed class TesseractOcrEngine : IOcrEngine
             _ => PageSegMode.SingleBlock,
         };
     }
+
+    internal static PageSegMode MapCandidateLayoutMode(OcrRequest request, OcrOrientationMode orientation) =>
+        request.ContentLayoutMode == ContentLayoutMode.StaticMenu
+        && request.LayoutMode != OcrLayoutMode.Comic
+        && orientation == OcrOrientationMode.Horizontal && request.DetectorLineBounds.Count == 1
+            ? PageSegMode.SingleLine : MapLayoutMode(request.LayoutMode, orientation);
 
     internal static PageSegMode MapLayoutMode(
         OcrLayoutMode layoutMode,
@@ -896,7 +902,7 @@ public sealed class TesseractOcrEngine : IOcrEngine
             scaledStride,
             frame.PixelFormat,
             scaledPixels,
-            frame.CapturedAt);
+            frame.CapturedAt, frame.Origin, frame.IsCachedReuse);
     }
 
     private static byte ClampToByte(double value)
@@ -928,7 +934,7 @@ public sealed class TesseractOcrEngine : IOcrEngine
             targetStride,
             frame.PixelFormat,
             pixelData,
-            frame.CapturedAt);
+            frame.CapturedAt, frame.Origin, frame.IsCachedReuse);
     }
 
     private static BoundingBox CreatePaddedBounds(

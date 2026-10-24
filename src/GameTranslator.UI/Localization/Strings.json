@@ -1,5 +1,35 @@
 [
   {
+    "Source": "Menu translation retained the source because a number or key hint changed.",
+    "Ru": "Сохранён исходный текст элемента меню: переводчик изменил число или обозначение клавиши.",
+    "En": "Menu translation retained the source because a number or key hint changed.",
+    "Key": "MenuIntegrityWarning"
+  },
+  {
+    "Source": "Menu / Interface",
+    "Ru": "Меню / Интерфейс",
+    "En": "Menu / Interface",
+    "Key": "StaticMenuMode"
+  },
+  {
+    "Source": "Translate once",
+    "Ru": "Перевести один раз",
+    "En": "Translate once",
+    "Key": "TranslateOnce"
+  },
+  {
+    "Source": "Stop live translation and wait for the current operation before translating once.",
+    "Ru": "Для разового перевода остановите автоперевод и дождитесь завершения текущей операции.",
+    "En": "Stop live translation and wait for the current operation before translating once.",
+    "Key": "TranslateOnceBusy"
+  },
+  {
+    "Source": "Separate menu elements; translation stays inside each element. Auto grouping keeps one line or column; set an explicit limit for a description zone. Translate once: Ctrl+Shift+F7 (configurable).",
+    "Ru": "Элементы меню переводятся отдельно, внутри своих рамок. Auto оставляет одну строку или колонку; для зоны описания задайте явный лимит строк. Разовый перевод: Ctrl+Shift+F7 (можно изменить в настройках).",
+    "En": "Separate menu elements; translation stays inside each element. Auto grouping keeps one line or column; set an explicit limit for a description zone. Translate once: Ctrl+Shift+F7 (configurable).",
+    "Key": "StaticMenuPolicy"
+  },
+  {
     "Source": "Language selection tips ⓘ",
     "Ru": "Советы по выбору языков ⓘ",
     "En": "Language selection tips ⓘ",
@@ -985,8 +1015,8 @@
   },
   {
     "Source": "Политика группировки, размещения оверлея и обновления зоны. Сейчас допустим только Dialog / Comic; дополнительные режимы ещё не включены.",
-    "Ru": "Политика группировки, размещения оверлея и обновления зоны. Сейчас допустим только Dialog / Comic; дополнительные режимы ещё не включены.",
-    "En": "Zone grouping, overlay placement and refresh policy. Only Dialog / Comic is currently supported; other modes are not enabled yet.",
+    "Ru": "Диалог / Комикс объединяет строки реплик. Меню / Интерфейс сохраняет отдельные элементы и размещает перевод внутри их рамок. Режим задаётся для каждой зоны.",
+    "En": "Dialog / Comic groups dialogue lines. Menu / Interface keeps elements separate and fits translations inside their bounds. The mode is configured per zone.",
     "Key": "T31ffa3827afc"
   },
   {

@@ -197,6 +197,9 @@ public sealed record TextCandidate(BoundingBox Bounds, double Confidence)
     /// </summary>
     public IReadOnlyList<BoundingBox> SourceCandidateBounds { get; init; } = new[] { Bounds };
 
+    /// <summary>Relative detector-row geometry supports a partial metric row; not semantic proof.</summary>
+    public bool HasMenuValueRowEvidence { get; init; }
+
     public int SourceCandidateCount => SourceCandidateBounds.Count;
 
     public bool HasValidConfidence => double.IsFinite(Confidence)

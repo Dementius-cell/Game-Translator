@@ -20,4 +20,14 @@ public sealed class CaptureService
     {
         return new CaptureSession(frameSource, region, options);
     }
+
+    public Task<CapturedFrame> CaptureRecentAsync(CaptureRegion region, TimeSpan maximumSourceAge,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (maximumSourceAge <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(maximumSourceAge));
+        return frameSource is IRecentCaptureFrameSource recentSource
+            ? recentSource.CaptureRecentAsync(region, maximumSourceAge, cancellationToken)
+            : Task.FromException<CapturedFrame>(new CaptureFrameSourceException("The capture source cannot verify frame freshness."));
+    }
 }

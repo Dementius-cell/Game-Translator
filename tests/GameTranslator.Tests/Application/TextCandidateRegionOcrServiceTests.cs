@@ -9,6 +9,141 @@ public sealed class TextCandidateRegionOcrServiceTests
     private static readonly DateTimeOffset CapturedAt = new(2026, 8, 2, 10, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public async Task CandidateCrop_PreservesSourceFrameOriginAndCachedReuse()
+    {
+        var origin = new CaptureFrameOrigin(Guid.NewGuid(), TimeSpan.FromSeconds(42), CapturedAt);
+        var frame = new CapturedFrame(new CaptureRegion(0, 0, 200, 100), 200, 100, 800, "Bgra32",
+            new byte[80000], CapturedAt, origin, isCachedReuse: true);
+        var service = new TextCandidateRegionOcrService(
+            new FakeCandidateDetector(TextCandidateDetectionResult.Available("test",
+                new[] { new TextCandidate(new BoundingBox(10, 10, 120, 24), .95) })),
+            new OcrService(new FakeOcrEngine()));
+        var result = await service.DetectAsync(new OcrRequest(frame, "eng", "origin",
+            contentLayoutMode: ContentLayoutMode.StaticMenu));
+        var crop = Assert.Single(result.Regions).Frame;
+        Assert.Equal(120, crop.Width);
+        Assert.Same(origin, crop.Origin);
+        Assert.True(crop.IsCachedReuse);
+        Assert.Equal(CapturedAt, crop.CapturedAt);
+    }
+
+    [Theory]
+    [InlineData(1, 0)]
+    [InlineData(2, 17)]
+    [InlineData(3, 45)]
+    public async Task DetectAsync_MenuRetainsAdjacentPaddedBoxesAcrossScale(int scale, int offset)
+    {
+        var boxes = new[] {
+            new BoundingBox(offset + 10 * scale, 10 * scale, 200 * scale, 30 * scale),
+            new BoundingBox(offset + 200 * scale, 12 * scale, 120 * scale, 28 * scale) };
+        var service = new TextCandidateRegionOcrService(
+            new FakeCandidateDetector(TextCandidateDetectionResult.Available("test", boxes.Select(b => new TextCandidate(b, .9)))),
+            new OcrService(new FakeOcrEngine()));
+        var result = await service.DetectAsync(CreateRequest(400 * scale, 100 * scale, "eng", OcrOrientationMode.Horizontal,
+            contentLayoutMode: ContentLayoutMode.StaticMenu));
+        Assert.Equal(boxes, result.Regions.Select(r => r.Candidate.Bounds));
+    }
+
+    [Theory]
+    [InlineData(170, 12)]
+    [InlineData(200, 30)]
+    [InlineData(20, 12)]
+    public async Task DetectAsync_MenuStillRejectsSubstantialNestedOrStackedOverlap(int x, int y)
+    {
+        var boxes = new[] { new BoundingBox(10, 10, 200, 30), new BoundingBox(x, y, 120, 28) };
+        var service = new TextCandidateRegionOcrService(
+            new FakeCandidateDetector(TextCandidateDetectionResult.Available("test", boxes.Select(b => new TextCandidate(b, .9)))),
+            new OcrService(new FakeOcrEngine()));
+        var result = await service.DetectAsync(CreateRequest(400, 100, "eng", OcrOrientationMode.Horizontal,
+            contentLayoutMode: ContentLayoutMode.StaticMenu));
+        Assert.Single(result.Regions);
+    }
+
+    [Fact]
+    public async Task DetectAsync_MenuAutoGroupsDescriptionButExplicitOneLineKeepsItSeparate()
+    {
+        var candidates = new[]
+        {
+            new TextCandidate(new BoundingBox(10, 10, 400, 20), .9),
+            new TextCandidate(new BoundingBox(10, 40, 300, 20), .9),
+            new TextCandidate(new BoundingBox(450, 10, 70, 20), .9),
+        };
+        var service = new TextCandidateRegionOcrService(
+            new FakeCandidateDetector(TextCandidateDetectionResult.Available("test", candidates)),
+            new OcrService(new FakeOcrEngine()));
+        var automatic = await service.DetectAsync(CreateRequest(600, 100, "eng", OcrOrientationMode.Horizontal,
+            contentLayoutMode: ContentLayoutMode.StaticMenu));
+        var explicitLimit = await service.DetectAsync(CreateRequest(600, 100, "eng", OcrOrientationMode.Horizontal,
+            contentLayoutMode: ContentLayoutMode.StaticMenu, grouping: new OcrCandidateGroupingSettings { MaximumHorizontalLines = 1 }));
+        Assert.Equal(2, automatic.Regions.Count);
+        Assert.Equal(3, explicitLimit.Regions.Count);
+        Assert.Equal(2, automatic.Regions[0].Candidate.SourceCandidateCount);
+    }
+
+    [Theory]
+    [InlineData("en", OcrOrientationMode.Horizontal)]
+    [InlineData("ja", OcrOrientationMode.Auto)]
+    [InlineData("ko", OcrOrientationMode.Horizontal)]
+    public async Task DetectAsync_StaticMenu_KeepsTightlyStackedButtonsAndColumnsSeparate(
+        string language, OcrOrientationMode orientation)
+    {
+        var candidates = new[]
+        {
+            new TextCandidate(new BoundingBox(10, 10, 80, 20), 0.9),
+            new TextCandidate(new BoundingBox(10, 32, 80, 20), 0.9),
+            new TextCandidate(new BoundingBox(100, 10, 70, 20), 0.9),
+        };
+        var service = new TextCandidateRegionOcrService(
+            new FakeCandidateDetector(TextCandidateDetectionResult.Available("test", candidates)),
+            new OcrService(new FakeOcrEngine()));
+        var menu = await service.DetectAsync(CreateRequest(200, 100, language, orientation,
+            contentLayoutMode: ContentLayoutMode.StaticMenu));
+        var dialogue = await service.DetectAsync(CreateRequest(200, 100, language, orientation));
+
+        Assert.Equal(3, menu.Regions.Count);
+        Assert.All(menu.Regions, region => Assert.Equal(1, region.Candidate.SourceCandidateCount));
+        Assert.Equal(2, dialogue.Regions.Count);
+    }
+
+    [Fact]
+    public async Task DetectAsync_StaticMenu_ExplicitLineLimitGroupsDescriptionOnlyWithinLimit()
+    {
+        var candidates = Enumerable.Range(0, 3)
+            .Select(i => new TextCandidate(new BoundingBox(10, 10 + i * 22, 80, 20), 0.9));
+        var service = new TextCandidateRegionOcrService(
+            new FakeCandidateDetector(TextCandidateDetectionResult.Available("test", candidates)),
+            new OcrService(new FakeOcrEngine()));
+        var request = CreateRequest(200, 100, "en", OcrOrientationMode.Horizontal,
+            contentLayoutMode: ContentLayoutMode.StaticMenu,
+            grouping: new OcrCandidateGroupingSettings { MaximumHorizontalLines = 2 });
+
+        var result = await service.DetectAsync(request);
+
+        Assert.Equal(new[] { 2, 1 }, result.Regions.Select(r => r.Candidate.SourceCandidateCount));
+    }
+
+    [Fact]
+    public async Task RecognizeAsync_StaticMenu_PreservesShortVerticalCjkLabelsAndRequestMode()
+    {
+        var engine = new FakeOcrEngine(request => Task.FromResult(new OcrResult(request,
+            new[] { new OcrTextBlock("戻る", new BoundingBox(0, 0, 10, 20)) }, CapturedAt)));
+        var service = new TextCandidateRegionOcrService(
+            new FakeCandidateDetector(TextCandidateDetectionResult.Available("test", new[]
+            {
+                new TextCandidate(new BoundingBox(10, 10, 12, 24), 0.9),
+                new TextCandidate(new BoundingBox(24, 10, 12, 24), 0.9),
+            })), new OcrService(engine),
+            new TextCandidateRegionOcrOptions { EnableCjkTargetPostFilter = true });
+
+        var results = await CollectAsync(service.RecognizeAsync(CreateRequest(200, 500,
+            contentLayoutMode: ContentLayoutMode.StaticMenu)));
+
+        Assert.Equal(2, results.Count);
+        Assert.All(engine.Requests, request => Assert.Equal(ContentLayoutMode.StaticMenu, request.ContentLayoutMode));
+        Assert.All(results, result => Assert.Equal("戻る", result.RecognizedText));
+    }
+
+    [Fact]
     public async Task RecognizeAsync_UsesTesseractForEachAcceptedTransientCandidate()
     {
         var detector = new FakeCandidateDetector(TextCandidateDetectionResult.Available(
@@ -384,7 +519,9 @@ public sealed class TextCandidateRegionOcrServiceTests
         int height = 80,
         string language = "ja",
         OcrOrientationMode orientationMode = OcrOrientationMode.Vertical,
-        TextCandidateDetectorPreset detectorPreset = TextCandidateDetectorPreset.Standard)
+        TextCandidateDetectorPreset detectorPreset = TextCandidateDetectorPreset.Standard,
+        ContentLayoutMode contentLayoutMode = ContentLayoutMode.DialogComic,
+        OcrCandidateGroupingSettings? grouping = null)
     {
         var stride = width * 4;
         return new OcrRequest(
@@ -400,7 +537,9 @@ public sealed class TextCandidateRegionOcrServiceTests
             "manual-zone",
             engineId: OcrSettings.WindowsEngineId,
             orientationMode: orientationMode,
-            layoutMode: OcrLayoutMode.Comic)
+            layoutMode: OcrLayoutMode.Comic,
+            contentLayoutMode: contentLayoutMode,
+            candidateGroupingSettings: grouping)
         {
             DetectorPreset = detectorPreset,
         };

@@ -46,6 +46,9 @@ public sealed class OcrRequest
         CandidateGroupingSettings = candidateGroupingSettings ?? OcrCandidateGroupingSettings.Default;
     }
 
+    /// <summary>Relative detector-row geometry supports a partial metric row; not semantic proof.</summary>
+    public bool HasMenuValueRowEvidence { get; init; }
+
     // Detector members are crop-relative, immutable hints; absent on legacy requests.
     private IReadOnlyList<BoundingBox> detectorLineBounds = Array.Empty<BoundingBox>();
     public IReadOnlyList<BoundingBox> DetectorLineBounds

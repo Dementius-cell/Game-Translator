@@ -7,6 +7,41 @@ public sealed class CaptureServiceTests
     private static readonly CaptureRegion SelectedRegion = new(120, 240, 320, 180);
 
     [Fact]
+    public async Task RecentCapture_WhenUnsupported_FailsInsteadOfPretendingLegacyFrameIsFresh()
+    {
+        var source = new FakeCaptureFrameSource();
+        await Assert.ThrowsAsync<CaptureFrameSourceException>(() => new CaptureService(source)
+            .CaptureRecentAsync(SelectedRegion, TimeSpan.FromMilliseconds(500)));
+        Assert.Empty(source.CapturedRegions);
+    }
+
+    [Fact]
+    public async Task RecentCapture_ForwardsRegionBudgetAndCancellationThroughOptionalPort()
+    {
+        var source = new RecentSource();
+        using var cancellation = new CancellationTokenSource();
+        await new CaptureService(source).CaptureRecentAsync(SelectedRegion, TimeSpan.FromMilliseconds(500), cancellation.Token);
+        Assert.Equal(SelectedRegion, source.Region);
+        Assert.Equal(TimeSpan.FromMilliseconds(500), source.Budget);
+        Assert.Equal(cancellation.Token, source.Token);
+    }
+
+    private sealed class RecentSource : IRecentCaptureFrameSource
+    {
+        public CaptureRegion Region { get; private set; }
+        public TimeSpan Budget { get; private set; }
+        public CancellationToken Token { get; private set; }
+        public Task<CapturedFrame> CaptureAsync(CaptureRegion region, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("The legacy route must not be used for a freshness request.");
+        public Task<CapturedFrame> CaptureRecentAsync(CaptureRegion region, TimeSpan maximumSourceAge, CancellationToken cancellationToken = default)
+        {
+            Region = region; Budget = maximumSourceAge; Token = cancellationToken;
+            return Task.FromResult(new CapturedFrame(region, region.Width, region.Height, region.Width * 4,
+                "Bgra32", new byte[region.Width * region.Height * 4], DateTimeOffset.UtcNow));
+        }
+    }
+
+    [Fact]
     public async Task CaptureAsync_WhenRegionIsSelected_UsesRegionAndReturnsFrame()
     {
         var frameSource = new FakeCaptureFrameSource();

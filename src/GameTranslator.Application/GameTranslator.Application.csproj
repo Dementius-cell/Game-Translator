@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\GameTranslator.Domain\GameTranslator.Domain.csproj" />
+    <InternalsVisibleTo Include="GameTranslator.Tests" />
   </ItemGroup>
 
   <PropertyGroup>

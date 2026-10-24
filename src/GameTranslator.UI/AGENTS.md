@@ -25,6 +25,8 @@ Keep the WPF presentation layer ergonomic, testable, and separated from infrastr
 
 ## Work Guidance
 
+- StaticMenu is a per-zone content mode. Its overlay bypasses minimum-preview-size expansion and renders within the source frame at every DPI without Viewbox scaling. Preserve the selected physical font size (including the minimum after auto fitting); use ellipsis for overflow instead of silently shrinking text. Translate once shares the existing one-shot command and configurable Ctrl+Shift+F7 action; reject it while busy/live without stopping the user's session.
+
 - Keep code-behind limited to WPF lifecycle, visual interaction glue, and view-specific plumbing.
 - Keep view models deterministic and testable with Application-level fakes.
 - The New profile button immediately persists and selects a fresh default profile named `new` (then `new (2)`, etc. on name collisions). Keep draft initialization separate: startup and editor reset must not create profiles.

@@ -14,6 +14,761 @@ namespace GameTranslator.Tests.Application;
 public sealed class TranslationPipelineServiceTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LiveMenu_DisposedSessionCannotRestoreOverlayAfterDelayedCapture(bool sourceFailsLate)
+    {
+        var zone = CreateZone("capture-session", "Menu", new AbsoluteRectangle(0, 0, 60, 24))
+            with { ContentLayoutMode = ContentLayoutMode.StaticMenu };
+        var text = "Power 7";
+        var failCapture = false;
+        var capture = new FakeCaptureFrameSource { FailureFactory = (_, _) => failCapture
+            ? new CaptureFrameSourceException("Synthetic late failure") : null };
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available("test",
+            [new TextCandidate(new BoundingBox(0, 0, 60, 24), .95)]));
+        var engine = new FakeOcrEngine { EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = _ => [new OcrTextBlock(text, new BoundingBox(4, 3, 48, 18))] };
+        var overlay = new FakeOverlayService();
+        var clock = new ManualTimeProvider(FrameTime);
+        var service = CreateService(capture, engine, new FakeTranslatorProvider("Google"), overlay,
+            candidateDetector: detector, timeProvider: clock);
+        var profile = CreateProfile(zone);
+        var options = new TranslationPipelineRunOptions(restorePreviousOverlayAfterCapture: true);
+        using var old = service.CreateLiveSession(profile, options);
+        for (var i = 0; i < 3; i++)
+        {
+            await old.RefreshAsync();
+            await old.PublishCompletedWorkAsync();
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+        }
+        Assert.Equal("Translated Power 7", Assert.Single(overlay.CurrentSnapshot!.TextItems).Text);
+        var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        capture.CaptureGate = gate.Task;
+        failCapture = sourceFailsLate;
+        var pendingCapture = old.RefreshAsync();
+        Assert.False(pendingCapture.IsCompleted);
+        Assert.False(overlay.IsVisible);
+        old.Dispose();
+        capture.CaptureGate = null;
+        failCapture = false;
+        text = "Power 8";
+        using var current = service.CreateLiveSession(profile, options);
+        for (var i = 0; i < 3; i++)
+        {
+            await current.RefreshAsync();
+            await current.PublishCompletedWorkAsync();
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+        }
+        Assert.Equal("Translated Power 8", Assert.Single(overlay.CurrentSnapshot!.TextItems).Text);
+        var historyStart = overlay.Snapshots.Count;
+        gate.SetResult(true);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pendingCapture);
+        Assert.Equal(historyStart, overlay.Snapshots.Count);
+        Assert.Equal("Translated Power 8", Assert.Single(overlay.CurrentSnapshot!.TextItems).Text);
+    }
+
+    [Fact]
+    public async Task LiveSession_FailedZoneCancelsOnlyItsPendingTranslation()
+    {
+        var failed = CreateZone("failed-pending", "Failed", new AbsoluteRectangle(0, 0, 60, 24))
+            with { ContentLayoutMode = ContentLayoutMode.StaticMenu };
+        var healthy = failed with { Id = "healthy-pending", AbsoluteBounds = new AbsoluteRectangle(200, 0, 60, 24) };
+        var fail = false;
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available("test",
+            [new TextCandidate(new BoundingBox(0, 0, 60, 24), .95)]));
+        var capture = new FakeCaptureFrameSource { FailureFactory = (region, _) => fail && region.X == 0
+            ? new CaptureFrameSourceException("Synthetic zone failure") : null };
+        var engine = new FakeOcrEngine { EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = r => [new OcrTextBlock(r.Frame.Region.X < 100 ? "Failed" : "Healthy", new BoundingBox(4, 3, 48, 18))] };
+        var failedResponse = new TaskCompletionSource<TranslateResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var healthyResponse = new TaskCompletionSource<TranslateResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken failedToken = default, healthyToken = default;
+        var translator = new FakeTranslatorProvider("Google", translateAsync: (request, token) =>
+        {
+            if (request.Texts.Single() == "Failed") { failedToken = token; return failedResponse.Task; }
+            healthyToken = token;
+            return healthyResponse.Task;
+        });
+        var overlay = new FakeOverlayService();
+        var clock = new ManualTimeProvider(FrameTime);
+        var service = CreateService(capture, engine, translator, overlay, candidateDetector: detector, timeProvider: clock);
+        using var session = service.CreateLiveSession(CreateProfile(failed, healthy), new TranslationPipelineRunOptions());
+        for (var i = 0; i < 3; i++)
+        {
+            await session.RefreshAsync();
+            await session.PublishCompletedWorkAsync();
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+        }
+        Assert.Equal(2, translator.CallCount);
+        fail = true;
+        var update = await session.RefreshAsync();
+        Assert.True(failedToken.IsCancellationRequested);
+        Assert.False(healthyToken.IsCancellationRequested);
+        Assert.Contains(update.CandidateLifecycleEvents, e => e.Kind == LiveCandidateLifecycleEventKind.CaptureFailed && e.ZoneId == failed.Id);
+        Assert.DoesNotContain(update.CancelledZoneIds, id => id.StartsWith(healthy.Id, StringComparison.Ordinal));
+        healthyResponse.SetResult(new TranslateResponse(["Translated Healthy"], TranslatedAt, "Google"));
+        await session.WaitForWorkCompletionAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        await session.PublishCompletedWorkAsync();
+        Assert.Equal("Translated Healthy", Assert.Single(overlay.CurrentSnapshot!.TextItems).Text);
+        await session.PublishCompletedWorkAsync();
+        failedResponse.SetResult(new TranslateResponse(["Translated Failed"], TranslatedAt, "Google"));
+        await session.WaitForWorkCompletionAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        await session.PublishCompletedWorkAsync();
+        Assert.Equal("Translated Healthy", Assert.Single(overlay.CurrentSnapshot!.TextItems).Text);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LiveMenu_NewSessionWithChangedSettingsCannotPublishOldWork(bool delayedOcr)
+    {
+        var zone = CreateZone("session-menu", "Menu", new AbsoluteRectangle(0, 0, 60, 24))
+            with { ContentLayoutMode = ContentLayoutMode.StaticMenu };
+        var text = "Power 7";
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available("test",
+            [new TextCandidate(new BoundingBox(0, 0, 60, 24), .95)]));
+        var blockedOcr = new NonCooperativeMenuOcrEngine();
+        IOcrEngine engine = delayedOcr ? blockedOcr : new FakeOcrEngine { EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = _ => [new OcrTextBlock(text, new BoundingBox(4, 3, 48, 18))] };
+        var oldResponse = new TaskCompletionSource<TranslateResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var oldProviderFinished = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var translator = new FakeTranslatorProvider("Google", translateAsync: async (request, _) =>
+        {
+            if (request.TargetLanguage == "ru")
+            {
+                var response = await oldResponse.Task;
+                oldProviderFinished.TrySetResult(true);
+                return response;
+            }
+            return new TranslateResponse(["New Power 8"], TranslatedAt, "Google");
+        });
+        var overlay = new FakeOverlayService();
+        var clock = new ManualTimeProvider(FrameTime);
+        var service = CreateService(new FakeCaptureFrameSource(), engine, translator, overlay,
+            candidateDetector: detector, timeProvider: clock);
+        var profile = CreateProfile(zone);
+        using var oldSession = service.CreateLiveSession(profile, new TranslationPipelineRunOptions());
+        for (var i = 0; i < 3; i++)
+        {
+            await oldSession.RefreshAsync();
+            await oldSession.PublishCompletedWorkAsync();
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+        }
+        Assert.Equal(delayedOcr ? 0 : 1, translator.CallCount);
+        oldSession.Dispose();
+        text = "Power 8";
+        var newProfile = profile with { TranslatorSettings = profile.TranslatorSettings with { TargetLanguage = "de" } };
+        using var current = service.CreateLiveSession(newProfile, new TranslationPipelineRunOptions());
+        for (var i = 0; i < 3; i++)
+        {
+            await current.RefreshAsync();
+            await current.PublishCompletedWorkAsync();
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+        }
+        Assert.Equal("New Power 8", Assert.Single(overlay.CurrentSnapshot!.TextItems).Text);
+        if (delayedOcr) blockedOcr.Release.SetResult(true);
+        else
+        {
+            oldResponse.SetResult(new TranslateResponse(["Old Power 7"], TranslatedAt, "Google"));
+            await oldProviderFinished.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        }
+        for (var i = 0; i < 3; i++)
+        {
+            await current.RefreshAsync();
+            await current.PublishCompletedWorkAsync();
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+        }
+        Assert.Equal(delayedOcr ? 1 : 2, translator.CallCount);
+        Assert.All(overlay.Snapshots, snapshot => Assert.DoesNotContain(snapshot.TextItems, item => item.Text == "Old Power 7"));
+        Assert.Equal("New Power 8", Assert.Single(overlay.CurrentSnapshot!.TextItems).Text);
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => oldSession.PublishCompletedWorkAsync());
+    }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    public async Task LiveSession_OneCaptureFailureKeepsOtherZoneAndRecoversWithFreshConfirmation(bool failedFirst, bool healthyMenu)
+    {
+        var failed = CreateZone("failed-capture", "Failed", new AbsoluteRectangle(0, 0, 60, 24))
+            with { ContentLayoutMode = ContentLayoutMode.StaticMenu };
+        var healthy = CreateZone("healthy-capture", "Healthy", new AbsoluteRectangle(200, 0, 60, 24))
+            with { ContentLayoutMode = healthyMenu ? ContentLayoutMode.StaticMenu : ContentLayoutMode.DialogComic };
+        var fail = false;
+        var capture = new FakeCaptureFrameSource { FailureFactory = (region, _) => fail && region.X == 0
+            ? new CaptureFrameSourceException("Synthetic zone failure") : null };
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available("test",
+            [new TextCandidate(new BoundingBox(0, 0, 60, 24), .95)]));
+        var engine = new FakeOcrEngine { EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = r => [new OcrTextBlock(r.Frame.Region.X < 100 ? "Failed action" : "Healthy action", new BoundingBox(4, 3, 48, 18))] };
+        var overlay = new FakeOverlayService();
+        var translator = new FakeTranslatorProvider("Google");
+        var clock = new ManualTimeProvider(FrameTime);
+        var service = CreateService(capture, engine, translator, overlay, candidateDetector: detector, timeProvider: clock);
+        using var session = service.CreateLiveSession(CreateProfile(failedFirst ? [failed, healthy] : [healthy, failed]),
+            new TranslationPipelineRunOptions(restorePreviousOverlayAfterCapture: true));
+        for (var i = 0; i < 3; i++)
+        {
+            await session.RefreshAsync();
+            await session.PublishCompletedWorkAsync();
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+        }
+        Assert.Equal(2, overlay.CurrentSnapshot!.TextItems.Count);
+        var historyStart = overlay.Snapshots.Count;
+        var beforeFailureCaptures = capture.CapturedRegions.Count;
+        fail = true;
+        var lost = await session.RefreshAsync();
+        Assert.Equal(2, capture.CapturedRegions.Count - beforeFailureCaptures);
+        Assert.Equal("Translated Healthy action", Assert.Single(overlay.CurrentSnapshot!.TextItems).Text);
+        Assert.DoesNotContain(lost.CandidateLifecycleEvents, e => e.ZoneId == healthy.Id
+            && e.Kind is LiveCandidateLifecycleEventKind.CandidateRemoved or LiveCandidateLifecycleEventKind.CandidateWorkCancelled);
+        Assert.All(overlay.Snapshots.Skip(historyStart), snapshot =>
+            Assert.DoesNotContain(snapshot.TextItems, item => item.Text == "Translated Failed action"));
+        clock.Advance(TimeSpan.FromMilliseconds(500));
+        await session.RefreshAsync();
+        Assert.Equal("Translated Healthy action", Assert.Single(overlay.CurrentSnapshot!.TextItems).Text);
+        fail = false;
+        clock.Advance(TimeSpan.FromMilliseconds(500));
+        var recovering = await session.RefreshAsync();
+        Assert.DoesNotContain(recovering.CandidateLifecycleEvents, e => e.ZoneId == healthy.Id && e.Kind == LiveCandidateLifecycleEventKind.CandidateDiscovered);
+        Assert.Single(overlay.CurrentSnapshot!.TextItems);
+        clock.Advance(TimeSpan.FromMilliseconds(500));
+        await session.RefreshAsync();
+        await session.PublishCompletedWorkAsync();
+        Assert.Single(overlay.CurrentSnapshot!.TextItems);
+        clock.Advance(TimeSpan.FromMilliseconds(500));
+        await session.RefreshAsync();
+        await session.PublishCompletedWorkAsync();
+        Assert.Equal(2, overlay.CurrentSnapshot!.TextItems.Count);
+        Assert.Equal(2, translator.CallCount);
+    }
+
+    [Fact]
+    public async Task LiveMenu_ConfirmedSmallDriftMovesOverlayWithoutRetranslation()
+    {
+        var zone = CreateZone("small-drift", "Menu", new AbsoluteRectangle(0, 0, 120, 40))
+            with { ContentLayoutMode = ContentLayoutMode.StaticMenu };
+        var x = 0;
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available("test",
+            new[] { new TextCandidate(new BoundingBox(x, 0, 100, 40), .95) }));
+        var engine = new FakeOcrEngine { EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = _ => [new OcrTextBlock("Action", new BoundingBox(5, 5, 80, 30))] };
+        var overlay = new FakeOverlayService();
+        var translator = new FakeTranslatorProvider("Google");
+        var clock = new ManualTimeProvider(FrameTime);
+        var service = CreateService(new FakeCaptureFrameSource(), engine, translator, overlay,
+            candidateDetector: detector, timeProvider: clock);
+        using var session = service.CreateLiveSession(CreateProfile(zone), new TranslationPipelineRunOptions());
+        for (var i = 0; i < 3; i++)
+        {
+            await session.RefreshAsync();
+            await session.PublishCompletedWorkAsync();
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+        }
+        var oldX = Assert.Single(overlay.CurrentSnapshot!.TextItems).X;
+        x = 1;
+        for (var i = 0; i < 2; i++)
+        {
+            var update = await session.RefreshAsync();
+            await session.PublishCompletedWorkAsync();
+            Assert.DoesNotContain(update.CandidateLifecycleEvents, e => e.Kind == LiveCandidateLifecycleEventKind.CandidateRemoved);
+            Assert.Single(overlay.CurrentSnapshot!.TextItems);
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+        }
+        Assert.Equal(oldX + 1, Assert.Single(overlay.CurrentSnapshot!.TextItems).X);
+        Assert.Equal(1, translator.CallCount);
+        Assert.Equal(2, overlay.Events.Count(e => e.StartsWith("Show:", StringComparison.Ordinal)));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public async Task LiveMenu_LargeGeometryChangeRequiresNewConfirmationBeforeCacheReuse(int scale)
+    {
+        var zone = CreateZone("geometry-menu", "Menu", new AbsoluteRectangle(0, 0, 100 * scale, 24 * scale))
+            with { ContentLayoutMode = ContentLayoutMode.StaticMenu };
+        var x = 0;
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available("test",
+            new[] { new TextCandidate(new BoundingBox(x, 0, 60 * scale, 24 * scale), .95) }));
+        var engine = new FakeOcrEngine { EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = _ => [new OcrTextBlock("Action", new BoundingBox(4 * scale, 3 * scale, 48 * scale, 18 * scale))] };
+        var overlay = new FakeOverlayService();
+        var translator = new FakeTranslatorProvider("Google");
+        var clock = new ManualTimeProvider(FrameTime);
+        var service = CreateService(new FakeCaptureFrameSource(), engine, translator, overlay,
+            candidateDetector: detector, timeProvider: clock);
+        using var session = service.CreateLiveSession(CreateProfile(zone), new TranslationPipelineRunOptions());
+        for (var i = 0; i < 3; i++)
+        {
+            await session.RefreshAsync();
+            await session.PublishCompletedWorkAsync();
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+        }
+        var oldX = Assert.Single(overlay.CurrentSnapshot!.TextItems).X;
+        x = 20 * scale;
+        await session.RefreshAsync();
+        Assert.Empty(overlay.CurrentSnapshot!.TextItems);
+        clock.Advance(TimeSpan.FromMilliseconds(500));
+        await session.RefreshAsync();
+        await session.PublishCompletedWorkAsync();
+        Assert.Empty(overlay.CurrentSnapshot!.TextItems);
+        clock.Advance(TimeSpan.FromMilliseconds(500));
+        await session.RefreshAsync();
+        await session.PublishCompletedWorkAsync();
+        Assert.Equal(oldX + 20 * scale, Assert.Single(overlay.CurrentSnapshot!.TextItems).X);
+        Assert.Equal(1, translator.CallCount);
+    }
+
+    [Fact]
+    public async Task LiveMenu_SimilarNeighborKeepsItsAuthorityWhenOneItemChanges()
+    {
+        var zone = CreateZone("neighbor-menu", "Menu", new AbsoluteRectangle(0, 0, 60, 44))
+            with { ContentLayoutMode = ContentLayoutMode.StaticMenu };
+        var changed = false;
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available("test",
+            new[] { new TextCandidate(new BoundingBox(0, 0, 60, 16), .95), new TextCandidate(new BoundingBox(0, 24, 60, 16), .95) }));
+        var engine = new FakeOcrEngine { EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = r => [new OcrTextBlock(changed && r.Frame.Region.Y == 0 ? "Action 8" : "Action 7", new BoundingBox(4, 2, 48, 12))] };
+        var overlay = new FakeOverlayService();
+        var clock = new ManualTimeProvider(FrameTime);
+        var service = CreateService(new FakeCaptureFrameSource(), engine, new FakeTranslatorProvider("Google"), overlay,
+            candidateDetector: detector, timeProvider: clock);
+        using var session = service.CreateLiveSession(CreateProfile(zone), new TranslationPipelineRunOptions());
+        for (var i = 0; i < 3; i++)
+        {
+            await session.RefreshAsync();
+            await session.PublishCompletedWorkAsync();
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+        }
+        Assert.Equal(2, overlay.CurrentSnapshot!.TextItems.Count);
+        changed = true;
+        await session.RefreshAsync();
+        await session.PublishCompletedWorkAsync();
+        var remaining = Assert.Single(overlay.CurrentSnapshot!.TextItems);
+        Assert.Equal("Translated Action 7", remaining.Text);
+        Assert.True(remaining.Y >= 24);
+        clock.Advance(TimeSpan.FromMilliseconds(500));
+        await session.RefreshAsync();
+        await session.PublishCompletedWorkAsync();
+        Assert.Equal(2, overlay.CurrentSnapshot!.TextItems.Count);
+        Assert.Contains(overlay.CurrentSnapshot.TextItems, item => item.Text == "Translated Action 8" && item.Y < 24);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LiveMenu_LateOcrIsRejectedForExpiredSourceOrRetiredGeneration(bool retire)
+    {
+        var zone = CreateZone("late-ocr", "Menu", new AbsoluteRectangle(0, 0, 60, 24))
+            with { ContentLayoutMode = ContentLayoutMode.StaticMenu };
+        var visible = true;
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available("test", visible
+            ? new[] { new TextCandidate(new BoundingBox(0, 0, 60, 24), .95) } : []));
+        var engine = new NonCooperativeMenuOcrEngine();
+        var overlay = new FakeOverlayService();
+        var translator = new FakeTranslatorProvider("Google");
+        var clock = new ManualTimeProvider(FrameTime);
+        var service = CreateService(new FakeCaptureFrameSource(), engine, translator, overlay,
+            candidateDetector: detector, timeProvider: clock);
+        using var session = service.CreateLiveSession(CreateProfile(zone), new TranslationPipelineRunOptions());
+        await session.RefreshAsync();
+        clock.Advance(TimeSpan.FromMilliseconds(500));
+        await session.RefreshAsync();
+        await engine.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        if (retire)
+        {
+            visible = false;
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+            await session.RefreshAsync();
+            visible = true;
+            for (var i = 0; i < 3; i++)
+            {
+                clock.Advance(TimeSpan.FromMilliseconds(500));
+                await session.RefreshAsync();
+                await session.PublishCompletedWorkAsync();
+            }
+            Assert.Contains(overlay.CurrentSnapshot!.TextItems, item => item.Text == "Translated Power 8");
+        }
+        else clock.Advance(TimeSpan.FromSeconds(3));
+        await session.PublishCompletedWorkAsync();
+        engine.Release.SetResult(true);
+        await session.WaitForWorkCompletionAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        var update = await session.PublishCompletedWorkAsync();
+        Assert.Contains(update.CandidateLifecycleEvents, e => e.Menu?.Decision ==
+            (retire ? "ocr-retired-generation" : "ocr-rejected-source"));
+        Assert.DoesNotContain(overlay.CurrentSnapshot?.TextItems ?? [], item => item.Text == "Translated Power 7");
+        Assert.Equal(retire ? 1 : 0, translator.CallCount);
+    }
+
+    private sealed class NonCooperativeMenuOcrEngine : IOcrEngine
+    {
+        private int calls;
+        public string EngineId => OcrSettings.TesseractEngineId;
+        public TaskCompletionSource<bool> Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<bool> Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async Task<OcrResult> RecognizeAsync(OcrRequest request, CancellationToken cancellationToken = default)
+        {
+            var first = Interlocked.Increment(ref calls) == 1;
+            if (first) { Started.TrySetResult(true); await Release.Task; }
+            return new OcrResult(request, [new OcrTextBlock(first ? "Power 7" : "Power 8", new BoundingBox(4, 3, 48, 18))], OcrTime);
+        }
+    }
+
+    [Theory]
+    [InlineData("changed")]
+    [InlineData("empty")]
+    [InlineData("expired")]
+    [InlineData("disappeared")]
+    [InlineData("capture-lost")]
+    public async Task LiveMenu_LateNonCooperativeTranslationCannotRegainAuthority(string invalidation)
+    {
+        var zone = CreateZone("late-menu", "Menu", new AbsoluteRectangle(0, 0, 60, 24))
+            with { ContentLayoutMode = ContentLayoutMode.StaticMenu };
+        var text = "Power 7";
+        var visible = true;
+        var captureLost = false;
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available("test", visible
+            ? new[] { new TextCandidate(new BoundingBox(0, 0, 60, 24), .95) } : []));
+        var engine = new FakeOcrEngine { EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = _ => text.Length == 0 ? [] : new[] { new OcrTextBlock(text, new BoundingBox(4, 3, 48, 18)) } };
+        var oldResponse = new TaskCompletionSource<TranslateResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken oldToken = default;
+        var translator = new FakeTranslatorProvider("Google", translateAsync: (request, token) =>
+        {
+            if (request.Texts.Single() == "Power 7") { oldToken = token; return oldResponse.Task; }
+            return Task.FromResult(new TranslateResponse(["Translated Power 8"], TranslatedAt, "Google"));
+        });
+        var capture = new FakeCaptureFrameSource { FailureFactory = (_, _) => captureLost
+            ? new CaptureFrameSourceException("Synthetic loss") : null };
+        var overlay = new FakeOverlayService();
+        var clock = new ManualTimeProvider(FrameTime);
+        var service = CreateService(capture, engine, translator, overlay, candidateDetector: detector, timeProvider: clock);
+        using var session = service.CreateLiveSession(CreateProfile(zone), new TranslationPipelineRunOptions());
+        for (var i = 0; i < 3; i++)
+        {
+            await session.RefreshAsync();
+            await session.PublishCompletedWorkAsync();
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+        }
+        Assert.Equal(1, translator.CallCount);
+        switch (invalidation)
+        {
+            case "changed": text = "Power 8"; break;
+            case "empty": text = ""; break;
+            case "disappeared": visible = false; break;
+            case "capture-lost": captureLost = true; break;
+            case "expired": clock.Advance(TimeSpan.FromSeconds(2)); break;
+        }
+        if (invalidation == "expired") await session.PublishCompletedWorkAsync();
+        else await session.RefreshAsync();
+        Assert.True(oldToken.IsCancellationRequested);
+        Assert.True(overlay.CurrentSnapshot?.TextItems.Count is null or 0);
+        if (invalidation == "changed")
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+            await session.RefreshAsync();
+            await session.PublishCompletedWorkAsync();
+            Assert.Contains(overlay.CurrentSnapshot!.TextItems, item => item.Text == "Translated Power 8");
+        }
+        await session.PublishCompletedWorkAsync();
+        oldResponse.SetResult(new TranslateResponse(["Translated Power 7"], TranslatedAt, "Google"));
+        await session.WaitForWorkCompletionAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        await session.PublishCompletedWorkAsync();
+        Assert.DoesNotContain(overlay.CurrentSnapshot?.TextItems ?? [], item => item.Text == "Translated Power 7");
+        Assert.Equal(invalidation == "changed" ? 2 : 1, translator.CallCount);
+    }
+
+    [Fact]
+    public async Task LiveMenu_StaticFreshFramesRenewWithoutRetranslation_CachedFrameExpires()
+    {
+        var zone = CreateZone("static-menu", "Menu", new AbsoluteRectangle(0, 0, 60, 24))
+            with { ContentLayoutMode = ContentLayoutMode.StaticMenu };
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available("test",
+            new[] { new TextCandidate(new BoundingBox(0, 0, 60, 24), .95) }));
+        var engine = new FakeOcrEngine { EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = _ => [new OcrTextBlock("Action", new BoundingBox(4, 3, 48, 18))] };
+        var capture = new FakeCaptureFrameSource();
+        var translator = new FakeTranslatorProvider("Google");
+        var overlay = new FakeOverlayService();
+        var clock = new ManualTimeProvider(FrameTime);
+        var service = CreateService(capture, engine, translator, overlay, candidateDetector: detector, timeProvider: clock);
+        using var session = service.CreateLiveSession(CreateProfile(zone), new TranslationPipelineRunOptions());
+        for (var i = 0; i < 24; i++)
+        {
+            await session.RefreshAsync();
+            await session.PublishCompletedWorkAsync();
+            if (i >= 2) Assert.Single(overlay.CurrentSnapshot!.TextItems);
+            if (i < 23) clock.Advance(TimeSpan.FromMilliseconds(500));
+        }
+        Assert.Equal(1, translator.CallCount);
+        capture.SourceTimestampOverride = TimeSpan.FromMilliseconds(11500);
+        Assert.Single(overlay.Events, e => e.StartsWith("Show:", StringComparison.Ordinal));
+        // Drain the distinct final frame that was legitimately waiting behind the previous OCR.
+        clock.Advance(TimeSpan.FromMilliseconds(500));
+        await session.PublishCompletedWorkAsync();
+        var count = engine.Requests.Count;
+        for (var i = 0; i < 5; i++)
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+            await session.RefreshAsync();
+            await session.PublishCompletedWorkAsync();
+        }
+        Assert.Equal(count, engine.Requests.Count);
+        Assert.Empty(overlay.CurrentSnapshot!.TextItems);
+        Assert.Equal(1, translator.CallCount);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public async Task LiveMenu_TexturedMotionAndFrameDrift_ConfirmsUnchangedText(int scale)
+    {
+        const int count = 16;
+        var zone = CreateZone("texture", "Texture", new AbsoluteRectangle(0, 0, 80 * scale, 32 * scale))
+            with { ContentLayoutMode = ContentLayoutMode.StaticMenu };
+        var frames = Enumerable.Range(0, count).Select(phase =>
+        {
+            var pixels = new byte[80 * 32 * scale * scale * 4];
+            for (var y = 0; y < 32 * scale; y++)
+            for (var x = 0; x < 80 * scale; x++)
+            {
+                var xx = x / scale;
+                var yy = y / scale;
+                var ink = yy is >= 8 and <= 23 && xx is >= 10 and <= 55 && xx % 10 < 3;
+                var value = (byte)(ink ? 240 : 20 + ((xx * 17 + yy * 31 + phase * 43) % 150));
+                var offset = (y * 80 * scale + x) * 4;
+                pixels[offset] = pixels[offset + 1] = pixels[offset + 2] = value;
+                pixels[offset + 3] = 255;
+            }
+            return pixels;
+        }).ToArray();
+        var captures = new FakeCaptureFrameSource { PixelFrames = frames,
+            CapturedAtFrames = Enumerable.Range(0, count).Select(i => FrameTime.AddMilliseconds(i * 500)).ToArray() };
+        var detectionIndex = 0;
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available("test",
+            new[] { new TextCandidate(new BoundingBox(4 * scale, 4 * scale,
+                (60 + detectionIndex++ % 2) * scale, 24 * scale), .95) }));
+        var engine = new FakeOcrEngine { EngineId = OcrSettings.TesseractEngineId,
+            RecognizedAtFrames = Enumerable.Range(0, count).Select(i => FrameTime.AddMilliseconds(i * 500)).ToArray(),
+            BlocksFactory = _ => new[] { new OcrTextBlock("Synthetic action", new BoundingBox(6 * scale, 4 * scale, 46 * scale, 16 * scale)) } };
+        var translator = new FakeTranslatorProvider("Google");
+        var overlay = new FakeOverlayService();
+        var clock = new ManualTimeProvider(FrameTime);
+        var service = CreateService(captures, engine, translator, overlay, candidateDetector: detector, timeProvider: clock);
+        var options = new TranslationPipelineRunOptions(requireStableTextBeforeTranslation: true,
+            stableTextInterval: TimeSpan.FromMilliseconds(200), minimumStableTextObservations: 2,
+            minimumCandidateGroupingObservations: 1) { MinimumCandidateGroupingDuration = TimeSpan.Zero };
+        using var session = service.CreateLiveSession(CreateProfile(zone), options);
+        for (var i = 0; i < count; i++)
+        {
+            await session.RefreshAsync();
+            await session.PublishCompletedWorkAsync();
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+        }
+        Assert.True(engine.Requests.Count >= 2, "The sequence must exercise independent OCR observations.");
+        Assert.Equal(1, translator.CallCount);
+        Assert.Contains(overlay.CurrentSnapshot!.TextItems, t => t.Text == "Translated Synthetic action");
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public async Task LiveMenu_PendingOcrSurvivesPixelChangesUntilTextIsObserved(bool menu, bool strokeChanged)
+    {
+        var zone = CreateZone("pending", "Pending", new AbsoluteRectangle(0, 0, 60, 24))
+            with { ContentLayoutMode = menu ? ContentLayoutMode.StaticMenu : ContentLayoutMode.DialogComic };
+        var capture = new FakeCaptureFrameSource { PixelFrames = Enumerable.Range(0, 10).Select(i =>
+            MenuTextStructureTests.Pixels(1, i < 2 ? 25 : 45, i >= 2 && strokeChanged)).ToArray() };
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available("test",
+            new[] { new TextCandidate(new BoundingBox(0, 0, 60, 24), .95) }));
+        var engine = new DelayedMenuOcrEngine();
+        var overlay = new FakeOverlayService();
+        var clock = new ManualTimeProvider(FrameTime);
+        var service = CreateService(capture, engine, new FakeTranslatorProvider("Google"), overlay,
+            candidateDetector: detector, timeProvider: clock);
+        using var session = service.CreateLiveSession(CreateProfile(zone), new TranslationPipelineRunOptions());
+        await session.RefreshAsync();
+        clock.Advance(TimeSpan.FromMilliseconds(500));
+        await session.RefreshAsync();
+        await engine.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        clock.Advance(TimeSpan.FromMilliseconds(500));
+        var update = await session.RefreshAsync();
+        Assert.Equal(!menu, update.CandidateLifecycleEvents.Any(e => e.Kind == LiveCandidateLifecycleEventKind.CandidateWorkCancelled));
+        Assert.True(overlay.CurrentSnapshot?.TextItems.Count is null or 0);
+        engine.Release.TrySetResult(true);
+        await session.WaitForWorkCompletionAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        await session.PublishCompletedWorkAsync();
+        for (var attempt = 0; attempt < 6; attempt++)
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+            await session.RefreshAsync();
+            await session.PublishCompletedWorkAsync();
+        }
+        for (var attempt = 0; attempt < 3 && overlay.CurrentSnapshot?.TextItems.Count is not > 0; attempt++)
+        {
+            await session.WaitForWorkCompletionAsync().WaitAsync(TimeSpan.FromSeconds(2));
+            await session.PublishCompletedWorkAsync();
+        }
+        Assert.Contains(overlay.CurrentSnapshot!.TextItems,
+            t => t.Text == (strokeChanged ? "Translated Power 8" : "Translated Power 7"));
+    }
+
+    private sealed class DelayedMenuOcrEngine : IOcrEngine
+    {
+        public string EngineId => OcrSettings.TesseractEngineId;
+        public TaskCompletionSource<bool> Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<bool> Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async Task<OcrResult> RecognizeAsync(OcrRequest request, CancellationToken cancellationToken = default)
+        {
+            Started.TrySetResult(true);
+            await Release.Task.WaitAsync(cancellationToken);
+            var text = request.Frame.PixelData.Span[(10 * 60 + 11) * 4] == 240 ? "Power 7" : "Power 8";
+            return new OcrResult(request, new[] { new OcrTextBlock(text, new BoundingBox(4, 3, 48, 18)) }, OcrTime);
+        }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task LiveMenu_BackgroundMotionKeepsTextConfirmationButStrokeChangeAndRemovalInvalidate(bool visibleStrokeChange)
+    {
+        var zone = CreateZone("menu", "Menu", new AbsoluteRectangle(0, 0, 60, 24))
+            with { ContentLayoutMode = ContentLayoutMode.StaticMenu };
+        var frames = Enumerable.Range(0, 12).Select(i =>
+            MenuTextStructureTests.Pixels(1, i < 3 ? 25 : 25 + i * 3,
+                changedStroke: visibleStrokeChange && i >= 4)).ToArray();
+        var captures = new FakeCaptureFrameSource { PixelFrames = frames };
+        var detectorCalls = 0;
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available("test",
+            ++detectorCalls < 10 ? new[] { new TextCandidate(new BoundingBox(0, 0, 60, 24), .95) } : Array.Empty<TextCandidate>()));
+        var recognition = 0;
+        var engine = new FakeOcrEngine { EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = r => new[] { new OcrTextBlock(++recognition <= 3
+                ? "Power 7" : "Power 8", new BoundingBox(4, 3, 48, 18)) } };
+        var translator = new FakeTranslatorProvider("Google");
+        var overlay = new FakeOverlayService();
+        var clock = new ManualTimeProvider(FrameTime);
+        var service = CreateService(captures, engine, translator, overlay, candidateDetector: detector, timeProvider: clock);
+        var options = new TranslationPipelineRunOptions(requireStableTextBeforeTranslation: true,
+            stableTextInterval: TimeSpan.FromMilliseconds(200), minimumStableTextObservations: 2,
+            minimumCandidateGroupingObservations: 1, minimumCandidateOverlayVisibleDuration: TimeSpan.Zero);
+        using var session = service.CreateLiveSession(CreateProfile(zone), options);
+        var sawSeven = false;
+        var sawCleared = false;
+        var sawEight = false;
+        for (var i = 0; i < 9; i++)
+        {
+            await session.RefreshAsync();
+            await session.PublishCompletedWorkAsync();
+            var texts = overlay.CurrentSnapshot?.TextItems.Select(t => t.Text).ToArray() ?? [];
+            sawSeven |= texts.Contains("Translated Power 7");
+            sawCleared |= sawSeven && recognition == 4 && texts.Length == 0;
+            sawEight |= texts.Contains("Translated Power 8");
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+        }
+        Assert.True(sawSeven);
+        Assert.True(sawCleared, "A fresh mismatching OCR must clear the old translation before the replacement is confirmed.");
+        Assert.True(sawEight);
+        Assert.Equal(2, translator.CallCount);
+        await session.RefreshAsync();
+        Assert.Empty(overlay.CurrentSnapshot!.TextItems);
+    }
+
+    [Fact]
+    public async Task LiveSession_MixedMenuAndDialogue_KeepsIndependentPoliciesAndReusesUnchangedText()
+    {
+        var menu = CreateZone("menu", "Menu", new AbsoluteRectangle(10, 20, 100, 60))
+            with { ContentLayoutMode = ContentLayoutMode.StaticMenu };
+        var dialogue = CreateZone("dialog", "Dialogue", new AbsoluteRectangle(210, 20, 100, 60));
+        var profile = CreateProfile(menu, dialogue) with
+        {
+            OcrSettings = new OcrSettings { Engine = "Tesseract", OrientationMode = OcrOrientationMode.Horizontal },
+            TranslatorSettings = new TranslatorSettings { Provider = "GoogleWeb", SourceLanguage = "en", TargetLanguage = "ru" },
+        };
+        var engine = new FakeOcrEngine { EngineId = "Tesseract", BlocksFactory = request => new[]
+        {
+            new OcrTextBlock(request.ContentLayoutMode == ContentLayoutMode.StaticMenu
+                ? (request.Frame.Region.Y == 21 ? "Continue" : "Settings") : "A synthetic sentence",
+                new BoundingBox(0, 0, request.Frame.Width, request.Frame.Height)),
+        } };
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available("test", new[]
+        {
+            new TextCandidate(new BoundingBox(1, 1, 60, 16), .95),
+            new TextCandidate(new BoundingBox(1, 19, 60, 16), .95),
+        }));
+        var translator = new FakeTranslatorProvider("GoogleWeb");
+        var overlay = new FakeOverlayService();
+        var clock = new ManualTimeProvider(FrameTime);
+        var service = CreateService(new FakeCaptureFrameSource(), engine, translator, overlay, candidateDetector: detector, timeProvider: clock);
+        using var session = service.CreateLiveSession(profile, new TranslationPipelineRunOptions(enableCandidateDetectorPilot: true));
+        for (var i = 0; i < 3; i++)
+        {
+            await session.RefreshAsync();
+            await session.PublishCompletedWorkAsync();
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+        }
+        Assert.Equal(3, overlay.CurrentSnapshot!.TextItems.Count);
+        var items = overlay.CurrentSnapshot!.TextItems;
+        Assert.Equal(2, items.Count(i => i.TextStyle.LayoutMode == OverlayTextLayoutMode.KeepWithinSourceBounds));
+        Assert.Single(items, i => i.TextStyle.LayoutMode == OverlayTextLayoutMode.ExpandFromSourceCenter);
+        var calls = translator.CallCount;
+        await session.RefreshAsync();
+        await session.PublishCompletedWorkAsync();
+        Assert.Equal(calls, translator.CallCount);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StaticMenu_TranslatesSeparateButtonsAndRevalidatesCachedValues(bool changeNumber)
+    {
+        var zone = CreateZone() with { ContentLayoutMode = ContentLayoutMode.StaticMenu };
+        var profile = CreateProfile(zone) with
+        {
+            OcrSettings = new OcrSettings { Engine = "Tesseract", OrientationMode = OcrOrientationMode.Horizontal },
+            TranslatorSettings = new TranslatorSettings { Provider = "GoogleWeb", SourceLanguage = "en", TargetLanguage = "ru" },
+        };
+        var calls = 0;
+        var translator = new FakeTranslatorProvider("GoogleWeb", translateAsync: (request, _) =>
+        {
+            Interlocked.Increment(ref calls);
+            Assert.Single(request.Texts);
+            return Task.FromResult(new TranslateResponse(request.Texts.Select(t =>
+                t.StartsWith("Cost", StringComparison.Ordinal) ? (changeNumber ? "Цена 99" : "Цена 50") : "Настройки"),
+                TranslatedAt, "GoogleWeb"));
+        });
+        var engine = new FakeOcrEngine { EngineId = "Tesseract", BlocksFactory = request => new[]
+        {
+            new OcrTextBlock(request.Frame.Region.Y == 21 ? "Cost 50" : "Settings", new BoundingBox(0, 0, 60, 16)),
+        } };
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available("test", new[]
+        {
+            new TextCandidate(new BoundingBox(1, 1, 60, 16), .95),
+            new TextCandidate(new BoundingBox(1, 19, 60, 16), .95),
+        }));
+        var service = CreateService(new FakeCaptureFrameSource(), engine, translator,
+            new FakeOverlayService(), candidateDetector: detector);
+
+        var first = await service.RunAllZonesAsync(profile);
+        var second = await service.RunAllZonesAsync(profile);
+
+        Assert.Equal(2, calls);
+        Assert.Equal(new[] { changeNumber ? "Cost 50" : "Цена 50", "Настройки" },
+            first.OverlaySnapshot.TextItems.Select(item => item.Text));
+        Assert.Equal(first.OverlaySnapshot.TextItems.Select(i => i.Text), second.OverlaySnapshot.TextItems.Select(i => i.Text));
+        Assert.All(first.OverlaySnapshot.TextItems, item =>
+        {
+            Assert.Equal(OverlayTextLayoutMode.KeepWithinSourceBounds, item.TextStyle.LayoutMode);
+            Assert.Equal(60, item.Width);
+            Assert.Equal(16, item.Height);
+        });
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
     [InlineData(false, true)]
@@ -4652,7 +5407,7 @@ public sealed class TranslationPipelineServiceTests
 
     private static TranslationPipelineService CreateService(
         FakeCaptureFrameSource frameSource,
-        FakeOcrEngine ocrEngine,
+        IOcrEngine ocrEngine,
         FakeTranslatorProvider translator,
         FakeOverlayService overlay,
         FakeCredentialStorage? credentialStorage = null,
@@ -4661,6 +5416,7 @@ public sealed class TranslationPipelineServiceTests
         TextCandidateRegionOcrOptions? candidateRegionOcrOptions = null,
         TimeProvider? timeProvider = null)
     {
+        frameSource.Clock = timeProvider ?? TimeProvider.System;
         var ocrService = new OcrService(ocrEngine);
         return new TranslationPipelineService(
             new CaptureService(frameSource),
@@ -4796,8 +5552,14 @@ public sealed class TranslationPipelineServiceTests
         }
     }
 
-    private sealed class FakeCaptureFrameSource : ICaptureFrameSource
+    private sealed class FakeCaptureFrameSource : IRecentCaptureFrameSource
     {
+        public Task? CaptureGate { get; set; }
+        public TimeProvider Clock { get; set; } = TimeProvider.System;
+        public TimeSpan? SourceTimestampOverride { get; set; }
+        private readonly Guid sourceId = Guid.NewGuid();
+        public Task<CapturedFrame> CaptureRecentAsync(CaptureRegion region, TimeSpan maximumSourceAge,
+            CancellationToken cancellationToken = default) => CaptureAsync(region, cancellationToken);
         private int captureCount;
         private readonly object syncRoot = new();
 
@@ -4814,6 +5576,18 @@ public sealed class TranslationPipelineServiceTests
         public Action? OnCapture { get; init; }
 
         public Task<CapturedFrame> CaptureAsync(CaptureRegion region, CancellationToken cancellationToken = default)
+        {
+            var frame = CaptureCore(region, cancellationToken);
+            return CaptureGate is { } gate ? DeliverAfterGate(frame, gate) : frame;
+        }
+
+        private static async Task<CapturedFrame> DeliverAfterGate(Task<CapturedFrame> frame, Task gate)
+        {
+            await gate; // Deliberately ignores cancellation to exercise late source completion.
+            return await frame;
+        }
+
+        private Task<CapturedFrame> CaptureCore(CaptureRegion region, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -4853,12 +5627,17 @@ public sealed class TranslationPipelineServiceTests
                     stride,
                     "Bgra32",
                     pixels,
-                    capturedAt));
+                    capturedAt,
+                    new CaptureFrameOrigin(sourceId, SourceTimestampOverride ?? TimeSpan.FromSeconds(Clock.GetTimestamp() / (double)Clock.TimestampFrequency), Clock.GetUtcNow()),
+                    isCachedReuse: SourceTimestampOverride is not null));
         }
     }
 
     private sealed class ManualTimeProvider(DateTimeOffset utcNow) : TimeProvider
     {
+        private long timestamp;
+        public override long GetTimestamp() => timestamp;
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
         public override DateTimeOffset GetUtcNow() => utcNow;
 
         public void Advance(TimeSpan duration)
@@ -4869,6 +5648,7 @@ public sealed class TranslationPipelineServiceTests
             }
 
             utcNow += duration;
+            timestamp += duration.Ticks;
         }
     }
 
@@ -5055,6 +5835,7 @@ public sealed class TranslationPipelineServiceTests
 
     private sealed class FakeOverlayService : IOverlayService
     {
+        public List<OverlaySnapshot> Snapshots { get; } = new();
         public bool IsVisible { get; private set; }
 
         public bool IsExcludedFromCapture { get; set; }
@@ -5065,6 +5846,7 @@ public sealed class TranslationPipelineServiceTests
 
         public void Show(OverlaySnapshot snapshot)
         {
+            Snapshots.Add(snapshot);
             CurrentSnapshot = snapshot;
             IsVisible = true;
             Events.Add($"Show:{snapshot.TextItems.Count}");

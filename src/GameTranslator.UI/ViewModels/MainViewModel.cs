@@ -1,4 +1,4 @@
-﻿using GameTranslator.UI.Localization;
+using GameTranslator.UI.Localization;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -290,6 +290,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private static readonly ContentLayoutModeOption[] SupportedContentLayoutModeOptions =
     {
         new(ContentLayoutMode.DialogComic, "Dialog / Comic"),
+        new(ContentLayoutMode.StaticMenu, "Menu / Interface"),
     };
 
     private static readonly CandidateDetectorPresetOption[] SupportedCandidateDetectorPresetOptions =
@@ -3849,6 +3850,15 @@ public sealed class MainViewModel : ValidatableObservableObject
     {
         switch (action)
         {
+            case GlobalHotkeyAction.TranslateOnce:
+                if (IsBusy || IsLiveTranslationRunning)
+                {
+                    StatusMessage = "Stop live translation and wait for the current operation before translating once.";
+                    return;
+                }
+
+                await RunTranslationPipelineAsync();
+                break;
             case GlobalHotkeyAction.StartPausePipeline:
                 if (IsLiveTranslationRunning || overlayService.IsVisible)
                 {
@@ -6028,7 +6038,8 @@ public sealed class MainViewModel : ValidatableObservableObject
     {
         builder.AppendLine();
         builder.AppendLine("Live candidate lifecycle");
-        builder.AppendLine("  Text diagnostics: bounded OCR, translation-input, and translated text are recorded locally; provider responses, credentials, and frame pixels are not recorded.");
+        builder.AppendLine("  Text diagnostics: bounded OCR, translation-input, and translated text are recorded locally; provider responses and credentials are not recorded.");
+        builder.AppendLine($"  Capture frame sampling opt-in marker: {File.Exists(Path.Combine(AppContext.BaseDirectory, "capture-frames.enabled"))}. When enabled, sampled PNG inputs and source metadata are stored separately in LocalAppData/GameTranslator/Diagnostics/Frames (1/sec, 1800 frames/2 GiB per capture source; no upload). These are 8-bit pipeline pixels, not HDR originals.");
         builder.AppendLine("  Storage: local files only; no diagnostics upload is performed.");
         builder.AppendLine("  EventBufferCapacity: 131072");
         builder.AppendLine($"  RetainedEvents: {latestCandidateLifecycleEvents.Count}");
@@ -6144,6 +6155,24 @@ public sealed class MainViewModel : ValidatableObservableObject
                 "EmptyOcrRetryDelayMs",
                 entry.EmptyOcrRetryDelay?.TotalMilliseconds.ToString("F1", CultureInfo.InvariantCulture));
             AppendLifecycleField(builder, "EmptyOcrGroupingReset", entry.EmptyOcrGroupingReset?.ToString());
+            if (entry.Menu is { } menu)
+            {
+                AppendLifecycleField(builder, "MenuDecision", menu.Decision);
+                AppendLifecycleField(builder, "MenuGeneration", menu.Generation.ToString());
+                AppendLifecycleField(builder, "MenuTextVersion", menu.TextVersion.ToString());
+                AppendLifecycleField(builder, "MenuSourceId", menu.SourceId?.ToString());
+                AppendLifecycleField(builder, "MenuSourceTicks", menu.SourceTimestampTicks?.ToString());
+                AppendLifecycleField(builder, "MenuSourceAgeMs", menu.SourceAgeMilliseconds?.ToString("F1", CultureInfo.InvariantCulture));
+                AppendLifecycleField(builder, "MenuCachedReuse", menu.CachedReuse.ToString());
+                AppendLifecycleField(builder, "MenuObservations", menu.ObservationCount.ToString());
+                AppendLifecycleField(builder, "MenuConfirmed", menu.Confirmed.ToString());
+                AppendLifecycleField(builder, "MenuPeriodic", menu.Periodic.ToString());
+                AppendLifecycleField(builder, "MenuActiveOcr", menu.ActiveOcrCount.ToString());
+                AppendLifecycleField(builder, "MenuPendingOcr", menu.PendingOcrCount.ToString());
+                AppendLifecycleField(builder, "MenuReplacedPending", menu.ReplacedPendingCount.ToString());
+                AppendLifecycleField(builder, "MenuExpiredPending", menu.ExpiredPendingCount.ToString());
+                AppendLifecycleField(builder, "MenuWorkAgeMs", menu.WorkAgeMilliseconds?.ToString("F1", CultureInfo.InvariantCulture));
+            }
 
             if (entry.FrameCapturedAt is { } frameCapturedAt)
             {

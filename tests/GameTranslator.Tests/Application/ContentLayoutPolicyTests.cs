@@ -6,6 +6,15 @@ namespace GameTranslator.Tests.Application;
 public sealed class ContentLayoutPolicyTests
 {
     [Fact]
+    public void Resolve_StaticMenu_KeepsElementsBoundedAndPreservesLiveScheduling()
+    {
+        var policy = ContentLayoutPolicyResolver.Resolve(ContentLayoutMode.StaticMenu);
+        Assert.Equal(ContentCandidateGroupingPolicy.SeparateMenuElements, policy.CandidateGrouping);
+        Assert.Equal(OverlayTextLayoutMode.KeepWithinSourceBounds, policy.CandidateOverlayLayout);
+        Assert.Equal(TimeSpan.Zero, policy.MinimumLiveRefreshInterval);
+    }
+
+    [Fact]
     public void Resolve_DialogComic_ReturnsCurrentCandidatePipelinePolicy()
     {
         var policy = ContentLayoutPolicyResolver.Resolve(ContentLayoutMode.DialogComic);

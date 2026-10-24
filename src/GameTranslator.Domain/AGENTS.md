@@ -24,6 +24,8 @@ Keep the domain layer small, deterministic, and independent from frameworks and 
 
 ## Work Guidance
 
+- ContentLayoutMode.StaticMenu is additive under ADR-035; omitted contentLayoutMode remains DialogComic in schema 1.0. Keep mode semantics in Application. KeepWithinSourceBounds is the menu overlay policy; do not renumber existing enum values.
+
 - Prefer simple immutable or validation-friendly domain shapes where practical.
 - Put pure validation in Domain; put IO, serialization, repository behavior, and migration orchestration outside Domain.
 - Keep error codes stable when external tests or documentation may depend on them.

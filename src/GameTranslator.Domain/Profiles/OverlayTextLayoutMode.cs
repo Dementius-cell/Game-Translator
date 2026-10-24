@@ -4,4 +4,5 @@ public enum OverlayTextLayoutMode
 {
     FitToSourceBounds = 0,
     ExpandFromSourceCenter = 1,
+    KeepWithinSourceBounds = 2,
 }

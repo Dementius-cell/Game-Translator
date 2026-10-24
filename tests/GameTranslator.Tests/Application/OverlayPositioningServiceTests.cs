@@ -11,6 +11,43 @@ public sealed class OverlayPositioningServiceTests
     private static readonly DateTimeOffset ShownAt = new(2026, 6, 17, 12, 0, 1, TimeSpan.Zero);
 
     [Fact]
+    public void CreateSnapshot_MenuLabels_StayWithinSourceEvenForVerticalTextAndLongTranslation()
+    {
+        var service = new OverlayPositioningService();
+        var result = CreateResult(new CaptureRegion(100, 200, 200, 150), 200, 150,
+            new OcrTextBlock("A much longer translated menu label", new BoundingBox(10, 10, 25, 60)),
+            new OcrTextBlock("Settings", new BoundingBox(40, 10, 25, 60)));
+        var style = new OcrZoneTextStyle { LayoutMode = OverlayTextLayoutMode.KeepWithinSourceBounds };
+        var snapshot = service.CreateSnapshot(result, ShownAt, null, style);
+
+        Assert.Equal(2, snapshot.TextItems.Count);
+        for (var i = 0; i < snapshot.TextItems.Count; i++)
+        {
+            var source = result.TextBlocks[i].Bounds;
+            var item = snapshot.TextItems[i];
+            Assert.Equal(source.X + 100, item.X);
+            Assert.Equal(source.Y + 200, item.Y);
+            Assert.Equal(source.Width, item.Width);
+            Assert.Equal(source.Height, item.Height);
+            Assert.False(item.UseCalloutPresentation);
+        }
+        Assert.Contains(snapshot.DebugMetricLines, line => line.Contains("menu text", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void CreateSnapshot_MenuLabelMoves_DoesNotReuseStaleBounds()
+    {
+        var service = new OverlayPositioningService();
+        var style = new OcrZoneTextStyle { LayoutMode = OverlayTextLayoutMode.KeepWithinSourceBounds };
+        var previous = service.CreateSnapshot(CreateResult(new CaptureRegion(0, 0, 200, 100), 200, 100,
+            new OcrTextBlock("Settings", new BoundingBox(10, 10, 100, 20))), ShownAt, null, style);
+        var next = service.CreateSnapshot(CreateResult(new CaptureRegion(0, 0, 200, 100), 200, 100,
+            new OcrTextBlock("Settings", new BoundingBox(12, 12, 100, 20))), ShownAt, previous, style);
+        Assert.Equal(12, Assert.Single(next.TextItems).X);
+        Assert.Equal(12, Assert.Single(next.MaskItems).X);
+    }
+
+    [Fact]
     public void CreateSnapshot_WhenFrameMatchesRegion_AppliesRegionOffset()
     {
         var service = new OverlayPositioningService();

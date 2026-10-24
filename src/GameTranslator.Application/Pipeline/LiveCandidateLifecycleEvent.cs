@@ -13,6 +13,7 @@ namespace GameTranslator.Application.Pipeline;
 /// </summary>
 public sealed class LiveCandidateLifecycleEvent
 {
+    public MenuLiveDiagnostics? Menu { get; init; }
     private const int MaximumOrderedGeometryBounds = 128;
     private const int MaximumDiagnosticTextEntries = 16;
     private const int MaximumDiagnosticTextLength = 512;
@@ -641,6 +642,9 @@ public enum LiveCandidateLifecycleEventKind
     CandidateTranslationCredentialsWaitWarning,
     CandidateTranslationResponseWaitWarning,
     CandidateWatermarkEvidenceChanged,
+    CandidateMenuBackgroundChanged,
+    CandidateMenuAuthorityObserved,
+    CaptureFailed,
 }
 
 public enum LiveCandidateCancellationReason

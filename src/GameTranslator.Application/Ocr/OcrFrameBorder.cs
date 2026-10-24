@@ -1,4 +1,4 @@
-﻿using GameTranslator.Application.Capture;
+using GameTranslator.Application.Capture;
 
 namespace GameTranslator.Application.Ocr;
 
@@ -19,12 +19,13 @@ internal static class OcrFrameBorder
             frame.PixelData.Span.Slice(y * frame.Stride, frame.Width * 4)
                 .CopyTo(pixels.AsSpan(((y + Padding) * width + Padding) * 4));
         }
-        var padded = new CapturedFrame(frame.Region, width, height, width * 4, frame.PixelFormat, pixels, frame.CapturedAt);
+        var padded = new CapturedFrame(frame.Region, width, height, width * 4, frame.PixelFormat, pixels, frame.CapturedAt, frame.Origin, frame.IsCachedReuse);
         return new OcrRequest(padded, request.Language, request.ZoneId, request.PreprocessingSettings,
             request.EngineId, request.OrientationMode, request.LayoutMode, request.ContentLayoutMode, request.CandidateGroupingSettings)
         {
             DetectorPreset = request.DetectorPreset,
-                WatermarkFilter = request.WatermarkFilter,
+            WatermarkFilter = request.WatermarkFilter,
+            HasMenuValueRowEvidence = request.HasMenuValueRowEvidence,
             DetectorLineBounds = request.DetectorLineBounds.Select(b => new BoundingBox(b.X + Padding, b.Y + Padding, b.Width, b.Height)).ToArray(),
         };
     }

@@ -30,6 +30,10 @@ Keep concrete external integrations isolated behind Application contracts.
 
 ## Work Guidance
 
+- WGC snapshot origins are assigned from the actual compositor frame before copying pixels. Cache delivery retains that origin and marks reuse; delivery time remains separate for existing consumers. OCR image transformations preserve origin/reuse metadata. A cached delivery may be the first consumer observation of a source frame that finished copying after the wait timed out; consumers must compare source identity/timestamp rather than assume the reuse flag alone proves a duplicate or capture loss.
+
+- An explicit recent-frame request validates age on QPC time. If necessary it may recreate the same WGC session once, under the shared capture gate, at most once per 500 ms; it must fail on timeout, unknown/old provenance or closure instead of returning stale cache as success. Ordinary capture does not automatically restart. Register the waiter before starting capture, retain source identity across verification, reject callbacks from retired generations, clear cache on item closure and preserve caller cancellation. The actual monotonic arrival bounds a slightly leading compositor timestamp without extending the freshness budget.
+
 - Keep platform-specific exception handling close to the adapter and return recoverable Application-level failures where the contract supports it.
 - Keep file paths, SQLite schema use, Tesseract data paths, and Windows language-pack behavior observable through tests or diagnostics without exposing secrets.
 - Prefer adapter-level tests with fakes or temporary local storage over live network/API calls.
@@ -44,3 +48,7 @@ Keep concrete external integrations isolated behind Application contracts.
 No nested `AGENTS.md` files are currently defined below this directory.
 
 For Auto Japanese crops already resolved as vertical, recover up to four wholly missing long detector columns with the same engine only when 2–8 bounded vertical hints agree and the crop is at most one million pixels. Require native mean confidence >= 0.8; retain existing blocks, map recovered blocks/words back and order columns right to left. Do not retry short interjections, partially recognized columns, explicit directions or other language sets.
+
+ADR-036: single horizontal StaticMenu detector crops use SingleLine segmentation in Tesseract. Wrapped descriptions retain SingleBlock; vertical and DialogComic paths are unchanged. Do not infer or repair unknown key glyphs from expected fixture text.
+
+Explicit capture diagnostics are enabled only by capture-frames.enabled beside the executable. Save sampled delivered capture-region PNGs and origin/hash metadata under local Diagnostics/Frames; at most one encoder, 1 sample/sec, 1800 samples and 2 GiB per source. Never block capture on encoding, change pixels or upload frames; disk/encoding errors stop sampling only. This records the existing 8-bit BGRA input, not HDR scene data.

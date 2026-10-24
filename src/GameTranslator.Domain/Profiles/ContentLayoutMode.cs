@@ -6,4 +6,5 @@ namespace GameTranslator.Domain.Profiles;
 public enum ContentLayoutMode
 {
     DialogComic = 0,
+    StaticMenu = 1,
 }

@@ -8,6 +8,21 @@ namespace GameTranslator.Tests.Application;
 public sealed class TranslationTextGroupingServiceTests
 {
     [Theory]
+    [InlineData(ContentLayoutMode.StaticMenu, 1)]
+    [InlineData(ContentLayoutMode.DialogComic, 3)]
+    public void MenuNumericDisplays_AreExcludedOnlyFromTranslationProjection(ContentLayoutMode mode, int count)
+    {
+        var raw = CreateResult(500, 100,
+            new OcrTextBlock("Memory", new BoundingBox(0, 0, 100, 20)),
+            new OcrTextBlock("4.5/8 GB", new BoundingBox(200, 0, 100, 20)),
+            new OcrTextBlock("1920 * 1080", new BoundingBox(200, 40, 150, 20)));
+        var projected = TranslationTextGroupingService.CreateTranslationSourceResult(raw,
+            new OcrZone { ContentLayoutMode = mode, TranslationGroupingMode = TranslationGroupingMode.BlockByBlock });
+        Assert.Equal(count, projected.TextBlocks.Count);
+        Assert.Equal(3, raw.TextBlocks.Count);
+    }
+
+    [Theory]
     [InlineData(OcrOrientationMode.Vertical, "右 中 左")]
     [InlineData(OcrOrientationMode.Horizontal, "左 中 右")]
     public void AutoRequest_UsesRecognizedOrientationForTranslationAndDiagnostics(OcrOrientationMode detected, string expected)

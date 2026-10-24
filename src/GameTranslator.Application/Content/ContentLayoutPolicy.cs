@@ -8,6 +8,7 @@ namespace GameTranslator.Application.Content;
 public enum ContentCandidateGroupingPolicy
 {
     BoundedWritingSystem = 0,
+    SeparateMenuElements = 1,
 }
 
 /// <summary>
@@ -77,11 +78,18 @@ public static class ContentLayoutPolicyResolver
         OverlayTextLayoutMode.ExpandFromSourceCenter,
         TimeSpan.Zero);
 
+    private static readonly ContentLayoutPolicy StaticMenuPolicy = new(
+        ContentLayoutMode.StaticMenu,
+        ContentCandidateGroupingPolicy.SeparateMenuElements,
+        OverlayTextLayoutMode.KeepWithinSourceBounds,
+        TimeSpan.Zero);
+
     public static ContentLayoutPolicy Resolve(ContentLayoutMode mode)
     {
         return mode switch
         {
             ContentLayoutMode.DialogComic => DialogComicPolicy,
+            ContentLayoutMode.StaticMenu => StaticMenuPolicy,
             _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, "Content layout mode is not supported."),
         };
     }

@@ -8,4 +8,5 @@ public enum GlobalHotkeyAction
     ToggleOverlay,
     ShowSettings,
     ExitApplication,
+    TranslateOnce,
 }

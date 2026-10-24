@@ -1,4 +1,4 @@
-﻿using GameTranslator.Application.Capture;
+using GameTranslator.Application.Capture;
 using GameTranslator.Application.Ocr;
 using GameTranslator.Domain.Profiles;
 
@@ -9,6 +9,27 @@ public sealed class OcrServiceTests
     private static readonly CaptureRegion FirstRegion = new(10, 20, 100, 40);
     private static readonly CaptureRegion SecondRegion = new(220, 120, 80, 32);
     private static readonly DateTimeOffset FrameTime = new(2026, 6, 13, 12, 0, 0, TimeSpan.Zero);
+
+    [Theory]
+    [InlineData(1, false)]
+    [InlineData(2, true)]
+    public async Task Preparation_PreservesSourceFrameOriginAndCachedReuse(double scale, bool border)
+    {
+        var origin = new CaptureFrameOrigin(Guid.NewGuid(), TimeSpan.FromSeconds(42), FrameTime);
+        var frame = new CapturedFrame(FirstRegion, 100, 40, 400, "Bgra32", new byte[16000], FrameTime,
+            origin, isCachedReuse: true);
+        var engine = new FakeOcrEngine();
+        var service = new OcrService(engine);
+        await service.RecognizeAsync(new OcrRequest(frame, "en", "origin", new OcrPreprocessingSettings
+        {
+            Mode = OcrPreprocessingMode.Manual, Brightness = 10, Scale = scale, AddWhiteBorder = border,
+        }));
+        var prepared = Assert.Single(engine.Requests).Frame;
+        Assert.Equal((int)(100 * scale) + (border ? 20 : 0), prepared.Width);
+        Assert.Same(origin, prepared.Origin);
+        Assert.True(prepared.IsCachedReuse);
+        Assert.Equal(FrameTime, prepared.CapturedAt);
+    }
 
     [Fact]
     public async Task RecognizeAsync_WhenFrameHasText_ReturnsMappedTextBlocks()
@@ -318,9 +339,11 @@ public sealed class OcrServiceTests
         } };
         var request = new OcrRequest(CreateFrame(FirstRegion), "en", "zone-a",
             new OcrPreprocessingSettings { IsEnabled = true, Scale = .5, AddWhiteBorder = true })
-            { DetectorLineBounds = new[] { new BoundingBox(4, 6, 20, 10) } };
+            { HasMenuValueRowEvidence = true, DetectorLineBounds = new[] { new BoundingBox(4, 6, 20, 10) } };
         var result = await new OcrService(engine).RecognizeAsync(request);
         var processed = Assert.Single(engine.Requests);
+        Assert.True(processed.HasMenuValueRowEvidence);
+        Assert.True(result.Request.HasMenuValueRowEvidence);
         Assert.Equal(70, processed.Frame.Width);
         Assert.Equal(40, processed.Frame.Height);
         Assert.Equal(new BoundingBox(12, 13, 10, 5), Assert.Single(processed.DetectorLineBounds));
@@ -440,6 +463,50 @@ public sealed class OcrServiceTests
         Assert.Equal(255, actual.Frame.PixelData.Span[(10 * 120 + 10) * 4]);
         Assert.Equal(0, actual.Frame.PixelData.Span[(25 * 120 + 35) * 4]);
         Assert.Equal(0, frame.PixelData.Span[0]);
+    }
+
+    [Theory]
+    [InlineData(50, true, true, 1, OcrPreprocessingMode.Adaptive, true)]
+    [InlineData(100, true, true, 1, OcrPreprocessingMode.Adaptive, true)]
+    [InlineData(200, true, true, 1, OcrPreprocessingMode.Adaptive, true)]
+    [InlineData(300, true, true, 1, OcrPreprocessingMode.Adaptive, true)]
+    [InlineData(100, false, true, 1, OcrPreprocessingMode.Adaptive, false)]
+    [InlineData(100, true, false, 1, OcrPreprocessingMode.Adaptive, false)]
+    [InlineData(100, true, true, 2, OcrPreprocessingMode.Adaptive, false)]
+    [InlineData(100, true, true, 1, OcrPreprocessingMode.None, false)]
+    [InlineData(100, true, true, 1, OcrPreprocessingMode.Manual, false)]
+    public async Task AdaptiveMenu_BrightCoreSelectionIsRelativeAndScoped(
+        int width, bool menu, bool colored, int lineCount, OcrPreprocessingMode mode, bool selected)
+    {
+        var height = width * 2 / 5;
+        var pixels = new byte[width * height * 4];
+        for (var y = 0; y < height; y++)
+        for (var x = 0; x < width; x++)
+        {
+            var i = (y * width + x) * 4;
+            var white = x >= width * .2 && x < width * .5 && y >= height * .25 && y < height * .75;
+            pixels[i] = white ? (byte)255 : colored ? (byte)200 : (byte)50;
+            pixels[i + 1] = white ? (byte)255 : (byte)50;
+            pixels[i + 2] = white ? (byte)255 : colored ? (byte)10 : (byte)50;
+            pixels[i + 3] = 255;
+        }
+        var frame = new CapturedFrame(new(0, 0, width, height), width, height, width * 4, "Bgra32", pixels, FrameTime);
+        var engine = new FakeOcrEngine();
+        await new OcrService(engine).RecognizeAsync(new OcrRequest(frame, "en",
+            preprocessingSettings: new() { Mode = mode }, orientationMode: OcrOrientationMode.Horizontal,
+            contentLayoutMode: menu ? ContentLayoutMode.StaticMenu : ContentLayoutMode.DialogComic)
+        {
+            DetectorLineBounds = Enumerable.Range(0, lineCount)
+                .Select(i => new BoundingBox(0, i * height / lineCount, width, height / lineCount)).ToArray(),
+        });
+        var actual = Assert.Single(engine.Requests);
+        Assert.Equal(selected, actual.PreprocessingSettings.ThresholdingEnabled);
+        if (selected)
+        {
+            Assert.True(actual.PreprocessingSettings.InvertColors);
+            Assert.Equal(10, actual.PreprocessingSettings.Threshold);
+            Assert.Equal(width + 20, actual.Frame.Width);
+        }
     }
 
     private static OcrRequest CreateRequest(CaptureRegion region, string language, string zoneId)

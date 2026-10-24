@@ -1,4 +1,4 @@
-﻿using GameTranslator.Domain.Profiles;
+using GameTranslator.Domain.Profiles;
 
 namespace GameTranslator.Application.Ocr;
 
@@ -45,7 +45,9 @@ public sealed class OcrService
 
         var engine = SelectEngine(request.EngineId);
         var preparation = request.PreprocessingSettings.ResolveMode() == OcrPreprocessingMode.Adaptive
-            ? AdaptiveOcrPreparation.Select(request.Frame, request.DetectorLineBounds, cancellationToken)
+            ? AdaptiveOcrPreparation.Select(request.Frame, request.DetectorLineBounds, cancellationToken,
+                request.ContentLayoutMode == ContentLayoutMode.StaticMenu
+                    && request.OrientationMode != OcrOrientationMode.Vertical)
             : request.PreprocessingSettings;
         var preprocessedFrame = preprocessor.Apply(request.Frame, preparation, cancellationToken);
         var preprocessedRequest = ReferenceEquals(preprocessedFrame, request.Frame)
@@ -63,6 +65,7 @@ public sealed class OcrService
             {
                 DetectorPreset = request.DetectorPreset,
                 WatermarkFilter = request.WatermarkFilter,
+                HasMenuValueRowEvidence = request.HasMenuValueRowEvidence,
                 DetectorLineBounds = request.DetectorLineBounds.Select(bounds => ScaleBounds(
                     bounds, request.Frame, preprocessedFrame)).ToArray(),
             };

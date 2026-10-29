@@ -69,7 +69,7 @@ public sealed class TesseractOcrEngineTests
     {
         const int maximumConcurrency = 3;
         var executor = new BoundedNativeOcrExecutor(maximumConcurrency);
-        var releaseOperations = new ManualResetEventSlim(initialState: false);
+        using var releaseOperations = new ManualResetEventSlim(initialState: false);
         var allSlotsOccupied = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var activeOperations = 0;
         var maximumObservedConcurrency = 0;
@@ -97,12 +97,20 @@ public sealed class TesseractOcrEngineTests
                 }))
             .ToArray();
 
-        await allSlotsOccupied.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        Assert.Equal(maximumConcurrency, Volatile.Read(ref activeOperations));
-        Assert.Equal(maximumConcurrency, Volatile.Read(ref maximumObservedConcurrency));
-
-        releaseOperations.Set();
-        await Task.WhenAll(operations).WaitAsync(TimeSpan.FromSeconds(2));
+        try
+        {
+            // Blocking workers can need additional thread-pool injection time on a
+            // busy CI host. This verifies concurrency, not a startup latency budget.
+            await allSlotsOccupied.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            Assert.Equal(maximumConcurrency, Volatile.Read(ref activeOperations));
+            Assert.Equal(maximumConcurrency, Volatile.Read(ref maximumObservedConcurrency));
+        }
+        finally
+        {
+            // A failed assertion must not leave workers parked for the remaining suite.
+            releaseOperations.Set();
+            await Task.WhenAll(operations).WaitAsync(TimeSpan.FromSeconds(30));
+        }
 
         Assert.Equal(maximumConcurrency, maximumObservedConcurrency);
         Assert.Equal(maximumConcurrency, executor.MaximumConcurrency);

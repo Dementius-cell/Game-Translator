@@ -6024,8 +6024,8 @@ public sealed class MainViewModel : ValidatableObservableObject
         }
 
         builder.AppendLine($"  Status: {lastCandidatePipelineReadiness.Status}");
-        builder.AppendLine($"  Generation: {lastCandidatePipelineReadiness.Generation}");
-        builder.AppendLine($"  RestartCount: {lastCandidatePipelineReadiness.RestartCount}");
+        builder.AppendLine($"  SessionGeneration: {lastCandidatePipelineReadiness.Generation}");
+        builder.AppendLine($"  SessionRestartCount: {lastCandidatePipelineReadiness.RestartCount}");
         AppendDebugLine(
             builder,
             "UnavailableReason",

@@ -22,9 +22,7 @@ internal sealed class MenuTextAuthority(int requiredObservations, TimeSpan requi
         Expire(now);
         if (!Fresh(origin, now) || (lastOrigin is { } previous
             && (origin.SourceId != previous.SourceId || origin.SourceTimestamp <= previous.SourceTimestamp))) return false;
-        var normalized = groups.Select(Normalize).ToArray();
-        var next = normalized.Length == 0 || normalized.All(string.IsNullOrEmpty) ? null
-            : string.Concat(normalized.Select(text => text.Length + ":" + text));
+        var next = CreateSignature(groups);
         if (next != signature || next is null)
         {
             Version++;
@@ -57,6 +55,26 @@ internal sealed class MenuTextAuthority(int requiredObservations, TimeSpan requi
 
     internal bool CanPublish(long version, TimeSpan now)
         => version == Version && Confirmed && lastOrigin is { } origin && Fresh(origin, now);
+
+    // Unvalidated geometry may revoke contradicted text, but cannot confirm new text.
+    internal bool RevokeIfDifferent(CaptureFrameOrigin origin, IEnumerable<string> groups, TimeSpan now)
+    {
+        if (signature is null || !Fresh(origin, now) || lastOrigin is not { } previous
+            || origin.SourceId != previous.SourceId || origin.SourceTimestamp <= previous.SourceTimestamp
+            || CreateSignature(groups) == signature) return false;
+        Version++;
+        signature = null;
+        count = 0;
+        Confirmed = false;
+        return true;
+    }
+
+    private static string? CreateSignature(IEnumerable<string> groups)
+    {
+        var normalized = groups.Select(Normalize).ToArray();
+        return normalized.Length == 0 || normalized.All(string.IsNullOrEmpty) ? null
+            : string.Concat(normalized.Select(text => text.Length + ":" + text));
+    }
 
     private static bool Fresh(CaptureFrameOrigin origin, TimeSpan now)
         => now >= origin.FreshnessTimestamp && now - origin.FreshnessTimestamp <= TimeSpan.FromSeconds(2);

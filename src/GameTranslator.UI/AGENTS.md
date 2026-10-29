@@ -39,6 +39,8 @@ Keep the WPF presentation layer ergonomic, testable, and separated from infrastr
 
 ## Verification
 
+- Candidate readiness diagnostics distinguish per-zone detector degradation from session activity. Label Generation/RestartCount as session counters in exported debug information; do not present them as the Python worker's lifecycle counters.
+
 Language-selection advice is localized, informational and selection-dependent. Do not turn it into forbidden language pairs, automatic deselection, reordering or profile validation without separate evidence and scope.
 
 Keep the selected OCR language collection stable and apply item-level notifications when checkboxes change. Exercise both bound lists with WPF controls; model-only toggles do not cover UI collection updates during clicks.

@@ -44,6 +44,23 @@ public sealed class OcrService
         cancellationToken.ThrowIfCancellationRequested();
 
         var engine = SelectEngine(request.EngineId);
+        if (request.RecognitionContextFrame is { } context
+            && request.PreprocessingSettings.ResolveMode() == OcrPreprocessingMode.None)
+        {
+            var x = request.Frame.Region.X - context.Region.X;
+            var y = request.Frame.Region.Y - context.Region.Y;
+            var expanded = new OcrRequest(context, request.Language, request.ZoneId, request.PreprocessingSettings,
+                request.EngineId, request.OrientationMode, request.LayoutMode, request.ContentLayoutMode, request.CandidateGroupingSettings)
+            {
+                DetectorPreset = request.DetectorPreset,
+                WatermarkFilter = request.WatermarkFilter,
+                HasMenuValueRowEvidence = request.HasMenuValueRowEvidence,
+                DetectorLineBounds = request.DetectorLineBounds.Select(b => new BoundingBox(b.X + x, b.Y + y, b.Width, b.Height)).ToArray(),
+            };
+            var contextual = await engine.RecognizeAsync(expanded, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            return OcrFrameBorder.Remove(contextual, request, x, y);
+        }
         var preparation = request.PreprocessingSettings.ResolveMode() == OcrPreprocessingMode.Adaptive
             ? AdaptiveOcrPreparation.Select(request.Frame, request.DetectorLineBounds, cancellationToken,
                 request.ContentLayoutMode == ContentLayoutMode.StaticMenu

@@ -77,6 +77,8 @@ public sealed class OcrRequest
 
     public CapturedFrame Frame { get; }
 
+    internal CapturedFrame? RecognitionContextFrame { get; init; }
+
     public CaptureRegion Region => Frame.Region;
 
     public string Language { get; }

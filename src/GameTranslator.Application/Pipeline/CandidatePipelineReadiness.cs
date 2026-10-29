@@ -76,4 +76,5 @@ public enum CandidatePipelineReadinessStatus
 {
     Disabled,
     Ready,
+    Degraded,
 }

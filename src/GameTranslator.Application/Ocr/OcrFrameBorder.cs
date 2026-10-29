@@ -30,14 +30,15 @@ internal static class OcrFrameBorder
         };
     }
 
-    internal static OcrResult Remove(OcrResult result, OcrRequest original)
+    internal static OcrResult Remove(OcrResult result, OcrRequest original,
+        int offsetX = Padding, int offsetY = Padding)
     {
         BoundingBox? Map(BoundingBox b)
         {
-            var left = Math.Max(0, b.X - Padding);
-            var top = Math.Max(0, b.Y - Padding);
-            var right = Math.Min(original.Frame.Width, b.Right - Padding);
-            var bottom = Math.Min(original.Frame.Height, b.Bottom - Padding);
+            var left = Math.Max(0, b.X - offsetX);
+            var top = Math.Max(0, b.Y - offsetY);
+            var right = Math.Min(original.Frame.Width, b.Right - offsetX);
+            var bottom = Math.Min(original.Frame.Height, b.Bottom - offsetY);
             return right > left && bottom > top ? new BoundingBox(left, top, right - left, bottom - top) : null;
         }
         var blocks = new List<OcrTextBlock>();

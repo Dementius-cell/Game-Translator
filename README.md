@@ -6,9 +6,11 @@ The current normal pipeline is: manual OCR zone â†’ GPU Paddle text detection â†
 
 For installation, first-run setup, OCR language packs, providers, cache, hotkeys, and diagnostics, see the [user guide](docs/user-guide.md).
 
+For the current menu implementation and remaining overlay, OCR and memory limitations, see [Menu r15 source status](docs/agents/menu-r15-status.md). Source availability does not imply release or live-acceptance completion.
+
 ## Reproducible live-Paddle build
 
-The source repository deliberately excludes third-party game/manga screenshots, local OCR/translation reports, release candidates, Paddle model files, and Tesseract language data. It does contain a small tracked deterministic calibration set; generated evidence and owner-provided source material remain local-only under ignored `artifacts/`, `work/`, `outputs/`, application-data, and `tessdata/` paths unless the owner explicitly promotes a specific artifact.
+The source repository deliberately excludes third-party game/manga screenshots, local OCR/translation reports, release candidates, Paddle model files, and Tesseract language data. It does contain a small tracked deterministic calibration set; generated evidence and owner-provided source material remain local-only under ignored `artifacts/`, `work/`, `outputs/`, application-data, and the locally installed tessdata directory unless the owner explicitly promotes a specific artifact.
 
 To assemble the current ADR-030 live-Paddle package class, use a Windows x64 host with:
 

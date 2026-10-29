@@ -1,4 +1,5 @@
 using GameTranslator.Application.Ocr;
+using GameTranslator.Application.Capture;
 
 namespace GameTranslator.Tests.Application;
 
@@ -6,6 +7,58 @@ public sealed class MenuDescriptionCandidateGroupingTests
 {
     private static TextCandidate Line(int x, int y, int width, int height = 20) =>
         new(new BoundingBox(x, y, width, height), .9);
+
+    [Theory]
+    [InlineData(1, 25)]
+    [InlineData(2, 25)]
+    [InlineData(1, 28)]
+    public void Group_UsesInkHeightForTightFirstLineAndPaddedContinuation(int scale, int nextHeight)
+    {
+        var lines = new[] { Line(10 * scale, 10 * scale, 469 * scale, 17 * scale),
+            Line(10 * scale, 38 * scale, 284 * scale, nextHeight * scale) };
+        var frame = InkFrame(lines, scale, 22, 0);
+        Assert.Equal(2, MenuDescriptionCandidateGrouping.Group(lines).Count);
+        var group = Assert.Single(MenuDescriptionCandidateGrouping.Group(lines, frame));
+        Assert.Equal(lines.Select(c => c.Bounds), group.SourceCandidateBounds);
+    }
+
+    [Theory]
+    [InlineData(25, 0)] // Real font-size difference, not extra background padding.
+    [InlineData(22, 100)] // Bright background is outside the supported pixel evidence.
+    [InlineData(0, 0)] // No visible continuation.
+    public void Group_RejectsUnsupportedInkEvidence(int nextInk, byte background)
+    {
+        var lines = new[] { Line(10, 10, 469, 17), Line(10, 38, 284, 28) };
+        Assert.Equal(2, MenuDescriptionCandidateGrouping.Group(lines, InkFrame(lines, 1, nextInk, background)).Count);
+    }
+
+    [Fact]
+    public void Group_PixelEvidenceDoesNotAbsorbNeighborOrBridgeParagraphGap()
+    {
+        var lines = new[] { Line(10, 10, 469, 17), Line(10, 38, 284, 25) };
+        var frame = InkFrame(lines, 1, 22, 0);
+        Assert.Equal(3, MenuDescriptionCandidateGrouping.Group([.. lines, Line(320, 38, 30, 15)], frame).Count);
+        Assert.Equal(2, MenuDescriptionCandidateGrouping.Group([lines[0], Line(10, 75, 284, 25)], frame).Count);
+    }
+
+    private static CapturedFrame InkFrame(TextCandidate[] lines, int scale, int nextInk, byte background)
+    {
+        int width = 500 * scale, height = 100 * scale;
+        var pixels = Enumerable.Repeat(background, width * height * 4).ToArray();
+        for (var index = 0; index < lines.Length; index++)
+        {
+            var b = lines[index].Bounds;
+            var inkHeight = index == 0 ? b.Height : nextInk * scale;
+            for (var y = b.Bottom - inkHeight; y < b.Bottom; y++)
+            for (var x = b.X; x < b.Right; x++)
+            {
+                if ((x / scale) % 5 != 0) continue;
+                var offset = (y * width + x) * 4;
+                pixels[offset] = pixels[offset + 1] = pixels[offset + 2] = 200;
+            }
+        }
+        return new CapturedFrame(new(0, 0, width, height), width, height, width * 4, "Bgra32", pixels, DateTimeOffset.UnixEpoch);
+    }
 
     [Theory]
     [InlineData(1, 0)]

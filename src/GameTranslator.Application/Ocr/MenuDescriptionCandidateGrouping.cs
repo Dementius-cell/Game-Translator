@@ -1,3 +1,5 @@
+using GameTranslator.Application.Capture;
+
 namespace GameTranslator.Application.Ocr;
 
 /// <summary>
@@ -6,7 +8,7 @@ namespace GameTranslator.Application.Ocr;
 /// </summary>
 public static class MenuDescriptionCandidateGrouping
 {
-    public static IReadOnlyList<TextCandidate> Group(IReadOnlyList<TextCandidate> candidates)
+    public static IReadOnlyList<TextCandidate> Group(IReadOnlyList<TextCandidate> candidates, CapturedFrame? frame = null)
     {
         var remaining = candidates.OrderBy(c => c.Bounds.Y).ThenBy(c => c.Bounds.X).ToList();
         var output = new List<TextCandidate>();
@@ -23,7 +25,8 @@ public static class MenuDescriptionCandidateGrouping
                 {
                     var heights = members.Select(c => c.Bounds.Height).Order().ToArray();
                     var typicalHeight = (heights[(heights.Length - 1) / 2] + heights[heights.Length / 2]) / 2.0;
-                    var next = remaining.Where(c => Continues(first.Bounds, previous, c.Bounds, typicalHeight, heights[0], heights[^1]))
+                    var next = remaining.Where(c => Continues(first.Bounds, previous, c.Bounds, typicalHeight, heights[0], heights[^1],
+                        members.Count == 1 ? frame : null))
                         .OrderBy(c => c.Bounds.Y).ThenBy(c => c.Bounds.X).FirstOrDefault();
                     if (next is null) break;
                     // Only reunite same-line fragments when a wrapped continuation
@@ -54,17 +57,70 @@ public static class MenuDescriptionCandidateGrouping
     }
 
     private static bool Continues(BoundingBox first, BoundingBox previous, BoundingBox next,
-        double typicalHeight, double minimumHeight, double maximumHeight)
+        double typicalHeight, double minimumHeight, double maximumHeight, CapturedFrame? frame)
     {
         var height = Math.Min(typicalHeight, next.Height);
         var gap = next.Y - previous.Bottom;
-        return next.Height <= typicalHeight * 1.35 && typicalHeight <= next.Height * 1.35
-            // Prevent a chain of gradually changing font sizes from bridging title and body.
-            && Math.Max(maximumHeight, next.Height) <= Math.Min(minimumHeight, next.Height) * 2
+        // Prevent a chain of gradually changing font sizes from bridging title and body.
+        return Math.Max(maximumHeight, next.Height) <= Math.Min(minimumHeight, next.Height) * 2
             && next.Width >= next.Height * 2
             && gap >= 0 && gap <= height * 0.85
             && Math.Abs(next.X - first.X) <= height * 0.45
-            && next.Width <= Math.Max(first.Width, previous.Width) * 1.65;
+            && next.Width <= Math.Max(first.Width, previous.Width) * 1.65
+            && ((next.Height <= typicalHeight * 1.35 && typicalHeight <= next.Height * 1.35)
+                || HasUnequalPaddingEvidence(first, next, frame));
+    }
+
+    // A tight first line and a padded final line can have the same glyph size.
+    // Require source pixels, a shorter continuation and a flat dark background;
+    // never relax the geometric rule for a title/font change on geometry alone.
+    private static bool HasUnequalPaddingEvidence(BoundingBox first, BoundingBox next, CapturedFrame? frame)
+    {
+        if (frame is null || frame.PixelFormat != "Bgra32"
+            || next.Height <= first.Height || next.Height > first.Height * 2
+            || next.Width > first.Width * .8) return false;
+        var firstInk = InkHeight(first, frame);
+        var nextInk = InkHeight(next, frame);
+        return firstInk >= first.Height * .9 && nextInk > 0 && nextInk <= next.Height * .9
+            && firstInk <= nextInk * 1.35 && nextInk <= firstInk * 1.35;
+    }
+
+    private static int InkHeight(BoundingBox bounds, CapturedFrame frame)
+    {
+        if (bounds.X < 0 || bounds.Y < 0 || bounds.Right > frame.Width || bounds.Bottom > frame.Height
+            || (long)bounds.Width * bounds.Height > 1_000_000) return 0;
+        var histogram = new int[256];
+        var pixels = frame.PixelData.Span;
+        for (var y = bounds.Y; y < bounds.Bottom; y++)
+        for (var x = bounds.X; x < bounds.Right; x++)
+        {
+            var offset = y * frame.Stride + x * 4;
+            histogram[(int)(pixels[offset] * .0722 + pixels[offset + 1] * .7152 + pixels[offset + 2] * .2126)]++;
+        }
+        var count = bounds.Width * bounds.Height;
+        int Percentile(double fraction)
+        {
+            var rank = Math.Max(1, (int)Math.Ceiling(count * fraction));
+            for (var i = 0; i < 256; i++) if ((rank -= histogram[i]) <= 0) return i;
+            return 255;
+        }
+        var background = Percentile(.5);
+        if (background > 64 || background - Percentile(.1) > 8) return 0;
+        var top = bounds.Bottom;
+        var bottom = bounds.Y;
+        for (var y = bounds.Y; y < bounds.Bottom; y++)
+        {
+            var ink = 0;
+            for (var x = bounds.X; x < bounds.Right; x++)
+            {
+                var offset = y * frame.Stride + x * 4;
+                if (pixels[offset] * .0722 + pixels[offset + 1] * .7152 + pixels[offset + 2] * .2126 >= background + 48) ink++;
+            }
+            if (ink < Math.Max(2, bounds.Width * .01)) continue;
+            top = Math.Min(top, y);
+            bottom = y + 1;
+        }
+        return Math.Max(0, bottom - top);
     }
 
     private static bool Intersects(BoundingBox a, BoundingBox b) =>

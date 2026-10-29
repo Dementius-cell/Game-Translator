@@ -102,7 +102,7 @@ public sealed class TextCandidateRegionOcrService
             && zoneRequest.OrientationMode != OcrOrientationMode.Vertical
             && zoneRequest.CandidateGroupingSettings?.MaximumHorizontalLines is null)
         {
-            candidates = MenuDescriptionCandidateGrouping.Group(candidates);
+            candidates = MenuDescriptionCandidateGrouping.Group(candidates, zoneRequest.Frame);
         }
         var selectedCandidates = SelectCandidates(
                 groupingService.Group(
@@ -113,8 +113,9 @@ public sealed class TextCandidateRegionOcrService
                 zoneRequest.Frame,
                 zoneRequest.ContentLayoutMode == ContentLayoutMode.StaticMenu
                     && zoneRequest.OrientationMode != OcrOrientationMode.Vertical);
-        var regions = MenuValueRowEvidence.Annotate(selectedCandidates, zoneRequest)
-            .Select(candidate => new TextCandidateRegion(candidate, CreateCroppedFrame(zoneRequest.Frame, candidate.Bounds)))
+        var annotatedCandidates = MenuValueRowEvidence.Annotate(selectedCandidates, zoneRequest);
+        var regions = annotatedCandidates
+            .Select(candidate => CreateRegion(zoneRequest, candidate, annotatedCandidates, cancellationToken))
             .ToArray();
         if (zoneRequest.WatermarkFilter != WatermarkFilterMode.Off)
         {
@@ -295,7 +296,14 @@ public sealed class TextCandidateRegionOcrService
         return selected;
     }
 
-    private static CapturedFrame CreateCroppedFrame(CapturedFrame frame, BoundingBox bounds)
+    internal static TextCandidateRegion CreateRegion(OcrRequest request, TextCandidate candidate,
+        IReadOnlyList<TextCandidate> neighbors, CancellationToken token = default) =>
+        new(candidate, CreateCroppedFrame(request.Frame, candidate.Bounds))
+        {
+            RecognitionContextFrame = MenuRecognitionContext.Create(request, candidate, neighbors, token),
+        };
+
+    internal static CapturedFrame CreateCroppedFrame(CapturedFrame frame, BoundingBox bounds)
     {
         if (!string.Equals(frame.PixelFormat, SupportedPixelFormat, StringComparison.OrdinalIgnoreCase))
         {
@@ -481,6 +489,8 @@ public sealed class TextCandidateRegion
 
     public CapturedFrame Frame { get; }
 
+    internal CapturedFrame? RecognitionContextFrame { get; init; }
+
     internal static IReadOnlyList<BoundingBox> CreateDetectorLineBounds(TextCandidate candidate) =>
         candidate.SourceCandidateBounds.Select(bound => new BoundingBox(
             bound.X - candidate.Bounds.X, bound.Y - candidate.Bounds.Y,
@@ -503,6 +513,7 @@ public sealed class TextCandidateRegion
             DetectorPreset = zoneRequest.DetectorPreset,
             HasMenuValueRowEvidence = Candidate.HasMenuValueRowEvidence,
             DetectorLineBounds = CreateDetectorLineBounds(Candidate),
+            RecognitionContextFrame = RecognitionContextFrame,
         };
     }
 }

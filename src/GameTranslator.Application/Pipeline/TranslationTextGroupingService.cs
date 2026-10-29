@@ -16,7 +16,11 @@ public static partial class TranslationTextGroupingService
         ArgumentNullException.ThrowIfNull(sourceResult);
         ArgumentNullException.ThrowIfNull(zone);
 
-        if (sourceResult.WatermarkDecision?.Excluded == true)
+        if (sourceResult.WatermarkDecision?.Excluded == true
+            || (zone.ContentLayoutMode == ContentLayoutMode.StaticMenu
+                && (MenuTranslationIntegrity.HasStandaloneKeycapEvidence(sourceResult)
+                    || MenuTriggerKeycapEvidence.Matches(sourceResult)
+                    || MenuStarRatingEvidence.Matches(sourceResult))))
         {
             return new OcrResult(sourceResult.Request, Array.Empty<OcrTextBlock>(), sourceResult.RecognizedAt);
         }

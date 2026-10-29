@@ -10,6 +10,24 @@ public sealed class MenuTextAuthorityTests
     private static CaptureFrameOrigin Origin(int time) => new(Source, Ms(time), DateTimeOffset.UnixEpoch);
 
     [Theory]
+    [InlineData("Other")]
+    [InlineData("")]
+    public void UnvalidatedChangeRevokesButRequiresTwoValidatedObservations(string text)
+    {
+        var gate = Confirm("Action");
+        var version = gate.Version;
+        Assert.False(gate.RevokeIfDifferent(Origin(200), [text], Ms(400)));
+        Assert.False(gate.RevokeIfDifferent(Origin(400) with { SourceId = Guid.NewGuid() }, [text], Ms(400)));
+        Assert.False(gate.RevokeIfDifferent(Origin(400), ["Action"], Ms(400)));
+        Assert.True(gate.RevokeIfDifferent(Origin(400), [text], Ms(400)));
+        Assert.False(gate.CanPublish(version, Ms(400)));
+        Assert.True(gate.Observe(Origin(400), [text], Ms(400)));
+        Assert.False(gate.Confirmed);
+        Assert.True(gate.Observe(Origin(600), [text], Ms(600)));
+        Assert.Equal(text.Length > 0, gate.Confirmed);
+    }
+
+    [Theory]
     [InlineData("Power 7", "Power 8")]
     [InlineData("On", "Off")]
     [InlineData("1/15", "2/15")]

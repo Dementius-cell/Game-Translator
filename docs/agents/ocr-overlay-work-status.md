@@ -1,5 +1,9 @@
 # OCR and Overlay Work Status
 
+## Current menu source status — 2026-10-29
+
+See [Menu r15 source status](menu-r15-status.md) for the synchronized implementation, validation limits and unresolved work. Remaining overlay disappearance is the immediate priority; the measured memory-growth investigation is explicitly deferred. Earlier dated sections below are historical and do not describe the current local test package or acceptance state.
+
 ## Accepted preprocessing modes — 2026-10-18
 
 ADR-034 records the owner-approved None/Manual/Adaptive preprocessing contract. Adaptive starts from original crop pixels without inherited manual filters; nullable mode preserves legacy profiles. Its current heuristics remain experimental. UI mode/preset selectors remain usable after Off; Auto OCR with a manual direction now shows a red recommendation to select Auto. User selection of two or more Auto OCR languages enables translation Auto without changing provider or losing the saved manual language. Delivery is tracked in [issue #58](https://github.com/Dementius-cell/Game-Translator/issues/58). Private pages, OCR transcripts, runtime files and build outputs remain excluded.

@@ -40,6 +40,8 @@ Keep concrete external integrations isolated behind Application contracts.
 
 ## Verification
 
+- A detector exchange has an independent finite request deadline (5 s by default), including pipe write/read. Caller cancellation may shorten its remaining lifetime with the existing 2 s drain window but cannot extend the original request deadline. Timeout retires that worker and returns an observable unavailable result; the next normal capture can start a replacement. Startup remains a separate 5 s budget; no prewarm or automatic full-frame/provider fallback is introduced.
+
 - For infrastructure changes, run focused Infrastructure tests plus architecture dependency tests.
 - For cache persistence, profile JSON, credentials, OCR engines, capture, or provider changes, run the relevant smoke/application tests that exercise the adapter through its Application contract.
 
@@ -52,3 +54,7 @@ For Auto Japanese crops already resolved as vertical, recover up to four wholly 
 ADR-036: single horizontal StaticMenu detector crops use SingleLine segmentation in Tesseract. Wrapped descriptions retain SingleBlock; vertical and DialogComic paths are unchanged. Do not infer or repair unknown key glyphs from expected fixture text.
 
 Explicit capture diagnostics are enabled only by capture-frames.enabled beside the executable. Save sampled delivered capture-region PNGs and origin/hash metadata under local Diagnostics/Frames; at most one encoder, 1 sample/sec, 1800 samples and 2 GiB per source. Never block capture on encoding, change pixels or upload frames; disk/encoding errors stop sampling only. This records the existing 8-bit BGRA input, not HDR scene data.
+
+Detector stage diagnostics are opt-in via detector-timing.enabled beside the executable. The adapter owns a bounded nonblocking queue (256 entries), a background JSONL writer (8 MiB per instance), and refuses a new file when Diagnostics/Detector already contains 32 detector files. Keep request IDs, worker generations, source metadata, fixed outcome codes and numeric timing fields only; never serialize worker stderr/error text, paths, pixels, OCR or provider content. Saturation, storage failure and shutdown may lose diagnostic entries but must not block detection or change cancellation, timeout, thresholds or freshness semantics. Worker timings travel in the existing response and are not a second file writer.
+
+Caller cancellation returns immediately while an already-sent detector exchange retains exclusive ownership of its pipe and temporary BMP for at most two more seconds. Drain and discard that exact response; reuse the worker only after an ok response with the matching request ID. Waiting callers cannot read or delete that input. Drain timeout, bad/missing response ID, worker failure or disposal retires the worker; startup cancellation retains the original kill behavior and five-second startup timeout. Never publish a cancelled result or start a second reader on the same pipe. Disposal cancels drain and serializes process cleanup under the worker gate without blocking UI.

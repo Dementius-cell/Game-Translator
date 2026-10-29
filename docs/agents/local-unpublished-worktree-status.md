@@ -129,4 +129,4 @@ Remain open:
 
 All `work/**`, `outputs/**`, AppData diagnostics/cache, local OCR/translation reports, source screenshots, models, generated archives, and portable candidates remain excluded from normal commits. Their presence is not a dirty-source defect and they must not be uploaded without explicit artifact-level owner approval under the [Evidence Artifact Policy](../evidence-artifacts.md).
 
-The self-contained reinstall handoff is [reinstall-handoff-2026-09-07.md](reinstall-handoff-2026-09-07.md).
+The self-contained reinstall handoff is a private local-only document and is not included in the source repository.

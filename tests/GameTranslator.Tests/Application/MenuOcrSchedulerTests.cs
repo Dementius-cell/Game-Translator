@@ -145,6 +145,50 @@ public sealed class MenuOcrSchedulerTests
         Assert.Equal("b", scheduler.TryStartNext(Ms(701))!.TrackId);
     }
 
+    [Fact]
+    public void M10_ContinuousLargeZoneCannotStarveSmallZoneWhileRetiredWorkHoldsSlot()
+    {
+        using var scheduler = new MenuOcrScheduler<int>();
+        var ids = new[] { "retired-zone" }.Concat(Enumerable.Range(0, 20).Select(i => $"large-zone-{i}"))
+            .Append("small-zone").ToArray();
+        foreach (var id in ids) { scheduler.Register(id); Offer(scheduler, id, 0); }
+        var held = scheduler.TryStartNext(Ms(200))!;
+        Assert.Equal("retired-zone", held.TrackId);
+        scheduler.Remove(held.TrackId);
+        Assert.True(held.CancellationToken.IsCancellationRequested);
+        var running = new List<MenuOcrScheduler<int>.Lease>();
+        var last = new Dictionary<string, int>();
+        var starts = ids.Skip(1).ToDictionary(id => id, _ => 0);
+        for (var time = 250; time <= 120_000; time += 50)
+        {
+            foreach (var lease in running.Where(l => Ms(time) - l.StartedAt >= Ms(100)).ToArray())
+            {
+                Assert.True(scheduler.Complete(lease));
+                running.Remove(lease);
+            }
+            if (time == 5000) Assert.False(scheduler.Complete(held));
+            foreach (var id in ids.Skip(1)) Offer(scheduler, id, time, changed: true);
+            while (scheduler.TryStartNext(Ms(time)) is { } next)
+            {
+                Assert.Equal(time, next.Work); // newest source, without losing queue position
+                if (last.TryGetValue(next.TrackId, out var previous)) Assert.InRange(time - previous, 500, 1200);
+                last[next.TrackId] = time;
+                starts[next.TrackId]++;
+                running.Add(next);
+            }
+            Assert.InRange(scheduler.ActiveCount, 0, 3);
+            Assert.InRange(scheduler.PendingCount, 0, 21);
+            if (time >= 3500) Assert.Equal(21, last.Count);
+        }
+        Assert.All(starts.Values, n => Assert.True(n >= 100));
+        Assert.InRange(starts.Values.Max() - starts.Values.Min(), 0, 1);
+        Assert.Equal(0, scheduler.ExpiredPendingCount);
+        foreach (var lease in running) Assert.True(scheduler.Complete(lease));
+        foreach (var id in ids.Skip(1)) scheduler.Remove(id);
+        Assert.Equal(0, scheduler.ActiveCount);
+        Assert.Equal(0, scheduler.PendingCount);
+    }
+
     [Theory]
     [InlineData(-1, false)]
     [InlineData(2000, true)]

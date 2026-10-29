@@ -3,6 +3,7 @@ import json
 import math
 import os
 import sys
+import time
 from pathlib import Path
 
 
@@ -49,6 +50,7 @@ class DirectPaddleTextDetector:
     """Runs the bundled PP-OCR detector without high-level PaddleOCR startup."""
 
     def __init__(self):
+        init_started = time.perf_counter()
         import cv2
         import numpy as np
         import paddle
@@ -58,6 +60,7 @@ class DirectPaddleTextDetector:
             NormalizeImage,
         )
 
+        imports_done = time.perf_counter()
         model_file = MODEL_DIRECTORY / "inference.json"
         parameters_file = MODEL_DIRECTORY / "inference.pdiparams"
         if not model_file.is_file() or not parameters_file.is_file():
@@ -70,7 +73,9 @@ class DirectPaddleTextDetector:
 
         self.cv2 = cv2
         self.np = np
+        predictor_started = time.perf_counter()
         self.predictor = paddle.inference.create_predictor(config)
+        predictor_done = time.perf_counter()
         self.input_handle = self.predictor.get_input_handle(
             self.predictor.get_input_names()[0]
         )
@@ -87,7 +92,10 @@ class DirectPaddleTextDetector:
             box_type="quad",
         )
 
+        self.startup_timing = {"importsMs": (imports_done-init_started)*1000, "predictorMs": (predictor_done-predictor_started)*1000, "totalMs": (time.perf_counter()-init_started)*1000}
+
     def detect(self, source_path, threshold, box_threshold, unclip_ratio):
+        started = time.perf_counter()
         threshold = float(threshold)
         box_threshold = float(box_threshold)
         unclip_ratio = float(unclip_ratio)
@@ -102,14 +110,17 @@ class DirectPaddleTextDetector:
         if image is None:
             raise RuntimeError("PaddleOCR could not decode the candidate frame.")
 
+        decoded = time.perf_counter()
         resized_images, image_shapes = self.resize([image], 1216, "max")
         normalized_images = self.normalize(resized_images)
         tensor = self.np.expand_dims(
             self.np.transpose(normalized_images[0], (2, 0, 1)), axis=0
         ).astype(self.np.float32)
+        prepared = time.perf_counter()
         self.input_handle.copy_from_cpu(tensor)
         self.predictor.run()
         output = self.output_handle.copy_to_cpu()
+        inferred = time.perf_counter()
         polygons, scores = self.postprocess([output], image_shapes, threshold, box_threshold, unclip_ratio)
 
         candidates = []
@@ -119,25 +130,30 @@ class DirectPaddleTextDetector:
                 continue
             bounds["confidence"] = float(score)
             candidates.append(bounds)
+        self.detection_timing = {"decodeMs": (decoded-started)*1000, "prepareMs": (prepared-decoded)*1000, "inferAndTransferMs": (inferred-prepared)*1000, "postprocessMs": (time.perf_counter()-inferred)*1000, "totalMs": (time.perf_counter()-started)*1000}
         return candidates
 
 
-def run_worker():
+def run_worker(timings=False):
     detector = DirectPaddleTextDetector()
-    write_message({"status": "ready"})
+    write_message({"status": "ready", "timing": detector.startup_timing if timings else None})
     for line in sys.stdin:
+        request_id = None
         try:
             # The managed host explicitly writes UTF-8 without a BOM. Tolerate
             # known BOM spellings from legacy Windows host encodings as well;
             # JSON does not permit any of them ahead of the opening brace.
             request = json.loads(line.lstrip("\ufeffï»¿п»ї"))
+            request_id = request.get("requestId")
             input_path = Path(request["inputPath"])
             candidates = detector.detect(input_path, request["threshold"], request["boxThreshold"], request["unclipRatio"])
-            write_message({"status": "ok", "candidates": candidates})
+            write_message({"status": "ok", "candidates": candidates, "requestId": request_id,
+                           "timing": detector.detection_timing if timings else None})
         except Exception as error:
             write_message(
                 {
                     "status": "error",
+                    "requestId": request_id,
                     "error": f"{type(error).__name__}: {error}",
                     "candidates": [],
                 }
@@ -147,10 +163,11 @@ def run_worker():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--worker", action="store_true")
+    parser.add_argument("--timings", action="store_true")
     arguments = parser.parse_args()
     if not arguments.worker:
         raise SystemExit("The PaddleOCR candidate detector must run in worker mode.")
-    run_worker()
+    run_worker(arguments.timings)
 
 
 if __name__ == "__main__":

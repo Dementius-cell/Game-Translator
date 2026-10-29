@@ -9,6 +9,63 @@ public sealed class MenuGeometryMatcherTests
     [InlineData(1)]
     [InlineData(2)]
     [InlineData(4)]
+    public void OneLongLineJitterRequiresStableParagraphAndSibling(int scale)
+    {
+        BoundingBox B(int x, int y, int w, int h) => new(x * scale, y * scale, w * scale, h * scale);
+        var outer = B(20, 40, 480, 58);
+        var movedOuter = B(22, 42, 480, 56);
+        var first = B(20, 40, 480, 23);
+        var jitter = B(22, 42, 480, 24);
+        var second = B(22, 74, 220, 24);
+        Assert.True(MenuGeometryMatcher.Matches(outer, [first, second], movedOuter, [jitter, second]));
+        Assert.True(MenuGeometryMatcher.Matches(movedOuter, [jitter, second], outer, [first, second]));
+        Assert.False(MenuGeometryMatcher.Matches(first, [first], jitter, [jitter]));
+        Assert.False(MenuGeometryMatcher.Matches(outer, [first, second], movedOuter, [jitter]));
+        Assert.False(MenuGeometryMatcher.Matches(outer, [first, second], movedOuter, [jitter, B(24, 76, 220, 25)]));
+        Assert.False(MenuGeometryMatcher.Matches(outer, [first, second], movedOuter, [B(24, 44, 480, 24), second]));
+        Assert.False(MenuGeometryMatcher.Matches(outer, [first, second], movedOuter, [B(22, 42, 460, 24), second]));
+        Assert.False(MenuGeometryMatcher.Matches(outer, [first, second], movedOuter, [B(22, 42, 480, 30), second]));
+        Assert.False(MenuGeometryMatcher.Matches(outer, [first, second], B(22, 74, 480, 56), [B(22, 74, 480, 24), second]));
+    }
+
+    [Fact]
+    public void SupportedParagraphJitterStillRejectsAmbiguityAndRollingDrift()
+    {
+        BoundingBox anchor = new(20, 40, 480, 58), jitter = new(22, 42, 480, 56);
+        BoundingBox[] original = [new(20, 40, 480, 23), new(22, 74, 220, 24)];
+        BoundingBox[] changed = [new(22, 42, 480, 24), original[1]];
+        var sources = new[] { (anchor, original), (jitter, changed) };
+        bool Compatible((BoundingBox bounds, BoundingBox[] members) a, (BoundingBox bounds, BoundingBox[] members) b)
+            => MenuGeometryMatcher.Matches(a.bounds, a.members, b.bounds, b.members);
+        Assert.Empty(MenuGeometryMatcher.MatchUnique(sources, new[] { sources[1] }, Compatible));
+        Assert.Empty(MenuGeometryMatcher.MatchUnique(new[] { sources[0] }, sources, Compatible));
+        Assert.False(MenuGeometryMatcher.Matches(anchor, original, new(24, 44, 480, 54), [new(24, 44, 480, 24), original[1]]));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(4)]
+    public void NestedLineEdgeContractionPreservesIdentityWithoutAllowingMotion(int scale)
+    {
+        BoundingBox B(int x, int y, int w, int h) => new(x * scale, y * scale, w * scale, h * scale);
+        var outer = B(20, 40, 120, 32);
+        var inner = B(22, 44, 116, 26);
+        Assert.True(MenuGeometryMatcher.Matches(outer, [outer], inner, [inner]));
+        Assert.True(MenuGeometryMatcher.Matches(inner, [inner], outer, [outer]));
+        Assert.False(Match(outer, B(22, 46, 116, 26))); // displaced center
+        Assert.False(Match(outer, B(32, 44, 96, 26))); // missing word edges
+        Assert.False(Match(outer, B(22, 46, 116, 20))); // excessive contraction
+        Assert.False(Match(outer, B(22, 74, 116, 26))); // adjacent row
+        Assert.False(MenuGeometryMatcher.Matches(outer, [outer], inner, []));
+        Assert.Empty(MenuGeometryMatcher.MatchUnique(new[] { outer, inner }, new[] { inner }, Match));
+        Assert.Empty(MenuGeometryMatcher.MatchUnique(new[] { outer }, new[] { outer, inner }, Match));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(4)]
     public void DetectorHeightJitterPreservesIdentityAtEveryScale(int scale)
     {
         var anchor = new BoundingBox(14 * scale, 318 * scale, 206 * scale, 30 * scale);

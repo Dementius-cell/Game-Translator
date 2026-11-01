@@ -1,6 +1,6 @@
 # Menu r15 source status
 
-Updated: 2026-10-29. Scope: owner-authorized source synchronization, not release publication or completed live acceptance.
+Updated: 2026-11-01. Scope: source status and local runtime recovery verification, not release publication or completed live-game acceptance.
 
 ## Included implementation
 
@@ -25,6 +25,10 @@ Exact normalized text comparison, source provenance, two-second freshness, three
 
 ## Evidence and delivery limits
 
-The previous local source gate passed 1,414 tests. Native replay and package checks are local-only evidence, not visual acceptance or a clean-host release gate. The local test application is an unpacked r15 directory with shared runtime junctions; it is not an independent transferable release package. Signing, archive delivery, recovery/offline-host gates and explicit release approval remain tracked separately in issue #30.
+The recovered Windows environment passed a Release build with zero warnings/errors and 1,414/1,414 regression tests using process-only PSExecutionPolicyPreference=Bypass for Windows PowerShell fake workers. Both Detector_RequestDeadlineRetiresSilentWorkerAndAllowsRecovery variants passed in that environment; this does not constitute a permanent harness fix. No production timeout or tests were changed.
+
+The owner confirmed the synthetic-source capture/OCR/translation/overlay smoke test, including positioning, blank/restore and stop/start. Session diagnostics corroborate three recognized/translated items, empty overlay snapshots and restoration, and a hidden overlay after stopping. This is local-only evidence for that scenario, not full game/endurance acceptance. Cold Paddle startup timeout remains reproducible; manual stop/start recovered the tested session.
+
+The current local Release build output contains copied Python/packages, detector model and tessdata, without runtime junctions or old-location dependencies. Preserved runtime versions were not changed or downloaded again. Ordinary build/publish does not assemble the full OCR payload; use the existing [packaging script](../../tools/build-track-d-opt-in-release.ps1). The restored build output is not an approved transferable release. Signing, archive delivery, recovery/offline-host gates and explicit release approval remain tracked separately in issue #30.
 
 Private screenshots, OCR/translation transcripts, runtime models, diagnostic logs, local harness outputs, profiles and binaries are excluded from this source update. Public regression fixtures use synthetic content. GitHub Issues remain the delivery source; this document records the implementation and unresolved limits without publishing owner materials.

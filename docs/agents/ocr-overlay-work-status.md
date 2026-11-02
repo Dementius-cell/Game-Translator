@@ -1,6 +1,6 @@
 # OCR and Overlay Work Status
 
-## Current menu source status — 2026-10-29
+## Current delivery pointer
 
 See [Menu r15 source status](menu-r15-status.md) for the synchronized implementation, validation limits and unresolved work. Remaining overlay disappearance is the immediate priority; the measured memory-growth investigation is explicitly deferred. Earlier dated sections below are historical and do not describe the current local test package or acceptance state.
 
@@ -39,11 +39,11 @@ The local 681-test result includes protected unpublished calibration changes. Pu
 
 Last updated: 2026-09-08
 
-Purpose: durable chronology of overlay layout, OCR geometry/quality, candidate-pipeline, packaging, and owner evidence. For current state, read this file together with [Local unpublished worktree status](local-unpublished-worktree-status.md), GitHub Issues, and the working tree; dated track plans below are historical records unless the current guidance explicitly keeps an item open.
+Purpose: durable chronology of overlay layout, OCR geometry/quality, candidate-pipeline, packaging, and owner evidence. For current state, read [Menu r15 source status](menu-r15-status.md), GitHub Issues, and the working tree; dated track plans below are historical records unless the current guidance explicitly keeps an item open.
 
 This file is a coordination note, not a new ADR and not a replacement for GitHub Issues. GitHub Issues and their explicit dependency graph remain the current delivery source. If an issue, accepted ADR, or explicit owner decision conflicts with this file, report the conflict and update this file after the owner decision.
 
-## Current Baseline
+## Historical baseline — 2026-09-08
 
 - Current published baseline: `main` commit `9c40f4ed081a4497723968aafa1b7cd0c577b5a6` (`Record cleanup of obsolete C drive runtimes`).
 - Current local Korean OCR + ADR-032 gates: Release build `0` warnings / `0` errors, `668/668` tests (calibration writes isolated), real-candidate OCR comparison and r45 package smoke/integrity passed. Owner live verification is pending; see [r45 handoff](korean-ocr-r45-status.md).

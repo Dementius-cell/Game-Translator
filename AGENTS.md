@@ -54,6 +54,7 @@ Do not treat this file as the current sprint/status source. The project has prog
 
 ## Work Rules
 
+- Use the staged publication guard and repeatable maintenance/live-smoke workflow in `docs/testing/maintenance-and-live-smoke.md`. `.githooks/pre-commit` is opt-in per checkout; path checks do not replace content/privacy review.
 - Follow the current GitHub Issue dependency graph. The historical roadmap does not block independent fixes, tests, documentation, or compatible improvements.
 - Keep changes minimal and tied to the current sprint.
 - Add or update tests for changed behavior according to the applicable quality gates, and record justified N/A gates in the final report when relevant.

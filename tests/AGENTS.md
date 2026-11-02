@@ -23,6 +23,7 @@ When changing vertical CJK behavior, cover at least one relevant case:
 - Keep tests deterministic and independent of live network services.
 - Do not require real API keys or credentials.
 - Tests that instantiate WPF windows or load theme dictionaries belong to the non-parallel `WpfResourceCollection`: pack-URI resource packages are shared across STA threads. Keep pure source and application tests outside this collection.
+- `maintenance-tools.tests.ps1` validates tooling with synthetic reports and an isolated Git index under ignored `work/maintenance-tests/`. Keep it independent of GPU, private logs and credentials. Similar names alone do not establish redundant coverage; preserve timeout, cancellation and source-authority checks unless equivalent behavior is verified elsewhere.
 
 ## Calibration Sandbox
 

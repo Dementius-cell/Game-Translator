@@ -47,13 +47,9 @@ The bootstrap pins CPython/Paddle package versions (including the official Paddl
 
 Current publication boundary: source and tests are maintained on main. Local test builds and release candidates are separate from the source update; public binary releases require a separate release decision.
 
-## Current source status — 2026-10-15
+## Current source status
 
-The current source adds a revised profile workspace, Light/Dark/System editor themes, Russian/English UI localization, local bug/crash reports, selectable multilingual Tesseract models with search and package installation, automatic translation source handling, preserved candidate reading order, and explicit memory/disk translation-cache clearing. Eligible horizontal outlined text receives bounded local Tesseract recovery; decorative fonts, including Japanese text, remain a known accuracy limitation.
-
-The existing watermark filtering, Bing recovery, DPI-correct overlays, source-height retention, optional automatic font sizing and whole-word wrapping remain supported. Verification of a clean export of the publication source passed a Release build with zero warnings/errors and all 963 tests. WPF window/theme resource tests share a non-parallel collection to avoid concurrent access to process-wide resource packages.
-
-This source publication does not create a portable build or a GitHub Release asset. Uploaded page examples, screenshots, OCR transcripts, diagnostic logs, experiment outputs, models and runtimes stay local. Regression text added in this update is synthetic. See the [current work status](docs/agents/ocr-overlay-work-status.md) and [user guide](docs/user-guide.md).
+See [Menu r15 source status](docs/agents/menu-r15-status.md) and [issue #59](https://github.com/Dementius-cell/Game-Translator/issues/59) for the current implementation, verified build and remaining acceptance. ADR-037 background OCR initialization and its readiness banner are implemented. Historical test totals are evidence for their dated snapshots, not current suite targets.
 
 ## Documentation
 

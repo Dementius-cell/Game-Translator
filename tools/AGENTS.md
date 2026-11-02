@@ -7,6 +7,7 @@ These instructions apply to `tools/**`, including its standalone benchmark proje
 - Reproducible bootstrap and verification of the packaged Paddle runtime, detector model and locked Tesseract packs.
 - Local package build, integrity verification, finalization and archive scripts.
 - Documentation and language-data checks.
+- Publication index path guard and read-only live diagnostic summaries. Summaries emit allowlisted numeric aggregates only; never copy report text, paths or IDs into output. Treat multiple files as snapshots, not necessarily independent sessions.
 - The standalone `ComicGeometryCandidateDetectorBenchmark` and its runner. Benchmark results are evidence, not production policy or an additional product module.
 
 ## Local Contracts

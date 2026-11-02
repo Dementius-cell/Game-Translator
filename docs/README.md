@@ -35,13 +35,14 @@ This folder contains the source-of-truth documents for Game-Translator. Read the
 
 ## Smoke Checks
 
+- [Maintenance and repeatable live smoke](testing/maintenance-and-live-smoke.md): local publication guard, diagnostic aggregates, UI scenarios and proportionate testing.
 - [Calibration and Smoke Workflow](testing/calibration-and-smoke-workflow.md)
 - [Sprint 8 overlay click-through smoke](smoke/sprint-08-overlay-click-through.md)
 - [Sprint 9 overlay positioning smoke](smoke/sprint-09-overlay-positioning.md)
 
 ## Project Status Source
 
-This README is an index, not the live sprint/status source. Use [GitHub Issues](https://github.com/Dementius-cell/Game-Translator/issues), [Local unpublished worktree status](agents/local-unpublished-worktree-status.md), and [OCR/overlay work status](agents/ocr-overlay-work-status.md), then cross-check against the roadmap and sprint plan. Files under `docs/handoff/` are dated historical records and are not current instructions.
+This README is an index, not the live sprint/status source. Use [GitHub Issues](https://github.com/Dementius-cell/Game-Translator/issues), [Menu r15 source status](agents/menu-r15-status.md), then cross-check against the roadmap and sprint plan. Files under `docs/handoff/` are dated historical records and are not current instructions.
 
 ## Evidence Artifacts
 

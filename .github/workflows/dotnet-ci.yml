@@ -25,6 +25,27 @@ jobs:
         with:
           dotnet-version: 9.0.x
 
+      - name: Check documentation
+        shell: pwsh
+        run: |
+          $result = ./tools/check-docs-mini.ps1 -Json | ConvertFrom-Json
+          $result | ConvertTo-Json -Depth 8
+          if ($result.markdownLinkProblemCount -or $result.actionableBacktickProblemCount) {
+            throw 'Documentation validation failed.'
+          }
+
+      - name: Setup Python for synthetic protocol tests
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+
+      - name: Test worker startup protocol without GPU
+        run: python tests/worker_startup_test.py
+
+      - name: Test maintenance tools with synthetic inputs
+        shell: pwsh
+        run: ./tests/maintenance-tools.tests.ps1
+
       - name: Restore
         run: dotnet restore GameTranslator.sln
 

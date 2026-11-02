@@ -1,4 +1,6 @@
-# Local unpublished worktree status
+# Historical local worktree snapshots
+
+For current delivery use [Menu r15 source status](menu-r15-status.md), GitHub issue #59 and git status. The dated snapshots below are historical; they do not authorize restoring old runtimes or staging private evidence.
 
 ## Source synchronization — 2026-10-15
 
@@ -8,7 +10,7 @@ The sanitized source export passed a Release build with zero warnings/errors and
 
 The dated sections below preserve historical snapshots and are not the current list of unpublished implementation files.
 
-## Current delivery status — 2026-09-22
+## Historical delivery status — 2026-09-22
 
 This source update publishes the owner-authorized r51–r61 implementation: watermark filtering, grouping, Bing session/connection compatibility, DPI-correct overlays, ADR-033 source height/auto font size, whole-word wrapping and render containment. Release verification passed 835 tests with zero build warnings/errors. Bing and strong watermark behavior have positive owner evidence; final r61 overlay acceptance remains pending.
 
@@ -34,7 +36,7 @@ Snapshot date: 2026-09-08
 
 The local worktree additionally contains owner-authorized Korean OCR/whitespace corrections and the verified unpacked r45 with ADR-032. Current source gates are 668/668 tests and Release build with zero warnings/errors; calibration tests write only to an isolated local root. See [r45 handoff](korean-ocr-r45-status.md) for the package, exact behavior, local evidence and remaining owner smoke. The r44 package and earlier verification below are retained historical baseline information. All ten protected/safeguarded paths and the root owner language pack remain unchanged.
 
-## 1. Current boundary
+## 1. Historical boundary
 
 The inspected branch is `main`; current published HEAD is `9c40f4ed081a4497723968aafa1b7cd0c577b5a6` (`Record cleanup of obsolete C drive runtimes`). Published source includes the current candidate pipeline, adaptive horizontal/vertical grouping, Thai tolerance, transient-overlay retention, Bing attempt/failure diagnostics, parameter help, the seven-step welcome tour with post-r43 startup/spotlight/OCR-guidance corrections, current documentation, r44 status, and the recorded C-drive cleanup.
 
@@ -67,7 +69,7 @@ Additional safeguarded path discovered during the 2026-09-07 reinstall handoff a
 
 Its working SHA-256 is `E30C39CAAABB0E07FA4804415220F67A9600007B96D58098A63C3F304DFCFF72`; the published HEAD blob is `29110e574425ab923ab318696093c969c22ae4ea`. It was used only as a visible static source for live-smoke, not as an intended calibration edit. Do not fold it into Issue #35 or restore it automatically until the owner reviews the difference.
 
-## 3. Current published product behavior
+## 3. Historical published product behavior
 
 - Four production modules remain: `Domain`, `Application`, `Infrastructure`, and `UI`; `GameTranslator.Tests` is the fifth solution project but not a product module. The packaged Python Paddle worker belongs to the Infrastructure adapter.
 - The normal ADR-030 route is manual OCR zone в†’ GPU Paddle detector в†’ bounded writing-system grouping в†’ Tesseract crop recognition в†’ explicitly selected translator в†’ per-region overlay.
@@ -106,7 +108,7 @@ The existing GitHub Release is historical and also does not represent current `m
 
 The `648/648` suite is the most recent completed source gate for the local ADR-032 implementation. The earlier r44 package gate predates this source change and adds packaged-runtime smoke and integrity evidence only for its own source baseline; documentation changes are rechecked separately.
 
-## 6. Current issue boundary
+## 6. Historical issue boundary
 
 Completed by the current product/documentation state and eligible for successful closure:
 

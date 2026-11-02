@@ -8,6 +8,51 @@ namespace GameTranslator.Tests.Infrastructure;
 
 public sealed class DetectorTimingTests
 {
+    [Fact]
+    public async Task Detector_StartupProgressIsBoundedAndDoesNotReplaceReady()
+    {
+        var directory = NewDirectory();
+        using var detector = CreateDetector(directory, """
+            [Console]::WriteLine('{"status":"startup-progress","stage":"private-path-or-text"}')
+            1..3 | ForEach-Object { [Console]::WriteLine('{"status":"startup-progress","stage":"import-paddle"}') }
+            [Console]::WriteLine('{"status":"ready"}')
+            while ($line = [Console]::ReadLine()) {
+                $request = $line | ConvertFrom-Json
+                [Console]::WriteLine('{"status":"ok","requestId":' + $request.requestId + ',"candidates":[]}')
+            }
+            """);
+        Assert.Equal(TextCandidateDetectorAvailability.Available, (await detector.DetectAsync(Request())).Availability);
+        detector.Dispose();
+        await detector.TimingDiagnosticsCompletion.WaitAsync(TimeSpan.FromSeconds(5));
+        var text = File.ReadAllText(Assert.Single(Directory.GetFiles(Path.Combine(directory, "logs"))));
+        Assert.DoesNotContain("private-path-or-text", text);
+        var stage = Assert.Single(Entries(text), e => e.Kind == "worker-startup-stage");
+        Assert.Equal("import-paddle", stage.Outcome);
+        Assert.True(stage.StartupMs >= 0);
+        Assert.Contains(Entries(text), e => e.Kind == "worker-ready");
+    }
+
+    [Fact]
+    public async Task Detector_ContinuousStartupProgressCannotExtendDeadline()
+    {
+        var directory = NewDirectory();
+        using var detector = CreateDetector(directory, """
+            while ($true) {
+                [Console]::WriteLine('{"status":"startup-progress","stage":"import-paddle"}')
+                Start-Sleep -Milliseconds 30
+            }
+            """, timeout: TimeSpan.FromSeconds(2));
+        var result = await detector.DetectAsync(Request()).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(TextCandidateDetectorAvailability.Unavailable, result.Availability);
+        Assert.Contains("startup timed out", result.UnavailableReason);
+        detector.Dispose();
+        await detector.TimingDiagnosticsCompletion.WaitAsync(TimeSpan.FromSeconds(5));
+        var entries = Entries(File.ReadAllText(Assert.Single(Directory.GetFiles(Path.Combine(directory, "logs")))));
+        Assert.Single(entries, e => e.Kind == "worker-startup-stage");
+        Assert.DoesNotContain(entries, e => e.Kind == "worker-ready");
+        Assert.Contains(entries, e => e.Kind == "worker-stop" && e.Outcome == "timeout-startup");
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

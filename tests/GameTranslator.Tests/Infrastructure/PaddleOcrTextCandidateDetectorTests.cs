@@ -37,18 +37,17 @@ public sealed class PaddleOcrTextCandidateDetectorTests
 
         new InfrastructureServiceModule().RegisterServices(services);
 
-        Assert.Contains(
-            services,
-            descriptor => descriptor.ServiceType == typeof(ITextCandidateDetector)
-                && descriptor.ImplementationType == typeof(PaddleOcrTextCandidateDetector));
+        using var provider = services.BuildServiceProvider();
+        Assert.IsType<PaddleOcrTextCandidateDetector>(provider.GetRequiredService<ITextCandidateDetector>());
+        Assert.Same(provider.GetRequiredService<ITextCandidateDetector>(), provider.GetRequiredService<IDetectorRuntime>());
     }
 
     [Fact]
-    public void Options_DefaultStartupTimeout_AllowsAdr025OptInColdStartBudget()
+    public void Options_DefaultStartupWait_IsCancellableWithoutColdTimeLimit()
     {
         var options = new PaddleOcrTextCandidateDetectorOptions();
 
-        Assert.Equal(TimeSpan.FromSeconds(5), options.StartupTimeout);
+        Assert.Equal(Timeout.InfiniteTimeSpan, options.StartupTimeout);
     }
 
     [Fact]

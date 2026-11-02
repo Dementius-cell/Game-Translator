@@ -39,6 +39,8 @@ Keep the WPF presentation layer ergonomic, testable, and separated from infrastr
 
 ## Verification
 
+- DetectorStatusViewModel starts shared background OCR initialization when the shell loads. Show a nonmodal banner above the profile title: real startup/library/model stage, indeterminate spinner and elapsed time while preparing, a ready checkmark with frozen measured duration, or failure/retry. Do not infer percentages or phases from elapsed time. Do not await readiness on the UI thread or treat slow startup as a crash. On application exit, stop the runtime and await cancellation cleanup before disposing the host. The portable Tesseract-only smoke must not trigger GPU prewarm.
+
 - Candidate readiness diagnostics distinguish per-zone detector degradation from session activity. Label Generation/RestartCount as session counters in exported debug information; do not present them as the Python worker's lifecycle counters.
 
 Language-selection advice is localized, informational and selection-dependent. Do not turn it into forbidden language pairs, automatic deselection, reordering or profile validation without separate evidence and scope.

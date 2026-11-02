@@ -598,6 +598,64 @@
                         VerticalScrollBarVisibility="Auto">
                         <Border HorizontalAlignment="Stretch" Padding="18,12,18,16">
                             <StackPanel x:Name="WorkspaceContent">
+                                <Border x:Name="OcrReadinessBanner"
+                                        DataContext="{Binding DataContext.DetectorStatus, RelativeSource={RelativeSource AncestorType={x:Type UserControl}}}"
+                                        CornerRadius="7" BorderThickness="1" Padding="14,10" Margin="0,0,0,12">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="{DynamicResource ThemeSelected}"/>
+                                            <Setter Property="BorderBrush" Value="{DynamicResource ThemeAccentText}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsReady}" Value="True">
+                                                    <Setter Property="BorderBrush" Value="{DynamicResource ThemeSuccess}"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding CanRetry}" Value="True">
+                                                    <Setter Property="Background" Value="{DynamicResource ThemeErrorSurface}"/>
+                                                    <Setter Property="BorderBrush" Value="{DynamicResource ThemeDanger}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <Grid MinHeight="28">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="28"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Path Width="20" Height="20" VerticalAlignment="Center"
+                                              Data="M 10,2 A 8,8 0 1 1 2,10" Stroke="{DynamicResource ThemeAccentText}"
+                                              StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                              Visibility="{Binding IsPreparing, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <Path.RenderTransform><RotateTransform CenterX="10" CenterY="10"/></Path.RenderTransform>
+                                            <Path.Style>
+                                                <Style TargetType="Path">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsPreparing}" Value="True">
+                                                            <DataTrigger.EnterActions>
+                                                                <BeginStoryboard Name="OcrPreparationSpin">
+                                                                    <Storyboard>
+                                                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
+                                                                                         From="0" To="360" Duration="0:0:1" RepeatBehavior="Forever"/>
+                                                                    </Storyboard>
+                                                                </BeginStoryboard>
+                                                            </DataTrigger.EnterActions>
+                                                            <DataTrigger.ExitActions><StopStoryboard BeginStoryboardName="OcrPreparationSpin"/></DataTrigger.ExitActions>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Path.Style>
+                                        </Path>
+                                        <TextBlock Text="✓" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource ThemeSuccess}"
+                                                   VerticalAlignment="Center" Visibility="{Binding IsReady, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                        <TextBlock Text="!" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource ThemeDanger}"
+                                                   VerticalAlignment="Center" Visibility="{Binding CanRetry, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Message}" FontSize="14" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                        <Button Grid.Column="2" Content="{loc:Text OcrRuntimeRetry}" Command="{Binding RetryCommand}"
+                                                Margin="12,0,0,0" VerticalAlignment="Center"
+                                                Visibility="{Binding CanRetry, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                    </Grid>
+                                </Border>
                                 <Button
                                     Content="{loc:Text T584fe761b056}"
                                     HorizontalAlignment="Left"
@@ -3081,8 +3139,5 @@
             </DockPanel>
         </Border>
         <ContentControl Grid.Row="1" Margin="0" Content="{Binding Navigation.CurrentViewModel}"/>
-        <StatusBar Grid.Row="2" Padding="16,0" Background="{DynamicResource ThemeSubtle}" BorderBrush="{DynamicResource ThemeBorder}" BorderThickness="0,1,0,0">
-            <TextBlock Foreground="{DynamicResource ThemeMuted}" Text="{Binding StatusMessage, Converter={StaticResource LocalizedText}}" TextTrimming="CharacterEllipsis"/>
-        </StatusBar>
     </Grid>
 </UserControl>

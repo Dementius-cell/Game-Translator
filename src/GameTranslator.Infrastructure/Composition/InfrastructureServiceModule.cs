@@ -38,7 +38,9 @@ public sealed class InfrastructureServiceModule : IApplicationServiceModule
         services.AddSingleton<IOcrEngine, WindowsOcrEngine>();
         services.AddSingleton<IOcrEngine, TesseractOcrEngine>();
         services.AddSingleton(new PaddleOcrTextCandidateDetectorOptions());
-        services.AddSingleton<ITextCandidateDetector, PaddleOcrTextCandidateDetector>();
+        services.AddSingleton<PaddleOcrTextCandidateDetector>();
+        services.AddSingleton<ITextCandidateDetector>(provider => provider.GetRequiredService<PaddleOcrTextCandidateDetector>());
+        services.AddSingleton<IDetectorRuntime>(provider => provider.GetRequiredService<PaddleOcrTextCandidateDetector>());
         services.AddSingleton<IOcrLanguagePackService, OcrLanguagePackService>();
         services.AddSingleton<HttpClient>();
         services.AddKeyedSingleton<HttpClient>("BingWeb", (_, _) => new HttpClient(

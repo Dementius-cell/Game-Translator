@@ -30,6 +30,7 @@ public static class PresentationServiceCollectionExtensions
 
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<ShellViewModel>();
+        services.AddSingleton<DetectorStatusViewModel>();
         services.AddSingleton<IApplicationInfoService, WindowsApplicationInfoService>();
         services.AddSingleton<ApplicationInfoViewModel>();
         services.TryAddSingleton<IBugReportService>(_ => new BugReportService(

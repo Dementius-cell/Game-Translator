@@ -14,18 +14,24 @@ public sealed class ShellViewModel : ObservableObject
     private string? reportPath;
     private bool creatingReport;
 
+    public ShellViewModel(INavigationService navigation, IDialogService dialog,
+        ISettingsService settings, IApplicationLogger logger, IBugReportService reports)
+        : this(navigation, dialog, settings, logger, reports, null) { }
+
     public ShellViewModel(
         INavigationService navigation,
         IDialogService dialog,
         ISettingsService settings,
         IApplicationLogger logger,
-        IBugReportService reports)
+        IBugReportService reports,
+        DetectorStatusViewModel? detectorStatus)
     {
         Navigation = navigation;
         Dialog = dialog;
         Settings = settings;
         Logger = logger;
         this.reports = reports;
+        DetectorStatus = detectorStatus;
         CreateBugReportCommand = new AsyncRelayCommand(CreateBugReportAsync, () => !creatingReport);
         OpenBugReportCommand = new RelayCommand(OpenBugReport, () => reportPath is not null);
         DismissReportNoticeCommand = new RelayCommand(() => ReportNotice = string.Empty);
@@ -35,6 +41,7 @@ public sealed class ShellViewModel : ObservableObject
     }
 
     public string ApplicationName => "Game Translator";
+    public DetectorStatusViewModel? DetectorStatus { get; }
 
     public string ReportNotice
     {
@@ -104,6 +111,7 @@ public sealed class ShellViewModel : ObservableObject
         }
 
         isInitialized = true;
+        DetectorStatus?.Start();
         reportPath = reports.RecoveredReports.LastOrDefault();
         ReportNotice = reportPath is not null
             ? $"Предыдущий запуск завершился неожиданно. Найдено отчётов: {reports.RecoveredReports.Count}. Отчёт: {reportPath}. {UiText.Translate(reports.StorageWarning)}"

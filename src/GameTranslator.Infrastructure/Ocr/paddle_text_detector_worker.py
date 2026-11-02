@@ -49,11 +49,22 @@ def write_message(payload):
 class DirectPaddleTextDetector:
     """Runs the bundled PP-OCR detector without high-level PaddleOCR startup."""
 
-    def __init__(self):
+    def __init__(self, timings=False, progress=False):
         init_started = time.perf_counter()
+        def starting(stage):
+            if timings or progress:
+                write_message({"status": "startup-progress", "stage": stage})
+
+        starting("import-cv2")
         import cv2
+        starting("import-numpy")
         import numpy as np
+        starting("import-paddle")
+        verify_cuda_driver()
         import paddle
+        if not paddle.device.is_compiled_with_cuda() or paddle.device.cuda.device_count() < 1:
+            raise CudaUnavailableError()
+        starting("import-paddlex")
         from paddlex.inference.models.text_detection.processors import (
             DBPostProcess,
             DetResizeForTest,
@@ -61,6 +72,7 @@ class DirectPaddleTextDetector:
         )
 
         imports_done = time.perf_counter()
+        starting("configure-model")
         model_file = MODEL_DIRECTORY / "inference.json"
         parameters_file = MODEL_DIRECTORY / "inference.pdiparams"
         if not model_file.is_file() or not parameters_file.is_file():
@@ -74,8 +86,10 @@ class DirectPaddleTextDetector:
         self.cv2 = cv2
         self.np = np
         predictor_started = time.perf_counter()
+        starting("create-predictor")
         self.predictor = paddle.inference.create_predictor(config)
         predictor_done = time.perf_counter()
+        starting("configure-processors")
         self.input_handle = self.predictor.get_input_handle(
             self.predictor.get_input_names()[0]
         )
@@ -134,8 +148,29 @@ class DirectPaddleTextDetector:
         return candidates
 
 
-def run_worker(timings=False):
-    detector = DirectPaddleTextDetector()
+class CudaUnavailableError(RuntimeError):
+    pass
+
+
+def verify_cuda_driver():
+    # Driver API check before importing the large GPU runtime. No fallback to CPU.
+    import ctypes
+    try:
+        driver = ctypes.WinDLL("nvcuda.dll")
+        count = ctypes.c_int()
+        if driver.cuInit(0) != 0 or driver.cuDeviceGetCount(ctypes.byref(count)) != 0 or count.value < 1:
+            raise CudaUnavailableError()
+    except (OSError, AttributeError) as error:
+        raise CudaUnavailableError() from error
+
+
+def run_worker(timings=False, progress=False):
+    try:
+        detector = DirectPaddleTextDetector(timings, progress)
+    except Exception as error:
+        write_message({"status": "startup-error", "errorCode":
+                       "cuda-unavailable" if isinstance(error, CudaUnavailableError) else "initialization-failed"})
+        return
     write_message({"status": "ready", "timing": detector.startup_timing if timings else None})
     for line in sys.stdin:
         request_id = None
@@ -164,10 +199,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--worker", action="store_true")
     parser.add_argument("--timings", action="store_true")
+    parser.add_argument("--progress", action="store_true")
     arguments = parser.parse_args()
     if not arguments.worker:
         raise SystemExit("The PaddleOCR candidate detector must run in worker mode.")
-    run_worker(arguments.timings)
+    run_worker(arguments.timings, arguments.progress)
 
 
 if __name__ == "__main__":

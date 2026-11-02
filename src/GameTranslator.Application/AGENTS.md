@@ -16,6 +16,8 @@ Keep application use cases and contracts independent from concrete UI, platform,
 
 ## Local Contracts
 
+- IDetectorRuntime exposes frame-independent readiness and explicit retry/stop under ADR-037. Preparing or unavailable OCR must remain a controlled result; do not introduce UI/platform dependencies or provider/CPU fallback. Frame processing deadlines remain separate from initialization.
+
 - Application may depend on Domain and lightweight DI abstractions already accepted by the project.
 - Do not add WPF, Windows API, SQLite, Tesseract, network SDK implementation, Credential Manager, file dialog, or UI framework dependencies here.
 - Cache lookup remains part of normal translation flow before provider calls; the default TTL policy stays 30 days unless a Decision Record changes it.

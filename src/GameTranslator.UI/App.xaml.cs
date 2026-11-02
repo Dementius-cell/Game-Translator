@@ -113,6 +113,7 @@ public partial class App : System.Windows.Application
             try
             {
                 Log.Information("GameTranslator application stopped.");
+                host.Services.GetService<IDetectorRuntime>()?.StopAsync().GetAwaiter().GetResult();
                 host.StopAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
             }
             finally

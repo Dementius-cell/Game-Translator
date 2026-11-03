@@ -6,6 +6,7 @@ using GameTranslator.Infrastructure.Ocr;
 
 namespace GameTranslator.Tests.Infrastructure;
 
+[Collection(DetectorProcessCollection.Name)]
 public sealed class DetectorRuntimeTests
 {
     [Fact]

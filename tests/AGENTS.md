@@ -20,6 +20,7 @@ When changing vertical CJK behavior, cover at least one relevant case:
 
 ## Stability
 
+- DetectorRuntimeTests and DetectorTimingTests belong to the non-parallel DetectorProcessCollection because their real child-process timing assertions must not measure contention from unrelated suites. Keep request/startup deadlines and cancellation assertions intact; pure detector tests remain parallel.
 - Keep tests deterministic and independent of live network services.
 - Do not require real API keys or credentials.
 - Tests that instantiate WPF windows or load theme dictionaries belong to the non-parallel `WpfResourceCollection`: pack-URI resource packages are shared across STA threads. Keep pure source and application tests outside this collection.

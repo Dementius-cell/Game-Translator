@@ -48,4 +48,6 @@ The maintenance change adds no production behavior. Locally run the synthetic Po
 
 The reviewed OCR startup tests are not duplicates: direct detector missing-runtime behavior differs from managed readiness; diagnostic startup deadlines differ from unbounded application startup; cancellation/drain differs from ordinary timeout; UI status wiring differs from worker stage propagation. Retain these tests. Remove a test only after identifying equivalent behavioral coverage, not merely a similar name or a long execution time. Source-string UI tests are candidates for replacement when equivalent runtime tests exist, not for unconditional deletion.
 
+Detector process tests run in a dedicated non-parallel collection. The first maintenance CI run exposed three failures while waiting for real PowerShell workers under parallel load. Scheduling isolation keeps their existing startup/request/cancellation deadlines and assertions unchanged; it does not establish the cause of production native-import delay. Other pure tests retain their normal parallelism.
+
 Synthetic tooling verification: `tests/maintenance-tools.tests.ps1`. It writes isolated ignored outputs beneath `work/maintenance-tests/` and checks private-text exclusion, locale decimals, request deduplication, empty intervals, invalid inputs and blocked publication paths. It needs no GPU, network or private data.

@@ -98,7 +98,8 @@ public sealed class LiveCandidateLifecycleEvent
         bool? emptyOcrGroupingReset = null,
         OcrLineRecognitionDiagnostics? ocrLineRecognition = null,
         WatermarkDecision? watermarkDecision = null,
-        IEnumerable<string>? translationSourceLanguages = null)
+        IEnumerable<string>? translationSourceLanguages = null,
+        int? sessionInputAgeMs = null)
     {
         if (sequence < 1)
         {
@@ -286,6 +287,7 @@ public sealed class LiveCandidateLifecycleEvent
         ProviderNetworkRequestOutcome = providerNetworkRequestOutcome;
         ProviderNetworkHttpStatusCode = providerNetworkHttpStatusCode;
         OverlayTextItemCount = overlayTextItemCount;
+        SessionInputAgeMs = sessionInputAgeMs;
         OverlayMaskItemCount = overlayMaskItemCount;
         FailureStage = failureStage;
         FailureExceptionType = NormalizeDiagnosticValue(failureExceptionType, maximumLength: 256);
@@ -421,6 +423,7 @@ public sealed class LiveCandidateLifecycleEvent
     public int? ProviderNetworkHttpStatusCode { get; }
 
     public int? OverlayTextItemCount { get; }
+    public int? SessionInputAgeMs { get; }
 
     public int? OverlayMaskItemCount { get; }
 

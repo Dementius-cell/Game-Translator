@@ -25,6 +25,7 @@ public sealed partial class TranslationPipelineService
     private readonly TranslationPipelineOptimizationOptions optimizationOptions;
     private readonly TextCandidateRegionOcrService candidateRegionOcrService;
     private readonly TimeProvider timeProvider;
+    private readonly IInputActivityClock? inputActivityClock;
     private readonly object optimizationStateLock = new();
     private readonly object textStabilityStateLock = new();
     private readonly Dictionary<PipelineFrameStateKey, PipelineFrameState> optimizationStates = new();
@@ -40,7 +41,8 @@ public sealed partial class TranslationPipelineService
         IOverlayService overlayService,
         TranslationPipelineOptimizationOptions? optimizationOptions = null,
         TextCandidateRegionOcrService? candidateRegionOcrService = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IInputActivityClock? inputActivityClock = null)
     {
         this.captureService = captureService ?? throw new ArgumentNullException(nameof(captureService));
         this.ocrService = ocrService ?? throw new ArgumentNullException(nameof(ocrService));
@@ -53,6 +55,7 @@ public sealed partial class TranslationPipelineService
         this.candidateRegionOcrService = candidateRegionOcrService
             ?? new TextCandidateRegionOcrService(new UnavailableTextCandidateDetector(), this.ocrService);
         this.timeProvider = timeProvider ?? TimeProvider.System;
+        this.inputActivityClock = inputActivityClock;
     }
 
     public Task<TranslationPipelineResult> RunAsync(
@@ -3512,6 +3515,9 @@ public sealed partial class TranslationPipelineService
                 providerNetworkRequestOutcome: providerNetworkRequestOutcome,
                 providerNetworkHttpStatusCode: providerNetworkHttpStatusCode,
                 overlayTextItemCount: overlayTextItemCount,
+                sessionInputAgeMs: kind is LiveCandidateLifecycleEventKind.CaptureStarted
+                    or LiveCandidateLifecycleEventKind.OverlaySnapshotPublished
+                    ? service.inputActivityClock?.ReadAgeMilliseconds() : null,
                 overlayMaskItemCount: overlayMaskItemCount,
                 failureStage: failureStage,
                 failureExceptionType: failureExceptionType,

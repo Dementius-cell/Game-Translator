@@ -35,6 +35,7 @@ public sealed class InfrastructureServiceModule : IApplicationServiceModule
         services.AddSingleton<IProfileExchangeGateway, JsonProfileExchangeGateway>();
         services.AddSingleton<ITranslationCacheRepository, SqliteTranslationCacheRepository>();
         services.AddSingleton<ICaptureFrameSource, WindowsGraphicsCaptureFrameSource>();
+        services.AddSingleton<IInputActivityClock, WindowsInputActivityClock>();
         services.AddSingleton<IOcrEngine, WindowsOcrEngine>();
         services.AddSingleton<IOcrEngine, TesseractOcrEngine>();
         services.AddSingleton(new PaddleOcrTextCandidateDetectorOptions());

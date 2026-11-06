@@ -11,7 +11,7 @@ Game Translator live-session diagnostics
 Live candidate lifecycle
   DroppedOldestEvents: 2
   [1] Refresh=1 At=2026-11-02T00:00:00Z Event=OverlaySnapshotPublished OverlayTextItems=2
-  [2] Refresh=2 At=2026-11-02T00:00:01Z Event=OverlaySnapshotPublished OverlayTextItems=0
+  [2] Refresh=2 At=2026-11-02T00:00:01Z Event=OverlaySnapshotPublished OverlayTextItems=0 SessionInputAgeMs=1000
   [3] Refresh=3 At=2026-11-02T00:00:02Z Event=OverlaySnapshotPublished OverlayTextItems=0
   [4] Refresh=4 At=2026-11-02T00:00:03Z Event=OverlaySnapshotPublished OverlayTextItems=1
   [5] Refresh=5 At=2026-11-02T00:00:04Z Event=CandidateWorkCompleted ElapsedMs=12,5 OcrText="PRIVATE_SENTINEL \" ElapsedMs=9999" TranslatedText="private"
@@ -28,6 +28,7 @@ $json = & (Join-Path $root 'tools/summarize-live-diagnostics.ps1') -LiteralPath 
 $summary = ($json | ConvertFrom-Json).Reports[0]
 Assert ($json -notmatch 'PRIVATE_SENTINEL|synthetic-1|9999|synthetic.txt') 'Private or unrelated data escaped.'
 Assert ($summary.CompletedEmptySnapshotIntervals.Count -eq 1 -and $summary.CompletedEmptySnapshotIntervals.MaxMs -eq 2000) 'Repeated empty publications changed interval.'
+Assert ($summary.OverlayCountDropsBySessionInput.Within1sOfInput -eq 1 -and $summary.OverlayCountDropsBySessionInput.InputUnknown -eq 1) 'Drops must distinguish recent input from unavailable evidence.'
 Assert ($summary.Timings.CandidateWorkCompleted.P50Ms -eq 12.5) 'Locale decimal parsing failed.'
 Assert ($summary.Timings.ProviderQueueWait.Count -eq 1) 'Provider attempts double-counted.'
 Assert ($summary.Timings.ProviderInvocation.MaxMs -eq 2000) 'Provider duration incorrect.'

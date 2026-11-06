@@ -6297,6 +6297,7 @@ public sealed class MainViewModel : ValidatableObservableObject
                 entry.ProviderNetworkHttpStatusCode?.ToString(CultureInfo.InvariantCulture));
 
             AppendLifecycleField(builder, "OverlayTextItems", entry.OverlayTextItemCount?.ToString());
+            AppendLifecycleField(builder, "SessionInputAgeMs", entry.SessionInputAgeMs?.ToString());
             AppendLifecycleField(builder, "OverlayMaskItems", entry.OverlayMaskItemCount?.ToString());
             if (entry.FailureStage is { } failureStage)
             {

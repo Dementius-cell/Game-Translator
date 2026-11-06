@@ -29,6 +29,7 @@ foreach ($inputPath in $LiteralPath) {
     $overlayGaps = [Collections.Generic.List[double]]::new()
     $emptySince = $null
     $previousOverlayCount = $null
+    $overlayDrops = [ordered]@{ Within1sOfInput = 0; MoreThan1sAfterInput = 0; InputUnknown = 0 }
     $lastAt = $null
     $firstAt = $null
     $lastSequence = -1L
@@ -105,6 +106,12 @@ foreach ($inputPath in $LiteralPath) {
         if ($kind -eq 'OverlaySnapshotPublished') {
             $count = Get-NumericField $stripped 'OverlayTextItems'
             if ($null -eq $count) { continue }
+            if ($null -ne $previousOverlayCount -and $count -lt $previousOverlayCount) {
+                $age = Get-NumericField $stripped 'SessionInputAgeMs'
+                if ($null -eq $age) { $overlayDrops.InputUnknown++ }
+                elseif ($age -le 1000) { $overlayDrops.Within1sOfInput++ }
+                else { $overlayDrops.MoreThan1sAfterInput++ }
+            }
             if ($count -eq 0 -and $previousOverlayCount -gt 0) { $emptySince = $at }
             if ($count -gt 0 -and $null -ne $emptySince) {
                 $overlayGaps.Add(($at - $emptySince).TotalMilliseconds)
@@ -128,6 +135,7 @@ foreach ($inputPath in $LiteralPath) {
         UnknownEventsIgnored = $unknownEvents
         ObservedSpanMs = ($lastAt - $firstAt).TotalMilliseconds
         EventCounts = $events
+        OverlayCountDropsBySessionInput = $overlayDrops
         Timings = $distributions
         FinalPublishedTextItems = $previousOverlayCount
         CompletedEmptySnapshotIntervals = Get-Distribution $overlayGaps

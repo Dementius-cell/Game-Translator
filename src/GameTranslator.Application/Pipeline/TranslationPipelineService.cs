@@ -2259,8 +2259,9 @@ public sealed partial class TranslationPipelineService
             ValidateTransientEmptyOverlayRetention(state, orderedRegions);
             if (state.Zone.ContentLayoutMode == ContentLayoutMode.StaticMenu)
                 return ReconcileMenuRegions(state, capturedZone, orderedRegions, cancelledZoneIds);
-            foreach (var region in orderedRegions)
+            foreach (var detectedRegion in orderedRegions)
             {
+                var region = detectedRegion;
                 var candidateId = CreateCandidateId(state.Zone, region.Candidate.Bounds);
                 var candidateState = FindMatchingCandidateState(
                     state,
@@ -2280,6 +2281,7 @@ public sealed partial class TranslationPipelineService
                         CreateCandidateGeometrySignature(region.Candidate),
                         capturedZone.Frame.CapturedAt);
                     state.CandidateStates.Add(candidateId, candidateState);
+                    candidateState.PixelContext = CreateDialoguePixelContext(state, region, capturedZone.Frame);
                     matchedCandidateIds.Add(candidateId);
                     RecordCandidateLifecycleEvent(
                         LiveCandidateLifecycleEventKind.CandidateDiscovered,
@@ -2293,13 +2295,28 @@ public sealed partial class TranslationPipelineService
                         StartCandidateWork(
                             candidateState,
                             capturedZone.CaptureElapsed,
-                            CreateCandidateOverlayPlacementConstraints(state.Zone, orderedRegions, region));
+                            CreateCandidateOverlayPlacementConstraints(state.Zone, orderedRegions, detectedRegion));
                     }
 
                     continue;
                 }
 
                 matchedCandidateIds.Add(candidateState.Id);
+
+                // Compare in source coordinates, not differently padded crop coordinates.
+                // Retain the proven crop and its authority only while its entire guarded area is unchanged.
+                if (region.Candidate.Bounds != candidateState.Region.Candidate.Bounds
+                    && HasBoundedCandidateGeometryJitter(candidateState.AnchorBounds, region.Candidate.Bounds, 2)
+                    && HasBoundedCandidateMemberGeometryJitter(candidateState.Region, region, 2)
+                    && candidateState.PixelContext is { } context
+                    && context.Matches(capturedZone.Frame, region.Candidate.Bounds))
+                {
+                    region = new TextCandidateRegion(candidateState.Region.Candidate,
+                        TextCandidateRegionOcrService.CreateCroppedFrame(capturedZone.Frame, candidateState.Region.Candidate.Bounds));
+                    candidateState.Region = region;
+                    RecordCandidateLifecycleEvent(LiveCandidateLifecycleEventKind.CandidateGeometryJitterMatched,
+                        candidateState, frameCapturedAt: capturedZone.Frame.CapturedAt);
+                }
 
                 // Changed contextual pixels or decision thresholds need fresh OCR/translation projection.
                 // Reuse the existing revision/cancellation path; old work never gains authority.
@@ -2364,6 +2381,7 @@ public sealed partial class TranslationPipelineService
                         candidateState,
                         capturedZone.Frame.CapturedAt);
                     candidateState.SourceIdentity = FrameFingerprint.FromFrame(region.Frame);
+                    candidateState.PixelContext = CreateDialoguePixelContext(state, region, capturedZone.Frame);
                     candidateState.Result = null;
                     candidateState.ResultPublishedAt = null;
                     candidateState.Failure = null;
@@ -2392,7 +2410,7 @@ public sealed partial class TranslationPipelineService
                         StartCandidateWork(
                             candidateState,
                             capturedZone.CaptureElapsed,
-                            CreateCandidateOverlayPlacementConstraints(state.Zone, orderedRegions, region));
+                            CreateCandidateOverlayPlacementConstraints(state.Zone, orderedRegions, detectedRegion));
                     }
 
                     overlayChanged |= hadPublishedResult;
@@ -2424,6 +2442,7 @@ public sealed partial class TranslationPipelineService
 
                     candidateState.Region = region;
                     candidateState.SourceIdentity = FrameFingerprint.FromFrame(region.Frame);
+                    candidateState.PixelContext = CreateDialoguePixelContext(state, region, capturedZone.Frame);
                     candidateState.Result = null;
                     candidateState.ResultPublishedAt = null;
                     candidateState.Failure = null;
@@ -2444,7 +2463,7 @@ public sealed partial class TranslationPipelineService
                         StartCandidateWork(
                             candidateState,
                             capturedZone.CaptureElapsed,
-                            CreateCandidateOverlayPlacementConstraints(state.Zone, orderedRegions, region));
+                            CreateCandidateOverlayPlacementConstraints(state.Zone, orderedRegions, detectedRegion));
                     }
 
                     overlayChanged |= hadPublishedResult;
@@ -2461,7 +2480,7 @@ public sealed partial class TranslationPipelineService
                     StartCandidateWork(
                         candidateState,
                         capturedZone.CaptureElapsed,
-                        CreateCandidateOverlayPlacementConstraints(state.Zone, orderedRegions, region));
+                        CreateCandidateOverlayPlacementConstraints(state.Zone, orderedRegions, detectedRegion));
                 }
                 else
                 {
@@ -2493,6 +2512,14 @@ public sealed partial class TranslationPipelineService
             candidateReadiness = failure is null ? CandidatePipelineReadiness.Active
                 : new CandidatePipelineReadiness(CandidatePipelineReadinessStatus.Degraded,
                     generation: 1, restartCount: 0, unavailableReason: failure.Message);
+        }
+
+        private CandidatePixelContext? CreateDialoguePixelContext(LiveZoneState state, TextCandidateRegion region, CapturedFrame frame)
+        {
+            if (state.Zone.ContentLayoutMode != ContentLayoutMode.DialogComic
+                || profile.OcrSettings.WatermarkFilter != WatermarkFilterMode.Off)
+                return null;
+            return CandidatePixelContext.Create(frame, region.Candidate.Bounds);
         }
 
         private static LiveCandidateState? FindMatchingCandidateState(
@@ -3684,6 +3711,7 @@ public sealed partial class TranslationPipelineService
 
         private sealed class LiveCandidateState
         {
+            public CandidatePixelContext? PixelContext { get; set; }
             public MenuCandidateState? Menu { get; set; }
             public LiveCandidateState(
                 string id,

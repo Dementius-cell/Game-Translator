@@ -61,11 +61,13 @@ public sealed class DetectorTimingTests
     {
         var directory = NewDirectory();
         using var detector = CreateDetector(directory, """
+            # Load the test worker's parser before reporting ready. Its cold import is not request time.
+            $null = '{}' | ConvertFrom-Json
+            $signal = [IO.Path]::Combine($PSScriptRoot, 'received')
             [Console]::WriteLine('{"status":"ready"}')
             while ($line = [Console]::ReadLine()) {
                 $request = $line | ConvertFrom-Json
-                $signal = Join-Path $PSScriptRoot 'received'
-                if (!(Test-Path $signal)) { [IO.File]::WriteAllText($signal, 'ready'); Start-Sleep -Seconds 20 }
+                if (![IO.File]::Exists($signal)) { [IO.File]::WriteAllText($signal, 'ready'); [Threading.Thread]::Sleep(20000) }
                 [Console]::WriteLine('{"status":"ok","requestId":' + $request.requestId + ',"candidates":[]}')
             }
             """, requestTimeout: TimeSpan.FromMilliseconds(300));

@@ -13,6 +13,63 @@ namespace GameTranslator.Tests.Application;
 
 public sealed partial class TranslationPipelineServiceTests
 {
+    [Theory]
+    [InlineData("Action", 1600, true)]
+    [InlineData("Other", 1600, false)]
+    [InlineData("", 1600, false)]
+    [InlineData("Action", 2100, false)]
+    public async Task LiveMenu_ReadyValidatedOcrIsCollectedBeforeExpiry(string text, int delay, bool retains)
+    {
+        var zone = CreateZone("boundary", "Menu", new AbsoluteRectangle(0, 0, 100, 30))
+            with { ContentLayoutMode = ContentLayoutMode.StaticMenu };
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available("synthetic",
+            [new TextCandidate(new BoundingBox(4, 4, 80, 20), .99)]));
+        var engine = new BoundaryMenuOcrEngine();
+        var clock = new ManualTimeProvider(FrameTime);
+        var translator = new FakeTranslatorProvider("Google");
+        var overlay = new FakeOverlayService { IsExcludedFromCapture = true };
+        var service = CreateService(new FakeCaptureFrameSource(), engine, translator, overlay,
+            candidateDetector: detector, timeProvider: clock);
+        using var session = service.CreateLiveSession(CreateProfile(zone), new TranslationPipelineRunOptions());
+        for (var i = 0; i < 4; i++)
+        {
+            await session.RefreshAsync();
+            await session.PublishCompletedWorkAsync();
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+        }
+        Assert.Single(overlay.CurrentSnapshot!.TextItems);
+        var published = overlay.Snapshots.Count;
+        engine.Text = text;
+        engine.Gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await session.RefreshAsync(); // Geometry is validated; OCR remains in flight.
+        await engine.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        clock.Advance(TimeSpan.FromMilliseconds(delay));
+        engine.Gate.SetResult(true);
+        await session.WaitForWorkCompletionAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        var update = await session.PublishCompletedWorkAsync();
+        if (retains)
+        {
+            Assert.Single(overlay.CurrentSnapshot!.TextItems);
+            Assert.Equal(published, overlay.Snapshots.Count);
+            Assert.DoesNotContain(update.CandidateLifecycleEvents, e => e.Menu?.Decision == "text-expired");
+        }
+        else Assert.Empty(overlay.CurrentSnapshot!.TextItems);
+        Assert.Equal(1, translator.CallCount);
+    }
+
+    private sealed class BoundaryMenuOcrEngine : IOcrEngine
+    {
+        public string EngineId => OcrSettings.TesseractEngineId;
+        public string Text { get; set; } = "Action";
+        public TaskCompletionSource<bool>? Gate { get; set; }
+        public TaskCompletionSource<bool> Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async Task<OcrResult> RecognizeAsync(OcrRequest request, CancellationToken cancellationToken = default)
+        {
+            if (Gate is { } gate) { Started.TrySetResult(true); await gate.Task.WaitAsync(cancellationToken); }
+            return new OcrResult(request, Text.Length == 0 ? [] : [new OcrTextBlock(Text, new BoundingBox(2, 2, 65, 16))], OcrTime);
+        }
+    }
+
     [Fact]
     public async Task LiveMenu_TransientPagesDoNotPopulateLegacyFrameCacheButReuseTranslationCache()
     {

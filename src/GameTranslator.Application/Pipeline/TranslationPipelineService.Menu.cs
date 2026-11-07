@@ -216,12 +216,6 @@ public sealed partial class TranslationPipelineService
         private async Task<bool> CollectMenuWorkAsync()
         {
             var changed = false;
-            foreach (var candidate in zoneStates.Values.SelectMany(s => s.CandidateStates.Values))
-                if (candidate.Menu?.Authority.Expire(MenuNow) == true)
-                {
-                    changed |= InvalidateMenuTranslation(candidate);
-                    RecordMenuDecision(candidate, "text-expired", candidate.Menu.LatestAcceptedResult?.CapturedFrame);
-                }
             PumpMenuOcr();
             foreach (var work in menuOcrWork.Where(w => w.Task.IsCompleted).ToArray())
             {
@@ -262,6 +256,13 @@ public sealed partial class TranslationPipelineService
             foreach (var candidate in zoneStates.Values.SelectMany(s => s.CandidateStates.Values))
             {
                 changed |= AcceptCompletedMenuOcr(candidate);
+                // Consume only ready, source/geometry-validated evidence before expiry.
+                // Pending or unvalidated work cannot extend the old authority's lifetime.
+                if (candidate.Menu?.Authority.Expire(MenuNow) == true)
+                {
+                    changed |= InvalidateMenuTranslation(candidate);
+                    RecordMenuDecision(candidate, "text-expired", candidate.Menu.LatestAcceptedResult?.CapturedFrame);
+                }
                 if (candidate.Menu is not { } menu || candidate.ActiveWork is not { } work) continue;
                 CollectCandidateProgress(candidate, work);
                 if (!work.Task.IsCompleted) continue;
@@ -328,12 +329,13 @@ public sealed partial class TranslationPipelineService
             var version = menu.Authority.Version;
             var projected = TranslationTextGroupingService.CreateTranslationSourceResult(result.SourceOcrResult,
                 input.Zone, profile.TranslatorSettings.AutoDetectSourceLanguage == true);
-            if (!menu.Authority.Observe(completed.Origin, projected.TextBlocks.Select(b => b.Text), MenuNow))
+            var accepted = menu.Authority.Observe(completed.Origin, projected.TextBlocks.Select(b => b.Text), MenuNow);
+            if (menu.Authority.Version != version) changed |= InvalidateMenuTranslation(candidate);
+            if (!accepted)
             {
                 RecordMenuDecision(candidate, "ocr-rejected-source", result.CapturedFrame, completed.WorkAge);
-                return false;
+                return changed;
             }
-            if (menu.Authority.Version != version) changed |= InvalidateMenuTranslation(candidate);
             RecordMenuDecision(candidate, menu.Authority.Version != version ? "text-version-changed" : "text-observed",
                 result.CapturedFrame, completed.WorkAge);
             menu.LatestAcceptedInput = input;

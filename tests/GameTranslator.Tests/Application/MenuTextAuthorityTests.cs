@@ -5,6 +5,54 @@ namespace GameTranslator.Tests.Application;
 
 public sealed class MenuTextAuthorityTests
 {
+    [Theory]
+    [InlineData(1500)]
+    [InlineData(2200)]
+    public void ReadyFreshObservation_PreservesContinuousConfirmationAcrossCollectionDelay(int sourceTime)
+    {
+        var gate = Confirm("Action");
+        var version = gate.Version;
+        Assert.True(gate.Observe(Origin(sourceTime), ["Action"], Ms(2300)));
+        Assert.True(gate.Confirmed);
+        Assert.Equal(version, gate.Version);
+        Assert.True(gate.CanPublish(version, Ms(2300)));
+        Assert.False(gate.CanPublish(version, Ms(sourceTime + 2001)));
+    }
+
+    [Fact]
+    public void FreshObservationAfterSourceGap_CannotBridgeExpiredEvidence()
+    {
+        var gate = Confirm("Action");
+        var version = gate.Version;
+        Assert.True(gate.Observe(Origin(2201), ["Action"], Ms(2300)));
+        Assert.False(gate.Confirmed);
+        Assert.False(gate.CanPublish(version, Ms(2300)));
+        Assert.Equal(1, gate.ObservationCount);
+    }
+
+    [Theory]
+    [InlineData("Other")]
+    [InlineData("")]
+    public void ReadyFreshChangedObservation_StillRevokesAtCollectionBoundary(string text)
+    {
+        var gate = Confirm("Action");
+        var version = gate.Version;
+        gate.Observe(Origin(1500), [text], Ms(2300));
+        Assert.False(gate.Confirmed);
+        Assert.False(gate.CanPublish(version, Ms(2300)));
+    }
+
+    [Fact]
+    public void AlreadyExpiredAuthority_CannotBeResurrectedByLateIdenticalObservation()
+    {
+        var gate = Confirm("Action");
+        var version = gate.Version;
+        Assert.True(gate.Expire(Ms(2201)));
+        gate.Observe(Origin(1500), ["Action"], Ms(2300));
+        Assert.False(gate.Confirmed);
+        Assert.False(gate.CanPublish(version, Ms(2300)));
+    }
+
     private static readonly Guid Source = Guid.NewGuid();
     private static TimeSpan Ms(int value) => TimeSpan.FromMilliseconds(value);
     private static CaptureFrameOrigin Origin(int time) => new(Source, Ms(time), DateTimeOffset.UnixEpoch);

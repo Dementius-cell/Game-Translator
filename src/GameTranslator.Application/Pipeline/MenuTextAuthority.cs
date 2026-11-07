@@ -19,9 +19,16 @@ internal sealed class MenuTextAuthority(int requiredObservations, TimeSpan requi
 
     internal bool Observe(CaptureFrameOrigin origin, IEnumerable<string> groups, TimeSpan now)
     {
-        Expire(now);
         if (!Fresh(origin, now) || (lastOrigin is { } previous
-            && (origin.SourceId != previous.SourceId || origin.SourceTimestamp <= previous.SourceTimestamp))) return false;
+            && (origin.SourceId != previous.SourceId || origin.SourceTimestamp <= previous.SourceTimestamp)))
+        {
+            Expire(now);
+            return false;
+        }
+        // A ready, validated observation can bridge collection delay, never a source gap.
+        // Publication still requires this new origin to be fresh at the current time.
+        // An authority already expired by an earlier collection remains cleared.
+        Expire(origin.FreshnessTimestamp);
         var next = CreateSignature(groups);
         if (next != signature || next is null)
         {

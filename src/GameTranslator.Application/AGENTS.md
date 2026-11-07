@@ -74,6 +74,8 @@ Keep application use cases and contracts independent from concrete UI, platform,
 
 ## Verification
 
+- Collect ready menu OCR with validated source and geometry before expiring text authority. Identical observations preserve confirmation only when the new source is fresh now and its source-time gap from the preceding observation is at most two seconds. Pending/unvalidated OCR cannot renew authority; an already expired authority requires confirmation again. Changed/empty text still revokes immediately. Collection delay never renews a source timestamp.
+
 - Live candidate detector unavailability is a per-zone failure in the returned batch and a non-blocking Degraded diagnostic state. Preserve healthy zones, retry on the next normal capture, and clear that zone's detector failure after an available response. Session counters are not worker restart counters; worker lifecycle remains separate telemetry.
 - Live-menu recognition-only and prepared-translation passes neither consult nor populate the service-wide legacy frame optimization cache. Their authority lives in the session; translation cache lookup remains mandatory.
 - Menu presentation equality compares final text/style, masks and debug output, excluding timestamps and already-resolved placement constraints. Suppress identical final snapshots only when the overlay is visible; an invalidated or moved result still publishes immediately. Preserve comic-only publication behavior.

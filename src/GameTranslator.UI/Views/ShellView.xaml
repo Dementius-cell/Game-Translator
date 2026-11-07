@@ -1383,6 +1383,11 @@
                                 <Border Style="{StaticResource CardBorderStyle}" Margin="0,6,0,0" Visibility="{Binding IsHotkeysSettingsTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
                                     <StackPanel>
                                         <TextBlock FontWeight="SemiBold" Text="{loc:Text LiveDiagTitle}"/>
+                                        <Button x:Name="ClearDiagnosticsButton" Margin="0,6,0,0" Padding="9,4" HorizontalAlignment="Left"
+                                                Command="{Binding ClearDiagnosticsCommand}" Content="{loc:Text LiveDiagClear}"
+                                                ToolTipService.ShowOnDisabled="True" ToolTip="{loc:Text LiveDiagClearTip}"/>
+                                        <TextBlock Margin="0,4,0,0" TextWrapping="Wrap" Foreground="{DynamicResource ThemeMuted}"
+                                                   Text="{Binding DiagnosticsCleanupStatus, Converter={StaticResource LocalizedText}}"/>
                                         <CheckBox Margin="0,6,0,0" Content="{loc:Text LiveDiagEnabled}" IsChecked="{Binding DiagnosticsEnabled}"/>
                                         <StackPanel IsEnabled="{Binding DiagnosticsEnabled}">
                                             <CheckBox Content="{loc:Text LiveDiagInput}" IsChecked="{Binding DiagnosticsInput}"/>

@@ -23,6 +23,9 @@ public static class PresentationServiceCollectionExtensions
         services.AddSingleton<ThemeService>();
         services.AddSingleton<INavigationService, NavigationService>();
         services.AddSingleton<IDebugResourceMonitor, ProcessDebugResourceMonitor>();
+        services.AddSingleton<IDiagnosticsCleanupService>(provider => new DiagnosticsCleanupService(
+            provider.GetRequiredService<IApplicationLogger>(),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GameTranslator", "Diagnostics")));
         services.AddSingleton<IScreenRegionPickerService, WpfScreenRegionPickerService>();
         services.AddSingleton<IOverlayTextMeasurer, WpfOverlayTextMeasurer>();
         services.AddSingleton<WpfGlobalHotkeyRegistrar>();

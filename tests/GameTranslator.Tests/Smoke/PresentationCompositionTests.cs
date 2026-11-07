@@ -20,6 +20,16 @@ namespace GameTranslator.Tests.Smoke;
 [Collection(WpfResourceCollection.Name)]
 public sealed class PresentationCompositionTests
 {
+    private sealed class TestDiagnosticsCleanup : GameTranslator.Application.Debug.IDiagnosticsCleanupService
+    {
+        public int Calls { get; private set; }
+        public Task<GameTranslator.Application.Debug.DiagnosticsCleanupResult> ClearAsync(string liveReportsDirectory)
+        {
+            Calls++;
+            return Task.FromResult(new GameTranslator.Application.Debug.DiagnosticsCleanupResult(3, 1, 1048576));
+        }
+    }
+
     [Fact]
     public void OcrSelectedLanguages_UncheckingBoundItemKeepsDispatcherResponsive()
     {
@@ -178,6 +188,8 @@ public sealed class PresentationCompositionTests
                 services.AddSingleton(new TranslationCacheStorageOptions(Path.Combine(rootDirectory, "cache", "translations.db")));
                 InvokePresentationCompositionRoot(services);
                 InvokeExternalServiceModules(services);
+                var cleanup = new TestDiagnosticsCleanup();
+                services.AddSingleton<GameTranslator.Application.Debug.IDiagnosticsCleanupService>(cleanup);
 
                 using var provider = services.BuildServiceProvider();
                 var uiAssembly = LoadUiAssembly();
@@ -252,6 +264,14 @@ public sealed class PresentationCompositionTests
 
                         if (tab.Key == 5)
                         {
+                            var clear = FindVisualDescendantByName<System.Windows.Controls.Button>(shell, "ClearDiagnosticsButton")!;
+                            Assert.NotNull(clear.Command);
+                            Assert.True(clear.IsEnabled);
+                            AssertFitsHorizontally(shell, clear, size.Width);
+                            var before = cleanup.Calls;
+                            clear.Command.Execute(null);
+                            Assert.Equal(before + 1, cleanup.Calls);
+                            Assert.Contains("Deleted files: 3.", currentViewModel.GetType().GetProperty("DiagnosticsCleanupStatus")!.GetValue(currentViewModel)!.ToString());
                             var themeSelector = FindVisualDescendantByName<System.Windows.Controls.ComboBox>(shell, "ApplicationThemeSelector")!;
                             Assert.Equal(3, themeSelector.Items.Count);
                             themeSelector.SelectedValue = Enum.Parse(themeMode.PropertyType, "System");

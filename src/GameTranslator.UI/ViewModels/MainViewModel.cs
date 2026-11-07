@@ -476,6 +476,14 @@ public sealed partial class MainViewModel : ValidatableObservableObject
     private readonly ISettingsService settings;
     private readonly IApplicationLogger logger;
     private readonly string liveDiagnosticsDirectory;
+    private readonly IDiagnosticsCleanupService diagnosticsCleanupService;
+    private readonly SemaphoreSlim diagnosticsFileGate = new(1, 1);
+    private string diagnosticsCleanupStatus = string.Empty;
+    public string DiagnosticsCleanupStatus
+    {
+        get => diagnosticsCleanupStatus;
+        private set { diagnosticsCleanupStatus = value; OnPropertyChanged(); }
+    }
     private readonly GlobalHotkeyService globalHotkeyService;
     private readonly DebugMetricFormatter debugMetricFormatter;
     private readonly IDebugResourceMonitor debugResourceMonitor;
@@ -704,7 +712,8 @@ public sealed partial class MainViewModel : ValidatableObservableObject
         IOcrLanguagePackService ocrLanguagePackService,
         ISettingsService settings,
         IApplicationLogger logger,
-        GameTranslator.Application.Settings.LiveDiagnosticsPreferences? diagnostics = null)
+        GameTranslator.Application.Settings.LiveDiagnosticsPreferences? diagnostics = null,
+        IDiagnosticsCleanupService? diagnosticsCleanupService = null)
     {
         this.diagnostics = diagnostics ?? new(settings);
         this.profileService = profileService;
@@ -726,6 +735,8 @@ public sealed partial class MainViewModel : ValidatableObservableObject
         this.settings = settings;
         this.logger = logger;
         liveDiagnosticsDirectory = ResolveLiveDiagnosticsDirectory(settings);
+        this.diagnosticsCleanupService = diagnosticsCleanupService ?? new DiagnosticsCleanupService(logger, Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GameTranslator", "Diagnostics"));
         debugVerticalSourceWidthMultiplier = overlayPositioningService.SessionVerticalSourceWidthMultiplier;
         globalHotkeyService.HotkeyPressed += OnGlobalHotkeyPressed;
         pendingSelectedProfileId = settings.GetValue<string>(SelectedProfileSettingKey);
@@ -776,6 +787,7 @@ public sealed partial class MainViewModel : ValidatableObservableObject
         RecognizeOcrPreviewCommand = new AsyncRelayCommand(RecognizeOcrPreviewAsync, CanRecognizeOcrPreview);
         CollectDebugInfoCommand = new AsyncRelayCommand(CollectDebugInfoAsync, CanCollectDebugInfo);
         OpenLiveDiagnosticsFolderCommand = new RelayCommand(OpenLiveDiagnosticsFolder, () => !IsBusy);
+        ClearDiagnosticsCommand = new AsyncRelayCommand(ClearDiagnosticsAsync, () => !IsBusy && !IsLiveTranslationRunning);
         CheckOcrLanguagePackCommand = new AsyncRelayCommand(CheckOcrLanguagePackAsync, CanManageOcrLanguagePack);
         InstallOcrLanguagePackCommand = new AsyncRelayCommand(InstallOcrLanguagePackAsync, CanManageOcrLanguagePack);
         CheckOcrLanguagePackChecklistCommand = new AsyncRelayCommand(
@@ -1887,6 +1899,7 @@ public sealed partial class MainViewModel : ValidatableObservableObject
     public ICommand CollectDebugInfoCommand { get; }
 
     public ICommand OpenLiveDiagnosticsFolderCommand { get; }
+    public ICommand ClearDiagnosticsCommand { get; }
 
     public ICommand CheckOcrLanguagePackCommand { get; }
 
@@ -3281,6 +3294,34 @@ public sealed partial class MainViewModel : ValidatableObservableObject
         }
         finally
         {
+            IsBusy = false;
+        }
+    }
+
+    public async Task ClearDiagnosticsAsync()
+    {
+        if (IsBusy || IsLiveTranslationRunning) return;
+        IsBusy = true;
+        DiagnosticsCleanupStatus = "Clearing diagnostics...";
+        try
+        {
+            await diagnosticsFileGate.WaitAsync();
+            try
+            {
+                var result = await diagnosticsCleanupService.ClearAsync(liveDiagnosticsDirectory);
+                DiagnosticsCleanupStatus = $"Deleted files: {result.DeletedFiles}. Freed: {result.DeletedBytes / (1024d * 1024):F1} MiB. Skipped entries: {result.SkippedEntries}.";
+                logger.Information(DiagnosticsCleanupStatus);
+            }
+            finally { diagnosticsFileGate.Release(); }
+        }
+        catch (Exception exception)
+        {
+            logger.Error(exception, "Diagnostic cleanup failed.");
+            DiagnosticsCleanupStatus = "Could not clear diagnostics. Check logs for details.";
+        }
+        finally
+        {
+            StatusMessage = DiagnosticsCleanupStatus;
             IsBusy = false;
         }
     }
@@ -5587,6 +5628,7 @@ public sealed partial class MainViewModel : ValidatableObservableObject
         int sequence,
         string report)
     {
+        await diagnosticsFileGate.WaitAsync();
         try
         {
             Directory.CreateDirectory(liveDiagnosticsDirectory);
@@ -5606,6 +5648,7 @@ public sealed partial class MainViewModel : ValidatableObservableObject
         {
             logger.Error(exception, $"Live diagnostics could not be saved for '{trigger}'.");
         }
+        finally { diagnosticsFileGate.Release(); }
     }
 
     private string BuildLiveDiagnosticsReport(string trigger, DateTimeOffset capturedAt)
@@ -6609,6 +6652,7 @@ public sealed partial class MainViewModel : ValidatableObservableObject
         ((AsyncRelayCommand)RecognizeOcrPreviewCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)CollectDebugInfoCommand).RaiseCanExecuteChanged();
         ((RelayCommand)OpenLiveDiagnosticsFolderCommand).RaiseCanExecuteChanged();
+        ((AsyncRelayCommand)ClearDiagnosticsCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)CheckOcrLanguagePackCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)InstallOcrLanguagePackCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)CheckOcrLanguagePackChecklistCommand).RaiseCanExecuteChanged();

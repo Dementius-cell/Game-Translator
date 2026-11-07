@@ -28,6 +28,99 @@ namespace GameTranslator.Tests.Smoke;
 public sealed class ProfileManagerViewModelTests
 {
     [Fact]
+    public async Task ClearDiagnostics_DeletesOwnedFilesAndPreservesCustomDirectoryContent()
+    {
+        var sandbox = Path.Combine(Path.GetTempPath(), "gt-cleanup-" + Guid.NewGuid());
+        var root = Path.Combine(sandbox, "Diagnostics");
+        var custom = Path.Combine(sandbox, "custom");
+        Directory.CreateDirectory(custom);
+        foreach (var folder in new[] { "Live", "Frames/session", "Detector" })
+        {
+            Directory.CreateDirectory(Path.Combine(root, folder));
+            File.WriteAllText(Path.Combine(root, folder, "sample.txt"), "synthetic");
+        }
+        File.WriteAllText(Path.Combine(custom, "game-translator-live-test.txt"), "synthetic");
+        File.WriteAllText(Path.Combine(custom, "keep.txt"), "unrelated");
+        File.WriteAllText(Path.Combine(sandbox, "settings.json"), "{}");
+        try
+        {
+            var type = LoadUiAssembly().GetType("GameTranslator.UI.Services.DiagnosticsCleanupService", true)!;
+            var service = (IDiagnosticsCleanupService)Activator.CreateInstance(type, new TestApplicationLogger(), root)!;
+            var result = await service.ClearAsync(custom);
+            Assert.Equal(4, result.DeletedFiles);
+            Assert.Equal(36, result.DeletedBytes);
+            Assert.Equal(0, result.SkippedEntries);
+            Assert.True(File.Exists(Path.Combine(custom, "keep.txt")));
+            Assert.True(File.Exists(Path.Combine(sandbox, "settings.json")));
+            Assert.False(Directory.Exists(Path.Combine(root, "Frames/session")));
+            Assert.Equal(0, (await service.ClearAsync(custom)).DeletedFiles);
+        }
+        finally { Directory.Delete(sandbox, true); }
+    }
+
+    [Fact]
+    public async Task ClearDiagnostics_SkipsLockedFilesAndLinkedDirectories()
+    {
+        var sandbox = Path.Combine(Path.GetTempPath(), "gt-cleanup-" + Guid.NewGuid());
+        var root = Path.Combine(sandbox, "Diagnostics");
+        var live = Path.Combine(root, "Live");
+        var outside = Path.Combine(sandbox, "outside");
+        Directory.CreateDirectory(live);
+        Directory.CreateDirectory(outside);
+        var kept = Path.Combine(outside, "keep.txt");
+        File.WriteAllText(kept, "synthetic");
+        var link = Path.Combine(live, "linked");
+        try
+        {
+            // Directory junctions exercise reparse handling without symlink privileges.
+            var start = new System.Diagnostics.ProcessStartInfo("powershell.exe") { UseShellExecute = false, CreateNoWindow = true };
+            start.ArgumentList.Add("-NoProfile");
+            start.ArgumentList.Add("-NonInteractive");
+            start.ArgumentList.Add("-Command");
+            start.ArgumentList.Add($"New-Item -ItemType Junction -Path '{link.Replace("'", "''")}' -Target '{outside.Replace("'", "''")}' -ErrorAction Stop | Out-Null");
+            using var process = System.Diagnostics.Process.Start(start)!;
+            await process.WaitForExitAsync();
+            Assert.Equal(0, process.ExitCode);
+            var type = LoadUiAssembly().GetType("GameTranslator.UI.Services.DiagnosticsCleanupService", true)!;
+            var service = (IDiagnosticsCleanupService)Activator.CreateInstance(type, new TestApplicationLogger(), root)!;
+            var locked = Path.Combine(live, "locked.txt");
+            using (var stream = new FileStream(locked, FileMode.Create, FileAccess.ReadWrite, FileShare.None))
+            {
+                File.WriteAllText(Path.Combine(live, "available.txt"), "synthetic");
+                var result = await service.ClearAsync(live);
+                Assert.Equal(1, result.DeletedFiles);
+                Assert.Equal(2, result.SkippedEntries);
+                Assert.True(File.Exists(kept));
+                Assert.True(File.Exists(locked));
+            }
+            Assert.Equal(1, (await service.ClearAsync(live)).DeletedFiles);
+            // A configured report directory must not follow a linked ancestor either.
+            Assert.Equal(2, (await service.ClearAsync(link)).SkippedEntries);
+            Assert.True(File.Exists(kept));
+        }
+        finally
+        {
+            if (Directory.Exists(link)) Directory.Delete(link);
+            Directory.Delete(sandbox, true);
+        }
+    }
+
+    [Theory]
+    [InlineData("IsBusy")]
+    [InlineData("IsLiveTranslationRunning")]
+    public async Task ClearDiagnostics_IsUnavailableDuringWork(string property)
+    {
+        var model = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService());
+        SetPropertyValue(model, property, true);
+        var command = Assert.IsAssignableFrom<ICommand>(GetPropertyValue(model, "ClearDiagnosticsCommand"));
+        Assert.False(command.CanExecute(null));
+        await InvokeTaskMethodAsync(model, "ClearDiagnosticsAsync");
+        Assert.Equal(string.Empty, GetPropertyValue(model, "DiagnosticsCleanupStatus"));
+        SetPropertyValue(model, property, false);
+        Assert.True(command.CanExecute(null));
+    }
+
+    [Fact]
     public async Task TranslateOnceHotkey_WhenBusy_DoesNotStartOrStopWork()
     {
         var model = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService());

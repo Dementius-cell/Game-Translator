@@ -14,7 +14,13 @@ public sealed class WindowsGraphicsCaptureFrameSource(GameTranslator.Application
     // Leave room for scheduler overhead while keeping the measured MVP path above 30 FPS.
     private static readonly TimeSpan CachedFrameRefreshInterval = TimeSpan.FromMilliseconds(25);
     private readonly Lazy<Windows.Graphics.DirectX.Direct3D11.IDirect3DDevice> direct3DDevice = new(Direct3D11DeviceFactory.CreateDevice);
-    private readonly Lazy<GraphicsCaptureItem> primaryMonitorItem = new(GraphicsCaptureItemFactory.CreateForPrimaryMonitor);
+    private readonly Lazy<nint> captureMonitor = new(GraphicsCaptureItemFactory.GetPrimaryMonitor);
+    private Lazy<GraphicsCaptureItem>? monitorItem;
+    private Lazy<GraphicsCaptureItem> primaryMonitorItem => monitorItem ??= new(() => GraphicsCaptureItemFactory.CreateForMonitor(captureMonitor.Value));
+    private readonly HdrSurfaceReader hdrSurfaceReader = new();
+    private readonly CaptureColorMonitor colorMonitor = new();
+    private HdrToneMapper? hdrToneMapper;
+    private double mapperWhiteNits;
     private readonly SemaphoreSlim captureGate = new(1, 1);
     private readonly object pendingCaptureLock = new();
     private readonly Guid sourceId = Guid.NewGuid();
@@ -60,7 +66,7 @@ public sealed class WindowsGraphicsCaptureFrameSource(GameTranslator.Application
                         token => CaptureNextFrameAsync(region, token), RestartCapture,
                         MonotonicNow, cancellationToken);
                 else captured = await CaptureNextFrameAsync(region, cancellationToken);
-                frameDiagnostics?.TryRecord(captured);
+                frameDiagnostics?.TryRecord(captured, colorMonitor.Current);
                 return captured;
             }
             finally
@@ -88,6 +94,7 @@ public sealed class WindowsGraphicsCaptureFrameSource(GameTranslator.Application
 
     private async Task<CapturedFrame> CaptureNextFrameAsync(CaptureRegion region, CancellationToken cancellationToken)
     {
+        RefreshColorInfo();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(latestFrame is null ? FrameTimeout : CachedFrameRefreshInterval);
 
@@ -136,11 +143,26 @@ public sealed class WindowsGraphicsCaptureFrameSource(GameTranslator.Application
                 closedHandlerRegistered = true;
             }
             var generation = captureGeneration;
+            var sessionColor = colorMonitor.Current;
+            if (sessionColor.UseFloatCapture && (hdrToneMapper is null || mapperWhiteNits != sessionColor.SdrWhiteNits))
+            {
+                hdrToneMapper = new HdrToneMapper(sessionColor.SdrWhiteNits);
+                mapperWhiteNits = sessionColor.SdrWhiteNits;
+            }
+            var mapper = sessionColor.UseFloatCapture ? hdrToneMapper : null;
             captureState = CaptureState.Start(
                 direct3DDevice.Value,
                 primaryMonitorItem.Value,
-                (sender, args) => OnFrameArrived(sender, args, generation));
+                sessionColor.UseFloatCapture ? DirectXPixelFormat.R16G16B16A16Float : DirectXPixelFormat.B8G8R8A8UIntNormalized,
+                (sender, args) => OnFrameArrived(sender, args, generation, mapper));
         }
+    }
+
+    private void RefreshColorInfo()
+    {
+        if (!colorMonitor.Refresh(MonotonicNow(), () => MonitorColorInfoReader.Read(captureMonitor.Value), RestartCapture)) return;
+        var next = colorMonitor.Current;
+        Trace.TraceInformation($"Capture color mode: {next.Mode}; SDR white: {next.SdrWhiteNits:F1} nits; format: {next.PoolFormat}; detection: {next.Detection}");
     }
 
     private static TimeSpan MonotonicNow() =>
@@ -197,7 +219,7 @@ public sealed class WindowsGraphicsCaptureFrameSource(GameTranslator.Application
         // An in-flight caller must still release the gate after cancellation.
     }
 
-    private async void OnFrameArrived(Direct3D11CaptureFramePool sender, object args, int generation)
+    private async void OnFrameArrived(Direct3D11CaptureFramePool sender, object args, int generation, HdrToneMapper? mapper)
     {
         PendingCapture? request;
         lock (pendingCaptureLock)
@@ -219,7 +241,9 @@ public sealed class WindowsGraphicsCaptureFrameSource(GameTranslator.Application
             var origin = new CaptureFrameOrigin(sourceId, sourceTimestamp,
                 DateTimeOffset.UtcNow - (sourceAge > TimeSpan.Zero ? sourceAge : TimeSpan.Zero))
                 { ObservedAtTimestamp = observedAt };
-            var snapshot = await CopyFrameAsync(frame, origin, CancellationToken.None);
+            var snapshot = mapper is null ? await CopyFrameAsync(frame, origin, CancellationToken.None)
+                : new FullFrameSnapshot(frame.ContentSize.Width, frame.ContentSize.Height, checked(frame.ContentSize.Width * 4),
+                    hdrSurfaceReader.Read(frame.Surface, frame.ContentSize.Width, frame.ContentSize.Height, mapper), origin);
             lock (pendingCaptureLock)
             {
                 if (disposed || itemClosed || generation != captureGeneration)
@@ -411,11 +435,12 @@ public sealed class WindowsGraphicsCaptureFrameSource(GameTranslator.Application
         public static CaptureState Start(
             Windows.Graphics.DirectX.Direct3D11.IDirect3DDevice device,
             GraphicsCaptureItem item,
+            DirectXPixelFormat format,
             Windows.Foundation.TypedEventHandler<Direct3D11CaptureFramePool, object> frameArrivedHandler)
         {
             var framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
                 device,
-                DirectXPixelFormat.B8G8R8A8UIntNormalized,
+                format,
                 2,
                 item.Size);
             GraphicsCaptureSession? session = null;

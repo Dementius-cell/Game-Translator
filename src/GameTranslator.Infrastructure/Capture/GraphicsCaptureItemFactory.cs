@@ -12,13 +12,20 @@ internal static class GraphicsCaptureItemFactory
     private static readonly Guid GraphicsCaptureItemInteropInterfaceId = new("3628E81B-3CAC-4C60-B7F4-23CE0E0C3356");
 
     public static GraphicsCaptureItem CreateForPrimaryMonitor()
+        => CreateForMonitor(GetPrimaryMonitor());
+
+    internal static nint GetPrimaryMonitor()
     {
         var monitor = MonitorFromPoint(new Point(0, 0), MonitorDefaultToPrimary);
         if (monitor == nint.Zero)
         {
             throw new InvalidOperationException("Primary monitor handle could not be resolved.");
         }
+        return monitor;
+    }
 
+    internal static GraphicsCaptureItem CreateForMonitor(nint monitor)
+    {
         var itemInterop = CreateInteropFactory();
         var itemPointer = itemInterop.CreateForMonitor(monitor, in GraphicsCaptureItemInterfaceId);
         try

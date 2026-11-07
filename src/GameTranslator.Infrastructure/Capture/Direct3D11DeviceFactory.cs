@@ -9,6 +9,7 @@ internal static class Direct3D11DeviceFactory
     private const uint D3D11SdkVersion = 7;
     private const uint D3D11CreateDeviceBgraSupport = 0x20;
     private static readonly Guid DxgiDeviceInterfaceId = new("54ec77fa-1377-44e6-8c32-88fd5f44c84c");
+    private static readonly Guid MultithreadInterfaceId = new("9B7E4E00-342C-4106-A19F-4F2704F689F0");
 
     public static IDirect3DDevice CreateDevice()
     {
@@ -43,6 +44,15 @@ internal static class Direct3D11DeviceFactory
 
         try
         {
+            // WGC and HDR readback may use the same immediate context on different threads.
+            Marshal.ThrowExceptionForHR(Marshal.QueryInterface(d3dContext, in MultithreadInterfaceId, out var multithread));
+            try
+            {
+                var setProtected = Marshal.GetDelegateForFunctionPointer<SetMultithreadProtected>(
+                    Marshal.ReadIntPtr(Marshal.ReadIntPtr(multithread), 5 * nint.Size));
+                setProtected(multithread, 1);
+            }
+            finally { Marshal.Release(multithread); }
             Marshal.ThrowExceptionForHR(Marshal.QueryInterface(d3dDevice, in DxgiDeviceInterfaceId, out var dxgiDevice));
             try
             {
@@ -83,6 +93,9 @@ internal static class Direct3D11DeviceFactory
 
     [DllImport("d3d11.dll", ExactSpelling = true)]
     private static extern int CreateDirect3D11DeviceFromDXGIDevice(nint dxgiDevice, out nint graphicsDevice);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int SetMultithreadProtected(nint self, int enabled);
 
     private enum D3DDriverType : uint
     {

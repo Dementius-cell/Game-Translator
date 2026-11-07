@@ -44,7 +44,7 @@ internal sealed class CaptureFrameDiagnosticRecorder
 
     internal Task Completion { get { lock (gate) return completion; } }
 
-    internal bool TryRecord(CapturedFrame frame)
+    internal bool TryRecord(CapturedFrame frame, CaptureColorInfo? colorInfo = null)
     {
         lock (gate)
         {
@@ -55,12 +55,12 @@ internal sealed class CaptureFrameDiagnosticRecorder
             lastStarted = now;
             var sequence = ++accepted;
             // CapturedFrame owns an immutable copy. No copying/encoding/disk IO on the capture gate.
-            completion = Task.Run(() => WriteAsync(frame, sequence));
+            completion = Task.Run(() => WriteAsync(frame, sequence, colorInfo));
             return true;
         }
     }
 
-    private async Task WriteAsync(CapturedFrame frame, int sequence)
+    private async Task WriteAsync(CapturedFrame frame, int sequence, CaptureColorInfo? colorInfo)
     {
         try
         {
@@ -82,7 +82,10 @@ internal sealed class CaptureFrameDiagnosticRecorder
             var metadata = JsonSerializer.SerializeToUtf8Bytes(new {
                 sequence, recordedUtc = clock.GetUtcNow(), frame.CapturedAt, frame.Origin, frame.IsCachedReuse,
                 frame.Region, frame.Width, frame.Height, frame.Stride, frame.PixelFormat,
-                capturePoolFormat = "B8G8R8A8UIntNormalized", hdrToneMapping = "none; PNG is the current 8-bit pipeline input, not HDR scene data",
+                capturePoolFormat = colorInfo?.PoolFormat ?? "unknown", hdrToneMapping = colorInfo?.ToneMapping ?? "unknown",
+                displayColorMode = colorInfo?.Mode ?? "Unknown", sdrWhiteNits = colorInfo?.SdrWhiteNits,
+                sdrWhiteLevelKnown = colorInfo?.IsSdrWhiteLevelKnown ?? false,
+                colorDetection = colorInfo?.Detection ?? "unavailable",
                 pixelSha256 = Convert.ToHexString(SHA256.HashData(pixels)),
                 pngSha256 = Convert.ToHexString(SHA256.HashData(png)),
                 sampling = "at most 1 frame/sec globally; one encoder; bounded by frame count and configured byte budget per capture source; no upload"

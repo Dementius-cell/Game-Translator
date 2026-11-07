@@ -13,6 +13,25 @@ public sealed class CaptureFrameDiagnosticRecorderTests
         "Bgra32", new byte[] { 0, 0, 255, 255, 0, 255, 0, 255, 99, 99, 99, 99 }, DateTimeOffset.UtcNow,
         new CaptureFrameOrigin(Guid.NewGuid(), TimeSpan.FromSeconds(42), DateTimeOffset.UtcNow));
 
+    [Theory]
+    [InlineData("HDR", "R16G16B16A16Float")]
+    [InlineData("SDR", "B8G8R8A8UIntNormalized")]
+    public async Task RecordsActualCaptureColorMode(string mode, string format)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "gt-color-" + Guid.NewGuid());
+        var recorder = new CaptureFrameDiagnosticRecorder(directory);
+        try
+        {
+            Assert.True(recorder.TryRecord(Frame(), new CaptureColorInfo(mode, 240, "synthetic")));
+            await recorder.Completion;
+            using var metadata = JsonDocument.Parse(await File.ReadAllTextAsync(Assert.Single(Directory.GetFiles(directory, "*.json"))));
+            Assert.Equal(mode, metadata.RootElement.GetProperty("displayColorMode").GetString());
+            Assert.Equal(format, metadata.RootElement.GetProperty("capturePoolFormat").GetString());
+            Assert.Equal(240, metadata.RootElement.GetProperty("sdrWhiteNits").GetDouble());
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
     [Fact]
     public async Task LiveSettingsGateCaptureAndRaisedBudgetResumesSampling()
     {

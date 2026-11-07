@@ -12,6 +12,16 @@ public sealed class JsonSettingsServiceTests : IDisposable
         Guid.NewGuid().ToString("N"));
 
     [Fact]
+    public void DiagnosticsPreferences_RoundTripAndClampLimits()
+    {
+        var path = Path.Combine(workingDirectory, "diagnostics.json");
+        var options = new GameTranslator.Application.Settings.LiveDiagnosticsPreferences(new JsonSettingsService(path));
+        options.Save(new(false, false, true, true, int.MaxValue, -1));
+        var restored = new GameTranslator.Application.Settings.LiveDiagnosticsPreferences(new JsonSettingsService(path));
+        Assert.Equal(new GameTranslator.Application.Settings.LiveDiagnosticsOptions(false, false, true, true, 94, 1), restored.Current);
+    }
+
+    [Fact]
     public void SetValue_PersistsValueAcrossServiceInstances()
     {
         var settingsFilePath = Path.Combine(workingDirectory, "settings.json");

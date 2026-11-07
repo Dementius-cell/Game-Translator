@@ -3,10 +3,11 @@ using GameTranslator.Application.Capture;
 
 namespace GameTranslator.Infrastructure.Capture;
 
-internal sealed class WindowsInputActivityClock : IInputActivityClock
+internal sealed class WindowsInputActivityClock(GameTranslator.Application.Settings.LiveDiagnosticsPreferences preferences) : IInputActivityClock
 {
     public int? ReadAgeMilliseconds()
     {
+        if (!preferences.Current.Enabled || !preferences.Current.Input) return null;
         var info = new LastInputInfo { Size = (uint)Marshal.SizeOf<LastInputInfo>() };
         if (!GetLastInputInfo(ref info)) return null;
         // LASTINPUTINFO uses the low 32 bits of the system tick counter.

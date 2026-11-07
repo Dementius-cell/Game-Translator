@@ -1380,6 +1380,23 @@
                                             Content="{loc:Text T363bc8baa460}"/>
                                     </Grid>
                                 </Border>
+                                <Border Style="{StaticResource CardBorderStyle}" Margin="0,6,0,0" Visibility="{Binding IsHotkeysSettingsTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <StackPanel>
+                                        <TextBlock FontWeight="SemiBold" Text="{loc:Text LiveDiagTitle}"/>
+                                        <CheckBox Margin="0,6,0,0" Content="{loc:Text LiveDiagEnabled}" IsChecked="{Binding DiagnosticsEnabled}"/>
+                                        <StackPanel IsEnabled="{Binding DiagnosticsEnabled}">
+                                            <CheckBox Content="{loc:Text LiveDiagInput}" IsChecked="{Binding DiagnosticsInput}"/>
+                                            <CheckBox Margin="16,0,0,0" IsEnabled="{Binding DiagnosticsInput}" Content="{loc:Text LiveDiagButtons}" IsChecked="{Binding DiagnosticsButtons}"/>
+                                            <CheckBox Content="{loc:Text LiveDiagFrames}" IsChecked="{Binding DiagnosticsFrames}"/>
+                                            <WrapPanel Margin="0,6,0,0">
+                                                <TextBlock VerticalAlignment="Center" Text="{loc:Text LiveDiagReportSize}"/>
+                                                <ComboBox Margin="8,0,16,0" MinWidth="64" ItemsSource="{Binding ReportSizes}" SelectedItem="{Binding DiagnosticsReportMiB}"/>
+                                                <TextBlock VerticalAlignment="Center" Text="{loc:Text LiveDiagFrameBudget}"/>
+                                                <ComboBox Margin="8,0,0,0" MinWidth="76" IsEnabled="{Binding DiagnosticsFrames}" ItemsSource="{Binding FrameBudgets}" SelectedItem="{Binding DiagnosticsFramesMiB}"/>
+                                            </WrapPanel>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
                                 <Border
                                     x:Name="OcrPacksCard"
                                     Margin="0,6,0,0"

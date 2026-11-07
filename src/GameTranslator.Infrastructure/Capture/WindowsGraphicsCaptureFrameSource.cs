@@ -7,7 +7,7 @@ using Windows.Storage.Streams;
 
 namespace GameTranslator.Infrastructure.Capture;
 
-public sealed class WindowsGraphicsCaptureFrameSource : IRecentCaptureFrameSource, IDisposable
+public sealed class WindowsGraphicsCaptureFrameSource(GameTranslator.Application.Settings.LiveDiagnosticsPreferences? diagnostics = null) : IRecentCaptureFrameSource, IDisposable
 {
     private const int BytesPerPixel = 4;
     private static readonly TimeSpan FrameTimeout = TimeSpan.FromSeconds(3);
@@ -26,7 +26,7 @@ public sealed class WindowsGraphicsCaptureFrameSource : IRecentCaptureFrameSourc
     private PendingCapture? pendingCapture;
     private FullFrameSnapshot? latestFrame;
     private bool disposed;
-    private readonly CaptureFrameDiagnosticRecorder? frameDiagnostics = CaptureFrameDiagnosticRecorder.CreateIfEnabled();
+    private readonly CaptureFrameDiagnosticRecorder? frameDiagnostics = diagnostics is null ? null : CaptureFrameDiagnosticRecorder.Create(diagnostics);
 
     public Task<CapturedFrame> CaptureAsync(CaptureRegion region, CancellationToken cancellationToken = default) =>
         CaptureCoreAsync(region, null, cancellationToken);

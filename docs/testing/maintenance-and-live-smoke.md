@@ -28,6 +28,8 @@ An empty-snapshot interval starts only after a nonempty publication and ends at 
 
 ## Repeatable UI scenarios
 
+In Hotkeys & Settings, Live diagnostics controls automatic session reports, input timing, optional named mouse/navigation presses and sampled zone PNGs. Settings persist and take effect during live translation. Button records use UTC and retain the latest 4096 presses. The report limit applies to each UTF-8 snapshot, the PNG/metadata budget to the capture source for the app launch. Existing reports stay on disk. The former screenshot marker supplies the initial preference until a choice is saved.
+
 During live capture, CaptureStarted and OverlaySnapshotPublished events include SessionInputAgeMs when Windows reports it. Subtract the age from the event timestamp to estimate the latest keyboard or pointer activity in the Windows session. Multiple inputs between samples collapse to the latest one. The diagnostic records elapsed time only. OverlayCountDropsBySessionInput groups decreases in published item count by input age at publication (up to one second, longer, or unknown). Check earlier capture and OCR events for delayed updates. Activity in another window can coincide with a publication, and an idle animation can change the source.
 
 Run against the existing approved development package; do not rebuild/download runtime for this checklist. Use a disposable profile and synthetic on-screen text. Local screenshots and diagnostic reports remain private evidence. Computer Use can perform the UI steps, while lifecycle summaries supply timing evidence; neither substitutes for a real-game endurance run.

@@ -9,6 +9,7 @@ namespace GameTranslator.UI;
 /// </summary>
 public partial class MainWindow : Window
 {
+    private LiveButtonRecorder? buttonRecorder;
     private readonly WpfGlobalHotkeyRegistrar hotkeyRegistrar;
 
     public MainWindow(ShellView shellView, WpfGlobalHotkeyRegistrar hotkeyRegistrar, ThemeService theme)
@@ -24,10 +25,13 @@ public partial class MainWindow : Window
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
         hotkeyRegistrar.Attach(this);
+        if (ShellHost.Content is ShellView { DataContext: ViewModels.ShellViewModel { Navigation.CurrentViewModel: ViewModels.MainViewModel vm } })
+            buttonRecorder = new LiveButtonRecorder(this, vm);
     }
 
     private void OnClosed(object? sender, EventArgs e)
     {
+        buttonRecorder?.Dispose();
         hotkeyRegistrar.Dispose();
     }
 }

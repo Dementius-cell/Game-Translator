@@ -2630,6 +2630,85 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
+    public async Task DisabledDiagnostics_PersistsAcrossViewModelsAndSkipsReports()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "gt-disabled-" + Guid.NewGuid());
+        var settings = new TestSettingsService();
+        settings.SetValue("diagnostics.live.directory", directory);
+        var first = CreateMainViewModel(new InMemoryProfileRepository(), settings);
+        SetPropertyValue(first, "DiagnosticsEnabled", false);
+        SetPropertyValue(first, "DiagnosticsButtons", true);
+        SetPropertyValue(first, "DiagnosticsFrames", true);
+        SetPropertyValue(first, "DiagnosticsFramesMiB", 16);
+        var second = CreateMainViewModel(new InMemoryProfileRepository(), settings);
+        Assert.Equal(false, GetPropertyValue(second, "DiagnosticsEnabled"));
+        Assert.Equal(true, GetPropertyValue(second, "DiagnosticsButtons"));
+        Assert.Equal(true, GetPropertyValue(second, "DiagnosticsFrames"));
+        Assert.Equal(16, GetPropertyValue(second, "DiagnosticsFramesMiB"));
+        ConfigureValidDraftProfile(second, "Disabled diagnostics");
+        InvokeMethod(second, "AddZone");
+        await InvokeTaskMethodAsync(second, "StartLiveTranslationAsync");
+        InvokeMethod(second, "StopLiveTranslation");
+        await WaitForConditionAsync(() => !(bool)GetPropertyValue(second, "IsLiveTranslationRunning")!);
+        Assert.False(Directory.Exists(directory));
+    }
+
+    [Fact]
+    public async Task ButtonRecorder_RegistersAndUnregistersWithLiveSettings()
+    {
+        await RunOnStaThreadAsync(() =>
+        {
+            var vm = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService());
+            var window = new Window();
+            new System.Windows.Interop.WindowInteropHelper(window).EnsureHandle();
+            var type = LoadUiAssembly().GetType("GameTranslator.UI.Services.LiveButtonRecorder", true)!;
+            using var recorder = (IDisposable)Activator.CreateInstance(type,
+                BindingFlags.Instance | BindingFlags.NonPublic, null, [window, vm], null)!;
+            var registered = type.GetField("registered", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            Assert.Equal(false, registered.GetValue(recorder));
+            SetPropertyValue(vm, "DiagnosticsButtons", true);
+            SetPropertyValue(vm, "IsLiveTranslationRunning", true);
+            Assert.Equal(true, registered.GetValue(recorder));
+            SetPropertyValue(vm, "DiagnosticsEnabled", false);
+            Assert.Equal(false, registered.GetValue(recorder));
+            SetPropertyValue(vm, "DiagnosticsEnabled", true);
+            Assert.Equal(true, registered.GetValue(recorder));
+            SetPropertyValue(vm, "IsLiveTranslationRunning", false);
+            Assert.Equal(false, registered.GetValue(recorder));
+            var names = type.GetMethod("NavigationName", BindingFlags.Static | BindingFlags.NonPublic)!;
+            Assert.Equal("Enter", names.Invoke(null, [(ushort)13]));
+            Assert.Null(names.Invoke(null, [(ushort)65]));
+            window.Close();
+        });
+    }
+
+    [Fact]
+    public void ButtonDiagnostics_OnlyCollectsDuringOptedInSessionAndHonorsBound()
+    {
+        var vm = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService());
+        var record = vm.GetType().GetMethod("RecordButton", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var append = vm.GetType().GetMethod("AppendButtonLog", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        SetPropertyValue(vm, "DiagnosticsButtons", true);
+        record.Invoke(vm, ["MouseLeft"]);
+        var initial = new StringBuilder();
+        append.Invoke(vm, [initial]);
+        Assert.DoesNotContain("Button=MouseLeft", initial.ToString());
+        SetPropertyValue(vm, "IsLiveTranslationRunning", true);
+        for (var i = 0; i < 4100; i++) record.Invoke(vm, ["MouseLeft"]);
+        SetPropertyValue(vm, "IsLiveTranslationRunning", false);
+        record.Invoke(vm, ["WheelUp"]);
+        var report = new StringBuilder();
+        append.Invoke(vm, [report]);
+        Assert.Contains("dropped oldest: 4", report.ToString());
+        Assert.Equal(4096, report.ToString().Split("Button=MouseLeft").Length - 1);
+        Assert.DoesNotContain("WheelUp", report.ToString());
+        SetPropertyValue(vm, "DiagnosticsInput", false);
+        var disabled = new StringBuilder();
+        append.Invoke(vm, [disabled]);
+        Assert.Empty(disabled.ToString());
+    }
+
+    [Fact]
     public async Task LiveTranslation_AutomaticallySavesDiagnosticsAtStartAndStop()
     {
         var diagnosticsDirectory = Path.Combine(
@@ -2644,6 +2723,7 @@ public sealed class ProfileManagerViewModelTests
             new InMemoryProfileRepository(),
             settings,
             logger: logger);
+        SetPropertyValue(viewModel, "DiagnosticsReportMiB", 4);
         ConfigureValidDraftProfile(viewModel, "Live diagnostics");
         InvokeMethod(viewModel, "AddZone");
 
@@ -2681,8 +2761,8 @@ public sealed class ProfileManagerViewModelTests
             Assert.Contains("Text diagnostics: bounded OCR, translation-input, and translated text are recorded locally", stoppedReport, StringComparison.Ordinal);
             Assert.Contains("Storage: local files only; no diagnostics upload is performed.", stoppedReport, StringComparison.Ordinal);
             Assert.Contains("Privacy: profile free-text fields and credential values are omitted.", stoppedReport, StringComparison.Ordinal);
-            Assert.Contains("MaximumUtf8Bytes: 99000000", stoppedReport, StringComparison.Ordinal);
-            Assert.True(new FileInfo(stoppedReportPath).Length <= 99_000_000);
+            Assert.Contains("MaximumUtf8Bytes: 4194304", stoppedReport, StringComparison.Ordinal);
+            Assert.True(new FileInfo(stoppedReportPath).Length <= 4 * 1024 * 1024);
         }
         finally
         {

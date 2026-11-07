@@ -18,23 +18,28 @@ internal sealed class CaptureFrameDiagnosticRecorder
     private long lastStarted;
     private int accepted;
     private long bytesWritten;
+    private long exhaustedBudget;
     private bool failed;
+    private readonly GameTranslator.Application.Settings.LiveDiagnosticsPreferences? preferences;
+    private bool Enabled => preferences is null || (preferences.Live && preferences.Current is { Enabled: true, Frames: true });
+    private long Budget => preferences is null ? maximumBytes : (long)preferences.Current.FramesMiB * 1024 * 1024;
     private Task completion = Task.CompletedTask;
 
     internal CaptureFrameDiagnosticRecorder(string directory, TimeProvider? clock = null,
-        int maximumFrames = 1800, long maximumBytes = 2L * 1024 * 1024 * 1024)
+        int maximumFrames = 1800, long maximumBytes = 2L * 1024 * 1024 * 1024,
+        GameTranslator.Application.Settings.LiveDiagnosticsPreferences? preferences = null)
     {
         this.directory = directory;
+        this.preferences = preferences;
         this.clock = clock ?? TimeProvider.System;
         this.maximumFrames = maximumFrames;
         this.maximumBytes = maximumBytes;
     }
 
-    internal static CaptureFrameDiagnosticRecorder? CreateIfEnabled()
+    internal static CaptureFrameDiagnosticRecorder Create(GameTranslator.Application.Settings.LiveDiagnosticsPreferences preferences)
     {
-        if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "capture-frames.enabled"))) return null;
         return new(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "GameTranslator", "Diagnostics", "Frames", $"{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Environment.ProcessId}-{Guid.NewGuid():N}"));
+            "GameTranslator", "Diagnostics", "Frames", $"{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Environment.ProcessId}-{Guid.NewGuid():N}"), preferences: preferences);
     }
 
     internal Task Completion { get { lock (gate) return completion; } }
@@ -44,7 +49,7 @@ internal sealed class CaptureFrameDiagnosticRecorder
         lock (gate)
         {
             var now = clock.GetTimestamp();
-            if (failed || accepted >= maximumFrames || bytesWritten >= maximumBytes || !completion.IsCompleted
+            if (!Enabled || failed || accepted >= maximumFrames || (bytesWritten >= Budget || exhaustedBudget >= Budget) || !completion.IsCompleted
                 || (accepted > 0 && clock.GetElapsedTime(lastStarted, now) < TimeSpan.FromSeconds(1))) return false;
             if (frame.PixelFormat != "Bgra32" || frame.Stride < (long)frame.Width * 4) return false;
             lastStarted = now;
@@ -80,11 +85,13 @@ internal sealed class CaptureFrameDiagnosticRecorder
                 capturePoolFormat = "B8G8R8A8UIntNormalized", hdrToneMapping = "none; PNG is the current 8-bit pipeline input, not HDR scene data",
                 pixelSha256 = Convert.ToHexString(SHA256.HashData(pixels)),
                 pngSha256 = Convert.ToHexString(SHA256.HashData(png)),
-                sampling = "at most 1 frame/sec globally; one encoder; 1800 frames / 2 GiB per capture source; no upload"
+                sampling = "at most 1 frame/sec globally; one encoder; bounded by frame count and configured byte budget per capture source; no upload"
             }, new JsonSerializerOptions { WriteIndented = true });
             lock (gate)
             {
-                if (bytesWritten + png.Length + metadata.Length > maximumBytes) { failed = true; return; }
+                if (!Enabled) return;
+                var budget = Budget;
+                if (bytesWritten + png.Length + metadata.Length > budget) { exhaustedBudget = budget; return; }
                 bytesWritten += png.Length + metadata.Length;
             }
             Directory.CreateDirectory(directory);

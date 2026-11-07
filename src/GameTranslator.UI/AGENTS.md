@@ -25,6 +25,8 @@ Keep the WPF presentation layer ergonomic, testable, and separated from infrastr
 
 ## Work Guidance
 
+- Live diagnostics settings persist through ISettingsService and apply to report writing, input timing, selected mouse/navigation buttons and sampled capture PNGs. Raw input registration belongs to the WPF window lifetime and is active only during opted-in live translation. Keep button names allowlisted, preserve normal input delivery and bound the in-memory history. Reports and screenshot budgets have separate user-visible limits.
+
 - StaticMenu is a per-zone content mode. Its overlay bypasses minimum-preview-size expansion and renders within the source frame at every DPI without Viewbox scaling. Preserve the selected physical font size (including the minimum after auto fitting); use ellipsis for overflow instead of silently shrinking text. Translate once shares the existing one-shot command and configurable Ctrl+Shift+F7 action; reject it while busy/live without stopping the user's session.
 
 - Keep code-behind limited to WPF lifecycle, visual interaction glue, and view-specific plumbing.

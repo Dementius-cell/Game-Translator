@@ -81,7 +81,7 @@ public enum PipelineStatusSeverity
     Error,
 }
 
-public sealed class MainViewModel : ValidatableObservableObject
+public sealed partial class MainViewModel : ValidatableObservableObject
 {
     private const int ZonesOcrWorkspaceTabIndex = 0;
     private const int TranslationWorkspaceTabIndex = 1;
@@ -94,7 +94,7 @@ public sealed class MainViewModel : ValidatableObservableObject
     private const string ProfileFileDialogFilter = "Game Translator profile (*.json)|*.json|JSON files (*.json)|*.json|All files (*.*)|*.*";
     private const string DebugInfoFileDialogFilter = "Text files (*.txt)|*.txt|All files (*.*)|*.*";
     private const string LiveDiagnosticsDirectorySettingKey = "diagnostics.live.directory";
-    private const int MaximumLiveDiagnosticsReportUtf8Bytes = 99_000_000;
+    private int MaximumLiveDiagnosticsReportUtf8Bytes => diagnostics.Current.ReportMiB * 1024 * 1024;
     private const int LiveDiagnosticsReportPrefixUtf8Bytes = 8_192;
     private const string DraftProfileNameSettingKey = "shell.draft.profile.name";
     private const string DraftProfileDescriptionSettingKey = "shell.draft.profile.description";
@@ -681,7 +681,32 @@ public sealed class MainViewModel : ValidatableObservableObject
         IOcrLanguagePackService ocrLanguagePackService,
         ISettingsService settings,
         IApplicationLogger logger)
+        : this(profileService, profileExchangeService, captureService, ocrService, credentialService, translationPipelineService, translationCacheService, applicationUpdateService, globalHotkeyService, debugMetricFormatter, debugResourceMonitor, overlayService, overlayPositioningService, dialogService, screenRegionPickerService, ocrLanguagePackService, settings, logger, null)
     {
+    }
+
+    public MainViewModel(
+        ProfileService profileService,
+        ProfileExchangeService profileExchangeService,
+        CaptureService captureService,
+        OcrService ocrService,
+        TranslatorCredentialService credentialService,
+        TranslationPipelineService translationPipelineService,
+        TranslationCacheService translationCacheService,
+        ApplicationUpdateService applicationUpdateService,
+        GlobalHotkeyService globalHotkeyService,
+        DebugMetricFormatter debugMetricFormatter,
+        IDebugResourceMonitor debugResourceMonitor,
+        IOverlayService overlayService,
+        OverlayPositioningService overlayPositioningService,
+        IDialogService dialogService,
+        IScreenRegionPickerService screenRegionPickerService,
+        IOcrLanguagePackService ocrLanguagePackService,
+        ISettingsService settings,
+        IApplicationLogger logger,
+        GameTranslator.Application.Settings.LiveDiagnosticsPreferences? diagnostics = null)
+    {
+        this.diagnostics = diagnostics ?? new(settings);
         this.profileService = profileService;
         this.profileExchangeService = profileExchangeService;
         this.captureService = captureService;
@@ -1618,6 +1643,8 @@ public sealed class MainViewModel : ValidatableObservableObject
         get => isLiveTranslationRunning;
         private set
         {
+            diagnostics.Live = value;
+            if (value) { ButtonDeviceAvailable = false; ResetButtonLog(); }
             if (SetProperty(ref isLiveTranslationRunning, value))
             {
                 OnPropertyChanged(nameof(IsLiveTranslationStopped));
@@ -5547,6 +5574,7 @@ public sealed class MainViewModel : ValidatableObservableObject
 
     private void QueueLiveDiagnosticsSnapshot(string trigger)
     {
+        if (!DiagnosticsEnabled) return;
         var capturedAt = DateTimeOffset.UtcNow;
         var report = BuildLiveDiagnosticsReport(trigger, capturedAt);
         var sequence = Interlocked.Increment(ref liveDiagnosticsSequence);
@@ -5591,6 +5619,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         builder.AppendLine("Privacy: profile free-text fields and credential values are omitted.");
         builder.AppendLine("Storage: local files only; no diagnostics upload is performed.");
         builder.AppendLine();
+        AppendButtonLog(builder);
         builder.Append(BuildDebugInfoReport());
 
         return builder.ToString();
@@ -6039,7 +6068,7 @@ public sealed class MainViewModel : ValidatableObservableObject
         builder.AppendLine();
         builder.AppendLine("Live candidate lifecycle");
         builder.AppendLine("  Text diagnostics: bounded OCR, translation-input, and translated text are recorded locally; provider responses and credentials are not recorded.");
-        builder.AppendLine($"  Capture frame sampling opt-in marker: {File.Exists(Path.Combine(AppContext.BaseDirectory, "capture-frames.enabled"))}. When enabled, sampled PNG inputs and source metadata are stored separately in LocalAppData/GameTranslator/Diagnostics/Frames (1/sec, 1800 frames/2 GiB per capture source; no upload). These are 8-bit pipeline pixels, not HDR originals.");
+        builder.AppendLine($"  Capture frame sampling enabled: {DiagnosticsEnabled && DiagnosticsFrames}. Sampled PNGs and metadata are local. Frame budget: {DiagnosticsFramesMiB} MiB per capture source.");
         builder.AppendLine("  Storage: local files only; no diagnostics upload is performed.");
         builder.AppendLine("  EventBufferCapacity: 131072");
         builder.AppendLine($"  RetainedEvents: {latestCandidateLifecycleEvents.Count}");

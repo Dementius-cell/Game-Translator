@@ -20,6 +20,7 @@ public static class ApplicationServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
+        services.AddSingleton<GameTranslator.Application.Settings.LiveDiagnosticsPreferences>();
         services.AddSingleton<ProfileValidator>();
         services.AddSingleton(new TranslationCacheOptions());
         services.AddSingleton(new TranslationPipelineOptimizationOptions());

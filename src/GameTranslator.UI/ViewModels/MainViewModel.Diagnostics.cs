@@ -10,6 +10,7 @@ public sealed partial class MainViewModel
     private int droppedButtons;
     internal bool ButtonCaptureActive => IsLiveTranslationRunning && DiagnosticsEnabled && DiagnosticsInput && DiagnosticsButtons;
     internal bool ButtonDeviceAvailable { get; set; }
+    internal string GamepadCaptureStatus { get; set; } = "not started";
     public bool DiagnosticsEnabled { get => diagnostics.Current.Enabled; set => SaveDiagnostics(diagnostics.Current with { Enabled = value }); }
     public bool DiagnosticsInput { get => diagnostics.Current.Input; set => SaveDiagnostics(diagnostics.Current with { Input = value }); }
     public bool DiagnosticsButtons { get => diagnostics.Current.Buttons; set => SaveDiagnostics(diagnostics.Current with { Buttons = value }); }
@@ -50,6 +51,7 @@ public sealed partial class MainViewModel
         lock (buttonLog)
         {
             builder.AppendLine($"Session input buttons (UTC), device registered: {ButtonDeviceAvailable}, dropped oldest: {droppedButtons}");
+            builder.AppendLine($"Gamepad input: {GamepadCaptureStatus}. Gamepad1–4 use XInput slot numbers; Connected/Disconnected are device events. Presses only, no held repeats; times are observations, not hardware timestamps.");
             foreach (var item in buttonLog) builder.AppendLine($"  At={item.At:O} Button={item.Button}");
         }
     }

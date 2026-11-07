@@ -2,6 +2,8 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Threading;
+using GameTranslator.Application.Debug;
 using GameTranslator.UI.ViewModels;
 
 namespace GameTranslator.UI.Services;
@@ -14,11 +16,24 @@ internal sealed class LiveButtonRecorder : IDisposable
     private readonly HashSet<ushort> held = new();
     private bool registered;
     private bool disposed;
+    private readonly IGamepadInputSource gamepads;
+    private readonly DispatcherTimer gamepadTimer;
+    private GamepadButtonTracker[] gamepadTrackers = [];
+    private readonly long[] nextGamepadProbe = new long[4];
 
     internal LiveButtonRecorder(Window window, MainViewModel vm)
+        : this(window, vm, new XInputGamepadInputSource()) { }
+
+    internal LiveButtonRecorder(Window window, MainViewModel vm, IGamepadInputSource gamepads)
     {
         this.vm = vm;
+        this.gamepads = gamepads;
         source = HwndSource.FromHwnd(new WindowInteropHelper(window).Handle)!;
+        gamepadTimer = new DispatcherTimer(DispatcherPriority.Background, source.Dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(20)
+        };
+        gamepadTimer.Tick += PollGamepads;
         source.AddHook(HandleMessage);
         vm.PropertyChanged += Changed;
         Update();
@@ -36,14 +51,46 @@ internal sealed class LiveButtonRecorder : IDisposable
 
     private void Update()
     {
-        if (disposed || vm.ButtonCaptureActive == registered) return;
+        if (disposed) return;
         var enable = vm.ButtonCaptureActive;
+        if (enable && !gamepadTimer.IsEnabled)
+        {
+            gamepadTrackers = Enumerable.Range(0, 4).Select(_ => new GamepadButtonTracker()).ToArray();
+            Array.Clear(nextGamepadProbe);
+            vm.GamepadCaptureStatus = "XInput polling enabled (20 ms target; disconnected slots 1 s)";
+            gamepadTimer.Start();
+        }
+        else if (!enable) gamepadTimer.Stop();
+        if (enable == registered) return;
         // INPUTSINK delivers background events without suppressing normal game/window input.
         if (SetDevices(enable))
         {
             registered = enable;
             if (enable) vm.ButtonDeviceAvailable = true;
             held.Clear();
+        }
+    }
+
+    private void PollGamepads(object? sender, EventArgs e)
+    {
+        if (disposed || !vm.ButtonCaptureActive) return;
+        try
+        {
+            var now = Environment.TickCount64;
+            for (var slot = 0; slot < 4; slot++)
+            {
+                if (now < nextGamepadProbe[slot]) continue;
+                var state = gamepads.Read(slot);
+                nextGamepadProbe[slot] = state is null ? now + 1000 : 0;
+                foreach (var button in gamepadTrackers[slot].Observe(state))
+                    vm.RecordButton($"Gamepad{slot + 1}.{button}");
+            }
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException or Win32Exception)
+        {
+            gamepadTimer.Stop();
+            vm.GamepadCaptureStatus = $"XInput unavailable: {exception.GetType().Name}";
+            System.Diagnostics.Trace.TraceWarning(vm.GamepadCaptureStatus);
         }
     }
 
@@ -95,6 +142,8 @@ internal sealed class LiveButtonRecorder : IDisposable
     public void Dispose()
     {
         disposed = true;
+        gamepadTimer.Stop();
+        gamepadTimer.Tick -= PollGamepads;
         vm.PropertyChanged -= Changed;
         if (registered) SetDevices(false);
         source.RemoveHook(HandleMessage);

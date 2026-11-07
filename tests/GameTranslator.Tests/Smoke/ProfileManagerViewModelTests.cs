@@ -27,6 +27,105 @@ namespace GameTranslator.Tests.Smoke;
 
 public sealed class ProfileManagerViewModelTests
 {
+    private sealed class TestGamepads : IGamepadInputSource
+    {
+        public GamepadInputState?[] States { get; } = new GamepadInputState?[4];
+        public int Calls { get; private set; }
+        public bool Fail { get; set; }
+        public GamepadInputState? Read(int slot)
+        {
+            Calls++;
+            if (Fail) throw new System.ComponentModel.Win32Exception(5);
+            return States[slot];
+        }
+    }
+
+    [Fact]
+    public void GamepadTracker_RecordsEdgesCombinationsAndReconnectWithoutReservedBits()
+    {
+        var type = LoadUiAssembly().GetType("GameTranslator.UI.Services.GamepadButtonTracker", true)!;
+        var tracker = Activator.CreateInstance(type)!;
+        string[] Observe(GamepadInputState? state) => ((IEnumerable<string>)type.GetMethod("Observe")!.Invoke(tracker, [state])!).ToArray();
+        Assert.Empty(Observe(null));
+        Assert.Equal(new[] { "Connected", "DPadUp", "Start", "Back", "LeftStick", "RightStick", "LB", "RB", "A", "B", "X", "Y" },
+            Observe(new(0xfff1, 0, 0, 0, 0, 0, 0)));
+        Assert.Empty(Observe(new(0xfff1, 0, 0, 0, 0, 0, 0)));
+        Assert.Empty(Observe(new(0, 0, 0, 0, 0, 0, 0)));
+        Assert.Equal(new[] { "A" }, Observe(new(0x1000, 0, 0, 0, 0, 0, 0)));
+        Assert.Equal(new[] { "Disconnected" }, Observe(null));
+        Assert.Empty(Observe(null));
+        Assert.Equal(new[] { "Connected", "A" }, Observe(new(0x1000, 0, 0, 0, 0, 0, 0)));
+    }
+
+    [Fact]
+    public void GamepadTracker_AnalogHysteresisSuppressesJitterAndRearmsAfterRelease()
+    {
+        var type = LoadUiAssembly().GetType("GameTranslator.UI.Services.GamepadButtonTracker", true)!;
+        var tracker = Activator.CreateInstance(type)!;
+        string[] Observe(GamepadInputState state) => ((IEnumerable<string>)type.GetMethod("Observe")!.Invoke(tracker, [state])!).ToArray();
+        Assert.Equal(new[] { "Connected" }, Observe(new(0, 30, 30, 16000, -16000, 16000, -16000)));
+        Assert.Equal(new[] { "LT", "RT", "LeftStickRight", "LeftStickDown", "RightStickLeft", "RightStickUp" },
+            Observe(new(0, 31, 255, 16001, short.MinValue, short.MinValue, short.MaxValue)));
+        Assert.Empty(Observe(new(0, 25, 25, 13000, -13000, -13000, 13000)));
+        Assert.Empty(Observe(new(0, 20, 20, 12000, -12000, -12000, 12000)));
+        Assert.Equal(new[] { "LT", "LeftStickLeft", "RightStickDown" }, Observe(new(0, 31, 0, short.MinValue, 0, 0, short.MinValue)));
+    }
+
+    [Fact]
+    public async Task GamepadRecorder_UsesSlotsAndStopsOnOptOutStopAndDispose()
+    {
+        await RunOnStaThreadAsync(() =>
+        {
+            var vm = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService());
+            var window = new Window();
+            new System.Windows.Interop.WindowInteropHelper(window).EnsureHandle();
+            var pads = new TestGamepads();
+            pads.States[0] = new(0x1000, 0, 0, 0, 0, 0, 0);
+            pads.States[3] = new(0x2000, 0, 0, 0, 0, 0, 0);
+            var type = LoadUiAssembly().GetType("GameTranslator.UI.Services.LiveButtonRecorder", true)!;
+            using var recorder = (IDisposable)Activator.CreateInstance(type,
+                BindingFlags.Instance | BindingFlags.NonPublic, null, [window, vm, pads], null)!;
+            var poll = type.GetMethod("PollGamepads", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            var timer = (System.Windows.Threading.DispatcherTimer)type.GetField("gamepadTimer", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(recorder)!;
+            void Poll() => poll.Invoke(recorder, [null, EventArgs.Empty]);
+            Poll();
+            Assert.Equal(0, pads.Calls);
+            SetPropertyValue(vm, "DiagnosticsButtons", true);
+            SetPropertyValue(vm, "IsLiveTranslationRunning", true);
+            Assert.True(timer.IsEnabled);
+            Poll();
+            Poll();
+            Assert.Equal(6, pads.Calls); // Connected slots repeat; absent slots are throttled.
+            var report = new StringBuilder();
+            vm.GetType().GetMethod("AppendButtonLog", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(vm, [report]);
+            Assert.Contains("Button=Gamepad1.A", report.ToString());
+            Assert.Contains("Button=Gamepad4.B", report.ToString());
+            Assert.Equal(1, report.ToString().Split("Button=Gamepad1.A").Length - 1);
+            SetPropertyValue(vm, "DiagnosticsInput", false);
+            Assert.False(timer.IsEnabled);
+            Poll();
+            Assert.Equal(6, pads.Calls);
+            SetPropertyValue(vm, "DiagnosticsInput", true);
+            Assert.True(timer.IsEnabled);
+            Poll();
+            Assert.Equal(10, pads.Calls);
+            SetPropertyValue(vm, "IsLiveTranslationRunning", false);
+            Assert.False(timer.IsEnabled);
+            Poll();
+            Assert.Equal(10, pads.Calls);
+            SetPropertyValue(vm, "IsLiveTranslationRunning", true);
+            pads.Fail = true;
+            Poll();
+            Assert.False(timer.IsEnabled);
+            Assert.Contains("XInput unavailable", (string)vm.GetType().GetProperty("GamepadCaptureStatus", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(vm)!);
+            recorder.Dispose();
+            var calls = pads.Calls;
+            Poll();
+            Assert.Equal(calls, pads.Calls);
+            window.Close();
+        });
+    }
+
     [Fact]
     public async Task ClearDiagnostics_DeletesOwnedFilesAndPreservesCustomDirectoryContent()
     {

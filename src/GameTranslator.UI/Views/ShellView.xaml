@@ -1391,7 +1391,7 @@
                                         <CheckBox Margin="0,6,0,0" Content="{loc:Text LiveDiagEnabled}" IsChecked="{Binding DiagnosticsEnabled}"/>
                                         <StackPanel IsEnabled="{Binding DiagnosticsEnabled}">
                                             <CheckBox Content="{loc:Text LiveDiagInput}" IsChecked="{Binding DiagnosticsInput}"/>
-                                            <CheckBox Margin="16,0,0,0" IsEnabled="{Binding DiagnosticsInput}" Content="{loc:Text LiveDiagButtons}" IsChecked="{Binding DiagnosticsButtons}"/>
+                                            <CheckBox Margin="16,0,0,0" IsEnabled="{Binding DiagnosticsInput}" Content="{loc:Text LiveDiagButtons}" ToolTip="{loc:Text LiveDiagGamepadTip}" IsChecked="{Binding DiagnosticsButtons}"/>
                                             <CheckBox Content="{loc:Text LiveDiagFrames}" IsChecked="{Binding DiagnosticsFrames}"/>
                                             <WrapPanel Margin="0,6,0,0">
                                                 <TextBlock VerticalAlignment="Center" Text="{loc:Text LiveDiagReportSize}"/>

@@ -18,6 +18,8 @@ public sealed class BugReportService : IBugReportService, IDisposable
     private string? sessionPath;
     private int fatalObserved;
     private bool started;
+    private bool collectionEnabled = true;
+    private readonly object collectionGate = new();
 
     public BugReportService(string applicationDirectory, string fallbackDirectory)
     {
@@ -30,41 +32,58 @@ public sealed class BugReportService : IBugReportService, IDisposable
     public string? StorageWarning { get; private set; }
     public IReadOnlyList<string> RecoveredReports => recoveredReports;
 
+    public void SetCollectionEnabled(bool enabled)
+    {
+        lock (collectionGate)
+        {
+            collectionEnabled = enabled;
+            if (enabled) StartSession();
+            else
+            {
+                CompleteSession();
+                started = false;
+            }
+        }
+    }
+
     public void StartSession()
     {
-        if (started) return;
-        started = true;
-        if (!TryPrepareDirectory(ReportsDirectory))
+        lock (collectionGate)
         {
-            ReportsDirectory = fallbackDirectory;
+            if (!collectionEnabled || started) return;
+            started = true;
             if (!TryPrepareDirectory(ReportsDirectory))
             {
-                StorageWarning = "Не удалось создать папку отчётов. Проверьте доступ к папке приложения и свободное место.";
-                return;
+                ReportsDirectory = fallbackDirectory;
+                if (!TryPrepareDirectory(ReportsDirectory))
+                {
+                    StorageWarning = "Не удалось создать папку отчётов. Проверьте доступ к папке приложения и свободное место.";
+                    return;
+                }
+                StorageWarning = "Папка приложения недоступна для записи. Отчёты сохраняются в: " + ReportsDirectory;
             }
-            StorageWarning = "Папка приложения недоступна для записи. Отчёты сохраняются в: " + ReportsDirectory;
-        }
 
-        // Recover both locations: installation permissions may have changed since the last run.
-        foreach (var directory in new[] { Path.Combine(applicationDirectory, "Reports"), fallbackDirectory }
-            .Distinct(StringComparer.OrdinalIgnoreCase))
-            RecoverSessions(directory);
-        try
-        {
-            sessionPath = Path.Combine(ReportsDirectory, $"session-{sessionId}.json");
-            sessionLease = new FileStream(sessionPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read);
-            var bytes = JsonSerializer.SerializeToUtf8Bytes(new SessionInfo(Version, DateTimeOffset.UtcNow));
-            sessionLease.Write(bytes);
-            sessionLease.Flush(true);
-        }
-        catch (Exception exception)
-        {
-            TraceFailure(exception);
-            StorageWarning = "Не удалось включить обнаружение аварийного завершения. Проверьте доступ и свободное место: " + ReportsDirectory;
-            sessionLease?.Dispose();
-            sessionLease = null;
-            try { if (sessionPath is not null) File.Delete(sessionPath); }
-            catch (Exception cleanupException) { TraceFailure(cleanupException); }
+            // Recover both locations: installation permissions may have changed since the last run.
+            foreach (var directory in new[] { Path.Combine(applicationDirectory, "Reports"), fallbackDirectory }
+                .Distinct(StringComparer.OrdinalIgnoreCase))
+                RecoverSessions(directory);
+            try
+            {
+                sessionPath = Path.Combine(ReportsDirectory, $"session-{sessionId}.json");
+                sessionLease = new FileStream(sessionPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read);
+                var bytes = JsonSerializer.SerializeToUtf8Bytes(new SessionInfo(Version, DateTimeOffset.UtcNow));
+                sessionLease.Write(bytes);
+                sessionLease.Flush(true);
+            }
+            catch (Exception exception)
+            {
+                TraceFailure(exception);
+                StorageWarning = "Не удалось включить обнаружение аварийного завершения. Проверьте доступ и свободное место: " + ReportsDirectory;
+                sessionLease?.Dispose();
+                sessionLease = null;
+                try { if (sessionPath is not null) File.Delete(sessionPath); }
+                catch (Exception cleanupException) { TraceFailure(cleanupException); }
+            }
         }
     }
 
@@ -80,38 +99,44 @@ public sealed class BugReportService : IBugReportService, IDisposable
 
     public void CaptureCrash(Exception exception)
     {
-        if (Interlocked.Exchange(ref fatalObserved, 1) != 0) return;
-        try
+        lock (collectionGate)
         {
-            var text = Header("Unhandled exception");
-            var current = exception;
-            for (var depth = 0; current is not null && depth < 8; depth++, current = current.InnerException)
+            if (!collectionEnabled || Interlocked.Exchange(ref fatalObserved, 1) != 0) return;
+            try
             {
-                text.AppendLine($"Exception {depth}: {current.GetType().FullName}; HResult: 0x{current.HResult:X8}");
-                // Messages/Data/source paths may contain credentials or user content. Keep method names only.
-                foreach (var frame in new StackTrace(current, false).GetFrames().Take(64))
+                var text = Header("Unhandled exception");
+                var current = exception;
+                for (var depth = 0; current is not null && depth < 8; depth++, current = current.InnerException)
                 {
-                    var method = frame.GetMethod();
-                    text.AppendLine($"  at {method?.DeclaringType?.FullName}.{method?.Name}");
+                    text.AppendLine($"Exception {depth}: {current.GetType().FullName}; HResult: 0x{current.HResult:X8}");
+                    // Messages/Data/source paths may contain credentials or user content. Keep method names only.
+                    foreach (var frame in new StackTrace(current, false).GetFrames().Take(64))
+                    {
+                        var method = frame.GetMethod();
+                        text.AppendLine($"  at {method?.DeclaringType?.FullName}.{method?.Name}");
+                    }
                 }
+                var result = SaveReport($"crash-{sessionId}.txt", text.ToString());
+                if (!result.Succeeded) Trace.TraceError("Could not persist crash report.");
             }
-            var result = SaveReport($"crash-{sessionId}.txt", text.ToString());
-            if (!result.Succeeded) Trace.TraceError("Could not persist crash report.");
-        }
-        catch (Exception failure)
-        {
-            TraceFailure(failure);
+            catch (Exception failure)
+            {
+                TraceFailure(failure);
+            }
         }
     }
 
     public void CompleteSession()
     {
-        sessionLease?.Dispose();
-        sessionLease = null;
-        if (Volatile.Read(ref fatalObserved) == 0 && sessionPath is not null)
+        lock (collectionGate)
         {
-            try { File.Delete(sessionPath); }
-            catch (Exception exception) { TraceFailure(exception); }
+            sessionLease?.Dispose();
+            sessionLease = null;
+            if (Volatile.Read(ref fatalObserved) == 0 && sessionPath is not null)
+            {
+                try { File.Delete(sessionPath); }
+                catch (Exception exception) { TraceFailure(exception); }
+            }
         }
     }
 

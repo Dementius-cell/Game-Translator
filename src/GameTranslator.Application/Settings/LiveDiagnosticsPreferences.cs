@@ -12,6 +12,9 @@ public sealed class LiveDiagnosticsPreferences
     private volatile LiveDiagnosticsOptions current;
     public LiveDiagnosticsOptions Current => current;
     public volatile bool Live;
+    private long collectionGeneration;
+    public long CollectionGeneration => Interlocked.Read(ref collectionGeneration);
+    public event Action<bool>? CollectionChanged;
 
     public LiveDiagnosticsPreferences(ISettingsService settings)
     {
@@ -24,7 +27,13 @@ public sealed class LiveDiagnosticsPreferences
     {
         var normalized = Normalize(options);
         settings.SetValue(Key, normalized);
+        var changed = current.Enabled != normalized.Enabled;
         current = normalized;
+        if (changed)
+        {
+            Interlocked.Increment(ref collectionGeneration);
+            CollectionChanged?.Invoke(normalized.Enabled);
+        }
     }
 
     private static LiveDiagnosticsOptions Normalize(LiveDiagnosticsOptions options) => options with

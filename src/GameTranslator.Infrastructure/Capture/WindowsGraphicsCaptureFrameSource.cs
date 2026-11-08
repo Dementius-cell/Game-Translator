@@ -162,7 +162,8 @@ public sealed class WindowsGraphicsCaptureFrameSource(GameTranslator.Application
     {
         if (!colorMonitor.Refresh(MonotonicNow(), () => MonitorColorInfoReader.Read(captureMonitor.Value), RestartCapture)) return;
         var next = colorMonitor.Current;
-        Trace.TraceInformation($"Capture color mode: {next.Mode}; SDR white: {next.SdrWhiteNits:F1} nits; format: {next.PoolFormat}; detection: {next.Detection}");
+        if (diagnostics?.Current.Enabled != false)
+            Trace.TraceInformation($"Capture color mode: {next.Mode}; SDR white: {next.SdrWhiteNits:F1} nits; format: {next.PoolFormat}; detection: {next.Detection}");
     }
 
     private static TimeSpan MonotonicNow() =>

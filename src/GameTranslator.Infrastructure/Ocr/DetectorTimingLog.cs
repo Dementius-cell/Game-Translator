@@ -1,3 +1,4 @@
+using GameTranslator.Application.Settings;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -9,16 +10,22 @@ internal sealed class DetectorTimingLog : IDisposable
 {
     internal const int MaximumFiles = 32;
     internal const long MaximumBytes = 8 * 1024 * 1024;
-    private readonly Channel<DetectorTimingEntry> queue = Channel.CreateBounded<DetectorTimingEntry>(
+    private readonly Channel<(DetectorTimingEntry Entry, long Generation)> queue = Channel.CreateBounded<(DetectorTimingEntry, long)>(
         new BoundedChannelOptions(256) { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
+    private readonly LiveDiagnosticsPreferences? preferences;
     internal Task Completion { get; }
 
-    internal DetectorTimingLog(string directory, long maximumBytes = MaximumBytes)
+    internal DetectorTimingLog(string directory, long maximumBytes = MaximumBytes, LiveDiagnosticsPreferences? preferences = null)
     {
+        this.preferences = preferences;
         Completion = Task.Run(() => WriteAsync(directory, maximumBytes));
     }
 
-    internal void Write(DetectorTimingEntry entry) => queue.Writer.TryWrite(entry);
+    internal void Write(DetectorTimingEntry entry)
+    {
+        var generation = preferences?.CollectionGeneration ?? 0;
+        if (preferences?.Current.Enabled != false) queue.Writer.TryWrite((entry, generation));
+    }
 
     public void Dispose() => queue.Writer.TryComplete();
 
@@ -26,18 +33,28 @@ internal sealed class DetectorTimingLog : IDisposable
     {
         try
         {
-            Directory.CreateDirectory(directory);
-            if (Directory.EnumerateFiles(directory, "detector-*.jsonl").Take(MaximumFiles).Count() >= MaximumFiles)
-                return;
-            var path = Path.Combine(directory, $"detector-{DateTime.UtcNow:yyyyMMdd-HHmmssfff}-{Environment.ProcessId}-{Guid.NewGuid():N}.jsonl");
-            using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
-            await foreach (var entry in queue.Reader.ReadAllAsync())
+            FileStream? stream = null;
+            try
             {
-                var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(entry) + "\n");
-                if (stream.Length + bytes.Length > maximumBytes) return;
-                await stream.WriteAsync(bytes);
-                await stream.FlushAsync();
+                await foreach (var item in queue.Reader.ReadAllAsync())
+                {
+                    if (preferences?.Current.Enabled == false || (preferences?.CollectionGeneration ?? 0) != item.Generation)
+                        continue;
+                    if (stream is null)
+                    {
+                        Directory.CreateDirectory(directory);
+                        if (Directory.EnumerateFiles(directory, "detector-*.jsonl").Take(MaximumFiles).Count() >= MaximumFiles)
+                            return;
+                        var path = Path.Combine(directory, $"detector-{DateTime.UtcNow:yyyyMMdd-HHmmssfff}-{Environment.ProcessId}-{Guid.NewGuid():N}.jsonl");
+                        stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
+                    }
+                    var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(item.Entry) + "\n");
+                    if (stream.Length + bytes.Length > maximumBytes) return;
+                    await stream.WriteAsync(bytes);
+                    await stream.FlushAsync();
+                }
             }
+            finally { stream?.Dispose(); }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException or ArgumentException or NotSupportedException)
         {

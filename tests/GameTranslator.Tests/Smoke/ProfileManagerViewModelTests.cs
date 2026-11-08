@@ -2822,6 +2822,29 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
+    public async Task MasterSwitch_DiscardsQueuedReportsAcrossDisableAndEnable()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "gt-queued-" + Guid.NewGuid());
+        var settings = new TestSettingsService();
+        settings.SetValue("diagnostics.live.directory", directory);
+        var vm = CreateMainViewModel(new InMemoryProfileRepository(), settings);
+        var gate = (SemaphoreSlim)vm.GetType().GetField("diagnosticsFileGate", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(vm)!;
+        var preferences = (GameTranslator.Application.Settings.LiveDiagnosticsPreferences)vm.GetType()
+            .GetField("diagnostics", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(vm)!;
+        await gate.WaitAsync();
+        var pending = (Task)vm.GetType().GetMethod("SaveLiveDiagnosticsSnapshotAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(vm, ["test", DateTimeOffset.UtcNow, 1, "synthetic", preferences.CollectionGeneration])!;
+        try
+        {
+            SetPropertyValue(vm, "DiagnosticsEnabled", false);
+            SetPropertyValue(vm, "DiagnosticsEnabled", true);
+        }
+        finally { gate.Release(); }
+        await pending;
+        Assert.False(Directory.Exists(directory));
+    }
+
+    [Fact]
     public async Task DisabledDiagnostics_PersistsAcrossViewModelsAndSkipsReports()
     {
         var directory = Path.Combine(Path.GetTempPath(), "gt-disabled-" + Guid.NewGuid());

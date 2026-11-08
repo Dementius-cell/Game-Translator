@@ -5619,21 +5619,24 @@ public sealed partial class MainViewModel : ValidatableObservableObject
     private void QueueLiveDiagnosticsSnapshot(string trigger)
     {
         if (!DiagnosticsEnabled) return;
+        var generation = diagnostics.CollectionGeneration;
         var capturedAt = DateTimeOffset.UtcNow;
         var report = BuildLiveDiagnosticsReport(trigger, capturedAt);
         var sequence = Interlocked.Increment(ref liveDiagnosticsSequence);
-        _ = SaveLiveDiagnosticsSnapshotAsync(trigger, capturedAt, sequence, report);
+        _ = SaveLiveDiagnosticsSnapshotAsync(trigger, capturedAt, sequence, report, generation);
     }
 
     private async Task SaveLiveDiagnosticsSnapshotAsync(
         string trigger,
         DateTimeOffset capturedAt,
         int sequence,
-        string report)
+        string report,
+        long generation)
     {
         await diagnosticsFileGate.WaitAsync();
         try
         {
+            if (!DiagnosticsEnabled || diagnostics.CollectionGeneration != generation) return;
             Directory.CreateDirectory(liveDiagnosticsDirectory);
             var fileName = $"game-translator-live-{trigger}-{capturedAt:yyyyMMdd-HHmmss-fff}-{sequence:D4}.txt";
             var filePath = Path.Combine(liveDiagnosticsDirectory, fileName);

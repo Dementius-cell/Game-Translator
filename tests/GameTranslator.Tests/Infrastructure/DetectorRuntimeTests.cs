@@ -11,6 +11,36 @@ namespace GameTranslator.Tests.Infrastructure;
 public sealed class DetectorRuntimeTests
 {
     [Fact]
+    public async Task MasterSwitch_DisablesRuntimeHistoryWithoutChangingFailureStatusAndCanResume()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "GameTranslator.Tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var preferences = new GameTranslator.Application.Settings.LiveDiagnosticsPreferences(
+                new GameTranslator.Infrastructure.Settings.JsonSettingsService(Path.Combine(directory, "settings.json")));
+            preferences.Save(preferences.Current with { Enabled = false });
+            var logger = new RecordingLogger();
+            using var detector = new PaddleOcrTextCandidateDetector(new()
+                { PythonExecutablePath = Path.Combine(directory, "missing.exe") }, logger, preferences);
+            await detector.InitializeAsync();
+            Assert.Equal(DetectorRuntimeState.Unavailable, detector.Status.State);
+            Assert.Equal(DetectorRuntimeFailure.RuntimeMissing, detector.Status.Failure);
+            Assert.Empty(detector.Diagnostics);
+            Assert.Empty(logger.Messages);
+            Assert.Null(detector.LastFailure);
+            preferences.Save(preferences.Current with { Enabled = true });
+            await detector.InitializeAsync(retry: true);
+            Assert.Equal("runtime-missing", detector.LastFailure!.Code);
+            Assert.NotEmpty(logger.Messages);
+            var count = detector.Diagnostics.Count;
+            preferences.Save(preferences.Current with { Enabled = false });
+            await detector.InitializeAsync(retry: true);
+            Assert.Equal(count, detector.Diagnostics.Count);
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
+    [Fact]
     public async Task BackgroundInitialization_IsSingleFlightAndFramesDoNotCancelOrRestartIt()
     {
         using var fixture = new WorkerFixture();

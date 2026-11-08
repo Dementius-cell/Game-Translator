@@ -30,6 +30,8 @@ Keep application use cases and contracts independent from concrete UI, platform,
 
 ## Work Guidance
 
+- LiveDiagnosticsPreferences owns the persisted master collection switch shared by UI and Infrastructure. Enabled changes notify automatic sinks and advance the collection generation so queued records cannot survive an off/on transition. Disabling collection must not stop OCR, capture or translation; manual exports remain explicit actions.
+
 - For live DialogComic with watermark filtering off, detector padding may vary by up to two pixels while the displayed dialogue stays fixed. Reuse the accepted crop only after comparing the full guarded area in fixed source coordinates (at most 131072 BGRA pixels), checking source identity and bounded member geometry. Actual pixel changes take the normal revision and cancellation path.
 
 - An isolated horizontal menu rating row may be excluded from translation projection only with bounded source-pixel evidence of 3–5 separate filled five-point star silhouettes (>180 luminance, per-shape IoU>=.8 with the normalized star outline), comparable size, alignment and spacing. Require one detector line and one OCR block, crop height12–192, aspect2–6 and <=131072pixels. Preserve raw OCR, words, geometry and request/time metadata; no coordinate rules, OCR spelling blacklist or changes to freshness/confirmation. Letters, digits, punctuation, mixed labels, hollow/partial stars and unsupported routes must not be inferred as a rating from their text.

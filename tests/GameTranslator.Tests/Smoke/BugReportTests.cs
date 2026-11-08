@@ -37,6 +37,30 @@ public sealed class BugReportTests : IDisposable
     private static Task Run(object target, string name) => (Task)target.GetType().GetMethod(name)!.Invoke(target, null)!;
 
     [Fact]
+    public async Task MasterSwitch_StopsCrashReportsAndSessionRecoveryButAllowsManualExport()
+    {
+        var service = (IBugReportService)Activator.CreateInstance(Ui.GetType("GameTranslator.UI.Diagnostics.BugReportService", true)!,
+            Path.Combine(root, "app"), Path.Combine(root, "fallback"))!;
+        using var lifetime = (IDisposable)service;
+        Call(service, "SetCollectionEnabled", false);
+        Call(service, "StartSession");
+        Call(service, "CaptureCrash", new InvalidOperationException("synthetic"));
+        Assert.False(Directory.Exists(service.ReportsDirectory));
+        Call(service, "SetCollectionEnabled", true);
+        Assert.Single(Directory.GetFiles(service.ReportsDirectory, "session-*.json"));
+        Call(service, "SetCollectionEnabled", false);
+        Call(service, "CaptureCrash", new InvalidOperationException("synthetic"));
+        Assert.Empty(Directory.GetFiles(service.ReportsDirectory));
+        var manual = await service.CreateBugReportAsync(new(0, 0, false, false));
+        Assert.True(manual.Succeeded);
+        Call(service, "SetCollectionEnabled", true);
+        Assert.Empty(service.RecoveredReports);
+        Call(service, "CaptureCrash", new InvalidOperationException("synthetic"));
+        Assert.Single(Directory.GetFiles(service.ReportsDirectory, "crash-*.txt"));
+        Close(service);
+    }
+
+    [Fact]
     public async Task Shell_ShowsRecoveredReportAndManualReportWithDismissibleNotice()
     {
         var previous = Create();

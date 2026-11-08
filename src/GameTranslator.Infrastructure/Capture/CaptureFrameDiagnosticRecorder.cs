@@ -55,12 +55,13 @@ internal sealed class CaptureFrameDiagnosticRecorder
             lastStarted = now;
             var sequence = ++accepted;
             // CapturedFrame owns an immutable copy. No copying/encoding/disk IO on the capture gate.
-            completion = Task.Run(() => WriteAsync(frame, sequence, colorInfo));
+            var generation = preferences?.CollectionGeneration ?? 0;
+            completion = Task.Run(() => WriteAsync(frame, sequence, colorInfo, generation));
             return true;
         }
     }
 
-    private async Task WriteAsync(CapturedFrame frame, int sequence, CaptureColorInfo? colorInfo)
+    private async Task WriteAsync(CapturedFrame frame, int sequence, CaptureColorInfo? colorInfo, long generation)
     {
         try
         {
@@ -92,7 +93,7 @@ internal sealed class CaptureFrameDiagnosticRecorder
             }, new JsonSerializerOptions { WriteIndented = true });
             lock (gate)
             {
-                if (!Enabled) return;
+                if (!Enabled || (preferences?.CollectionGeneration ?? 0) != generation) return;
                 var budget = Budget;
                 if (bytesWritten + png.Length + metadata.Length > budget) { exhaustedBudget = budget; return; }
                 bytesWritten += png.Length + metadata.Length;

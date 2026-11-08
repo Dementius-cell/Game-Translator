@@ -3,6 +3,7 @@ using System.IO;
 using GameTranslator.Application.Debug;
 using GameTranslator.Application.DependencyInjection;
 using GameTranslator.Application.Ocr;
+using GameTranslator.Application.Settings;
 using GameTranslator.UI.DependencyInjection;
 using GameTranslator.UI.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
@@ -25,8 +26,8 @@ public partial class App : System.Windows.Application
     public App()
     {
         Localization.UiText.InitializeFromWindows();
-        if (!PortableOcrSmokeRunner.TryGetReportPath(Environment.GetCommandLineArgs(), out _))
-            bugReports.StartSession();
+        // Do not create automatic reports until the persisted preference is available.
+        bugReports.SetCollectionEnabled(false);
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
         try
@@ -34,15 +35,18 @@ public partial class App : System.Windows.Application
             host = Host.CreateDefaultBuilder()
                 .UseSerilog((context, services, loggerConfiguration) =>
                 {
+                    var preferences = services.GetRequiredService<LiveDiagnosticsPreferences>();
+                    if (!PortableOcrSmokeRunner.TryGetReportPath(Environment.GetCommandLineArgs(), out _))
+                    {
+                        preferences.CollectionChanged += bugReports.SetCollectionEnabled;
+                        bugReports.SetCollectionEnabled(preferences.Current.Enabled);
+                    }
                     loggerConfiguration
                         .MinimumLevel.Debug()
                         .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
                         .Enrich.FromLogContext()
-                        .WriteTo.Debug()
-                        .WriteTo.File(
-                            path: "logs/game_translator_.txt",
-                            rollingInterval: RollingInterval.Day,
-                            retainedFileCountLimit: 14);
+                        .WriteTo.Sink(new DiagnosticsLogSink(
+                            preferences, "logs/game_translator_.txt"));
                 })
                 .ConfigureServices((context, services) =>
                 {

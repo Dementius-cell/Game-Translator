@@ -1388,7 +1388,7 @@
                                                 ToolTipService.ShowOnDisabled="True" ToolTip="{loc:Text LiveDiagClearTip}"/>
                                         <TextBlock Margin="0,4,0,0" TextWrapping="Wrap" Foreground="{DynamicResource ThemeMuted}"
                                                    Text="{Binding DiagnosticsCleanupStatus, Converter={StaticResource LocalizedText}}"/>
-                                        <CheckBox Margin="0,6,0,0" Content="{loc:Text LiveDiagEnabled}" IsChecked="{Binding DiagnosticsEnabled}"/>
+                                        <CheckBox Margin="0,6,0,0" Content="{loc:Text LiveDiagEnabled}" ToolTip="{loc:Text LiveDiagEnabledTip}" IsChecked="{Binding DiagnosticsEnabled}"/>
                                         <StackPanel IsEnabled="{Binding DiagnosticsEnabled}">
                                             <CheckBox Content="{loc:Text LiveDiagInput}" IsChecked="{Binding DiagnosticsInput}"/>
                                             <CheckBox Margin="16,0,0,0" IsEnabled="{Binding DiagnosticsInput}" Content="{loc:Text LiveDiagButtons}" ToolTip="{loc:Text LiveDiagGamepadTip}" IsChecked="{Binding DiagnosticsButtons}"/>

@@ -4,6 +4,7 @@ using System.Text.Json;
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Ocr;
 using GameTranslator.Application.Abstractions;
+using GameTranslator.Application.Settings;
 
 namespace GameTranslator.Infrastructure.Ocr;
 
@@ -33,6 +34,7 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDe
     private DetectorRuntimeFailure startupFailure;
     private long initializationStarted;
     private readonly IApplicationLogger? logger;
+    private readonly LiveDiagnosticsPreferences? diagnostics;
     private readonly object diagnosticLock = new();
     private readonly Queue<DetectorRuntimeDiagnostic> diagnosticHistory = new();
     private DetectorRuntimeDiagnostic? lastFailure;
@@ -54,12 +56,13 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDe
     }
     internal Task TimingDiagnosticsCompletion => Task.WhenAll(disposal, timingLog?.Completion ?? Task.CompletedTask);
 
-    public PaddleOcrTextCandidateDetector(PaddleOcrTextCandidateDetectorOptions options, IApplicationLogger? logger = null)
+    public PaddleOcrTextCandidateDetector(PaddleOcrTextCandidateDetectorOptions options, IApplicationLogger? logger = null, LiveDiagnosticsPreferences? diagnostics = null)
     {
         this.options = options ?? throw new ArgumentNullException(nameof(options));
         this.logger = logger;
+        this.diagnostics = diagnostics;
         ValidateOptions(this.options);
-        if (options.TimingDiagnosticsEnabled) timingLog = new DetectorTimingLog(options.TimingDiagnosticsDirectory);
+        if (options.TimingDiagnosticsEnabled) timingLog = new DetectorTimingLog(options.TimingDiagnosticsDirectory, preferences: diagnostics);
     }
 
     public async Task<TextCandidateDetectionResult> DetectAsync(
@@ -576,7 +579,7 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDe
 
     private void OnStandardError(object sender, DataReceivedEventArgs eventArgs)
     {
-        if (string.IsNullOrWhiteSpace(eventArgs.Data))
+        if (diagnostics?.Current.Enabled == false || string.IsNullOrWhiteSpace(eventArgs.Data))
         {
             return;
         }
@@ -653,6 +656,7 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDe
     private void RecordDiagnostic(string kind, string code, long requestId = 0, double elapsedMs = 0,
         Exception? exception = null, bool failure = false, string? stage = null)
     {
+        if (diagnostics?.Current.Enabled == false) return;
         ObserveProcess(worker);
         var entry = new DetectorRuntimeDiagnostic(DateTimeOffset.UtcNow, kind, code, stage ?? lastStartupStage,
             workerGeneration, requestId, lastProcessId, exitedBeforeTermination, observedExitCode, elapsedMs,

@@ -10,6 +10,29 @@ namespace GameTranslator.Tests.Infrastructure;
 public sealed class DetectorTimingTests
 {
     [Fact]
+    public async Task Log_MasterSwitchCreatesNoFileWhileDisabledAndResumesWithoutBufferedEvents()
+    {
+        var directory = NewDirectory();
+        var preferences = new GameTranslator.Application.Settings.LiveDiagnosticsPreferences(
+            new GameTranslator.Infrastructure.Settings.JsonSettingsService(Path.Combine(directory, "settings.json")));
+        preferences.Save(preferences.Current with { Enabled = false });
+        var logs = Path.Combine(directory, "logs");
+        var disabled = new DetectorTimingLog(logs, preferences: preferences);
+        disabled.Write(new() { RequestId = 1 });
+        disabled.Dispose();
+        await disabled.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(Directory.Exists(logs));
+        var resumed = new DetectorTimingLog(logs, preferences: preferences);
+        resumed.Write(new() { RequestId = 2 });
+        preferences.Save(preferences.Current with { Enabled = true });
+        resumed.Write(new() { RequestId = 3 });
+        resumed.Dispose();
+        await resumed.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+        var entry = Assert.Single(Entries(File.ReadAllText(Assert.Single(Directory.GetFiles(logs)))));
+        Assert.Equal(3, entry.RequestId);
+    }
+
+    [Fact]
     public async Task Detector_StartupProgressIsBoundedAndDoesNotReplaceReady()
     {
         var directory = NewDirectory();

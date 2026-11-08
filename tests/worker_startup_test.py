@@ -16,6 +16,35 @@ spec.loader.exec_module(worker)
 
 
 class StartupTests(unittest.TestCase):
+    def test_failure_categories_do_not_expose_messages(self):
+        cases = [(worker.ModelUnavailableError('private'), 'model-missing'),
+                 (ModuleNotFoundError('private module'), 'dependency-missing'),
+                 (ImportError('private dll path'), 'native-library-load-failed'),
+                 (PermissionError('secret file'), 'permission-denied'),
+                 (worker.FrameDecodeError('private file'), 'input-read-failed'),
+                 (MemoryError('private allocation'), 'memory-exhausted'),
+                 (RuntimeError('CUDA out of memory private'), 'gpu-out-of-memory'),
+                 (RuntimeError('cuDNN private'), 'gpu-execution-failed'),
+                 (RuntimeError('out of memory private'), 'memory-exhausted'),
+                 (RuntimeError('private input'), 'inference-failed')]
+        for error, code in cases:
+            self.assertEqual(code, worker.failure_code(error))
+
+    def test_inference_error_protocol_is_redacted_and_keeps_request_id(self):
+        class Detector:
+            startup_timing = None
+            def detect(self, *args):
+                raise RuntimeError('CUDA out of memory C:/private token=secret')
+        output = io.StringIO()
+        request = json.dumps(dict(inputPath='private', requestId=7, threshold=.3, boxThreshold=.6, unclipRatio=1.2))
+        with patch.object(worker, 'DirectPaddleTextDetector', return_value=Detector()), patch.object(sys, 'stdin', io.StringIO(request)), contextlib.redirect_stdout(output):
+            worker.run_worker()
+        error = json.loads(output.getvalue().splitlines()[-1])
+        self.assertEqual('gpu-out-of-memory', error['errorCode'])
+        self.assertEqual(7, error['requestId'])
+        self.assertNotIn('private', output.getvalue())
+        self.assertNotIn('secret', output.getvalue())
+
     def test_missing_driver_is_classified(self):
         with patch('ctypes.WinDLL', side_effect=OSError('private-path')):
             with self.assertRaises(worker.CudaUnavailableError):

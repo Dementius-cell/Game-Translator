@@ -76,7 +76,7 @@ class DirectPaddleTextDetector:
         model_file = MODEL_DIRECTORY / "inference.json"
         parameters_file = MODEL_DIRECTORY / "inference.pdiparams"
         if not model_file.is_file() or not parameters_file.is_file():
-            raise RuntimeError("Bundled PP-OCRv6_medium_det model is unavailable.")
+            raise ModelUnavailableError()
 
         config = paddle.inference.Config(str(model_file), str(parameters_file))
         config.disable_glog_info()
@@ -122,7 +122,7 @@ class DirectPaddleTextDetector:
 
         image = self.cv2.imread(str(source_path), self.cv2.IMREAD_COLOR)
         if image is None:
-            raise RuntimeError("PaddleOCR could not decode the candidate frame.")
+            raise FrameDecodeError()
 
         decoded = time.perf_counter()
         resized_images, image_shapes = self.resize([image], 1216, "max")
@@ -152,6 +152,38 @@ class CudaUnavailableError(RuntimeError):
     pass
 
 
+class ModelUnavailableError(RuntimeError):
+    pass
+
+
+class FrameDecodeError(RuntimeError):
+    pass
+
+
+def failure_code(error, startup=False):
+    # Inspect locally, emit only fixed codes. Never return paths, model input or arbitrary messages.
+    if isinstance(error, CudaUnavailableError):
+        return "cuda-unavailable"
+    if isinstance(error, ModelUnavailableError):
+        return "model-missing"
+    if isinstance(error, ModuleNotFoundError):
+        return "dependency-missing"
+    if isinstance(error, PermissionError):
+        return "permission-denied"
+    if isinstance(error, ImportError):
+        return "native-library-load-failed"
+    if isinstance(error, (FileNotFoundError, FrameDecodeError)):
+        return "input-read-failed"
+    if isinstance(error, MemoryError):
+        return "memory-exhausted"
+    message = str(error).lower()
+    if "out of memory" in message or "resourceexhausted" in message:
+        return "gpu-out-of-memory" if "cuda" in message or "gpu" in message else "memory-exhausted"
+    if "cuda" in message or "cudnn" in message or "cublas" in message:
+        return "gpu-execution-failed"
+    return "initialization-failed" if startup else "inference-failed"
+
+
 def verify_cuda_driver():
     # Driver API check before importing the large GPU runtime. No fallback to CPU.
     import ctypes
@@ -168,8 +200,7 @@ def run_worker(timings=False, progress=False):
     try:
         detector = DirectPaddleTextDetector(timings, progress)
     except Exception as error:
-        write_message({"status": "startup-error", "errorCode":
-                       "cuda-unavailable" if isinstance(error, CudaUnavailableError) else "initialization-failed"})
+        write_message({"status": "startup-error", "errorCode": failure_code(error, startup=True)})
         return
     write_message({"status": "ready", "timing": detector.startup_timing if timings else None})
     for line in sys.stdin:
@@ -189,7 +220,7 @@ def run_worker(timings=False, progress=False):
                 {
                     "status": "error",
                     "requestId": request_id,
-                    "error": f"{type(error).__name__}: {error}",
+                    "errorCode": failure_code(error),
                     "candidates": [],
                 }
             )

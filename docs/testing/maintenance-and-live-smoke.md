@@ -10,6 +10,10 @@ It rejects local output/runtime directories, the two private handoffs, new artif
 
 ## Diagnostic summary
 
+OCR startup and worker failures now appear in the ordinary rolling application log (`logs/game_translator_*.txt`, relative to the app's working directory; local-only) without `detector-timing.enabled`. Exported debug/live reports also contain **OCR runtime diagnostics**: current readiness, the last failure and the latest 64 lifecycle/failure events. These use UTC timestamps, fixed codes, last startup/request stage, generation/request ID/PID, elapsed time and the configured request deadline. Exception type, HResult and native Windows error number are included when available. ExitedBeforeTermination/ExitCode describe a process observed exiting before our cleanup; null is unknown, never proof of a clean exit. Timeout followed by our kill must not be reported as a native crash.
+
+Typical causes include runtime-missing, worker-script-missing, model-missing, dependency-missing, native-library-load-failed, cuda-unavailable, gpu-out-of-memory, memory-exhausted, gpu-execution-failed, input-read-failed, permission-denied, timeout-exchange, response-ended, response-id-mismatch and worker-exited. Generic failures still retain the last known stage; these codes do not establish a GPU driver root cause when no native evidence exists. LastFailure survives unavailable polls and retry; compare its timestamp/generation with the current state and worker-ready event. Full per-request timing remains optional. No raw exception messages, paths, stderr, credentials or image/OCR text are added to runtime summaries.
+
 Use PowerShell with explicit literal input files:
 
 ```powershell

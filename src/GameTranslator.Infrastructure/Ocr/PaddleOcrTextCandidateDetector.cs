@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using GameTranslator.Application.Capture;
 using GameTranslator.Application.Ocr;
+using GameTranslator.Application.Abstractions;
 
 namespace GameTranslator.Infrastructure.Ocr;
 
@@ -31,6 +32,16 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDe
     private volatile DetectorRuntimeStatus runtimeStatus = new(DetectorRuntimeState.NotStarted);
     private DetectorRuntimeFailure startupFailure;
     private long initializationStarted;
+    private readonly IApplicationLogger? logger;
+    private readonly object diagnosticLock = new();
+    private readonly Queue<DetectorRuntimeDiagnostic> diagnosticHistory = new();
+    private DetectorRuntimeDiagnostic? lastFailure;
+    private string lastStartupStage = "starting";
+    private int? lastProcessId;
+    private bool? exitedBeforeTermination;
+    private int? observedExitCode;
+    public IReadOnlyList<DetectorRuntimeDiagnostic> Diagnostics { get { lock (diagnosticLock) return diagnosticHistory.ToArray(); } }
+    public DetectorRuntimeDiagnostic? LastFailure { get { lock (diagnosticLock) return lastFailure; } }
     public DetectorRuntimeStatus Status
     {
         get
@@ -43,9 +54,10 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDe
     }
     internal Task TimingDiagnosticsCompletion => Task.WhenAll(disposal, timingLog?.Completion ?? Task.CompletedTask);
 
-    public PaddleOcrTextCandidateDetector(PaddleOcrTextCandidateDetectorOptions options)
+    public PaddleOcrTextCandidateDetector(PaddleOcrTextCandidateDetectorOptions options, IApplicationLogger? logger = null)
     {
         this.options = options ?? throw new ArgumentNullException(nameof(options));
+        this.logger = logger;
         ValidateOptions(this.options);
         if (options.TimingDiagnosticsEnabled) timingLog = new DetectorTimingLog(options.TimingDiagnosticsDirectory);
     }
@@ -61,7 +73,7 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDe
             return TextCandidateDetectionResult.Unavailable(DetectorId,
                 Status.State == DetectorRuntimeState.Initializing
                     ? "OCR is preparing in the background."
-                    : "OCR is unavailable. Check the OCR status and retry initialization.");
+                    : RuntimeUnavailableReason());
         var operation = DetectCoreAsync(request, cancellationToken);
         try
         {
@@ -88,6 +100,7 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDe
                 || (Status.State == DetectorRuntimeState.Unavailable && !retry)) return initialization;
             Interlocked.Exchange(ref initializationStarted, Stopwatch.GetTimestamp());
             runtimeStatus = new(DetectorRuntimeState.Initializing);
+            RecordDiagnostic("initialization", retry ? "explicit-retry" : "requested");
             initialization = Task.Run(InitializeCoreAsync);
             return initialization;
         }
@@ -112,6 +125,7 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDe
             lifetime.Token.ThrowIfCancellationRequested();
             if (!IsConfigured(out _))
             {
+                RecordDiagnostic("failure", !File.Exists(options.PythonExecutablePath) ? "runtime-missing" : "worker-script-missing", failure: true);
                 runtimeStatus = new(DetectorRuntimeState.Unavailable, DetectorRuntimeFailure.RuntimeMissing);
                 return;
             }
@@ -125,11 +139,14 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDe
         {
             runtimeStatus = new(DetectorRuntimeState.Stopped);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
             // A runtime/driver/process failure must not escape into application startup.
             // Raw exception text can contain local paths; expose only the fixed category.
             runtimeStatus = new(DetectorRuntimeState.Unavailable, DetectorRuntimeFailure.InitializationFailed);
+            RecordDiagnostic("failure", "initialization-exception",
+                elapsedMs: Stopwatch.GetElapsedTime(Interlocked.Read(ref initializationStarted)).TotalMilliseconds,
+                exception: exception, failure: true);
         }
         finally
         {
@@ -166,6 +183,9 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDe
         var requestStarted = Stopwatch.GetTimestamp();
         var lockHeld = false;
         var responseDrained = false;
+        Exception? requestException = null;
+        string? workerErrorCode = null;
+        var exchangePhase = "not-started";
         try
         {
             if (!IsConfigured(out var unavailableReason))
@@ -193,7 +213,10 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDe
             lockHeld = true;
             cancellationToken.ThrowIfCancellationRequested();
             if (managedInitialization && Status.State != DetectorRuntimeState.Ready)
-                return TextCandidateDetectionResult.Unavailable(DetectorId, "OCR is unavailable. Check the OCR status and retry initialization.");
+            {
+                timing.Outcome = "runtime-unavailable";
+                return TextCandidateDetectionResult.Unavailable(DetectorId, RuntimeUnavailableReason());
+            }
             if (worker is { HasExited: true })
             {
                 // Do not hide a persistent-worker loss by charging the next live frame for a
@@ -216,6 +239,7 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDe
             if (process is null)
             {
                 timing.Outcome = "startup-unavailable";
+                workerErrorCode = LastFailure?.Code;
                 return TextCandidateDetectionResult.Unavailable(DetectorId, GetWorkerFailureReason());
             }
 
@@ -233,6 +257,7 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDe
                 using var exchangeLifetime = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, requestDeadline.Token);
                 using var cancellationRegistration = callerToken.Register(
                     () => exchangeLifetime.CancelAfter(options.CancelledResponseDrainTimeout));
+                exchangePhase = "request-write";
                 await process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(
                     new PaddleWorkerRequest(
                         inputPath,
@@ -242,6 +267,7 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDe
                         timing.RequestId),
                     serializerOptions).AsMemory(), exchangeLifetime.Token);
                 await process.StandardInput.FlushAsync(exchangeLifetime.Token);
+                exchangePhase = "response-read";
 
                 PaddleWorkerResponse? response;
                 try { response = await ReadWorkerResponseAsync(process, exchangeLifetime.Token); }
@@ -253,12 +279,11 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDe
                 {
                     timing.Outcome = response is null ? "response-ended"
                         : response.RequestId != timing.RequestId ? "response-id-mismatch" : "worker-error";
+                    workerErrorCode = SafeWorkerErrorCode(response?.ErrorCode);
                     TerminateWorker(timing.Outcome, timing.RequestId);
                     return TextCandidateDetectionResult.Unavailable(
                         DetectorId,
-                        string.IsNullOrWhiteSpace(response?.Error)
-                            ? GetWorkerFailureReason()
-                            : $"PaddleOCR candidate detector failed: {response.Error}");
+                        $"OCR detector failed ({timing.Outcome}; {workerErrorCode}). See OCR runtime diagnostics.");
                 }
 
                 responseDrained = true;
@@ -309,6 +334,7 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDe
             or UnauthorizedAccessException
             or System.ComponentModel.Win32Exception)
         {
+            requestException = exception;
             timing.Outcome = exception.GetType().Name + "-" + timing.Outcome;
             if (lockHeld) TerminateWorker(timing.Outcome, timing.RequestId);
             return TextCandidateDetectionResult.Unavailable(DetectorId, GetWorkerFailureReason());
@@ -318,6 +344,12 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDe
             timing.Generation = workerGeneration;
             timing.TotalMs = Stopwatch.GetElapsedTime(requestStarted).TotalMilliseconds;
             timingLog?.Write(timing);
+            if (lockHeld && !disposed && (timing.Outcome == "cancelled-drain-timeout"
+                || timing.Outcome is not ("ok" or "runtime-unavailable") && !timing.Outcome.StartsWith("cancelled", StringComparison.Ordinal)
+                && !timing.Outcome.StartsWith("disposed", StringComparison.Ordinal)))
+                RecordDiagnostic("request-failure", workerErrorCode is null ? timing.Outcome : timing.Outcome + ":" + workerErrorCode,
+                    timing.RequestId, timing.TotalMs, requestException, true,
+                    exchangePhase == "not-started" ? lastStartupStage : exchangePhase);
             if (managedInitialization && lockHeld && worker is null && !disposed)
                 runtimeStatus = new(DetectorRuntimeState.Unavailable, DetectorRuntimeFailure.WorkerStopped);
             if (lockHeld) workerLock.Release();
@@ -375,7 +407,11 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDe
         }
 
         TerminateWorker("replace", timing.RequestId);
-        standardError.Clear();
+        lock (standardError) standardError.Clear();
+        lastStartupStage = "starting";
+        lastProcessId = null;
+        exitedBeforeTermination = null;
+        observedExitCode = null;
         var startInfo = new ProcessStartInfo
         {
             FileName = options.PythonExecutablePath,
@@ -391,20 +427,27 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDe
         };
         startInfo.ArgumentList.Add(options.WorkerScriptPath);
         startInfo.ArgumentList.Add("--worker");
-        if (managedInitialization) startInfo.ArgumentList.Add("--progress");
+        startInfo.ArgumentList.Add("--progress");
         if (timingLog is not null) startInfo.ArgumentList.Add("--timings");
 
         var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
         process.ErrorDataReceived += OnStandardError;
-        if (!process.Start())
+        try
         {
-            process.Dispose();
-            return null;
+            if (!process.Start())
+            {
+                RecordDiagnostic("failure", "process-start-failed", timing.RequestId, failure: true);
+                process.Dispose();
+                return null;
+            }
         }
+        catch { process.Dispose(); throw; }
 
-        process.BeginErrorReadLine();
         worker = process;
         workerGeneration++;
+        lastProcessId = process.Id;
+        process.BeginErrorReadLine();
+        RecordDiagnostic("worker-start", "started", timing.RequestId);
         timingLog?.Write(new DetectorTimingEntry { Kind = "worker-start", RequestId = timing.RequestId, Generation = workerGeneration, Outcome = "started" });
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         if (!managedInitialization) timeout.CancelAfter(options.StartupTimeout);
@@ -421,6 +464,8 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDe
                 or "configure-model" or "create-predictor" or "configure-processors"
                 && recordedStages.Add(ready.Stage))
             {
+                lastStartupStage = ready.Stage;
+                RecordDiagnostic("startup-stage", ready.Stage, timing.RequestId, Stopwatch.GetElapsedTime(startupClock).TotalMilliseconds);
                 if (managedInitialization)
                     runtimeStatus = runtimeStatus with { Stage = ready.Stage is "configure-model" or "create-predictor" or "configure-processors"
                         ? DetectorRuntimeStage.LoadingModel : DetectorRuntimeStage.LoadingLibraries };
@@ -436,11 +481,14 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDe
         {
             startupFailure = ready?.ErrorCode == "cuda-unavailable"
                 ? DetectorRuntimeFailure.CudaUnavailable : DetectorRuntimeFailure.InitializationFailed;
+            RecordDiagnostic("failure", ready is null ? "startup-response-ended" : SafeWorkerErrorCode(ready.ErrorCode),
+                timing.RequestId, Stopwatch.GetElapsedTime(startupClock).TotalMilliseconds, failure: true);
             TerminateWorker("startup-response-invalid", timing.RequestId);
             return null;
         }
 
         timingLog?.Write(new DetectorTimingEntry { Kind = "worker-ready", RequestId = timing.RequestId, Generation = workerGeneration, Outcome = "ready", Worker = ready.Timing });
+        RecordDiagnostic("worker-ready", "ready", timing.RequestId, Stopwatch.GetElapsedTime(startupClock).TotalMilliseconds);
         return process;
     }
 
@@ -537,7 +585,7 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDe
         {
             if (standardError.Length < 2048)
             {
-                standardError.AppendLine(eventArgs.Data);
+                standardError.Append(eventArgs.Data.AsSpan(0, Math.Min(eventArgs.Data.Length, 2048 - standardError.Length)));
             }
         }
     }
@@ -561,6 +609,9 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDe
             return;
         }
 
+        ObserveProcess(process);
+        RecordDiagnostic("worker-stop", reason, requestId);
+
         timingLog?.Write(new DetectorTimingEntry { Kind = "worker-stop", RequestId = requestId, Generation = workerGeneration, Outcome = reason });
         try
         {
@@ -576,6 +627,51 @@ public sealed class PaddleOcrTextCandidateDetector : ITextCandidateDetector, IDe
         {
             process.Dispose();
         }
+    }
+
+    private static string SafeWorkerErrorCode(string? code) => code is
+        "cuda-unavailable" or "initialization-failed" or "model-missing" or "dependency-missing"
+        or "native-library-load-failed" or "gpu-out-of-memory" or "gpu-execution-failed"
+        or "input-read-failed" or "permission-denied" or "memory-exhausted" or "inference-failed" ? code : "worker-error-unspecified";
+
+    private string RuntimeUnavailableReason() => LastFailure is { } failure
+        ? $"OCR is unavailable ({failure.Code}, stage {failure.Stage}, request {failure.RequestId}). Use Retry OCR; see OCR runtime diagnostics."
+        : "OCR is unavailable. Check the OCR status and retry initialization.";
+
+    private void ObserveProcess(Process? process)
+    {
+        if (process is null) return;
+        try
+        {
+            lastProcessId = process.Id;
+            exitedBeforeTermination = process.HasExited;
+            observedExitCode = exitedBeforeTermination == true ? process.ExitCode : null;
+        }
+        catch (InvalidOperationException) { }
+    }
+
+    private void RecordDiagnostic(string kind, string code, long requestId = 0, double elapsedMs = 0,
+        Exception? exception = null, bool failure = false, string? stage = null)
+    {
+        ObserveProcess(worker);
+        var entry = new DetectorRuntimeDiagnostic(DateTimeOffset.UtcNow, kind, code, stage ?? lastStartupStage,
+            workerGeneration, requestId, lastProcessId, exitedBeforeTermination, observedExitCode, elapsedMs,
+            options.RequestTimeout.TotalMilliseconds, exception?.GetType().FullName, exception?.HResult,
+            (exception as System.ComponentModel.Win32Exception)?.NativeErrorCode);
+        lock (diagnosticLock)
+        {
+            if (diagnosticHistory.Count == 64) diagnosticHistory.Dequeue();
+            diagnosticHistory.Enqueue(entry);
+            if (failure) lastFailure = entry;
+        }
+        // The ordinary rolling application log is available without detector-timing.enabled.
+        // A failed sink must never change readiness, timeout or cancellation behavior.
+        try
+        {
+            var message = "OCR runtime: " + JsonSerializer.Serialize(entry);
+            if (failure) logger?.Warning(message); else logger?.Information(message);
+        }
+        catch (Exception) { Trace.TraceWarning("OCR diagnostic log sink failed."); }
     }
 
     private static void TryDelete(string path)

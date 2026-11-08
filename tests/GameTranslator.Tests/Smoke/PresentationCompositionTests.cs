@@ -20,6 +20,50 @@ namespace GameTranslator.Tests.Smoke;
 [Collection(WpfResourceCollection.Name)]
 public sealed class PresentationCompositionTests
 {
+    [Fact]
+    public void DebugReportIncludesLatchedOcrFailureAndRuntimeHistory()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+            var services = new ServiceCollection();
+            services.AddApplicationServices();
+            var root = Path.Combine(Path.GetTempPath(), "GameTranslator.Tests", Guid.NewGuid().ToString("N"));
+            services.AddSingleton(new ProfileStorageOptions(root));
+            services.AddSingleton(new SettingsStorageOptions(Path.Combine(root, "settings.json")));
+            services.AddSingleton(new TranslationCacheStorageOptions(Path.Combine(root, "cache.db")));
+            InvokePresentationCompositionRoot(services);
+            InvokeExternalServiceModules(services);
+            services.AddSingleton<GameTranslator.Application.Ocr.IDetectorRuntime>(new DiagnosticRuntime());
+            using var provider = services.BuildServiceProvider();
+            var model = provider.GetRequiredService(LoadUiAssembly().GetType("GameTranslator.UI.ViewModels.MainViewModel", true)!);
+            var report = (string)model.GetType().GetMethod("BuildDebugInfoReport", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(model, null)!;
+            Assert.Contains("OCR runtime diagnostics", report);
+            Assert.Contains("timeout-exchange", report);
+            Assert.Contains("response-read", report);
+            Assert.Contains("\"ProcessId\":123", report);
+            Assert.Contains("\"RequestTimeoutMs\":5000", report);
+            }
+            catch (Exception exception) { failure = exception; }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(10)));
+        if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+    }
+
+    private sealed class DiagnosticRuntime : GameTranslator.Application.Ocr.IDetectorRuntime
+    {
+        public GameTranslator.Application.Ocr.DetectorRuntimeStatus Status => new(GameTranslator.Application.Ocr.DetectorRuntimeState.Unavailable);
+        public GameTranslator.Application.Ocr.DetectorRuntimeDiagnostic LastFailure { get; } = new(
+            DateTimeOffset.UnixEpoch, "request-failure", "timeout-exchange", "response-read", 1, 7, 123, false, null, 5001, 5000);
+        public IReadOnlyList<GameTranslator.Application.Ocr.DetectorRuntimeDiagnostic> Diagnostics => [LastFailure];
+        public Task InitializeAsync(bool retry = false) => Task.CompletedTask;
+        public Task StopAsync() => Task.CompletedTask;
+    }
+
     private sealed class TestDiagnosticsCleanup : GameTranslator.Application.Debug.IDiagnosticsCleanupService
     {
         public int Calls { get; private set; }

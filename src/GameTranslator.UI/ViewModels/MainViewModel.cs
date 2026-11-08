@@ -477,6 +477,7 @@ public sealed partial class MainViewModel : ValidatableObservableObject
     private readonly IApplicationLogger logger;
     private readonly string liveDiagnosticsDirectory;
     private readonly IDiagnosticsCleanupService diagnosticsCleanupService;
+    private readonly IDetectorRuntime? detectorRuntime;
     private readonly SemaphoreSlim diagnosticsFileGate = new(1, 1);
     private string diagnosticsCleanupStatus = string.Empty;
     public string DiagnosticsCleanupStatus
@@ -713,9 +714,11 @@ public sealed partial class MainViewModel : ValidatableObservableObject
         ISettingsService settings,
         IApplicationLogger logger,
         GameTranslator.Application.Settings.LiveDiagnosticsPreferences? diagnostics = null,
-        IDiagnosticsCleanupService? diagnosticsCleanupService = null)
+        IDiagnosticsCleanupService? diagnosticsCleanupService = null,
+        IDetectorRuntime? detectorRuntime = null)
     {
         this.diagnostics = diagnostics ?? new(settings);
+        this.detectorRuntime = detectorRuntime;
         this.profileService = profileService;
         this.profileExchangeService = profileExchangeService;
         this.captureService = captureService;
@@ -6056,11 +6059,24 @@ public sealed partial class MainViewModel : ValidatableObservableObject
         AppendCandidateGroupingDebugInfo(builder);
 
         AppendLiveCandidateReadinessDebugInfo(builder);
+        AppendDetectorRuntimeDebugInfo(builder);
         AppendLiveTranslatorProviderFailureDebugInfo(builder, generatedAt);
         AppendLiveCandidateLifecycleDebugInfo(builder);
         AppendOverlaySnapshotDebugInfo(builder);
 
         return builder.ToString();
+    }
+
+    private void AppendDetectorRuntimeDebugInfo(StringBuilder builder)
+    {
+        builder.AppendLine();
+        builder.AppendLine("OCR runtime diagnostics (last 64 lifecycle/failure events; UTC)");
+        if (detectorRuntime is null) { builder.AppendLine("  unavailable"); return; }
+        var status = detectorRuntime.Status;
+        builder.AppendLine($"  State: {status.State}; Failure: {status.Failure}; Stage: {status.Stage}; ElapsedMs: {status.Elapsed.TotalMilliseconds:F1}");
+        builder.AppendLine("  LastFailure: " + System.Text.Json.JsonSerializer.Serialize(detectorRuntime.LastFailure));
+        foreach (var entry in detectorRuntime.Diagnostics)
+            builder.AppendLine("  " + System.Text.Json.JsonSerializer.Serialize(entry));
     }
 
     private void AppendCandidateGroupingDebugInfo(StringBuilder builder)

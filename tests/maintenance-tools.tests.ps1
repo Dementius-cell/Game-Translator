@@ -36,6 +36,20 @@ Assert ($summary.DuplicateEventsIgnored -eq 1 -and $summary.OutOfOrderEventsIgno
 Assert ($summary.OpenEmptySnapshotInterval -and $summary.DroppedOldestEvents -eq 2) 'Incomplete evidence not marked.'
 Assert ($summary.FinalPublishedTextItems -eq 0) 'Unrelated section affected summary.'
 Assert ($summary.LastTranslationFailure -eq 'none') 'No-failure sentinel not normalized.'
+$enhanced = Join-Path $scratch 'enhanced.txt'
+@'
+Live candidate lifecycle
+  [1] Refresh=1 At=2026-11-02T00:00:00Z Event=CandidateMenuAuthorityObserved MenuDecision=ocr-started MenuQueueWaitMs=450,5 MenuPendingOcr=40
+  [2] Refresh=2 At=2026-11-02T00:00:01Z Event=CandidateMenuAuthorityObserved MenuDecision=translation-invalidated-source-expired MenuHadPublishedTranslation=True
+  [3] Refresh=3 At=2026-11-02T00:00:02Z Event=CandidateMenuAuthorityObserved MenuDecision=scheduler-sample MenuQueueBlockReason=ocr-capacity
+  [4] Refresh=4 At=2026-11-02T00:00:03Z Event=CandidateMenuAuthorityObserved MenuDecision=PRIVATE_SENTINEL
+'@ | Set-Content -LiteralPath $enhanced -Encoding UTF8
+$json = & (Join-Path $root 'tools/summarize-live-diagnostics.ps1') -LiteralPath $enhanced
+$detail = ($json | ConvertFrom-Json).Reports[0]
+Assert ($json -notmatch 'PRIVATE_SENTINEL') 'Enhanced summary leaked untrusted fields.'
+Assert ($detail.PublishedTranslationInvalidations -eq 1 -and $detail.MaximumPendingOcr -eq 40) 'Menu evidence aggregation failed.'
+Assert ($detail.Timings.MenuOcrQueueWait.P50Ms -eq 450.5) 'OCR queue wait incorrect.'
+Assert ($detail.OcrQueueReasonSamples.'ocr-capacity' -eq 1) 'Queue reasons not counted.'
 $invalid = Join-Path $scratch 'invalid.txt'
 'not a report' | Set-Content -LiteralPath $invalid
 $failed = $false

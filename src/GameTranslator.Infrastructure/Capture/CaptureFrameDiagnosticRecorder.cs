@@ -20,6 +20,8 @@ internal sealed class CaptureFrameDiagnosticRecorder
     private long bytesWritten;
     private long exhaustedBudget;
     private bool failed;
+    private readonly GameTranslator.Application.Abstractions.IApplicationLogger? logger;
+    private string? lastStopReason;
     private readonly GameTranslator.Application.Settings.LiveDiagnosticsPreferences? preferences;
     private bool Enabled => preferences is null || (preferences.Live && preferences.Current is { Enabled: true, Frames: true });
     private long Budget => preferences is null ? maximumBytes : (long)preferences.Current.FramesMiB * 1024 * 1024;
@@ -27,19 +29,22 @@ internal sealed class CaptureFrameDiagnosticRecorder
 
     internal CaptureFrameDiagnosticRecorder(string directory, TimeProvider? clock = null,
         int maximumFrames = 1800, long maximumBytes = 2L * 1024 * 1024 * 1024,
-        GameTranslator.Application.Settings.LiveDiagnosticsPreferences? preferences = null)
+        GameTranslator.Application.Settings.LiveDiagnosticsPreferences? preferences = null,
+        GameTranslator.Application.Abstractions.IApplicationLogger? logger = null)
     {
         this.directory = directory;
         this.preferences = preferences;
+        this.logger = logger;
         this.clock = clock ?? TimeProvider.System;
         this.maximumFrames = maximumFrames;
         this.maximumBytes = maximumBytes;
     }
 
-    internal static CaptureFrameDiagnosticRecorder Create(GameTranslator.Application.Settings.LiveDiagnosticsPreferences preferences)
+    internal static CaptureFrameDiagnosticRecorder Create(GameTranslator.Application.Settings.LiveDiagnosticsPreferences preferences,
+        GameTranslator.Application.Abstractions.IApplicationLogger? logger = null)
     {
         return new(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "GameTranslator", "Diagnostics", "Frames", $"{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Environment.ProcessId}-{Guid.NewGuid():N}"), preferences: preferences);
+            "GameTranslator", "Diagnostics", "Frames", $"{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Environment.ProcessId}-{Guid.NewGuid():N}"), preferences: preferences, logger: logger);
     }
 
     internal Task Completion { get { lock (gate) return completion; } }
@@ -49,8 +54,10 @@ internal sealed class CaptureFrameDiagnosticRecorder
         lock (gate)
         {
             var now = clock.GetTimestamp();
-            if (!Enabled || failed || accepted >= maximumFrames || (bytesWritten >= Budget || exhaustedBudget >= Budget) || !completion.IsCompleted
-                || (accepted > 0 && clock.GetElapsedTime(lastStarted, now) < TimeSpan.FromSeconds(1))) return false;
+            if (!Enabled || failed) return false;
+            if (accepted >= maximumFrames) { RecordStop("frame-limit"); return false; }
+            if (bytesWritten >= Budget || exhaustedBudget >= Budget) { RecordStop("byte-budget"); return false; }
+            if (!completion.IsCompleted || (accepted > 0 && clock.GetElapsedTime(lastStarted, now) < TimeSpan.FromSeconds(1))) return false;
             if (frame.PixelFormat != "Bgra32" || frame.Stride < (long)frame.Width * 4) return false;
             lastStarted = now;
             var sequence = ++accepted;
@@ -59,6 +66,20 @@ internal sealed class CaptureFrameDiagnosticRecorder
             completion = Task.Run(() => WriteAsync(frame, sequence, colorInfo, generation));
             return true;
         }
+    }
+
+    private void RecordStop(string reason)
+    {
+        if (lastStopReason == reason) return;
+        lastStopReason = reason;
+        Record(new { Event = reason, Session = Path.GetFileName(directory), Accepted = accepted, BytesWritten = bytesWritten, BudgetBytes = Budget });
+    }
+
+    private void Record(object entry)
+    {
+        if (preferences?.Current.Enabled == false) return;
+        try { logger?.Information("Capture diagnostics: " + JsonSerializer.Serialize(entry)); }
+        catch (Exception) { }
     }
 
     private async Task WriteAsync(CapturedFrame frame, int sequence, CaptureColorInfo? colorInfo, long generation)
@@ -95,19 +116,24 @@ internal sealed class CaptureFrameDiagnosticRecorder
             {
                 if (!Enabled || (preferences?.CollectionGeneration ?? 0) != generation) return;
                 var budget = Budget;
-                if (bytesWritten + png.Length + metadata.Length > budget) { exhaustedBudget = budget; return; }
+                if (bytesWritten + png.Length + metadata.Length > budget) { exhaustedBudget = budget; RecordStop("byte-budget"); return; }
                 bytesWritten += png.Length + metadata.Length;
             }
             Directory.CreateDirectory(directory);
             var stem = Path.Combine(directory, $"{sequence:D4}-{frame.CapturedAt:HHmmssfff}");
             await File.WriteAllBytesAsync(stem + ".png", png);
             await File.WriteAllBytesAsync(stem + ".json", metadata);
+            Record(new { Event = "saved", Session = Path.GetFileName(directory), Sequence = sequence,
+                FileStem = Path.GetFileName(stem), frame.CapturedAt, SourceId = frame.Origin?.SourceId,
+                SourceTimestampTicks = frame.Origin?.SourceTimestamp.Ticks, PngBytes = png.Length,
+                frame.Width, frame.Height, ColorMode = colorInfo?.Mode.ToString(), BytesWritten = bytesWritten, BudgetBytes = Budget });
         }
         catch (Exception exception)
         {
             // Diagnostic failures must never break capture or become unobserved task failures.
             lock (gate) failed = true;
-            Trace.TraceWarning($"Capture frame diagnostics stopped: {exception.GetType().Name}");
+            Record(new { Event = "storage-or-encoding-failed", Session = Path.GetFileName(directory), Sequence = sequence,
+                ExceptionType = exception.GetType().FullName, exception.HResult });
         }
     }
 }

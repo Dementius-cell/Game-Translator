@@ -14,6 +14,29 @@ public sealed class MenuOcrSchedulerTests
             scheduler.Offer(id, time, Origin(time), changed, Ms(time)));
 
     [Fact]
+    public void QueueEvidence_PreservesWaitAcrossReplacementsAndDoesNotChangeScheduling()
+    {
+        using var scheduler = new MenuOcrScheduler<int>(concurrency: 1);
+        scheduler.Register("a");
+        scheduler.Register("b");
+        Offer(scheduler, "a", 0);
+        var first = scheduler.TryStartNext(Ms(200))!;
+        Offer(scheduler, "b", 200);
+        Assert.Equal("grouping-unconfirmed", scheduler.Describe("b", Ms(500), false).Reason);
+        Assert.Equal("ocr-capacity", scheduler.Describe("b", Ms(500), true).Reason);
+        Offer(scheduler, "b", 500);
+        Assert.Equal(800, scheduler.Describe("b", Ms(1000), true).WaitMs);
+        Assert.True(scheduler.Complete(first));
+        var second = scheduler.TryStartNext(Ms(1000))!;
+        Assert.Equal("b", second.TrackId);
+        Assert.Equal(Ms(800), second.QueueWait);
+        Assert.Equal(500, second.Work);
+        Assert.Equal("ocr-active", scheduler.Describe("b", Ms(1100), true).Reason);
+        scheduler.Complete(second);
+        Assert.Equal("no-pending-frame", scheduler.Describe("b", Ms(1100), true).Reason);
+    }
+
+    [Fact]
     public void MovingBackground_UsesBoundedWaitAndStaysPeriodic()
     {
         using var scheduler = new MenuOcrScheduler<int>();

@@ -23,6 +23,18 @@ foreach ($inputPath in $LiteralPath) {
     $file = Get-Item -LiteralPath $inputPath
     if ($file.PSIsContainer) { throw 'Expected a report file.' }
     $events = @{}
+    $menuDecisions = @{}
+    $queueReasons = @{}
+    $publishedInvalidations = $null
+    $maximumPendingOcr = $null
+    $knownMenuDecisions = @('ocr-started','text-observed','text-version-changed','translation-published','text-expired',
+        'text-revoked-before-geometry','ocr-retired-generation','ocr-rejected-source','ocr-rejected-geometry',
+        'translation-rejected-version-or-age','scheduler-sample','geometry-no-compatible-region','geometry-ambiguous',
+        'translation-invalidated-text-contradicted','translation-invalidated-ocr-failure','translation-invalidated-source-expired',
+        'translation-invalidated-text-version-changed','candidate-removed-CandidateDisappeared',
+        'candidate-removed-CandidatePipelineDegraded','candidate-removed-CaptureFailed')
+    $knownQueueReasons = @('retired','ocr-active','no-pending-frame','source-expired','grouping-unconfirmed',
+        'minimum-start-interval','visual-quiet-wait','ocr-capacity','eligible','capture-in-progress')
     $timings = @{}
     $seen = [Collections.Generic.HashSet[long]]::new()
     $providerRequests = [Collections.Generic.HashSet[string]]::new()
@@ -76,6 +88,29 @@ foreach ($inputPath in $LiteralPath) {
         $events[$kind] = 1 + $events[$kind]
         # Strip quoted OCR/translation/error strings before recognizing numeric fields.
         $stripped = [regex]::Replace($line, '"(?:\\.|[^"\\])*"', '')
+        if ($kind -eq 'CandidateMenuAuthorityObserved') {
+            if ($stripped -match '(?:^| )MenuDecision=(\S+)') {
+                $decision = if ($Matches[1] -in $knownMenuDecisions) { $Matches[1] } else { 'other' }
+                $menuDecisions[$decision] = 1 + $menuDecisions[$decision]
+                if ($stripped -match '(?:^| )MenuHadPublishedTranslation=(True|False)(?= |$)') {
+                    if ($null -eq $publishedInvalidations) { $publishedInvalidations = 0 }
+                    if ($Matches[1] -eq 'True' -and $decision -like 'translation-invalidated-*') { $publishedInvalidations++ }
+                }
+                if ($decision -eq 'ocr-started') {
+                    $wait = Get-NumericField $stripped 'MenuQueueWaitMs'
+                    if ($null -ne $wait) {
+                        if (!$timings.ContainsKey('MenuOcrQueueWait')) { $timings['MenuOcrQueueWait'] = [Collections.Generic.List[double]]::new() }
+                        $timings['MenuOcrQueueWait'].Add($wait)
+                    }
+                }
+                if ($decision -eq 'scheduler-sample' -and $stripped -match '(?:^| )MenuQueueBlockReason=(\S+)') {
+                    $reason = if ($Matches[1] -in $knownQueueReasons) { $Matches[1] } else { 'other' }
+                    $queueReasons[$reason] = 1 + $queueReasons[$reason]
+                }
+            }
+            $pending = Get-NumericField $stripped 'MenuPendingOcr'
+            if ($null -ne $pending -and ($null -eq $maximumPendingOcr -or $pending -gt $maximumPendingOcr)) { $maximumPendingOcr = $pending }
+        }
         # Ignore an unterminated quoted suffix in a partially written report.
         $stripped = ($stripped -split '"', 2)[0]
         if ($kind -in @('CaptureCompleted','CandidateDetectionCompleted','CandidateOcrCompleted','CandidateWorkCompleted')) {
@@ -135,6 +170,10 @@ foreach ($inputPath in $LiteralPath) {
         UnknownEventsIgnored = $unknownEvents
         ObservedSpanMs = ($lastAt - $firstAt).TotalMilliseconds
         EventCounts = $events
+        MenuDecisions = $menuDecisions
+        PublishedTranslationInvalidations = $publishedInvalidations
+        MaximumPendingOcr = $maximumPendingOcr
+        OcrQueueReasonSamples = $queueReasons
         OverlayCountDropsBySessionInput = $overlayDrops
         Timings = $distributions
         FinalPublishedTextItems = $previousOverlayCount
@@ -143,7 +182,7 @@ foreach ($inputPath in $LiteralPath) {
     }
 }
 [ordered]@{
-    SchemaVersion = 1
+    SchemaVersion = 2
     Scope = 'Independent report snapshots; never sum overlapping snapshots as sessions.'
     Limit = 'Empty published snapshots are not proof of visible flicker. Initial empty state and an unfinished final interval are not completed gaps. Percentiles use nearest rank on retained events only.'
     Reports = $reports

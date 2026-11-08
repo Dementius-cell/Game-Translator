@@ -38,6 +38,7 @@ public partial class OverlayWindow : Window
     }
 
     public bool IsExcludedFromCapture { get; private set; }
+    internal event Action<OverlaySnapshot>? SnapshotApplied;
 
     public void ShowSnapshot(OverlaySnapshot snapshot)
     {
@@ -55,6 +56,7 @@ public partial class OverlayWindow : Window
         }
 
         DataContext = CreateViewModel(snapshot);
+        SnapshotApplied?.Invoke(snapshot);
     }
 
     private void RefreshSnapshot()

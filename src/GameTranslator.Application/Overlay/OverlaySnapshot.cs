@@ -27,6 +27,9 @@ public sealed class OverlaySnapshot
         PlacementConstraints = placementConstraints;
     }
 
+    /// <summary>Correlation only; never used for presentation equality or freshness.</summary>
+    public Guid DiagnosticId { get; } = Guid.NewGuid();
+
     public IReadOnlyList<OverlayTextItem> TextItems { get; }
 
     public IReadOnlyList<OverlayMaskItem> MaskItems { get; }

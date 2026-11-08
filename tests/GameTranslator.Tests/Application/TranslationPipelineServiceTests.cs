@@ -53,7 +53,17 @@ public sealed partial class TranslationPipelineServiceTests
             Assert.Equal(published, overlay.Snapshots.Count);
             Assert.DoesNotContain(update.CandidateLifecycleEvents, e => e.Menu?.Decision == "text-expired");
         }
-        else Assert.Empty(overlay.CurrentSnapshot!.TextItems);
+        else
+        {
+            Assert.Empty(overlay.CurrentSnapshot!.TextItems);
+            Assert.Contains(update.CandidateLifecycleEvents, e =>
+                e.Menu?.Decision.StartsWith("translation-invalidated-", StringComparison.Ordinal) == true
+                && e.Menu.HadTranslation && e.Menu.HadPublishedTranslation && e.Menu.TranslationItems == 1);
+            var publishedEvent = Assert.Single(update.CandidateLifecycleEvents,
+                e => e.Kind == LiveCandidateLifecycleEventKind.OverlaySnapshotPublished);
+            Assert.Equal(overlay.CurrentSnapshot.DiagnosticId, publishedEvent.OverlaySnapshotId);
+            Assert.Empty(publishedEvent.OverlayCandidates!);
+        }
         Assert.Equal(1, translator.CallCount);
     }
 

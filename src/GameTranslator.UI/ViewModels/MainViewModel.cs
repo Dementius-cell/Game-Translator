@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Globalization;
 using System.Text;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Media;
@@ -5975,6 +5976,11 @@ public sealed partial class MainViewModel : ValidatableObservableObject
         var generatedAt = DateTimeOffset.Now;
 
         builder.AppendLine("Game Translator debug info");
+        builder.AppendLine("DiagnosticSchema: 2");
+        builder.AppendLine($"DiagnosticsStateSinceUtc: {diagnostics.CollectionChangedAt:O}");
+        builder.AppendLine("DiagnosticsOptions: " + System.Text.Json.JsonSerializer.Serialize(diagnostics.Current));
+        builder.AppendLine("Build: " + typeof(MainViewModel).Assembly.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion);
+        builder.AppendLine($"ProcessId: {Environment.ProcessId}; CollectionGeneration: {diagnostics.CollectionGeneration}");
         var diagnosticFault = Environment.GetEnvironmentVariable("GAME_TRANSLATOR_TEST_FAULT");
         if (diagnosticFault is "timeout" or "429" or "captcha")
             builder.AppendLine($"SyntheticWebFaultScenario: {diagnosticFault}; simulated failures, no HTTP sent during fault window.");
@@ -6066,6 +6072,15 @@ public sealed partial class MainViewModel : ValidatableObservableObject
         AppendLiveTranslatorProviderFailureDebugInfo(builder, generatedAt);
         AppendLiveCandidateLifecycleDebugInfo(builder);
         AppendOverlaySnapshotDebugInfo(builder);
+        builder.AppendLine();
+        builder.AppendLine("Overlay presentation diagnostics (UTC; render callback precedes composition, not proof of screen presentation)");
+        if (overlayService is IOverlayDiagnosticsSource presentation)
+        {
+            builder.AppendLine($"  DroppedOldestPresentationEvents: {presentation.DroppedPresentationDiagnostics}");
+            foreach (var entry in presentation.PresentationDiagnostics)
+                builder.AppendLine("  " + System.Text.Json.JsonSerializer.Serialize(entry));
+        }
+        else builder.AppendLine("  unavailable");
 
         return builder.ToString();
     }
@@ -6249,6 +6264,18 @@ public sealed partial class MainViewModel : ValidatableObservableObject
             if (entry.Menu is { } menu)
             {
                 AppendLifecycleField(builder, "MenuDecision", menu.Decision);
+                AppendLifecycleField(builder, "MenuCompatibleDetections", menu.CompatibleDetections?.ToString());
+                AppendLifecycleField(builder, "MenuDetectedRegions", menu.DetectedRegions?.ToString());
+                AppendLifecycleField(builder, "MenuHadTranslation", menu.HadTranslation.ToString());
+                AppendLifecycleField(builder, "MenuHadPublishedTranslation", menu.HadPublishedTranslation.ToString());
+                AppendLifecycleField(builder, "MenuTranslationItems", menu.TranslationItems.ToString());
+                AppendLifecycleField(builder, "MenuQueueWaitMs", menu.QueueWaitMilliseconds?.ToString("F1", CultureInfo.InvariantCulture));
+                AppendLifecycleField(builder, "MenuQueueBlockReason", menu.QueueBlockReason);
+                AppendLifecycleField(builder, "MenuLastAcceptedSourceAgeMs", menu.LastAcceptedSourceAgeMilliseconds?.ToString("F1", CultureInfo.InvariantCulture));
+                AppendLifecycleField(builder, "MenuTranslatingVersion", menu.TranslatingVersion?.ToString());
+                AppendLifecycleField(builder, "MenuTranslationInFlight", menu.TranslationInFlight.ToString());
+                AppendLifecycleField(builder, "MenuAwaitingGeometry", menu.AwaitingGeometry.ToString());
+                AppendLifecycleField(builder, "MenuLastPublishedSnapshotId", menu.LastPublishedSnapshotId?.ToString());
                 AppendLifecycleField(builder, "MenuGeneration", menu.Generation.ToString());
                 AppendLifecycleField(builder, "MenuTextVersion", menu.TextVersion.ToString());
                 AppendLifecycleField(builder, "MenuSourceId", menu.SourceId?.ToString());
@@ -6387,6 +6414,12 @@ public sealed partial class MainViewModel : ValidatableObservableObject
                 "ProviderNetworkHttpStatus",
                 entry.ProviderNetworkHttpStatusCode?.ToString(CultureInfo.InvariantCulture));
 
+            AppendLifecycleField(builder, "OverlaySnapshotId", entry.OverlaySnapshotId?.ToString());
+            if (entry.OverlayCandidates is not null)
+            {
+                AppendLifecycleField(builder, "OverlayCandidates", System.Text.Json.JsonSerializer.Serialize(entry.OverlayCandidates));
+                AppendLifecycleField(builder, "OverlayCandidatesOmitted", entry.OverlayCandidatesOmitted.ToString());
+            }
             AppendLifecycleField(builder, "OverlayTextItems", entry.OverlayTextItemCount?.ToString());
             AppendLifecycleField(builder, "SessionInputAgeMs", entry.SessionInputAgeMs?.ToString());
             AppendLifecycleField(builder, "OverlayMaskItems", entry.OverlayMaskItemCount?.ToString());

@@ -66,7 +66,11 @@ internal sealed class MenuOcrScheduler<T> : IDisposable
         if (!first && pixelsChanged) track.ChangedFrames = Math.Min(3, track.ChangedFrames + 1);
         track.LastOrigin = origin;
         UpdatePeriodic(track, now);
-        if (track.Pending is null) track.QueueSequence = checked(++queueSequence);
+        if (track.Pending is null)
+        {
+            track.QueueSequence = checked(++queueSequence);
+            track.QueuedAt = now;
+        }
         else ReplacedPendingCount++;
         track.Pending = new Pending(work, origin);
         return OfferOutcome.Queued;
@@ -101,7 +105,8 @@ internal sealed class MenuOcrScheduler<T> : IDisposable
         }
         if (selected is null || active.Count >= concurrency) return null;
         var item = selected.Pending!;
-        var lease = new Lease(selectedId!, selected.Generation, item.Work, item.Origin, now);
+        var lease = new Lease(selectedId!, selected.Generation, item.Work, item.Origin, now)
+        { QueueWait = now - selected.QueuedAt };
         selected.Pending = null;
         selected.LastStartedAt = now;
         active.Add(selected.Generation, lease);
@@ -118,6 +123,20 @@ internal sealed class MenuOcrScheduler<T> : IDisposable
         lease.Release();
         return !disposed && tracks.TryGetValue(lease.TrackId, out var track)
             && track.Generation == lease.Generation;
+    }
+
+    // Read-only evidence: no clock advancement or scheduler mutation.
+    internal (double? WaitMs, string Reason) Describe(string trackId, TimeSpan now, bool groupingConfirmed)
+    {
+        if (!tracks.TryGetValue(trackId, out var track)) return (null, "retired");
+        double? wait = track.Pending is null ? null : Math.Max(0, (now - track.QueuedAt).TotalMilliseconds);
+        if (active.ContainsKey(track.Generation)) return (wait, "ocr-active");
+        if (track.Pending is not { } pending) return (null, "no-pending-frame");
+        if (!IsFresh(pending.Origin, now)) return (wait, "source-expired");
+        if (!groupingConfirmed) return (wait, "grouping-unconfirmed");
+        if (track.LastStartedAt is { } started && now - started < MinimumStartInterval) return (wait, "minimum-start-interval");
+        if (!track.Periodic && now - track.LastChangedAt < visualQuietInterval) return (wait, "visual-quiet-wait");
+        return (wait, active.Count >= concurrency ? "ocr-capacity" : "eligible");
     }
 
     internal void Remove(string trackId)
@@ -171,6 +190,7 @@ internal sealed class MenuOcrScheduler<T> : IDisposable
         internal T Work { get; }
         internal CaptureFrameOrigin Origin { get; }
         internal TimeSpan StartedAt { get; }
+        internal TimeSpan QueueWait { get; init; }
         internal CancellationToken CancellationToken { get; }
         internal void Cancel() => cancellation.Cancel();
         internal void Release() => cancellation.Dispose();
@@ -188,5 +208,6 @@ internal sealed class MenuOcrScheduler<T> : IDisposable
         internal bool Periodic { get; set; }
         internal Pending? Pending { get; set; }
         internal long QueueSequence { get; set; }
+        internal TimeSpan QueuedAt { get; set; }
     }
 }

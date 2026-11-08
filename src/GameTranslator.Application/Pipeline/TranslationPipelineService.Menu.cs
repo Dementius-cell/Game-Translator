@@ -16,6 +16,7 @@ public sealed partial class TranslationPipelineService
         private bool captureOverlayHidden;
         private bool captureOverlayChanged;
         private bool deferMenuStartsForCapture;
+        private TimeSpan lastQueueDiagnosticsAt;
 
         // The refresh owns stateAuthority throughout. Service completions cooperatively
         // while the external stage waits; do not introduce a second state writer.
@@ -112,14 +113,25 @@ public sealed partial class TranslationPipelineService
                     inkEvidence[region] = ink = MenuFixedInkEvidence.TryCreate(region);
                 return ink;
             }
-            var matches = MenuGeometryMatcher.MatchUnique(previous, regions,
-                (c, r) => MenuGeometryMatches(c, r, GetInk, GetCore)
+            var compatibilityCounts = new Dictionary<LiveCandidateState, int>();
+            var matches = MenuGeometryMatcher.MatchUnique(previous, regions, (c, r) =>
+            {
+                var compatible = MenuGeometryMatches(c, r, GetInk, GetCore)
                     && c.Region.Frame.Origin?.SourceId == r.Frame.Origin?.SourceId
                     && WatermarkFilter.CreateEvidenceKey(profile.OcrSettings.WatermarkFilter, c.Region.WatermarkEvidence)
-                       == WatermarkFilter.CreateEvidenceKey(profile.OcrSettings.WatermarkFilter, r.WatermarkEvidence));
+                       == WatermarkFilter.CreateEvidenceKey(profile.OcrSettings.WatermarkFilter, r.WatermarkEvidence);
+                if (compatible && service.diagnostics?.Current.Enabled != false)
+                    compatibilityCounts[c] = compatibilityCounts.GetValueOrDefault(c) + 1;
+                return compatible;
+            });
             var assigned = matches.ToDictionary(pair => regions[pair.Key], pair => previous[pair.Value]);
             foreach (var old in state.CandidateStates.Values.Where(c => !assigned.Values.Contains(c)).ToArray())
+            {
+                var compatible = compatibilityCounts.GetValueOrDefault(old);
+                RecordMenuDecision(old, compatible == 0 ? "geometry-no-compatible-region" : "geometry-ambiguous",
+                    captured.Frame, compatibleDetections: compatible, detectedRegions: regions.Count);
                 changed |= CancelAndRemoveCandidate(state, old, cancelledIds, LiveCandidateCancellationReason.CandidateDisappeared);
+            }
 
             foreach (var region in regions)
             {
@@ -179,13 +191,20 @@ public sealed partial class TranslationPipelineService
 
         private void PumpMenuOcr()
         {
+            if (service.diagnostics?.Current.Enabled != false && MenuNow - lastQueueDiagnosticsAt >= TimeSpan.FromSeconds(1))
+            {
+                lastQueueDiagnosticsAt = MenuNow;
+                foreach (var candidate in zoneStates.Values.SelectMany(s => s.CandidateStates.Values))
+                    if (candidate.Menu is not null)
+                        RecordMenuDecision(candidate, "scheduler-sample");
+            }
             if (deferMenuStartsForCapture) return;
             while (menuScheduler.TryStartNext(MenuNow, input => IsCandidateGroupingConfirmed(input.Candidate)) is { } lease)
             {
                 var input = lease.Work;
                 var candidate = input.Candidate;
                 candidate.Menu!.Periodic = menuScheduler.IsPeriodic(candidate.Id);
-                RecordMenuDecision(candidate, "ocr-started", input.Region.Frame);
+                RecordMenuDecision(candidate, "ocr-started", input.Region.Frame, queueWait: lease.QueueWait);
                 var token = CancellationTokenSource.CreateLinkedTokenSource(cancellationSource.Token, lease.CancellationToken);
                 var task = service.RunCapturedZoneAsync(CreateCandidateProfile(input.Zone), input.Zone, input.Region.Frame,
                     input.CaptureElapsed, null, CreateCandidateRunOptions(), token.Token, input.Constraints,
@@ -201,9 +220,10 @@ public sealed partial class TranslationPipelineService
             }
         }
 
-        private bool InvalidateMenuTranslation(LiveCandidateState candidate)
+        private bool InvalidateMenuTranslation(LiveCandidateState candidate, string reason)
         {
             var changed = candidate.Result is not null || candidate.Failure is not null;
+            RecordMenuDecision(candidate, "translation-invalidated-" + reason);
             CancelActiveWork(candidate);
             candidate.Result = null;
             candidate.ResultPublishedAt = null;
@@ -237,7 +257,7 @@ public sealed partial class TranslationPipelineService
                         && geometryOrigin.SourceTimestamp < work.Lease.Origin.SourceTimestamp
                         && candidate.Menu!.Authority.RevokeIfDifferent(work.Lease.Origin, projected.TextBlocks.Select(b => b.Text), MenuNow))
                     {
-                        changed |= InvalidateMenuTranslation(candidate);
+                        changed |= InvalidateMenuTranslation(candidate, "text-contradicted");
                         RecordMenuDecision(candidate, "text-revoked-before-geometry", result.CapturedFrame);
                     }
                     candidate.Menu!.CompletedOcr = new CompletedMenuOcr(input, result, work.Lease.Origin, MenuNow - work.Lease.StartedAt);
@@ -247,7 +267,7 @@ public sealed partial class TranslationPipelineService
                 {
                     if (current)
                     {
-                        changed |= InvalidateMenuTranslation(candidate);
+                        changed |= InvalidateMenuTranslation(candidate, "ocr-failure");
                         candidate.Failure = CreateZoneFailure(candidate.Zone, exception);
                     }
                 }
@@ -260,7 +280,7 @@ public sealed partial class TranslationPipelineService
                 // Pending or unvalidated work cannot extend the old authority's lifetime.
                 if (candidate.Menu?.Authority.Expire(MenuNow) == true)
                 {
-                    changed |= InvalidateMenuTranslation(candidate);
+                    changed |= InvalidateMenuTranslation(candidate, "source-expired");
                     RecordMenuDecision(candidate, "text-expired", candidate.Menu.LatestAcceptedResult?.CapturedFrame);
                 }
                 if (candidate.Menu is not { } menu || candidate.ActiveWork is not { } work) continue;
@@ -330,7 +350,7 @@ public sealed partial class TranslationPipelineService
             var projected = TranslationTextGroupingService.CreateTranslationSourceResult(result.SourceOcrResult,
                 input.Zone, profile.TranslatorSettings.AutoDetectSourceLanguage == true);
             var accepted = menu.Authority.Observe(completed.Origin, projected.TextBlocks.Select(b => b.Text), MenuNow);
-            if (menu.Authority.Version != version) changed |= InvalidateMenuTranslation(candidate);
+            if (menu.Authority.Version != version) changed |= InvalidateMenuTranslation(candidate, "text-version-changed");
             if (!accepted)
             {
                 RecordMenuDecision(candidate, "ocr-rejected-source", result.CapturedFrame, completed.WorkAge);
@@ -383,18 +403,35 @@ public sealed partial class TranslationPipelineService
                 translated.Timings, translated.Optimization, projected.TextBlocks.Count, translated.TextStability);
         }
 
-        private void RecordMenuDecision(LiveCandidateState candidate, string decision, CapturedFrame? frame = null, TimeSpan? workAge = null)
+        private void RecordMenuDecision(LiveCandidateState candidate, string decision, CapturedFrame? frame = null, TimeSpan? workAge = null, TimeSpan? queueWait = null, int? compatibleDetections = null, int? detectedRegions = null)
         {
+            if (service.diagnostics?.Current.Enabled == false) return;
             var menu = candidate.Menu!;
             frame ??= menu.LatestAcceptedResult?.CapturedFrame ?? candidate.Region.Frame;
             var origin = frame.Origin;
+            var queue = menuScheduler.Describe(candidate.Id, MenuNow, IsCandidateGroupingConfirmed(candidate));
+            var acceptedOrigin = menu.LatestAcceptedResult?.CapturedFrame.Origin;
             RecordLifecycleEvent(LiveCandidateLifecycleEventKind.CandidateMenuAuthorityObserved,
                 zoneId: candidate.SourceZoneId, candidateId: candidate.Id, candidateBounds: candidate.Region.Candidate.Bounds,
                 menuDiagnostics: new MenuLiveDiagnostics(menu.Generation, menu.Authority.Version, origin?.SourceId,
                     origin?.SourceTimestamp.Ticks, origin is null ? null : (MenuNow - origin.FreshnessTimestamp).TotalMilliseconds,
                     frame.IsCachedReuse, menu.Authority.ObservationCount, menu.Authority.Confirmed, menu.Periodic,
                     menuScheduler.ActiveCount, menuScheduler.PendingCount, menuScheduler.ReplacedPendingCount,
-                    menuScheduler.ExpiredPendingCount, decision, workAge?.TotalMilliseconds));
+                    menuScheduler.ExpiredPendingCount, decision, workAge?.TotalMilliseconds)
+                {
+                    CompatibleDetections = compatibleDetections,
+                    DetectedRegions = detectedRegions,
+                    HadTranslation = candidate.Result is not null,
+                    HadPublishedTranslation = candidate.ResultPublishedAt is not null,
+                    TranslationItems = candidate.Result?.OverlaySnapshot.TextItems.Count ?? 0,
+                    QueueWaitMilliseconds = queueWait?.TotalMilliseconds ?? queue.WaitMs,
+                    QueueBlockReason = deferMenuStartsForCapture ? "capture-in-progress" : queue.Reason,
+                    LastAcceptedSourceAgeMilliseconds = acceptedOrigin is null ? null : (MenuNow - acceptedOrigin.FreshnessTimestamp).TotalMilliseconds,
+                    TranslatingVersion = candidate.ActiveWork is null ? null : menu.TranslatingVersion,
+                    TranslationInFlight = candidate.ActiveWork is not null,
+                    AwaitingGeometry = menu.CompletedOcr is not null,
+                    LastPublishedSnapshotId = service.overlayService.CurrentSnapshot?.DiagnosticId
+                });
         }
 
         private static bool SameMenuPresentation(OverlaySnapshot left, OverlaySnapshot right)

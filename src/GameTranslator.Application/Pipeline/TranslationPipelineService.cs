@@ -26,6 +26,7 @@ public sealed partial class TranslationPipelineService
     private readonly TextCandidateRegionOcrService candidateRegionOcrService;
     private readonly TimeProvider timeProvider;
     private readonly IInputActivityClock? inputActivityClock;
+    private readonly GameTranslator.Application.Settings.LiveDiagnosticsPreferences? diagnostics;
     private readonly object optimizationStateLock = new();
     private readonly object textStabilityStateLock = new();
     private readonly Dictionary<PipelineFrameStateKey, PipelineFrameState> optimizationStates = new();
@@ -42,7 +43,8 @@ public sealed partial class TranslationPipelineService
         TranslationPipelineOptimizationOptions? optimizationOptions = null,
         TextCandidateRegionOcrService? candidateRegionOcrService = null,
         TimeProvider? timeProvider = null,
-        IInputActivityClock? inputActivityClock = null)
+        IInputActivityClock? inputActivityClock = null,
+        GameTranslator.Application.Settings.LiveDiagnosticsPreferences? diagnostics = null)
     {
         this.captureService = captureService ?? throw new ArgumentNullException(nameof(captureService));
         this.ocrService = ocrService ?? throw new ArgumentNullException(nameof(ocrService));
@@ -56,6 +58,7 @@ public sealed partial class TranslationPipelineService
             ?? new TextCandidateRegionOcrService(new UnavailableTextCandidateDetector(), this.ocrService);
         this.timeProvider = timeProvider ?? TimeProvider.System;
         this.inputActivityClock = inputActivityClock;
+        this.diagnostics = diagnostics;
     }
 
     public Task<TranslationPipelineResult> RunAsync(
@@ -2091,7 +2094,7 @@ public sealed partial class TranslationPipelineService
                 RecordLifecycleEvent(
                     LiveCandidateLifecycleEventKind.PreviousOverlayHiddenForCapture,
                     overlayTextItemCount: snapshotToRestore!.TextItems.Count,
-                    overlayMaskItemCount: snapshotToRestore.MaskItems.Count);
+                    overlayMaskItemCount: snapshotToRestore.MaskItems.Count, overlaySnapshotId: snapshotToRestore.DiagnosticId);
                 service.overlayService.Hide();
             }
 
@@ -2156,7 +2159,7 @@ public sealed partial class TranslationPipelineService
                     RecordLifecycleEvent(
                         LiveCandidateLifecycleEventKind.PreviousOverlayRestoredAfterCapture,
                         overlayTextItemCount: restore.TextItems.Count,
-                        overlayMaskItemCount: restore.MaskItems.Count);
+                        overlayMaskItemCount: restore.MaskItems.Count, overlaySnapshotId: restore.DiagnosticId);
                 }
             }
         }
@@ -2644,6 +2647,7 @@ public sealed partial class TranslationPipelineService
             var hadPublishedResult = candidateState.Result is not null || candidateState.Failure is not null;
             if (candidateState.Menu is not null)
             {
+                RecordMenuDecision(candidateState, "candidate-removed-" + cancellationReason);
                 if (menuScheduler.HasActive(candidateState.Id) && candidateState.ActiveWork is null)
                 {
                     cancelledZoneIds.Add(candidateState.Id);
@@ -3277,10 +3281,16 @@ public sealed partial class TranslationPipelineService
         private void RecordOverlaySnapshotPublished(OverlaySnapshot snapshot)
         {
             ArgumentNullException.ThrowIfNull(snapshot);
+            var members = service.diagnostics?.Current.Enabled == false ? [] : zoneStates.Values
+                .SelectMany(s => s.CandidateStates.Values).Where(c => c.Result?.OverlaySnapshot.TextItems.Count > 0)
+                .Select(c => new OverlayCandidateDiagnostic(c.Id, c.Menu?.Generation, c.Menu?.Authority.Version,
+                    c.Result!.OverlaySnapshot.TextItems.Count)).ToArray();
             RecordLifecycleEvent(
                 LiveCandidateLifecycleEventKind.OverlaySnapshotPublished,
                 overlayTextItemCount: snapshot.TextItems.Count,
-                overlayMaskItemCount: snapshot.MaskItems.Count);
+                overlayMaskItemCount: snapshot.MaskItems.Count,
+                overlaySnapshotId: snapshot.DiagnosticId, overlayCandidates: members.Take(128).ToArray(),
+                overlayCandidatesOmitted: Math.Max(0, members.Length - 128));
         }
 
         private void RecordCandidateLifecycleEvent(
@@ -3459,7 +3469,9 @@ public sealed partial class TranslationPipelineService
             OcrLineRecognitionDiagnostics? ocrLineRecognition = null,
             WatermarkDecision? watermarkDecision = null,
             IEnumerable<string>? translationSourceLanguages = null,
-            MenuLiveDiagnostics? menuDiagnostics = null)
+            MenuLiveDiagnostics? menuDiagnostics = null,
+            Guid? overlaySnapshotId = null,
+            IReadOnlyList<OverlayCandidateDiagnostic>? overlayCandidates = null, int overlayCandidatesOmitted = 0)
         {
             if (!runOptions.EnableCandidateDetectorPilot)
             {
@@ -3555,7 +3567,8 @@ public sealed partial class TranslationPipelineService
                 emptyOcrGroupingReset: emptyOcrGroupingReset,
                 ocrLineRecognition: ocrLineRecognition,
                 watermarkDecision: watermarkDecision,
-                translationSourceLanguages: translationSourceLanguages) { Menu = menuDiagnostics };
+                translationSourceLanguages: translationSourceLanguages) { Menu = menuDiagnostics, OverlaySnapshotId = overlaySnapshotId,
+                    OverlayCandidates = overlayCandidates, OverlayCandidatesOmitted = overlayCandidatesOmitted };
             candidateLifecycleEvents.Enqueue(lifecycleEvent);
             candidateLifecycleEventsSinceLastUpdate.Add(lifecycleEvent);
             candidateLifecycleEventSequence = checked(candidateLifecycleEventSequence + 1);

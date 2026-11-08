@@ -12,6 +12,7 @@ public sealed class LiveDiagnosticsPreferences
     private volatile LiveDiagnosticsOptions current;
     public LiveDiagnosticsOptions Current => current;
     public volatile bool Live;
+    public DateTimeOffset CollectionChangedAt { get; private set; } = DateTimeOffset.UtcNow;
     private long collectionGeneration;
     public long CollectionGeneration => Interlocked.Read(ref collectionGeneration);
     public event Action<bool>? CollectionChanged;
@@ -31,6 +32,7 @@ public sealed class LiveDiagnosticsPreferences
         current = normalized;
         if (changed)
         {
+            CollectionChangedAt = DateTimeOffset.UtcNow;
             Interlocked.Increment(ref collectionGeneration);
             CollectionChanged?.Invoke(normalized.Enabled);
         }

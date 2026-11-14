@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Windows;
 using GameTranslator.Application.Abstractions;
 using GameTranslator.UI.ViewModels;
+using GameTranslator.UI.Localization;
 
 namespace GameTranslator.UI.Views;
 
@@ -25,7 +26,7 @@ public partial class ApplicationInfoWindow : Window
         catch (Exception exception)
         {
             logger.Error(exception, "Could not open the project website.");
-            MessageBox.Show(this, $"Не удалось открыть браузер. Адрес проекта: {ApplicationInfoViewModel.ProjectUrl}", "GitHub");
+            MessageBox.Show(this, string.Format(UiText.Get("ProjectBrowserFailed"), ApplicationInfoViewModel.ProjectUrl), "GitHub");
         }
     }
 }

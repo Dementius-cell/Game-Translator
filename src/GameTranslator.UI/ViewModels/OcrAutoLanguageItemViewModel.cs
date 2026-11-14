@@ -1,10 +1,12 @@
+using GameTranslator.UI.Localization;
+
 namespace GameTranslator.UI.ViewModels;
 
 public sealed class OcrAutoLanguageItemViewModel(string code, string name, bool selected, Action changed) : ObservableObject
 {
     private bool isSelected = selected;
     public string Code { get; } = code;
-    public string DisplayName { get; } = $"{name} ({code})";
+    public string DisplayName => $"{UiText.Translate(name)} ({Code})";
     public bool Matches(string? query)
     {
         var text = query?.Trim() ?? string.Empty;
@@ -16,6 +18,7 @@ public sealed class OcrAutoLanguageItemViewModel(string code, string name, bool 
             "spa" => "испанский", "ukr" => "украинский", _ => string.Empty
         };
         return DisplayName.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || name.Contains(text, StringComparison.OrdinalIgnoreCase)
             || aliases.Contains(text, StringComparison.OrdinalIgnoreCase);
     }
     public bool IsSelected

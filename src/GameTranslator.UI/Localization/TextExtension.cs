@@ -18,7 +18,13 @@ public sealed class LocalizedTextConverter : IValueConverter
         if (value is KeyValuePair<GameTranslator.Domain.Profiles.WatermarkFilterMode, string> watermark)
             return UiText.Translate(watermark.Value);
         if (value is LanguageOption language)
-            return string.IsNullOrWhiteSpace(language.Code) ? UiText.Translate(language.Name) : $"{language.Code} {UiText.Translate(language.Name)}";
+        {
+            const string suffix = " (Tesseract OCR)";
+            var name = language.Name.EndsWith(suffix, StringComparison.Ordinal)
+                ? UiText.Translate(language.Name[..^suffix.Length]) + suffix
+                : UiText.Translate(language.Name);
+            return string.IsNullOrWhiteSpace(language.Code) ? name : $"{language.Code} {name}";
+        }
         var displayName = value?.GetType().GetProperty("DisplayName")?.GetValue(value) as string;
         return UiText.Translate(displayName ?? value?.ToString());
     }

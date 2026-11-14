@@ -4,11 +4,42 @@ using System.Reflection;
 using System.Runtime.Loader;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
+using GameTranslator.Application.Ocr;
 
 namespace GameTranslator.Tests.Smoke;
 
 public sealed class LocalizationTests
 {
+    [Fact]
+    public void Catalog_CoversEveryXamlTextKeyAndOcrLanguage()
+    {
+        var root = Path.Combine(RepositoryRoot.Find(), "src/GameTranslator.UI");
+        using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "Localization/Strings.json")));
+        var keys = document.RootElement.EnumerateArray().Select(e => e.GetProperty("Key").GetString()).ToHashSet();
+        var sources = document.RootElement.EnumerateArray().Select(e => e.GetProperty("Source").GetString()).ToHashSet();
+        foreach (var path in Directory.EnumerateFiles(root, "*.xaml", SearchOption.AllDirectories)
+            .Where(path => !path.Split(Path.DirectorySeparatorChar).Any(part => part is "bin" or "obj")))
+        {
+            foreach (Match match in Regex.Matches(File.ReadAllText(path), @"\{loc:Text\s+([^}]+)\}"))
+                Assert.Contains(match.Groups[1].Value, keys);
+        }
+        foreach (var language in TesseractLanguageCatalog.Languages)
+            Assert.Contains(language.Name, sources);
+    }
+
+    [Fact]
+    public void ValidationTooltips_UseLocalization_AndUserNamesRemainUnconverted()
+    {
+        var document = XDocument.Load(Path.Combine(RepositoryRoot.Find(), "src/GameTranslator.UI/Views/ShellView.xaml"));
+        var attributes = document.Descendants().Attributes().ToArray();
+        var errors = attributes.Where(a => a.Value.Contains("(Validation.Errors)[0].ErrorContent")).ToArray();
+        Assert.NotEmpty(errors);
+        Assert.All(errors, a => Assert.Contains("Converter={StaticResource LocalizedText}", a.Value));
+        Assert.All(attributes.Where(a => a.Value is "{Binding Name}" or "{Binding SelectedZone.DisplayName}"),
+            a => Assert.DoesNotContain("LocalizedText", a.Value));
+    }
+
     private static Type Localizer => AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(RepositoryRoot.Find(), "src", "GameTranslator.UI", "bin",
         AppContext.BaseDirectory.Contains($"{Path.DirectorySeparatorChar}Release{Path.DirectorySeparatorChar}") ? "Release" : "Debug",
         "net9.0-windows10.0.19041.0", "GameTranslator.UI.dll")).GetType("GameTranslator.UI.Localization.UiText", true)!;

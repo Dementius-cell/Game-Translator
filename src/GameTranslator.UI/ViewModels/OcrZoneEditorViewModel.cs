@@ -1,4 +1,5 @@
 using GameTranslator.Domain.Profiles;
+using GameTranslator.UI.Localization;
 
 namespace GameTranslator.UI.ViewModels;
 
@@ -367,7 +368,7 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
         }
     }
 
-    public string DisplayName => string.IsNullOrWhiteSpace(Name) ? "Unnamed zone" : Name;
+    public string DisplayName => string.IsNullOrWhiteSpace(Name) ? UiText.Translate("Unnamed zone") : Name;
 
     public string AbsoluteBoundsSummary => $"X {AbsoluteX}  Y {AbsoluteY}  W {AbsoluteWidth}  H {AbsoluteHeight}";
 
@@ -410,8 +411,9 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
     };
 
     public string CandidateGroupingSummary =>
-        $"Horizontal lines: {(UseAutomaticHorizontalCandidateGroupingLimit ? "Auto" : MaximumHorizontalCandidateLines)}"
-        + $" | Vertical columns: {(UseAutomaticVerticalCandidateGroupingLimit ? "Auto" : MaximumVerticalCandidateColumns)}";
+        string.Format(UiText.Get("CandidateGroupingSummary"),
+            UseAutomaticHorizontalCandidateGroupingLimit ? UiText.Translate("Auto") : MaximumHorizontalCandidateLines,
+            UseAutomaticVerticalCandidateGroupingLimit ? UiText.Translate("Auto") : MaximumVerticalCandidateColumns);
 
     public double SurfaceX => Math.Round(AbsoluteX * PreviewSurfaceWidth / CoordinateReferenceWidth, 2);
 
@@ -427,11 +429,11 @@ public sealed class OcrZoneEditorViewModel : ValidatableObservableObject
 
     public string OverlayTextStyleSummary =>
         $"{OverlayFontFamily} {OverlayFontSize:0.#}"
-        + (OverlayAutoFontSize ? " auto" : string.Empty)
-        + (OverlayIsBold ? " bold" : string.Empty)
-        + (OverlayIsItalic ? " italic" : string.Empty)
-        + $" | {OcrLanguageSummary}"
-        + $" | {ContentLayoutModeSummary}";
+        + (OverlayAutoFontSize ? " " + UiText.Translate("Auto") : string.Empty)
+        + (OverlayIsBold ? " " + UiText.Translate("Bold") : string.Empty)
+        + (OverlayIsItalic ? " " + UiText.Translate("Italic") : string.Empty)
+        + $" | {UiText.Translate(OcrLanguageSummary)}"
+        + $" | {UiText.Translate(ContentLayoutModeSummary)}";
 
     public string TranslationGroupingModeSummary => TranslationGroupingMode switch
     {

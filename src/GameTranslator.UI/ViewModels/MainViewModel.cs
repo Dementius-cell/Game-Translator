@@ -1699,9 +1699,9 @@ public sealed partial class MainViewModel : ValidatableObservableObject
     {
         get
         {
-            var provider = string.IsNullOrWhiteSpace(TranslatorProvider) ? "no provider" : TranslatorProvider.Trim();
-            var source = AutoDetectSourceLanguage ? "Auto" : string.IsNullOrWhiteSpace(SourceLanguage) ? "source ?" : SourceLanguage.Trim();
-            var target = string.IsNullOrWhiteSpace(TargetLanguage) ? "target ?" : TargetLanguage.Trim();
+            var provider = string.IsNullOrWhiteSpace(TranslatorProvider) ? UiText.Translate("no provider") : TranslatorProvider.Trim();
+            var source = AutoDetectSourceLanguage ? UiText.Translate("Auto") : string.IsNullOrWhiteSpace(SourceLanguage) ? UiText.Translate("source ?") : SourceLanguage.Trim();
+            var target = string.IsNullOrWhiteSpace(TargetLanguage) ? UiText.Translate("target ?") : TargetLanguage.Trim();
 
             return $"{provider} | {source} -> {target}";
         }

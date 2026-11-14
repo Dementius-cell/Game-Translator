@@ -234,7 +234,7 @@
                     <Setter Property="BorderBrush" Value="{DynamicResource ThemeDanger}"/>
                     <Setter
                         Property="ToolTip"
-                        Value="{Binding RelativeSource={RelativeSource Self}, Path=(Validation.Errors)[0].ErrorContent}"/>
+                        Value="{Binding RelativeSource={RelativeSource Self}, Path=(Validation.Errors)[0].ErrorContent, Converter={StaticResource LocalizedText}}"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
@@ -288,7 +288,7 @@
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.55"/></Trigger>
                             <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="DropDownToggle" Property="BorderBrush" Value="{DynamicResource ThemeAccentText}"/></Trigger>
-                            <Trigger Property="Validation.HasError" Value="True"><Setter Property="ToolTip" Value="{Binding RelativeSource={RelativeSource Self}, Path=(Validation.Errors)[0].ErrorContent}"/></Trigger>
+                            <Trigger Property="Validation.HasError" Value="True"><Setter Property="ToolTip" Value="{Binding RelativeSource={RelativeSource Self}, Path=(Validation.Errors)[0].ErrorContent, Converter={StaticResource LocalizedText}}"/></Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -298,7 +298,7 @@
                     <Setter Property="BorderBrush" Value="{DynamicResource ThemeDanger}"/>
                     <Setter
                         Property="ToolTip"
-                        Value="{Binding RelativeSource={RelativeSource Self}, Path=(Validation.Errors)[0].ErrorContent}"/>
+                        Value="{Binding RelativeSource={RelativeSource Self}, Path=(Validation.Errors)[0].ErrorContent, Converter={StaticResource LocalizedText}}"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
@@ -1474,7 +1474,7 @@
                                                                 <StackPanel Grid.Column="1" Margin="0,0,4,0">
                                                                     <TextBlock
                                                                         Foreground="{DynamicResource ThemeText}"
-                                                                        Text="{Binding DisplayName}"
+                                                                        Text="{Binding DisplayName, Converter={StaticResource LocalizedText}}"
                                                                         TextWrapping="Wrap"/>
                                                                     <TextBlock
                                                                         Margin="0,2,0,0"
@@ -2296,7 +2296,7 @@
                                                                 <TextBlock
                                                                     Margin="0,6,0,0"
                                                                     Foreground="{DynamicResource ThemeMuted}"
-                                                                    Text="{Binding SelectedZone.AbsoluteArea, StringFormat=Area {0} px}"/>
+                                                                    Text="{Binding SelectedZone.AbsoluteArea, StringFormat={loc:Text ZoneAreaFormat}}"/>
                                                                 <Grid Margin="0,6,0,0">
                                                                     <Grid.ColumnDefinitions>
                                                                         <ColumnDefinition Width="120"/>

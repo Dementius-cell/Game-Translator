@@ -27,7 +27,7 @@ foreach ($inputPath in $LiteralPath) {
     $queueReasons = @{}
     $publishedInvalidations = $null
     $maximumPendingOcr = $null
-    $knownMenuDecisions = @('ocr-started','text-observed','text-version-changed','translation-published','text-expired',
+    $knownMenuDecisions = @('ocr-started','text-observed','visual-source-renewed','text-version-changed','translation-published','text-expired',
         'text-revoked-before-geometry','ocr-retired-generation','ocr-rejected-source','ocr-rejected-geometry',
         'translation-rejected-version-or-age','scheduler-sample','geometry-no-compatible-region','geometry-ambiguous',
         'translation-invalidated-text-contradicted','translation-invalidated-ocr-failure','translation-invalidated-source-expired',

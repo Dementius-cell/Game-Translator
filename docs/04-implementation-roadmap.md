@@ -4,7 +4,7 @@
 
 Проект: Система экранного OCR-перевода игровых субтитров и текста для Windows 11
 
-Версия документа: 1.5 (обновлено 2026-09-06)
+Версия документа: 1.6 (обновлено 2026-11-14)
 
 ------------------------------------------------------------------------
 
@@ -24,7 +24,7 @@
 
 Штатный путь продукта — GPU Paddle detector → bounded grouping → Tesseract crop recognition → configured translator → per-region overlay. Его runtime воспроизводится через зафиксированные CPython/Paddle/model/Tesseract lock-файлы и bootstrap-скрипты. Для релизной вехи обязательны применимые quality gates: отсутствие скрытого legacy/provider/cache fallback, проверка runtime/model hashes, пакетная целостность, offline-install/recovery/rollback и разрешённая WPF-проверка. Same-host clean-root является только same-host evidence, не физическим clean host.
 
-Глобальный writing-system baseline, per-zone `ContentLayoutMode`, CJK horizontal/vertical rules и подтверждённое Thai-исключение реализованы. Открыты owner-smoke для LTR-профиля (#49), отдельные Brahmic/Indic и RTL-профили (#53-#55), human validation диагностики (#34), calibration workflow (#35) и Release 1.0 (#30). Локальный portable r45 с ADR-032 и корейскими OCR-исправлениями собран и проверен без архива; owner live-проверка ожидается; подпись, transfer archive и публикация GitHub Release требуют отдельного решения владельца.
+Глобальный writing-system baseline, per-zone `ContentLayoutMode`, CJK horizontal/vertical rules и подтверждённое Thai-исключение реализованы. Актуальная сводка исходников — [Menu r15 source status](agents/menu-r15-status.md); приоритет #59 — оставшиеся исчезновения перевода и live-проверка. В исходниках также реализованы фоновая подготовка OCR по ADR-037, автоматический HDR capture и расширенная управляемая диагностика. Portable r44/r45 ниже относятся к историческим этапам, а не к текущей сборке. Актуальные зависимости и приёмка ведутся в GitHub Issues; подпись, transfer archive и публикация GitHub Release остаются отдельным решением в #30.
 
 ------------------------------------------------------------------------
 

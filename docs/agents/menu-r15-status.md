@@ -1,6 +1,14 @@
 # Menu r15 source status
 
-Updated: 2026-11-02. Scope: source status and local runtime recovery verification, not release publication or completed live-game acceptance.
+Updated: 2026-11-14. Scope: source status through commit `4e7ed59` and local runtime recovery verification, not release publication or completed live-game acceptance.
+
+## Current diagnostics and capture
+
+The source includes automatic HDR/WCG capture with FP16-to-BGRA8 OCR tone mapping, ordinary OCR startup/failure diagnostics, and a persistent **Collect logs and diagnostics** master switch. The switch applies immediately to application/OCR logs, automatic crash/recovery and live reports, input recording and optional frame samples. Explicit manual report export remains available when collection is disabled. See the [user guide](../user-guide.md) for defaults, storage limits and cleanup, and [HDR checks](../testing/hdr-capture.md) for capture limitations.
+
+Diagnostic schema 2 adds invalidation reasons and translation state before removal, OCR queue/scheduler samples, ambiguous geometry matching, publication identifiers and bounded WPF presentation events. Capture sample logging records save/limit/error outcomes. Correlate `OverlaySnapshotId` using the [maintenance workflow](../testing/maintenance-and-live-smoke.md); a Rendering callback precedes composition and cannot prove monitor presentation. These changes improve investigation and do not establish a fix for overlay disappearance. Fresh current-build reproduction and live acceptance remain open under #59.
+
+Local development packages may be refreshed before the source commit is created. An embedded Git hash or an older package manifest alone therefore cannot certify the current executable payload; follow the build-provenance checks in the maintenance workflow. Historical validation totals below apply only to their dated runs.
 
 ## Background OCR initialization (ADR-037 / #59)
 

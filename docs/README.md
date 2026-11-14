@@ -35,6 +35,7 @@ This folder contains the source-of-truth documents for Game-Translator. Read the
 
 ## Smoke Checks
 
+- [Automatic HDR capture](testing/hdr-capture.md): active display mode, OCR tone mapping, diagnostic metadata and remaining physical-display checks.
 - [Maintenance and repeatable live smoke](testing/maintenance-and-live-smoke.md): local publication guard, diagnostic aggregates, UI scenarios and proportionate testing.
 - [Calibration and Smoke Workflow](testing/calibration-and-smoke-workflow.md)
 - [Sprint 8 overlay click-through smoke](smoke/sprint-08-overlay-click-through.md)

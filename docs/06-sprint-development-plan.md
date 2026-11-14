@@ -6,7 +6,7 @@
 
 Продолжительность спринта: 1 неделя
 
-Общее количество спринтов MVP: 24-26 (обновлено)
+Историческая нумерация: Sprint 0–28 (29 этапов; не оценка оставшегося срока).
 
 Спринты ниже являются исторической картой поставки. Актуальная работа ведётся по GitHub Issues и их зависимостям: независимая подготовка, исправления и тесты могут выполняться параллельно, а выпускной этап начинается после закрытия его явных зависимостей и применимых Quality Gates.
 
@@ -14,7 +14,7 @@
 
 Для OCR/overlay действует ADR-030: GPU Paddle detector → bounded grouping → Tesseract crop recognition → configured translator → per-region overlay. Это не новая историческая нумерация спринтов, а действующий scope release hardening. Его воспроизводимый runtime собирается bootstrap-скриптом с lock-файлом; legacy full-page путь не является штатной задачей и остаётся только явным diagnostic/compatibility режимом.
 
-Глобальный writing-system baseline, per-zone `ContentLayoutMode`, CJK horizontal/vertical и подтверждённое Thai-исключение уже реализованы. Текущие незавершённые ветки: owner-smoke LTR (#49), Brahmic/Indic и RTL (#53-#55), human validation (#34/#35) и выпуск Release 1.0 (#30). Новый RC, GitHub Release или подпись не публикуются без отдельного решения владельца.
+Глобальный writing-system baseline, per-zone `ContentLayoutMode`, CJK horizontal/vertical и подтверждённое Thai-исключение уже реализованы. Актуальный приоритет — стабильность overlay по #59; исходники включают фоновую подготовку OCR, HDR capture и расширенную диагностику. Текущие ограничения описаны в [Menu r15 source status](agents/menu-r15-status.md), зависимости и приёмка — в GitHub Issues. Выпуск Release 1.0 (#30) остаётся отдельной задачей; новый RC, GitHub Release или подпись не публикуются без отдельного решения владельца.
 
 ------------------------------------------------------------------------
 

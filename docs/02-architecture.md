@@ -4,7 +4,7 @@
 
 Система экранного OCR-перевода игровых субтитров и текста для Windows 11
 
-Версия документа: 1.3 (обновлено 2026-09-06)
+Версия документа: 1.4 (обновлено 2026-11-14)
 
 ------------------------------------------------------------------------
 
@@ -49,6 +49,8 @@ The main editor keeps profile selection and lifecycle actions in a persistent le
 # 4. Захват экрана
 
 Технология: Windows Graphics Capture (WGC). Поддерживаются Window Capture и Region Capture. Full Desktop Capture не используется по умолчанию.
+
+Адаптер автоматически определяет активный SDR/HDR/WCG режим основного монитора. SDR использует BGRA8; HDR/WCG и неизвестный режим — FP16 с преобразованием scRGB в непрозрачный BGRA8 для OCR с учётом SDR-white Windows. Изменение режима или уровня белого сбрасывает кэш кадров. Диагностический PNG содержит вход OCR после преобразования, а не исходный HDR и не изображение overlay на мониторе. Подробности и ограничения проверки: [HDR capture](testing/hdr-capture.md).
 
 ------------------------------------------------------------------------
 
@@ -121,7 +123,7 @@ Recovery сохраняет candidate grouping и detector bounds; коорди�
 
 # 9. Кэш переводов
 
-Тип: SQLite. Таблицы: Translations, LanguagePairs, Statistics. TTL по умолчанию 30 дней, поддержка ручной очистки.
+Два уровня: memory cache и SQLite. Таблицы SQLite: `translations`, `language_pairs`, `cache_statistics`. TTL по умолчанию 30 дней, поддержка ручной очистки.
 
 Одинаковые одновременные cache misses коалесцируются по точному ключу, не сериализуя независимые тексты. Узкий `YandexWeb`-only output sanitizer исправляет только доказанные патологические циклы provider output на miss, memory hit и persistent hit; намеренно повторяющийся source и все остальные providers сохраняют прежнюю семантику.
 
@@ -175,7 +177,11 @@ Debug Overlay отображает OCR зоны, bounding boxes, координ�
 
 Библиотека: Serilog. Локальный application log принимает Debug/Info/Warning/Error события, подавляет шум Microsoft ниже Warning, ротируется ежедневно и хранит до 14 файлов. API-ключи и токены не логируются.
 
-Отдельный автоматический live-session report является локальной диагностикой, а не Serilog/upload-каналом. По явному owner-решению он может сохранять bounded ordered OCR, translation-input и итоговый translated text: не более `16` entries каждого типа и `512` UTF-16 code units на entry, с однострочной нормализацией. Общий UTF-8 report ограничен `99,000,000` bytes с сохранением header и newest tail. Credentials, raw HTTP/provider response и frame pixels исключены; автоматической отправки отчётов нет.
+Сохраняемый общий переключатель «Собирать логи и диагностику» управляет application/OCR logs, дополнительными detector timing logs, автоматическими crash/recovery и live reports, записью ввода и кадров. Изменение применяется сразу; уже начатая запись может завершиться. Выключение не удаляет прежние файлы и не запрещает явный ручной экспорт отчёта. Запись кнопок и кадров включается отдельно; по умолчанию обе выключены, общий сбор и время с последнего ввода включены.
+
+Отдельный автоматический live-session report является локальной диагностикой, а не Serilog/upload-каналом. По явному owner-решению он может сохранять bounded ordered OCR, translation-input и итоговый translated text: не более `16` entries каждого типа и `512` UTF-16 code units на entry, с однострочной нормализацией. Лимит UTF-8 report настраивается в пределах `1–94 MiB`, по умолчанию `64 MiB`, с сохранением header и newest tail. Credentials, raw HTTP/provider response и frame pixels исключены; автоматической отправки отчётов нет.
+
+Отдельные локальные PNG/JSON capture samples включаются в настройках и ограничены одним кадром в секунду, 1800 кадрами и бюджетом `1–2048 MiB` (default `512 MiB`) на экземпляр capture source. Старый marker лишь задаёт начальное значение до первого сохранения настроек. Диагностика schema 2 сопоставляет pipeline publication и WPF events по `OverlaySnapshotId`, записывает причины invalidation до удаления перевода, очередь OCR и неоднозначное geometry matching. WPF Rendering callback предшествует композиции и не доказывает фактическое отображение монитором. Рабочий порядок анализа: [maintenance/live smoke](testing/maintenance-and-live-smoke.md).
 
 ------------------------------------------------------------------------
 

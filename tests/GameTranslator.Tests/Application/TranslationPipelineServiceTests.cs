@@ -28,7 +28,10 @@ public sealed partial class TranslationPipelineServiceTests
         var clock = new ManualTimeProvider(FrameTime);
         var translator = new FakeTranslatorProvider("Google");
         var overlay = new FakeOverlayService { IsExcludedFromCapture = true };
-        var service = CreateService(new FakeCaptureFrameSource(), engine, translator, overlay,
+        var sourceChanged = false;
+        var capture = new FakeCaptureFrameSource { PixelFactory = (r, _) =>
+            Enumerable.Repeat(sourceChanged ? (byte)43 : (byte)42, r.Width * r.Height * 4).ToArray() };
+        var service = CreateService(capture, engine, translator, overlay,
             candidateDetector: detector, timeProvider: clock);
         using var session = service.CreateLiveSession(CreateProfile(zone), new TranslationPipelineRunOptions());
         for (var i = 0; i < 4; i++)
@@ -40,10 +43,13 @@ public sealed partial class TranslationPipelineServiceTests
         Assert.Single(overlay.CurrentSnapshot!.TextItems);
         var published = overlay.Snapshots.Count;
         engine.Text = text;
+        sourceChanged = true; // Exercise OCR collection after an actual source-pixel change.
         engine.Gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         await session.RefreshAsync(); // Geometry is validated; OCR remains in flight.
+        clock.Advance(TimeSpan.FromMilliseconds(250)); // Changed pixels must settle before OCR starts.
+        await session.PublishCompletedWorkAsync();
         await engine.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        clock.Advance(TimeSpan.FromMilliseconds(delay));
+        clock.Advance(TimeSpan.FromMilliseconds(delay - 250));
         engine.Gate.SetResult(true);
         await session.WaitForWorkCompletionAsync().WaitAsync(TimeSpan.FromSeconds(2));
         var update = await session.PublishCompletedWorkAsync();
@@ -186,7 +192,9 @@ public sealed partial class TranslationPipelineServiceTests
         var overlay = new FakeOverlayService { IsExcludedFromCapture = true };
         var clock = new ManualTimeProvider(FrameTime);
         var translator = new FakeTranslatorProvider("Google");
-        var service = CreateService(new FakeCaptureFrameSource(), engine, translator, overlay,
+        var capture = new FakeCaptureFrameSource { PixelFactory = (r, _) =>
+            Enumerable.Repeat(text == "Old action" ? (byte)42 : (byte)43, r.Width * r.Height * 4).ToArray() };
+        var service = CreateService(capture, engine, translator, overlay,
             candidateDetector: detector, timeProvider: clock);
         using var session = service.CreateLiveSession(CreateProfile(zone), new TranslationPipelineRunOptions());
         for (var i = 0; i < 4; i++)
@@ -200,6 +208,7 @@ public sealed partial class TranslationPipelineServiceTests
         var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         detector.Gate = gate.Task;
         var refresh = session.RefreshAsync();
+        clock.Advance(TimeSpan.FromMilliseconds(250)); // Allow changed-pixel quiet time while detection waits.
         try
         {
             await WaitForConditionAsync(() => overlay.CurrentSnapshot?.TextItems.Count == 0);
@@ -233,7 +242,8 @@ public sealed partial class TranslationPipelineServiceTests
             } };
         var overlay = new FakeOverlayService { IsExcludedFromCapture = true };
         var translator = new FakeTranslatorProvider("Google");
-        var service = CreateService(new FakeCaptureFrameSource { SourceAge = sourceAge }, engine, translator, overlay,
+        var service = CreateService(new FakeCaptureFrameSource { SourceAge = sourceAge,
+            PixelFactory = (r, i) => Enumerable.Repeat(i >= 3 ? (byte)43 : (byte)42, r.Width * r.Height * 4).ToArray() }, engine, translator, overlay,
             candidateDetector: detector, timeProvider: clock);
         using var session = service.CreateLiveSession(CreateProfile(zone), new TranslationPipelineRunOptions(
             minimumCandidateGroupingObservations: 1) { MinimumCandidateGroupingDuration = TimeSpan.Zero });
@@ -270,6 +280,7 @@ public sealed partial class TranslationPipelineServiceTests
         gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         detector.Gate = gate.Task;
         refresh = session.RefreshAsync();
+        clock.Advance(TimeSpan.FromMilliseconds(250)); // Actual changed crops, rather than identical OCR inputs.
         try { await WaitForConditionAsync(() => fresh.Count == count); }
         finally { gate.TrySetResult(true); await refresh; }
         await session.PublishCompletedWorkAsync();
@@ -1016,7 +1027,13 @@ public sealed partial class TranslationPipelineServiceTests
             BlocksFactory = r => [new OcrTextBlock(changed && r.Frame.Region.Y == 0 ? "Action 8" : "Action 7", new BoundingBox(4, 2, 48, 12))] };
         var overlay = new FakeOverlayService();
         var clock = new ManualTimeProvider(FrameTime);
-        var service = CreateService(new FakeCaptureFrameSource(), engine, new FakeTranslatorProvider("Google"), overlay,
+        var capture = new FakeCaptureFrameSource { PixelFactory = (r, _) =>
+        {
+            var pixels = Enumerable.Repeat((byte)42, r.Width * r.Height * 4).ToArray();
+            if (changed) pixels[0] = 43;
+            return pixels;
+        } };
+        var service = CreateService(capture, engine, new FakeTranslatorProvider("Google"), overlay,
             candidateDetector: detector, timeProvider: clock);
         using var session = service.CreateLiveSession(CreateProfile(zone), new TranslationPipelineRunOptions());
         for (var i = 0; i < 3; i++)
@@ -1028,6 +1045,7 @@ public sealed partial class TranslationPipelineServiceTests
         Assert.Equal(2, overlay.CurrentSnapshot!.TextItems.Count);
         changed = true;
         await session.RefreshAsync();
+        clock.Advance(TimeSpan.FromMilliseconds(250));
         await session.PublishCompletedWorkAsync();
         var remaining = Assert.Single(overlay.CurrentSnapshot!.TextItems);
         Assert.Equal("Translated Action 7", remaining.Text);
@@ -6256,6 +6274,8 @@ public sealed partial class TranslationPipelineServiceTests
 
         public IReadOnlyList<byte[]> PixelFrames { get; init; } = Array.Empty<byte[]>();
 
+        public Func<CaptureRegion, int, byte[]>? PixelFactory { get; init; }
+
         public IReadOnlyList<DateTimeOffset> CapturedAtFrames { get; init; } = Array.Empty<DateTimeOffset>();
 
         public Action? OnCapture { get; init; }
@@ -6292,9 +6312,9 @@ public sealed partial class TranslationPipelineServiceTests
             OnCapture?.Invoke();
             var stride = checked(region.Width * 4);
             var byteCount = checked(stride * region.Height);
-            var pixels = captureIndex < PixelFrames.Count
+            var pixels = PixelFactory?.Invoke(region, captureIndex) ?? (captureIndex < PixelFrames.Count
                 ? PixelFrames[captureIndex].ToArray()
-                : Enumerable.Repeat((byte)42, byteCount).ToArray();
+                : Enumerable.Repeat((byte)42, byteCount).ToArray());
             if (pixels.Length != byteCount)
             {
                 throw new InvalidOperationException("Fake capture frame pixel data length does not match the requested region.");

@@ -77,6 +77,13 @@ public sealed partial class TranslationPipelineService
                 var bounds = candidate.Region.Candidate.Bounds;
                 if (bounds.Right > captured.Frame.Width || bounds.Bottom > captured.Frame.Height) continue;
                 var region = TextCandidateRegionOcrService.CreateRegion(request, candidate.Region.Candidate, neighbors);
+                // Speculative captures may avoid redundant work, but only detector-validated
+                // regions below can renew text authority.
+                if (CanReuseMenuPixels(candidate, region))
+                {
+                    menuScheduler.ClearPending(candidate.Id);
+                    continue;
+                }
                 var frame = region.Frame;
                 var core = CreateMenuCore(region, captured.Frame, neighbors);
                 menuScheduler.Offer(candidate.Id, new MenuOcrInput(candidate, candidate.Zone, region,
@@ -159,9 +166,16 @@ public sealed partial class TranslationPipelineService
                 current.Zone = CreateCandidateZone(state.Zone, region.Candidate.Bounds) with { Id = current.Zone.Id };
                 current.GeometrySignature = CreateCandidateGeometrySignature(region.Candidate);
                 current.SourceIdentity = FrameFingerprint.FromFrame(region.Frame);
-                menuScheduler.Offer(current.Id, new MenuOcrInput(current, current.Zone, region,
-                    captured.CaptureElapsed, CreateCandidateOverlayPlacementConstraints(state.Zone, regions, region), current.Menu.CurrentCore),
-                    region.Frame.Origin, pixelsChanged, MenuNow);
+                if (CanReuseMenuPixels(current, region)
+                    && current.Menu.Authority.RenewUnchanged(region.Frame.Origin!, MenuNow))
+                {
+                    menuScheduler.ObserveUnchanged(current.Id, region.Frame.Origin!, MenuNow);
+                    RecordMenuDecision(current, "visual-source-renewed", region.Frame);
+                }
+                else
+                    menuScheduler.Offer(current.Id, new MenuOcrInput(current, current.Zone, region,
+                        captured.CaptureElapsed, CreateCandidateOverlayPlacementConstraints(state.Zone, regions, region), current.Menu.CurrentCore),
+                        region.Frame.Origin, pixelsChanged, MenuNow);
                 if (!isNew && region.Frame.Origin is { } detectedOrigin
                     && (previousDetectedOrigin is null || detectedOrigin.SourceTimestamp > previousDetectedOrigin.SourceTimestamp))
                     ObserveMatchingCandidateGrouping(current, region.Frame.Origin!.CapturedAt);
@@ -175,6 +189,22 @@ public sealed partial class TranslationPipelineService
             profile.OcrSettings.OrientationMode == OcrOrientationMode.Horizontal
                 && profile.OcrSettings.WatermarkFilter == WatermarkFilterMode.Off
                 ? MenuGlyphCoreEvidence.TryCreateWithSource(region, source, neighbors) : null;
+
+        private bool CanReuseMenuPixels(LiveCandidateState candidate, TextCandidateRegion region)
+        {
+            var menu = candidate.Menu!;
+            return profile.OcrSettings.WatermarkFilter == WatermarkFilterMode.Off
+                && candidate.Result is not null && menu.CompletedOcr is null
+                && !menuScheduler.HasActive(candidate.Id)
+                && menu.Authority.CanPublish(menu.Authority.Version, MenuNow)
+                && region.Frame is { IsCachedReuse: false, Origin: { } origin }
+                && MenuNow >= origin.FreshnessTimestamp
+                && MenuNow - origin.FreshnessTimestamp <= TimeSpan.FromSeconds(2)
+                && menu.LatestAcceptedInput is { } accepted
+                && accepted.Region.Frame.Origin is { } acceptedOrigin
+                && MenuNow - acceptedOrigin.FreshnessTimestamp < MenuUnchangedRegion.AuditInterval
+                && MenuUnchangedRegion.Matches(accepted.Region, region);
+        }
 
         private static bool MenuGeometryMatches(LiveCandidateState candidate, TextCandidateRegion current,
             Func<TextCandidateRegion, MenuFixedInkEvidence?>? getInk = null,
@@ -410,7 +440,7 @@ public sealed partial class TranslationPipelineService
             frame ??= menu.LatestAcceptedResult?.CapturedFrame ?? candidate.Region.Frame;
             var origin = frame.Origin;
             var queue = menuScheduler.Describe(candidate.Id, MenuNow, IsCandidateGroupingConfirmed(candidate));
-            var acceptedOrigin = menu.LatestAcceptedResult?.CapturedFrame.Origin;
+            var acceptedOrigin = menu.Authority.LastEvidenceOrigin;
             RecordLifecycleEvent(LiveCandidateLifecycleEventKind.CandidateMenuAuthorityObserved,
                 zoneId: candidate.SourceZoneId, candidateId: candidate.Id, candidateBounds: candidate.Region.Candidate.Bounds,
                 menuDiagnostics: new MenuLiveDiagnostics(menu.Generation, menu.Authority.Version, origin?.SourceId,

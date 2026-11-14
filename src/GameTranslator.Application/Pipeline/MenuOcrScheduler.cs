@@ -78,6 +78,19 @@ internal sealed class MenuOcrScheduler<T> : IDisposable
 
     internal bool IsPeriodic(string trackId) => tracks[trackId].Periodic;
 
+    // Drop redundant queued work only. An outstanding lease still owns its slot.
+    internal void ClearPending(string trackId) => tracks[trackId].Pending = null;
+
+    internal void ObserveUnchanged(string trackId, CaptureFrameOrigin origin, TimeSpan now)
+    {
+        CheckNow(now);
+        var track = tracks[trackId];
+        if (!IsFresh(origin, now) || track.LastOrigin is not { } previous
+            || origin.SourceId != previous.SourceId || origin.SourceTimestamp < previous.SourceTimestamp) return;
+        track.LastOrigin = origin;
+        track.Pending = null;
+    }
+
     internal Lease? TryStartNext(TimeSpan now, Func<T, bool>? canStart = null)
     {
         CheckNow(now);

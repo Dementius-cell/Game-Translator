@@ -5,6 +5,36 @@ namespace GameTranslator.Tests.Application;
 
 public sealed class MenuOcrSchedulerTests
 {
+    [Fact]
+    public void VisuallyObservedSourceCannotBeQueuedAgainAsCachedWork()
+    {
+        using var scheduler = new MenuOcrScheduler<int>();
+        scheduler.Register("a");
+        Offer(scheduler, "a", 0);
+        scheduler.ObserveUnchanged("a", Origin(500), Ms(500));
+        Assert.Equal(0, scheduler.PendingCount);
+        Assert.Equal(MenuOcrScheduler<int>.OfferOutcome.DuplicateOrOutOfOrder,
+            scheduler.Offer("a", 500, Origin(500), false, Ms(600)));
+        Offer(scheduler, "a", 700, true);
+        Assert.Equal(1, scheduler.PendingCount);
+    }
+    [Fact]
+    public void ClearingRedundantPendingWorkDoesNotCancelActiveLeaseOrOtherArea()
+    {
+        using var scheduler = new MenuOcrScheduler<int>(concurrency: 1);
+        scheduler.Register("a");
+        scheduler.Register("b");
+        Offer(scheduler, "a", 0);
+        var active = scheduler.TryStartNext(Ms(200))!;
+        Offer(scheduler, "a", 300);
+        Offer(scheduler, "b", 300);
+        scheduler.ClearPending("a");
+        Assert.Equal(1, scheduler.PendingCount);
+        Assert.Equal(1, scheduler.ActiveCount);
+        Assert.False(active.CancellationToken.IsCancellationRequested);
+        scheduler.Complete(active);
+        Assert.Equal("b", scheduler.TryStartNext(Ms(600))!.TrackId);
+    }
     private static readonly Guid SourceId = Guid.Parse("56d877bc-e97a-4588-b799-4d842aa7f718");
     private static TimeSpan Ms(int value) => TimeSpan.FromMilliseconds(value);
     private static CaptureFrameOrigin Origin(int milliseconds) => new(SourceId, Ms(milliseconds), DateTimeOffset.UnixEpoch);

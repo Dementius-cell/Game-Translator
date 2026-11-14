@@ -16,6 +16,19 @@ internal sealed class MenuTextAuthority(int requiredObservations, TimeSpan requi
     internal long Version { get; private set; }
     internal bool Confirmed { get; private set; }
     internal int ObservationCount => count;
+    internal CaptureFrameOrigin? LastEvidenceOrigin => lastOrigin;
+
+    // The caller must prove exact pixels and detector geometry against accepted OCR.
+    // This renews an already confirmed version; it never counts as another OCR observation.
+    internal bool RenewUnchanged(CaptureFrameOrigin origin, TimeSpan now)
+    {
+        if (!Confirmed || lastOrigin is not { } previous || !Fresh(origin, now)
+            || origin.SourceId != previous.SourceId || origin.SourceTimestamp <= previous.SourceTimestamp
+            || origin.FreshnessTimestamp < previous.FreshnessTimestamp
+            || !Fresh(previous, origin.FreshnessTimestamp)) return false;
+        lastOrigin = origin;
+        return true;
+    }
 
     internal bool Observe(CaptureFrameOrigin origin, IEnumerable<string> groups, TimeSpan now)
     {

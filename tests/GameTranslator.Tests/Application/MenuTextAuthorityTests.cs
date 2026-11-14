@@ -5,6 +5,51 @@ namespace GameTranslator.Tests.Application;
 
 public sealed class MenuTextAuthorityTests
 {
+    [Fact]
+    public void VisualRenewal_PreservesVersionAndObservationCountButStillExpires()
+    {
+        var gate = Confirm("Action");
+        var version = gate.Version;
+        for (var time = 700; time <= 10200; time += 500)
+        {
+            Assert.True(gate.RenewUnchanged(Origin(time), Ms(time + 100)));
+            Assert.True(gate.CanPublish(version, Ms(time + 100)));
+            Assert.Equal(2, gate.ObservationCount);
+        }
+        Assert.False(gate.CanPublish(version, Ms(12201)));
+        Assert.False(gate.RenewUnchanged(Origin(12201), Ms(12201)));
+    }
+
+    [Fact]
+    public void VisualRenewal_CannotConfirmOrResurrectRevokedText()
+    {
+        var gate = new MenuTextAuthority(2, Ms(200));
+        gate.Observe(Origin(0), ["Action"], Ms(0));
+        Assert.False(gate.RenewUnchanged(Origin(200), Ms(200)));
+        Assert.Equal(1, gate.ObservationCount);
+        gate.Observe(Origin(200), ["Action"], Ms(200));
+        gate.Expire(Ms(2201));
+        Assert.False(gate.RenewUnchanged(Origin(1500), Ms(2300)));
+        Assert.False(gate.Confirmed);
+    }
+
+    [Fact]
+    public void VisualRenewal_RejectsDuplicateWrongContextStaleFutureAndLateOcr()
+    {
+        var gate = Confirm("Action");
+        Assert.False(gate.RenewUnchanged(Origin(200), Ms(400)));
+        Assert.False(gate.RenewUnchanged(Origin(100), Ms(400)));
+        Assert.False(gate.RenewUnchanged(Origin(400) with { SourceId = Guid.NewGuid() }, Ms(400)));
+        Assert.False(gate.RenewUnchanged(Origin(300), Ms(2400)));
+        Assert.False(gate.RenewUnchanged(Origin(500), Ms(400)));
+        Assert.True(gate.RenewUnchanged(Origin(400), Ms(400)));
+        var version = gate.Version;
+        Assert.False(gate.Observe(Origin(300), ["Other"], Ms(500)));
+        Assert.True(gate.CanPublish(version, Ms(500)));
+        Assert.True(gate.Observe(Origin(600), ["Other"], Ms(600)));
+        Assert.False(gate.CanPublish(version, Ms(600)));
+    }
+
     [Theory]
     [InlineData(1500)]
     [InlineData(2200)]

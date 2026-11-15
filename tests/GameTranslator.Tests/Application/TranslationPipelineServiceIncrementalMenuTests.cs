@@ -7,6 +7,76 @@ namespace GameTranslator.Tests.Application;
 
 public sealed partial class TranslationPipelineServiceTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task IncrementalDetection_OnlyChangedAreaIsScannedAndNeighborSurvives(bool disappears)
+    {
+        var zone = CreateZone("local-detector", "Menu", new AbsoluteRectangle(0, 0, 1024, 512))
+            with { ContentLayoutMode = ContentLayoutMode.StaticMenu };
+        var changed = false;
+        var left = new BoundingBox(100, 100, 120, 24);
+        var right = new BoundingBox(700, 100, 120, 24);
+        var sent = new List<CaptureRegion>();
+        var detector = new FakeCandidateDetector(r =>
+        {
+            sent.Add(r.Frame.Region);
+            var boxes = changed && disappears ? new[] { right } : new[] { left, right };
+            return TextCandidateDetectionResult.Available("synthetic", boxes
+                .Where(b => b.X >= r.Frame.Region.X && b.Y >= r.Frame.Region.Y
+                    && b.Right <= r.Frame.Region.X + r.Frame.Width && b.Bottom <= r.Frame.Region.Y + r.Frame.Height)
+                .Select(b => new TextCandidate(new(b.X - r.Frame.Region.X, b.Y - r.Frame.Region.Y, b.Width, b.Height), .99)));
+        });
+        var capture = new FakeCaptureFrameSource { PixelFactory = (r, _) =>
+        {
+            var pixels = Enumerable.Repeat((byte)42, r.Width * r.Height * 4).ToArray();
+            if (changed) pixels[(110 * r.Width + 110) * 4] = 180;
+            return pixels;
+        } };
+        var engine = new FakeOcrEngine { EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = r => [new OcrTextBlock(changed && r.Frame.Region.X < 500 ? "Updated label" : "Stable label", new(4, 2, 100, 18))] };
+        var clock = new ManualTimeProvider(FrameTime);
+        var overlay = new FakeOverlayService();
+        var service = CreateService(capture, engine, new FakeTranslatorProvider("Google"), overlay,
+            candidateDetector: detector, timeProvider: clock);
+        using var session = service.CreateLiveSession(CreateProfile(zone) with
+        { OcrSettings = new OcrSettings { OrientationMode = OcrOrientationMode.Auto } }, new TranslationPipelineRunOptions
+        { EnableIncrementalMenuDetection = true });
+        var reused = 0;
+        for (var i = 0; i < 4; i++)
+        {
+            var result = await session.RefreshAsync();
+            reused += result.CandidateLifecycleEvents.Count(e => e.RegionRefresh?.Reason == "unchanged");
+            await session.PublishCompletedWorkAsync();
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+        }
+        Assert.True(reused > 0);
+        Assert.Equal(2, overlay.CurrentSnapshot!.TextItems.Count);
+        var rightCalls = engine.Requests.Count(r => r.Frame.Region.X >= 500);
+        sent.Clear();
+        changed = true;
+        var local = await session.RefreshAsync();
+        var scope = Assert.Single(local.CandidateLifecycleEvents, e => e.RegionRefresh is not null).RegionRefresh!;
+        Assert.False(scope.FullScan);
+        Assert.Equal(1, scope.DetectorCalls);
+        Assert.Equal(1, scope.RetainedCandidates);
+        Assert.True(scope.ProcessedPixels < 1024 * 512 / 4);
+        Assert.True(Assert.Single(sent).Width < 512);
+        clock.Advance(TimeSpan.FromMilliseconds(250));
+        await session.PublishCompletedWorkAsync();
+        Assert.Contains(overlay.CurrentSnapshot!.TextItems, t => t.X >= 700 && t.Text == "Translated Stable label");
+        if (disappears) Assert.Single(overlay.CurrentSnapshot.TextItems);
+        Assert.Equal(rightCalls, engine.Requests.Count(r => r.Frame.Region.X >= 500));
+        for (var i = 0; i < 3; i++)
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+            await session.RefreshAsync();
+            await session.PublishCompletedWorkAsync();
+        }
+        if (!disappears) Assert.Contains(overlay.CurrentSnapshot.TextItems, t => t.Text == "Translated Updated label");
+        else Assert.Single(overlay.CurrentSnapshot.TextItems);
+    }
+
     [Fact]
     public async Task IncrementalMenu_ChangedAreaRunsOcrWhileUnchangedNeighborKeepsTranslation()
     {

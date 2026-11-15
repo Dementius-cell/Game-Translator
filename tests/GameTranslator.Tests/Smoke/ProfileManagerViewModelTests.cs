@@ -3042,6 +3042,20 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Theory]
+    [InlineData("Fast")]
+    [InlineData("Balanced")]
+    [InlineData("Conservative")]
+    public void ProductLiveTimingEnablesIncrementalMenuDetection(string preset)
+    {
+        var viewModel = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService());
+        var method = viewModel.GetType().GetMethod("CreateLiveTranslationTiming", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var value = Enum.Parse(method.GetParameters()[0].ParameterType, preset);
+        var timing = method.Invoke(null, [value])!;
+        var options = (TranslationPipelineRunOptions)timing.GetType().GetProperty("RunOptions")!.GetValue(timing)!;
+        Assert.True(options.EnableIncrementalMenuDetection);
+    }
+
+    [Theory]
     [InlineData(TranslationProviderWaitStage.Queue, "translation queue")]
     [InlineData(TranslationProviderWaitStage.Credentials, "initializing")]
     [InlineData(TranslationProviderWaitStage.Response, "translation response")]
@@ -3156,6 +3170,8 @@ public sealed class ProfileManagerViewModelTests
         {
             Menu = new MenuLiveDiagnostics(7, 3, Guid.Empty, 1200, 500, true, 2, true, true,
                 1, 1, 14, 0, "text-observed", 250),
+            RegionRefresh = new RegionDetectionDiagnostics("local-change", false, 2, 128,
+                [new BoundingBox(64, 128, 192, 96)], 12, 1, 18432),
         });
         var appendMethod = viewModel.GetType().GetMethod(
             "AppendLiveCandidateLifecycleDebugInfo",
@@ -3172,6 +3188,10 @@ public sealed class ProfileManagerViewModelTests
         Assert.Contains("MenuCachedReuse=True", report, StringComparison.Ordinal);
         Assert.Contains("MenuReplacedPending=14", report, StringComparison.Ordinal);
         Assert.Contains("MenuDecision=text-observed", report, StringComparison.Ordinal);
+        Assert.Contains("RegionRefreshReason=local-change", report, StringComparison.Ordinal);
+        Assert.Contains("RegionDetectorCalls=1", report, StringComparison.Ordinal);
+        Assert.Contains("RegionProcessedPixels=18432", report, StringComparison.Ordinal);
+        Assert.Contains("RegionAreas=X64,Y128,W192,H96", report, StringComparison.Ordinal);
         Assert.Contains("WritingSystemProfile=CjkVertical", report, StringComparison.Ordinal);
         Assert.Contains("OcrOrientation=Vertical", report, StringComparison.Ordinal);
         Assert.Contains("DetectorPresetRequested=ChineseExperimental", report, StringComparison.Ordinal);

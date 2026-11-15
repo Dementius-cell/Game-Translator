@@ -14,6 +14,7 @@ namespace GameTranslator.Application.Pipeline;
 public sealed class LiveCandidateLifecycleEvent
 {
     public MenuLiveDiagnostics? Menu { get; init; }
+    public RegionDetectionDiagnostics? RegionRefresh { get; init; }
     public Guid? OverlaySnapshotId { get; init; }
     public IReadOnlyList<OverlayCandidateDiagnostic>? OverlayCandidates { get; init; }
     public int OverlayCandidatesOmitted { get; init; }

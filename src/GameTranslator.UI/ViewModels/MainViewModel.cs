@@ -3719,6 +3719,7 @@ public sealed partial class MainViewModel : ValidatableObservableObject
                 minimumStableTextObservations: confirmationObservations)
             {
                 MinimumCandidateGroupingDuration = stableTextInterval,
+                EnableIncrementalMenuDetection = true,
             });
     }
 
@@ -6261,6 +6262,18 @@ public sealed partial class MainViewModel : ValidatableObservableObject
                 "EmptyOcrRetryDelayMs",
                 entry.EmptyOcrRetryDelay?.TotalMilliseconds.ToString("F1", CultureInfo.InvariantCulture));
             AppendLifecycleField(builder, "EmptyOcrGroupingReset", entry.EmptyOcrGroupingReset?.ToString());
+            if (entry.RegionRefresh is { } regionRefresh)
+            {
+                AppendLifecycleField(builder, "RegionRefreshReason", regionRefresh.Reason);
+                AppendLifecycleField(builder, "RegionFullScan", regionRefresh.FullScan.ToString());
+                AppendLifecycleField(builder, "RegionChangedTiles", regionRefresh.ChangedTiles.ToString());
+                AppendLifecycleField(builder, "RegionTotalTiles", regionRefresh.TotalTiles.ToString());
+                AppendLifecycleField(builder, "RegionRetainedCandidates", regionRefresh.RetainedCandidates.ToString());
+                AppendLifecycleField(builder, "RegionDetectorCalls", regionRefresh.DetectorCalls.ToString());
+                AppendLifecycleField(builder, "RegionProcessedPixels", regionRefresh.ProcessedPixels.ToString());
+                AppendLifecycleField(builder, "RegionAreas", string.Join(";", regionRefresh.Areas.Take(4)
+                    .Select(a => $"X{a.X},Y{a.Y},W{a.Width},H{a.Height}")));
+            }
             if (entry.Menu is { } menu)
             {
                 AppendLifecycleField(builder, "MenuDecision", menu.Decision);

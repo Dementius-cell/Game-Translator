@@ -96,6 +96,58 @@ public sealed class TextCandidateRegionOcrService
                 detection.Diagnostics);
         }
 
+        return BuildRegions(zoneRequest, detection, cancellationToken);
+    }
+
+    internal async Task<TextCandidateRegionDetectionResult> DetectAreasAsync(OcrRequest zoneRequest,
+        IReadOnlyList<BoundingBox> areas, IReadOnlyList<TextCandidate> retained,
+        RegionDetectionDiagnostics scope, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var raw = retained.SelectMany(c => c.SourceCandidateBounds.Select(b => new TextCandidate(b, c.Confidence))).ToList();
+        var calls = 0;
+        long pixels = 0;
+        foreach (var area in areas)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!area.IsWithin(zoneRequest.Frame.Width, zoneRequest.Frame.Height))
+                throw new ArgumentOutOfRangeException(nameof(areas));
+            var crop = CreateCroppedFrame(zoneRequest.Frame, area);
+            var detection = await candidateDetector.DetectAsync(new TextCandidateDetectionRequest(crop,
+                zoneRequest.Language, zoneRequest.OrientationMode, zoneRequest.LayoutMode, zoneRequest.DetectorPreset), cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            calls++;
+            pixels += (long)crop.Width * crop.Height;
+            if (detection.Availability != TextCandidateDetectorAvailability.Available)
+                return new(detection.Availability, detection.DetectorId, detection.UnavailableReason, [], detection.Diagnostics)
+                { RegionRefresh = scope with { DetectorCalls = calls, ProcessedPixels = pixels } };
+            var candidates = FilterCandidates(detection.Candidates, crop);
+            // A clipped/new line could continue beyond this crop. Recheck the full zone before merging.
+            if (candidates.Any(c => (area.X > 0 && c.Bounds.X <= 2)
+                || (area.Y > 0 && c.Bounds.Y <= 2)
+                || (area.Right < zoneRequest.Frame.Width && c.Bounds.Right >= crop.Width - 2)
+                || (area.Bottom < zoneRequest.Frame.Height && c.Bounds.Bottom >= crop.Height - 2)))
+            {
+                var full = await DetectAsync(zoneRequest, cancellationToken);
+                return new(full.Availability, full.DetectorId, full.UnavailableReason, full.Regions, full.Diagnostics)
+                { RegionRefresh = scope with { Reason = "boundary-fallback", FullScan = true,
+                    DetectorCalls = calls + 1, ProcessedPixels = pixels + (long)zoneRequest.Frame.Width * zoneRequest.Frame.Height } };
+            }
+            foreach (var c in candidates)
+                raw.Add(c with { Bounds = Offset(c.Bounds, area),
+                    SourceCandidateBounds = c.SourceCandidateBounds.Select(b => Offset(b, area)).ToArray() });
+        }
+        // Group in original zone coordinates/height with all neighbors, not independently inside each crop.
+        var result = BuildRegions(zoneRequest, TextCandidateDetectionResult.Available("incremental-menu", raw), cancellationToken);
+        return new(result.Availability, result.DetectorId, result.UnavailableReason, result.Regions, result.Diagnostics)
+        { RegionRefresh = scope with { DetectorCalls = calls, ProcessedPixels = pixels } };
+    }
+
+    private static BoundingBox Offset(BoundingBox b, BoundingBox area) => new(b.X + area.X, b.Y + area.Y, b.Width, b.Height);
+
+    private TextCandidateRegionDetectionResult BuildRegions(OcrRequest zoneRequest,
+        TextCandidateDetectionResult detection, CancellationToken cancellationToken)
+    {
         var contentPolicy = ContentLayoutPolicyResolver.Resolve(zoneRequest.ContentLayoutMode);
         var candidates = FilterCandidates(detection.Candidates, zoneRequest.Frame);
         if (zoneRequest.ContentLayoutMode == ContentLayoutMode.StaticMenu
@@ -520,6 +572,7 @@ public sealed class TextCandidateRegion
 
 public sealed class TextCandidateRegionDetectionResult
 {
+    public RegionDetectionDiagnostics? RegionRefresh { get; init; }
     public TextCandidateRegionDetectionResult(
         TextCandidateDetectorAvailability availability,
         string detectorId,
@@ -561,6 +614,9 @@ public sealed class TextCandidateRegionDetectionResult
 
     public TextCandidateDetectionDiagnostics? Diagnostics { get; }
 }
+
+public sealed record RegionDetectionDiagnostics(string Reason, bool FullScan, int ChangedTiles, int TotalTiles,
+    IReadOnlyList<BoundingBox> Areas, int RetainedCandidates, int DetectorCalls, long ProcessedPixels);
 
 public sealed record TextCandidateRegionOcrOptions
 {

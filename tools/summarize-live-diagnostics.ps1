@@ -27,6 +27,11 @@ foreach ($inputPath in $LiteralPath) {
     $queueReasons = @{}
     $publishedInvalidations = $null
     $maximumPendingOcr = $null
+    $regionReasons = @{}
+    $regionCalls = $null
+    $regionPixels = $null
+    $knownRegionReasons = @('initial-or-context','unsupported-frame','untrusted-source','source-gap',
+        'periodic-audit','broad-change','large-change','expanded-change','unchanged','local-change','boundary-fallback')
     $knownMenuDecisions = @('ocr-started','text-observed','visual-source-renewed','text-version-changed','translation-published','text-expired',
         'text-revoked-before-geometry','ocr-retired-generation','ocr-rejected-source','ocr-rejected-geometry',
         'translation-rejected-version-or-age','scheduler-sample','geometry-no-compatible-region','geometry-ambiguous',
@@ -88,6 +93,14 @@ foreach ($inputPath in $LiteralPath) {
         $events[$kind] = 1 + $events[$kind]
         # Strip quoted OCR/translation/error strings before recognizing numeric fields.
         $stripped = [regex]::Replace($line, '"(?:\\.|[^"\\])*"', '')
+        if ($kind -eq 'CandidateDetectionCompleted' -and $stripped -match '(?:^| )RegionRefreshReason=(\S+)') {
+            $reason = if ($Matches[1] -in $knownRegionReasons) { $Matches[1] } else { 'other' }
+            $regionReasons[$reason] = 1 + $regionReasons[$reason]
+            $calls = Get-NumericField $stripped 'RegionDetectorCalls'
+            $pixels = Get-NumericField $stripped 'RegionProcessedPixels'
+            if ($null -ne $calls) { $regionCalls = $regionCalls + $calls }
+            if ($null -ne $pixels) { $regionPixels = $regionPixels + $pixels }
+        }
         if ($kind -eq 'CandidateMenuAuthorityObserved') {
             if ($stripped -match '(?:^| )MenuDecision=(\S+)') {
                 $decision = if ($Matches[1] -in $knownMenuDecisions) { $Matches[1] } else { 'other' }
@@ -171,6 +184,9 @@ foreach ($inputPath in $LiteralPath) {
         ObservedSpanMs = ($lastAt - $firstAt).TotalMilliseconds
         EventCounts = $events
         MenuDecisions = $menuDecisions
+        RegionRefreshReasons = $regionReasons
+        RegionDetectorCalls = $regionCalls
+        RegionProcessedPixels = $regionPixels
         PublishedTranslationInvalidations = $publishedInvalidations
         MaximumPendingOcr = $maximumPendingOcr
         OcrQueueReasonSamples = $queueReasons

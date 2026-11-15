@@ -19,6 +19,8 @@ Keep the WPF presentation layer ergonomic, testable, and separated from infrastr
 - Follow MVVM: keep business rules, pipeline behavior, OCR, translation, cache, profile persistence, and provider logic out of views and code-behind.
 - UI may reference Application, but must not directly reference Infrastructure. Use the existing composition module seam for Infrastructure implementations.
 - Overlay remains a separate WPF responsibility with mask, translation, OCR/debug layers kept conceptually separate.
+
+- Product live timing presets enable ADR-039 incremental menu detection through the in-memory run option; do not persist a new profile field or apply it to one-shot/comic routes. Local lifecycle export includes bounded RegionRefresh fields (reason, areas, tile counts, retained candidates, detector calls/pixels); a detection-completed cycle may reuse geometry without a detector invocation.
 - Do not steal focus or block user input unexpectedly. Prefer headless tests and evidence generation; run visible UI only when explicitly needed, and report the process ID for explicit UI runs.
 - Do not expose secrets in UI state, dialogs, logs, debug panels, screenshots, or copied text.
 - Bug/crash reports use the application `Reports` directory with a visible local-app-data fallback. Session leases distinguish active instances from interrupted runs. Keep exception messages, Data, source paths, raw logs, screenshots, and OCR/translation text out of these reports; do not suppress fatal termination after recording it.

@@ -101,6 +101,9 @@ public sealed class TranslationPipelineRunOptions
     /// </summary>
     public bool EnableCandidateDetectorPilot { get; }
 
+    /// <summary>Staged live-menu optimization, explicitly enabled by the product live entry point.</summary>
+    public bool EnableIncrementalMenuDetection { get; init; }
+
     /// <summary>
     /// Conditional readability grace after a candidate overlay is published.
     /// Safety invalidation still removes the overlay immediately.

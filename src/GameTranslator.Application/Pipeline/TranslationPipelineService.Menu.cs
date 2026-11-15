@@ -76,7 +76,8 @@ public sealed partial class TranslationPipelineService
                     || MenuNow - geometryOrigin.FreshnessTimestamp > TimeSpan.FromSeconds(2)) continue;
                 var bounds = candidate.Region.Candidate.Bounds;
                 if (bounds.Right > captured.Frame.Width || bounds.Bottom > captured.Frame.Height) continue;
-                var region = TextCandidateRegionOcrService.CreateRegion(request, candidate.Region.Candidate, neighbors);
+                var region = CompleteMenuContext(TextCandidateRegionOcrService.CreateRegion(request, candidate.Region.Candidate, neighbors),
+                    captured.Frame, neighbors);
                 // Speculative captures may avoid redundant work, but only detector-validated
                 // regions below can renew text authority.
                 if (CanReuseMenuPixels(candidate, region))
@@ -99,6 +100,8 @@ public sealed partial class TranslationPipelineService
             IReadOnlyList<TextCandidateRegion> regions, ICollection<string> cancelledIds)
         {
             var changed = false;
+            var detectedNeighbors = regions.Select(r => r.Candidate).ToArray();
+            regions = regions.Select(r => CompleteMenuContext(r, captured.Frame, detectedNeighbors)).ToArray();
             // Match all pairs before mutating tracks. Both directions must be unambiguous.
             var previous = state.CandidateStates.Values.ToArray();
             var inkEvidence = new Dictionary<TextCandidateRegion, MenuFixedInkEvidence?>();
@@ -184,11 +187,18 @@ public sealed partial class TranslationPipelineService
             return changed;
         }
 
+        private TextCandidateRegion CompleteMenuContext(TextCandidateRegion region, CapturedFrame source,
+            IReadOnlyList<TextCandidate> neighbors) =>
+            profile.OcrSettings.OrientationMode == OcrOrientationMode.Horizontal
+                && profile.OcrSettings.WatermarkFilter == WatermarkFilterMode.Off
+                && profile.OcrPreprocessingSettings.ResolveMode() == OcrPreprocessingMode.None
+                ? MenuExpandedContext.Complete(region, source, neighbors) : region;
+
         private MenuGlyphCoreEvidence? CreateMenuCore(TextCandidateRegion region, CapturedFrame source,
             IReadOnlyList<TextCandidate> neighbors) =>
             profile.OcrSettings.OrientationMode == OcrOrientationMode.Horizontal
                 && profile.OcrSettings.WatermarkFilter == WatermarkFilterMode.Off
-                ? MenuGlyphCoreEvidence.TryCreateWithSource(region, source, neighbors) : null;
+                ? region.ExpandedMenuCore ?? MenuGlyphCoreEvidence.TryCreateWithSource(region, source, neighbors) : null;
 
         private bool CanReuseMenuPixels(LiveCandidateState candidate, TextCandidateRegion region)
         {
@@ -211,6 +221,9 @@ public sealed partial class TranslationPipelineService
             Func<TextCandidateRegion, MenuGlyphCoreEvidence?>? getCore = null)
         {
             if (candidate.Menu is not { } menu) return false;
+            if (menu.AnchorExpanded || current.ExpandedMenuCore is not null)
+                return MenuGlyphCoreEvidence.Matches(menu.AnchorBounds, menu.AnchorCore, current.Candidate.Bounds,
+                    getCore is null ? current.ExpandedMenuCore ?? MenuGlyphCoreEvidence.TryCreate(current) : getCore(current));
             return MenuGeometryMatcher.Matches(menu.AnchorBounds, menu.AnchorMembers,
                 current.Candidate.Bounds, current.Candidate.SourceCandidateBounds)
                 || (menu.AnchorInk is not null && MenuFixedInkEvidence.Matches(menu.AnchorBounds, menu.AnchorInk,
@@ -489,6 +502,7 @@ public sealed partial class TranslationPipelineService
             internal MenuFixedInkEvidence? AnchorInk { get; } = anchorInk;
             internal MenuGlyphCoreEvidence? AnchorCore { get; } = anchorCore;
             internal MenuGlyphCoreEvidence? CurrentCore { get; set; }
+            internal bool AnchorExpanded { get; } = anchor.ExpandedMenuCore is not null;
             internal MenuTextAuthority Authority { get; } = authority;
             internal CompletedMenuOcr? CompletedOcr { get; set; }
             internal long TranslatingVersion { get; set; }

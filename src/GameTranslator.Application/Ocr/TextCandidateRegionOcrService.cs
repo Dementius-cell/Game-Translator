@@ -542,6 +542,7 @@ public sealed class TextCandidateRegion
     public CapturedFrame Frame { get; }
 
     internal CapturedFrame? RecognitionContextFrame { get; init; }
+    internal Pipeline.MenuGlyphCoreEvidence? ExpandedMenuCore { get; init; }
 
     internal static IReadOnlyList<BoundingBox> CreateDetectorLineBounds(TextCandidate candidate) =>
         candidate.SourceCandidateBounds.Select(bound => new BoundingBox(

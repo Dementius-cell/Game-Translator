@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Reflection;
@@ -358,20 +358,21 @@ public sealed class ProfileManagerViewModelTests
         SetPropertyValue(model, "SourceLanguage", "en");
         SetPropertyValue(model, "OcrEngine", "Tesseract");
         SetPropertyValue(model, "ExperimentalMultilingualOcr", false);
-        Assert.Equal(false, GetPropertyValue(model, "IsOcrOrientationSelectionEnabled"));
+        Assert.Equal(true, GetPropertyValue(model, "IsOcrOrientationSelectionEnabled"));
         var changed = new List<string>();
         ((System.ComponentModel.INotifyPropertyChanged)model).PropertyChanged += (_, e) => changed.Add(e.PropertyName!);
         SetPropertyValue(model, "ExperimentalMultilingualOcr", true);
         Assert.Equal(true, GetPropertyValue(model, "IsOcrOrientationSelectionEnabled"));
         Assert.Contains("IsOcrOrientationSelectionEnabled", changed);
         Assert.Contains("OcrOrientationSelectionToolTip", changed);
+        Assert.Contains("OcrOrientations", changed);
         foreach (var mode in Enum.GetValues<OcrOrientationMode>())
         {
             SetPropertyValue(model, "OcrOrientationMode", mode);
             Assert.Equal(mode, GetPropertyValue(model, "OcrOrientationMode"));
         }
         SetPropertyValue(model, "ExperimentalMultilingualOcr", false);
-        Assert.Equal(false, GetPropertyValue(model, "IsOcrOrientationSelectionEnabled"));
+        Assert.Equal(true, GetPropertyValue(model, "IsOcrOrientationSelectionEnabled"));
     }
 
     [Theory]
@@ -927,7 +928,7 @@ public sealed class ProfileManagerViewModelTests
     }
 
     [Fact]
-    public void OcrOrientation_WhenConfiguredLanguageHasNoVerticalLayout_DisablesAndNormalizesToHorizontal()
+    public void OcrOrientation_WhenConfiguredLanguageHasNoVerticalLayout_KeepsSelectorAndRejectsVertical()
     {
         var viewModel = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService());
 
@@ -935,19 +936,45 @@ public sealed class ProfileManagerViewModelTests
         SetPropertyValue(viewModel, "SourceLanguage", "th");
         SetPropertyValue(viewModel, "OcrOrientationMode", OcrOrientationMode.Vertical);
 
-        Assert.False(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsOcrOrientationSelectionEnabled")));
+        Assert.True(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsOcrOrientationSelectionEnabled")));
         Assert.Equal(OcrOrientationMode.Horizontal, GetPropertyValue(viewModel, "OcrOrientationMode"));
+        Assert.DoesNotContain(OcrOrientationMode.Vertical,
+            Assert.IsAssignableFrom<IEnumerable<OcrOrientationMode>>(GetPropertyValue(viewModel, "OcrOrientations")));
 
         SetPropertyValue(viewModel, "SourceLanguage", "ja");
         SetPropertyValue(viewModel, "OcrOrientationMode", OcrOrientationMode.Vertical);
 
         Assert.True(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsOcrOrientationSelectionEnabled")));
         Assert.Equal(OcrOrientationMode.Vertical, GetPropertyValue(viewModel, "OcrOrientationMode"));
+        Assert.Contains(OcrOrientationMode.Vertical,
+            Assert.IsAssignableFrom<IEnumerable<OcrOrientationMode>>(GetPropertyValue(viewModel, "OcrOrientations")));
 
         SetPropertyValue(viewModel, "SourceLanguage", "en");
 
-        Assert.False(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsOcrOrientationSelectionEnabled")));
+        Assert.True(Assert.IsType<bool>(GetPropertyValue(viewModel, "IsOcrOrientationSelectionEnabled")));
         Assert.Equal(OcrOrientationMode.Horizontal, GetPropertyValue(viewModel, "OcrOrientationMode"));
+    }
+
+    [Theory]
+    [InlineData(OcrOrientationMode.Auto)]
+    [InlineData(OcrOrientationMode.Horizontal)]
+    public async Task EnglishOrientation_RemainsSelectableAndPersists(OcrOrientationMode direction)
+    {
+        var repository = new InMemoryProfileRepository();
+        var model = CreateMainViewModel(repository, new TestSettingsService());
+        ConfigureValidDraftProfile(model, "English direction");
+        SetPropertyValue(model, "SourceLanguage", "en");
+        SetPropertyValue(model, "OcrEngine", "Tesseract");
+        SetPropertyValue(model, "ExperimentalMultilingualOcr", false);
+        Assert.Equal(new[] { OcrOrientationMode.Auto, OcrOrientationMode.Horizontal },
+            Assert.IsAssignableFrom<IEnumerable<OcrOrientationMode>>(GetPropertyValue(model, "OcrOrientations")));
+        SetPropertyValue(model, "OcrOrientationMode", direction);
+        await InvokeTaskMethodAsync(model, "SaveAsync");
+        Assert.Equal(direction, Assert.Single(await repository.ListAsync()).OcrSettings.OrientationMode);
+        var reloaded = CreateMainViewModel(repository, new TestSettingsService());
+        await InvokeTaskMethodAsync(reloaded, "LoadAsync");
+        Assert.Equal(direction, GetPropertyValue(reloaded, "OcrOrientationMode"));
+        Assert.Equal(true, GetPropertyValue(reloaded, "IsOcrOrientationSelectionEnabled"));
     }
 
     [Fact]

@@ -961,6 +961,7 @@ public sealed partial class MainViewModel : ValidatableObservableObject
                 EnsureOcrOrientationMatchesConfiguredLanguages();
                 OnPropertyChanged(nameof(TranslatorSettingsSummary));
                 OnPropertyChanged(nameof(ProfileSummary));
+                OnPropertyChanged(nameof(OcrOrientations));
                 OnPropertyChanged(nameof(IsOcrOrientationSelectionEnabled));
                 OnPropertyChanged(nameof(OcrOrientationSelectionToolTip));
                 ResetOcrLanguagePackStatus();
@@ -995,19 +996,25 @@ public sealed partial class MainViewModel : ValidatableObservableObject
 
     public string OcrEngineBorderBrush => HasOcrEngineValidationError ? "#C84B4B" : "#9AA5B1";
 
-    public IReadOnlyList<OcrOrientationMode> OcrOrientations => SupportedOcrOrientations;
+    private static readonly OcrOrientationMode[] HorizontalOcrOrientations =
+        [OcrOrientationMode.Auto, OcrOrientationMode.Horizontal];
+
+    public IReadOnlyList<OcrOrientationMode> OcrOrientations => CanSelectVerticalOcr
+        ? SupportedOcrOrientations : HorizontalOcrOrientations;
+
+    private bool CanSelectVerticalOcr => ExperimentalMultilingualOcr || SupportsVerticalOcrLayout();
 
     public bool ShouldRecommendAutoOrientation => ExperimentalMultilingualOcr && OcrOrientationMode != OcrOrientationMode.Auto;
 
-    public bool IsOcrOrientationSelectionEnabled => ExperimentalMultilingualOcr || SupportsVerticalOcrLayout();
+    public bool IsOcrOrientationSelectionEnabled => true;
 
     public bool IsVerticalOcrOrientation => OcrOrientationMode == OcrOrientationMode.Vertical;
 
     public bool IsHorizontalOcrOrientation => !IsVerticalOcrOrientation;
 
-    public string OcrOrientationSelectionToolTip => IsOcrOrientationSelectionEnabled
+    public string OcrOrientationSelectionToolTip => CanSelectVerticalOcr
         ? "Vertical OCR is available for Japanese and Chinese zones."
-        : "The configured OCR language has no supported vertical layout; horizontal OCR is selected automatically.";
+        : "Choose Auto or Horizontal. Vertical OCR is not supported for the configured language.";
 
     public IReadOnlyList<OcrPreprocessingPresetOption> OcrPreprocessingPresets => SupportedOcrPreprocessingPresetOptions;
 
@@ -1269,8 +1276,10 @@ public sealed partial class MainViewModel : ValidatableObservableObject
         set
         {
             if (!SetProperty(ref experimentalMultilingualOcr, value)) return;
+            EnsureOcrOrientationMatchesConfiguredLanguages();
             OnPropertyChanged(nameof(ShouldRecommendAutoOrientation));
             EnableTranslationAutoForMultipleOcrLanguages();
+            OnPropertyChanged(nameof(OcrOrientations));
             OnPropertyChanged(nameof(IsOcrOrientationSelectionEnabled));
             OnPropertyChanged(nameof(OcrOrientationSelectionToolTip));
             ResetOcrLanguagePackStatus();
@@ -2829,6 +2838,7 @@ public sealed partial class MainViewModel : ValidatableObservableObject
             ? null
             : OcrZones[Math.Clamp(index, 0, OcrZones.Count - 1)];
         EnsureOcrOrientationMatchesConfiguredLanguages();
+        OnPropertyChanged(nameof(OcrOrientations));
         OnPropertyChanged(nameof(IsOcrOrientationSelectionEnabled));
         OnPropertyChanged(nameof(OcrOrientationSelectionToolTip));
         PersistDraftShellStateIfNeeded();
@@ -5264,6 +5274,7 @@ public sealed partial class MainViewModel : ValidatableObservableObject
 
         SelectedZone = OcrZones.FirstOrDefault();
         SyncSelectedZoneState();
+        OnPropertyChanged(nameof(OcrOrientations));
         OnPropertyChanged(nameof(IsOcrOrientationSelectionEnabled));
         OnPropertyChanged(nameof(OcrOrientationSelectionToolTip));
     }
@@ -5283,6 +5294,7 @@ public sealed partial class MainViewModel : ValidatableObservableObject
         if (string.Equals(e.PropertyName, nameof(OcrZoneEditorViewModel.OcrLanguage), StringComparison.Ordinal))
         {
             EnsureOcrOrientationMatchesConfiguredLanguages();
+            OnPropertyChanged(nameof(OcrOrientations));
             OnPropertyChanged(nameof(IsOcrOrientationSelectionEnabled));
             OnPropertyChanged(nameof(OcrOrientationSelectionToolTip));
             ResetOcrLanguagePackStatus();

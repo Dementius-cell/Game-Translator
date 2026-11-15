@@ -3474,7 +3474,7 @@
   {"Key": "T55d7042b9738", "Source": "(not started)", "En": "(not started)", "Ru": "(не запущено)"},
   {"Key": "T12a754183372", "Source": "Loading profiles...", "En": "Loading profiles...", "Ru": "Загрузка профилей…"},
   {"Key": "Tb09d77d31004", "Source": "Vertical OCR is available for Japanese and Chinese zones.", "En": "Vertical OCR is available for Japanese and Chinese zones.", "Ru": "Вертикальное распознавание доступно для зон с японским и китайским текстом."},
-  {"Key": "Tf0eab114eb2f", "Source": "The configured OCR language has no supported vertical layout; horizontal OCR is selected automatically.", "En": "The configured OCR language has no supported vertical layout; horizontal OCR is selected automatically.", "Ru": "Для выбранного языка вертикальное распознавание не поддерживается; автоматически выбрано горизонтальное."},
+  {"Key": "Tf0eab114eb2f", "Source": "Choose Auto or Horizontal. Vertical OCR is not supported for the configured language.", "En": "Choose Auto or Horizontal. Vertical OCR is not supported for the configured language.", "Ru": "Выберите «Авто» или «Горизонтальное». Для выбранного языка вертикальное распознавание не поддерживается."},
   {"Key": "Tcfeed6691c4d", "Source": "New Profile", "En": "New Profile", "Ru": "Новый профиль"},
   {"Key": "Tfec2ac0f4cf1", "Source": "Edit Profile", "En": "Edit Profile", "Ru": "Редактирование профиля"},
   {"Key": "T0215232a1e00", "Source": "no provider", "En": "no provider", "Ru": "провайдер не выбран"},

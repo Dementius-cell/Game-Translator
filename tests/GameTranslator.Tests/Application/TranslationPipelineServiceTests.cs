@@ -1181,8 +1181,10 @@ public sealed partial class TranslationPipelineServiceTests
         Assert.Equal(invalidation == "changed" ? 2 : 1, translator.CallCount);
     }
 
-    [Fact]
-    public async Task LiveMenu_StaticFreshFramesRenewWithoutRetranslation_CachedFrameExpires()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LiveMenu_StaticFreshFramesRenewWithoutRetranslation_CachedFrameExpires(bool incremental)
     {
         var zone = CreateZone("static-menu", "Menu", new AbsoluteRectangle(0, 0, 60, 24))
             with { ContentLayoutMode = ContentLayoutMode.StaticMenu };
@@ -1195,7 +1197,7 @@ public sealed partial class TranslationPipelineServiceTests
         var overlay = new FakeOverlayService();
         var clock = new ManualTimeProvider(FrameTime);
         var service = CreateService(capture, engine, translator, overlay, candidateDetector: detector, timeProvider: clock);
-        using var session = service.CreateLiveSession(CreateProfile(zone), new TranslationPipelineRunOptions());
+        using var session = service.CreateLiveSession(CreateProfile(zone) with { OcrSettings = new OcrSettings { OrientationMode = OcrOrientationMode.Auto } }, new TranslationPipelineRunOptions { EnableIncrementalMenuDetection = incremental });
         for (var i = 0; i < 24; i++)
         {
             await session.RefreshAsync();

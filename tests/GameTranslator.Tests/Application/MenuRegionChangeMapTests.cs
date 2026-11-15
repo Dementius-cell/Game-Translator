@@ -23,6 +23,36 @@ public sealed class MenuRegionChangeMapTests
     }
 
     [Fact]
+    public void KnownCachedSourceSkipsDetectionWithoutMovingAuditOrLosingBaseline()
+    {
+        var map = Initialized();
+        var cached = Frame(0, cached: true);
+        var repeat = map.Plan(cached, [], TimeSpan.FromMilliseconds(500));
+        Assert.Equal("cached-source-reused", repeat.Reason);
+        Assert.False(repeat.FullScan);
+        Assert.Empty(repeat.Areas);
+        map.Commit(cached, repeat, false);
+        Assert.Equal("local-change", map.Plan(Frame(700, p => Pixel(p, 100, 100)), [], TimeSpan.FromMilliseconds(700)).Reason);
+        Assert.Equal("periodic-audit", map.Plan(cached, [], TimeSpan.FromSeconds(2)).Reason);
+        Assert.Equal("untrusted-source", map.Plan(cached, [], TimeSpan.FromSeconds(3)).Reason);
+    }
+
+    [Theory]
+    [InlineData("pixels")]
+    [InlineData("source")]
+    [InlineData("timestamp")]
+    [InlineData("reset")]
+    public void CachedReuseRequiresExactSuccessfullyProcessedSource(string change)
+    {
+        var map = Initialized();
+        if (change == "reset") map.Reset();
+        var cached = Frame(change == "timestamp" ? 100 : 0,
+            p => { if (change == "pixels") Pixel(p, 100, 100); },
+            source: change == "source" ? Guid.NewGuid() : null, cached: true);
+        Assert.Equal("untrusted-source", map.Plan(cached, [], TimeSpan.FromMilliseconds(500)).Reason);
+    }
+
+    [Fact]
     public void SeparateChangesStaySeparateAndExpandToWholeTextBlocks()
     {
         var map = Initialized();

@@ -23,9 +23,21 @@ internal sealed class MenuRegionChangeMap
             new(reason, true, [whole], changed, cols * rows, next);
         if (frame.PixelFormat != "Bgra32" || frame.Stride != (long)frame.Width * 4
             || (long)frame.Width * frame.Height > 16777216 || (long)cols * rows > 8192) return Full("unsupported-frame");
-        if (frame.Origin is not { } current || frame.IsCachedReuse
+        if (frame.Origin is not { } current
             || now < current.FreshnessTimestamp || now - current.FreshnessTimestamp > TimeSpan.FromSeconds(2))
             return Full("untrusted-source");
+        if (frame.IsCachedReuse)
+        {
+            // Reuse work only for the exact successfully processed source, never renew evidence.
+            if (hashes is null || region != frame.Region || origin?.SourceId != current.SourceId
+                || origin.SourceTimestamp != current.SourceTimestamp
+                || origin.FreshnessTimestamp != current.FreshnessTimestamp)
+                return Full("untrusted-source");
+            if (now - lastFull >= TimeSpan.FromSeconds(2)) return Full("periodic-audit");
+            var repeated = HashTiles(frame, cols, rows, cancellationToken);
+            if (!repeated.AsSpan().SequenceEqual(hashes)) return Full("untrusted-source");
+            return new("cached-source-reused", false, [], 0, cols * rows, hashes);
+        }
         var next = HashTiles(frame, cols, rows, cancellationToken);
         if (hashes is null || region != frame.Region || hashes.Length != next.Length
             || origin?.SourceId != current.SourceId) return Full("initial-or-context", next);
@@ -99,6 +111,7 @@ internal sealed class MenuRegionChangeMap
 
     internal void Commit(CapturedFrame frame, MenuRegionPlan plan, bool fullScan)
     {
+        if (plan.Reason == "cached-source-reused") return;
         hashes = plan.Hashes;
         region = frame.Region;
         origin = frame.Origin;

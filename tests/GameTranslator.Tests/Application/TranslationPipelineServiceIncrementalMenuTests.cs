@@ -54,6 +54,14 @@ public sealed partial class TranslationPipelineServiceTests
         Assert.Equal(2, overlay.CurrentSnapshot!.TextItems.Count);
         var rightCalls = engine.Requests.Count(r => r.Frame.Region.X >= 500);
         sent.Clear();
+        capture.SourceTimestampOverride = TimeSpan.FromMilliseconds(1500);
+        var replay = await session.RefreshAsync();
+        var replayScope = Assert.Single(replay.CandidateLifecycleEvents, e => e.RegionRefresh is not null).RegionRefresh!;
+        Assert.Equal("cached-source-reused", replayScope.Reason);
+        Assert.Equal(0, replayScope.DetectorCalls);
+        Assert.Empty(sent);
+        Assert.DoesNotContain(replay.CandidateLifecycleEvents, e => e.Menu?.Decision == "visual-source-renewed");
+        capture.SourceTimestampOverride = null;
         changed = true;
         var local = await session.RefreshAsync();
         var scope = Assert.Single(local.CandidateLifecycleEvents, e => e.RegionRefresh is not null).RegionRefresh!;

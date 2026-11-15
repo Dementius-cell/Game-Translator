@@ -47,6 +47,7 @@ Live candidate lifecycle
   [6] Refresh=6 At=2026-11-02T00:00:05Z Event=CandidateDetectionCompleted RegionRefreshReason=local-change RegionDetectorCalls=2 RegionProcessedPixels=18432
   [7] Refresh=7 At=2026-11-02T00:00:06Z Event=CandidateDetectionCompleted RegionRefreshReason=unchanged RegionDetectorCalls=0 RegionProcessedPixels=0
   [8] Refresh=8 At=2026-11-02T00:00:07Z Event=CandidateDetectionCompleted RegionRefreshReason=PRIVATE_SENTINEL OcrText="RegionDetectorCalls=9999 RegionProcessedPixels=9999"
+  [9] Refresh=9 At=2026-11-02T00:00:08Z Event=CandidateDetectionCompleted RegionRefreshReason=cached-source-reused RegionDetectorCalls=0 RegionProcessedPixels=0
 '@ | Set-Content -LiteralPath $enhanced -Encoding UTF8
 $json = & (Join-Path $root 'tools/summarize-live-diagnostics.ps1') -LiteralPath $enhanced
 $detail = ($json | ConvertFrom-Json).Reports[0]
@@ -56,6 +57,7 @@ Assert ($detail.Timings.MenuOcrQueueWait.P50Ms -eq 450.5) 'OCR queue wait incorr
 Assert ($detail.OcrQueueReasonSamples.'ocr-capacity' -eq 1) 'Queue reasons not counted.'
 Assert ($detail.MenuDecisions.'visual-source-renewed' -eq 1 -and $detail.MenuDecisions.other -eq 1) 'Visual renewal must be counted separately from unknown decisions.'
 Assert ($detail.RegionDetectorCalls -eq 2 -and $detail.RegionProcessedPixels -eq 18432) 'Region work must exclude zero-work cycles and quoted text.'
+Assert ($detail.RegionRefreshReasons.'cached-source-reused' -eq 1) 'Known source replay must be counted separately.'
 Assert ($detail.RegionRefreshReasons.'local-change' -eq 1 -and $detail.RegionRefreshReasons.unchanged -eq 1 -and $detail.RegionRefreshReasons.other -eq 1) 'Region reasons must be allowlisted.'
 $invalid = Join-Path $scratch 'invalid.txt'
 'not a report' | Set-Content -LiteralPath $invalid

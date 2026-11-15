@@ -31,7 +31,7 @@ foreach ($inputPath in $LiteralPath) {
     $regionCalls = $null
     $regionPixels = $null
     $knownRegionReasons = @('initial-or-context','unsupported-frame','untrusted-source','source-gap',
-        'periodic-audit','broad-change','large-change','expanded-change','unchanged','local-change','boundary-fallback')
+        'periodic-audit','broad-change','large-change','expanded-change','unchanged','local-change','boundary-fallback','cached-source-reused')
     $knownMenuDecisions = @('ocr-started','text-observed','visual-source-renewed','text-version-changed','translation-published','text-expired',
         'text-revoked-before-geometry','ocr-retired-generation','ocr-rejected-source','ocr-rejected-geometry',
         'translation-rejected-version-or-age','scheduler-sample','geometry-no-compatible-region','geometry-ambiguous',

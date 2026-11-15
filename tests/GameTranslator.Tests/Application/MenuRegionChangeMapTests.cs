@@ -7,12 +7,15 @@ namespace GameTranslator.Tests.Application;
 public sealed class MenuRegionChangeMapTests
 {
     private static readonly Guid Source = Guid.NewGuid();
-    private static CapturedFrame Frame(int ms, Action<byte[]>? edit = null, Guid? source = null, bool cached = false)
+    private static CapturedFrame Frame(int ms, Action<byte[]>? edit = null, Guid? source = null, bool cached = false,
+        TimeSpan? observedAt = null)
     {
         var data = Enumerable.Repeat((byte)42, 1024 * 512 * 4).ToArray();
         edit?.Invoke(data);
+        var origin = new CaptureFrameOrigin(source ?? Source, TimeSpan.FromMilliseconds(ms), DateTimeOffset.UnixEpoch)
+        { ObservedAtTimestamp = observedAt };
         return new(new CaptureRegion(0, 0, 1024, 512), 1024, 512, 4096, "Bgra32", data,
-            DateTimeOffset.UnixEpoch, new(source ?? Source, TimeSpan.FromMilliseconds(ms), DateTimeOffset.UnixEpoch), cached);
+            DateTimeOffset.UnixEpoch, origin, cached);
     }
     private static void Pixel(byte[] data, int x, int y) => data[(y * 1024 + x) * 4]++;
     private static MenuRegionChangeMap Initialized()
@@ -40,13 +43,12 @@ public sealed class MenuRegionChangeMapTests
     [Theory]
     [InlineData("pixels")]
     [InlineData("source")]
-    [InlineData("timestamp")]
     [InlineData("reset")]
     public void CachedReuseRequiresExactSuccessfullyProcessedSource(string change)
     {
         var map = Initialized();
         if (change == "reset") map.Reset();
-        var cached = Frame(change == "timestamp" ? 100 : 0,
+        var cached = Frame(0,
             p => { if (change == "pixels") Pixel(p, 100, 100); },
             source: change == "source" ? Guid.NewGuid() : null, cached: true);
         var plan = map.Plan(cached, [], TimeSpan.FromMilliseconds(500));
@@ -55,9 +57,35 @@ public sealed class MenuRegionChangeMapTests
         {
             "pixels" => "cached-pixels-mismatch",
             "source" => "cached-source-mismatch",
-            "timestamp" => "cached-timestamp-mismatch",
             _ => "cached-no-baseline",
         }, plan.Detail);
+    }
+
+    [Fact]
+    public void SameTimestampCachedSourceWithContradictoryFreshnessIsRejected()
+    {
+        var map = new MenuRegionChangeMap();
+        var first = Frame(100, observedAt: TimeSpan.FromMilliseconds(80));
+        map.Commit(first, map.Plan(first, [], TimeSpan.FromMilliseconds(100)), true);
+
+        var contradictory = map.Plan(Frame(100, cached: true, observedAt: TimeSpan.FromMilliseconds(90)), [],
+            TimeSpan.FromMilliseconds(500));
+        Assert.True(contradictory.FullScan);
+        Assert.Equal("cached-freshness-mismatch", contradictory.Detail);
+    }
+
+    [Fact]
+    public void CachedSourceWithFreshnessRegressionIsRejectedEvenWhenTimestampAdvances()
+    {
+        var map = new MenuRegionChangeMap();
+        var first = Frame(100, observedAt: TimeSpan.FromMilliseconds(100));
+        map.Commit(first, map.Plan(first, [], TimeSpan.FromMilliseconds(100)), true);
+
+        var regressed = map.Plan(Frame(200, cached: true, observedAt: TimeSpan.FromMilliseconds(50)), [],
+            TimeSpan.FromMilliseconds(150));
+        Assert.True(regressed.FullScan);
+        Assert.Equal("cached-source-regressed", regressed.Detail);
+        Assert.Null(regressed.Hashes);
     }
 
     [Fact]
@@ -77,19 +105,52 @@ public sealed class MenuRegionChangeMapTests
     }
 
     [Fact]
-    public void FullDetectionOfNewCachedSourceEstablishesReusableBaselineOnlyAfterCommit()
+    public void NewerCachedSourceEstablishesReusableBaselineOnlyAfterSuccessfulDetection()
     {
         var map = Initialized();
-        var frame = Frame(500, cached: true);
+        var frame = Frame(500, p => Pixel(p, 100, 100), cached: true);
         var plan = map.Plan(frame, [], TimeSpan.FromMilliseconds(600));
-        Assert.True(plan.FullScan);
-        Assert.Equal("cached-timestamp-mismatch", plan.Detail);
-        Assert.True(map.Plan(frame, [], TimeSpan.FromMilliseconds(650)).FullScan);
-        map.Commit(frame, plan, true);
+        Assert.False(plan.FullScan);
+        Assert.Equal("local-change", plan.Reason);
+        Assert.Equal("available", map.BaselineState);
+        Assert.Equal("local-change", map.Plan(Frame(600, p => Pixel(p, 800, 400)), [],
+            TimeSpan.FromMilliseconds(700)).Reason); // Planning does not commit a speculative map.
+        map.Commit(frame, plan, false);
         Assert.Equal("available", map.BaselineState);
         Assert.Equal("cached-source-reused", map.Plan(frame, [], TimeSpan.FromMilliseconds(700)).Reason);
-        Assert.Equal("local-change", map.Plan(Frame(800, p => Pixel(p, 100, 100)), [], TimeSpan.FromMilliseconds(800)).Reason);
+        Assert.Equal("local-change", map.Plan(Frame(800, p => Pixel(p, 800, 400)), [], TimeSpan.FromMilliseconds(800)).Reason);
         Assert.Equal("untrusted-source", map.Plan(frame, [], TimeSpan.FromSeconds(3)).Reason);
+    }
+
+    [Theory]
+    [InlineData(false, "unchanged")]
+    [InlineData(true, "local-change")]
+    public void NewerRecentCachedSourceUsesExactTileDiff(bool changed, string expectedReason)
+    {
+        var map = Initialized();
+        var cached = Frame(500, changed ? p => Pixel(p, 100, 100) : null, cached: true);
+        var plan = map.Plan(cached, [], TimeSpan.FromMilliseconds(600));
+
+        Assert.False(plan.FullScan);
+        Assert.Equal(expectedReason, plan.Reason);
+        Assert.Equal(changed ? 1 : 0, plan.ChangedTiles);
+    }
+
+    [Fact]
+    public void NewerCachedSourceStillGetsFullAuditAndBroadChangesAreNotSuppressed()
+    {
+        var map = Initialized();
+        var broad = Frame(500, p =>
+        {
+            for (var y = 200; y < 220; y++) for (var x = 0; x < 1024; x++) Pixel(p, x, y);
+        }, cached: true);
+        var plan = map.Plan(broad, [], TimeSpan.FromMilliseconds(500));
+        Assert.True(plan.FullScan);
+        Assert.Equal("broad-change", plan.Reason);
+
+        var audit = map.Plan(Frame(2000, cached: true), [], TimeSpan.FromSeconds(2));
+        Assert.True(audit.FullScan);
+        Assert.Equal("periodic-audit", audit.Reason);
     }
 
     [Fact]
@@ -156,7 +217,6 @@ public sealed class MenuRegionChangeMapTests
     }
 
     [Theory]
-    [InlineData("cached", "untrusted-source")]
     [InlineData("context", "initial-or-context")]
     [InlineData("duplicate", "source-gap")]
     [InlineData("gap", "source-gap")]

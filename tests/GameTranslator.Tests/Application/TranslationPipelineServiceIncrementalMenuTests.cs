@@ -65,12 +65,30 @@ public sealed partial class TranslationPipelineServiceTests
         Assert.Equal(0, replayScope.DetectorCalls);
         Assert.Empty(sent);
         Assert.DoesNotContain(replay.CandidateLifecycleEvents, e => e.Menu?.Decision == "visual-source-renewed");
+
+        capture.SourceTimestampOverride = TimeSpan.FromMilliseconds(1600);
+        var unchangedCached = await session.RefreshAsync();
+        var unchangedScope = Assert.Single(unchangedCached.CandidateLifecycleEvents, e => e.RegionRefresh is not null).RegionRefresh!;
+        Assert.Equal("unchanged", unchangedScope.Reason);
+        Assert.Equal(0, unchangedScope.DetectorCalls);
+        Assert.True(unchangedScope.CachedReuse);
+        Assert.Equal("available", unchangedScope.BaselineAfter);
+        Assert.Empty(sent);
+        Assert.DoesNotContain(unchangedCached.CandidateLifecycleEvents, e => e.Menu?.Decision == "visual-source-renewed");
+
+        changed = true;
         capture.SourceTimestampOverride = TimeSpan.FromMilliseconds(1750);
         var newCached = await session.RefreshAsync();
         var verified = Assert.Single(newCached.CandidateLifecycleEvents, e => e.RegionRefresh is not null).RegionRefresh!;
-        Assert.Equal("cached-timestamp-mismatch", verified.Detail);
+        Assert.Equal("local-change", verified.Reason);
         Assert.Equal(1, verified.DetectorCalls);
+        Assert.Equal(1, verified.ChangedTiles);
+        Assert.True(verified.CachedReuse);
+        Assert.Equal(1, verified.RetainedCandidates);
+        Assert.True(verified.ProcessedPixels < 1024 * 512 / 4);
         Assert.Equal("available", verified.BaselineAfter);
+        Assert.True(Assert.Single(sent).Width < 512);
+        Assert.DoesNotContain(newCached.CandidateLifecycleEvents, e => e.Menu?.Decision == "visual-source-renewed");
         await session.PublishCompletedWorkAsync();
         rightCalls = engine.Requests.Count(r => r.Frame.Region.X >= 500);
         sent.Clear();
@@ -79,7 +97,7 @@ public sealed partial class TranslationPipelineServiceTests
         Assert.Empty(sent);
         Assert.DoesNotContain(cachedAgain.CandidateLifecycleEvents, e => e.Menu?.Decision == "visual-source-renewed");
         capture.SourceTimestampOverride = null;
-        changed = true;
+        changed = false;
         var local = await session.RefreshAsync();
         var scope = Assert.Single(local.CandidateLifecycleEvents, e => e.RegionRefresh is not null).RegionRefresh!;
         Assert.False(scope.FullScan);
@@ -92,6 +110,7 @@ public sealed partial class TranslationPipelineServiceTests
         Assert.Contains(overlay.CurrentSnapshot!.TextItems, t => t.X >= 700 && t.Text == "Translated Stable label");
         if (disappears) Assert.Single(overlay.CurrentSnapshot.TextItems);
         Assert.Equal(rightCalls, engine.Requests.Count(r => r.Frame.Region.X >= 500));
+        changed = true;
         for (var i = 0; i < 3; i++)
         {
             clock.Advance(TimeSpan.FromMilliseconds(500));

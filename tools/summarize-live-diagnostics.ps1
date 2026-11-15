@@ -28,6 +28,16 @@ foreach ($inputPath in $LiteralPath) {
     $publishedInvalidations = $null
     $maximumPendingOcr = $null
     $regionReasons = @{}
+    $regionDetails = @{}
+    $regionBaselines = @{}
+    $regionBaselineAfter = @{}
+    $regionDetailBaselines = @{}
+    $knownRegionDetails = @('missing-origin','future-source','expired-source','cached-no-baseline',
+        'cached-region-mismatch','cached-source-mismatch','cached-timestamp-mismatch','cached-freshness-mismatch',
+        'cached-pixels-mismatch','no-baseline','region-mismatch','tile-layout-mismatch','source-mismatch',
+        'non-increasing-source','freshness-regressed','source-gap-exceeded','pixel-format','stride','pixel-limit','tile-limit')
+    $knownBaselineStates = @('not-initialized','available','discarded-after-full-scan','explicit-reset',
+        'no-confirmed-translation','detector-unavailable')
     $regionCalls = $null
     $regionPixels = $null
     $knownRegionReasons = @('initial-or-context','unsupported-frame','untrusted-source','source-gap',
@@ -96,6 +106,23 @@ foreach ($inputPath in $LiteralPath) {
         if ($kind -eq 'CandidateDetectionCompleted' -and $stripped -match '(?:^| )RegionRefreshReason=(\S+)') {
             $reason = if ($Matches[1] -in $knownRegionReasons) { $Matches[1] } else { 'other' }
             $regionReasons[$reason] = 1 + $regionReasons[$reason]
+            $detail = $null
+            if ($stripped -match '(?:^| )RegionRefreshDetail=(\S+)') {
+                $detail = if ($Matches[1] -in $knownRegionDetails) { $Matches[1] } else { 'other' }
+                $regionDetails[$detail] = 1 + $regionDetails[$detail]
+            }
+            if ($stripped -match '(?:^| )RegionBaselineState=(\S+)') {
+                $baseline = if ($Matches[1] -in $knownBaselineStates) { $Matches[1] } else { 'other' }
+                $regionBaselines[$baseline] = 1 + $regionBaselines[$baseline]
+                if ($null -ne $detail) {
+                    $key = $detail + '/' + $baseline
+                    $regionDetailBaselines[$key] = 1 + $regionDetailBaselines[$key]
+                }
+            }
+            if ($stripped -match '(?:^| )RegionBaselineAfter=(\S+)') {
+                $after = if ($Matches[1] -in $knownBaselineStates) { $Matches[1] } else { 'other' }
+                $regionBaselineAfter[$after] = 1 + $regionBaselineAfter[$after]
+            }
             $calls = Get-NumericField $stripped 'RegionDetectorCalls'
             $pixels = Get-NumericField $stripped 'RegionProcessedPixels'
             if ($null -ne $calls) { $regionCalls = $regionCalls + $calls }
@@ -185,6 +212,10 @@ foreach ($inputPath in $LiteralPath) {
         EventCounts = $events
         MenuDecisions = $menuDecisions
         RegionRefreshReasons = $regionReasons
+        RegionRefreshDetails = $regionDetails
+        RegionBaselineStates = $regionBaselines
+        RegionBaselineAfter = $regionBaselineAfter
+        RegionDetailBaselineCounts = $regionDetailBaselines
         RegionDetectorCalls = $regionCalls
         RegionProcessedPixels = $regionPixels
         PublishedTranslationInvalidations = $publishedInvalidations

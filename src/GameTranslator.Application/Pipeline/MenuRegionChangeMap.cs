@@ -12,6 +12,7 @@ internal sealed class MenuRegionChangeMap
     private CaptureRegion region;
     private CaptureFrameOrigin? origin;
     private TimeSpan lastFull;
+    internal string BaselineState { get; private set; } = "not-initialized";
 
     internal MenuRegionPlan Plan(CapturedFrame frame, IReadOnlyList<BoundingBox> candidates, TimeSpan now,
         CancellationToken cancellationToken = default)
@@ -19,32 +20,38 @@ internal sealed class MenuRegionChangeMap
         var whole = new BoundingBox(0, 0, frame.Width, frame.Height);
         var cols = (frame.Width + TileSize - 1) / TileSize;
         var rows = (frame.Height + TileSize - 1) / TileSize;
-        MenuRegionPlan Full(string reason, byte[]? next = null, int changed = 0) =>
-            new(reason, true, [whole], changed, cols * rows, next);
-        if (frame.PixelFormat != "Bgra32" || frame.Stride != (long)frame.Width * 4
-            || (long)frame.Width * frame.Height > 16777216 || (long)cols * rows > 8192) return Full("unsupported-frame");
-        if (frame.Origin is not { } current
-            || now < current.FreshnessTimestamp || now - current.FreshnessTimestamp > TimeSpan.FromSeconds(2))
-            return Full("untrusted-source");
+        MenuRegionPlan Full(string reason, byte[]? next = null, int changed = 0, string? detail = null) =>
+            new(reason, true, [whole], changed, cols * rows, next) { Detail = detail };
+        if (frame.PixelFormat != "Bgra32") return Full("unsupported-frame", detail: "pixel-format");
+        if (frame.Stride != (long)frame.Width * 4) return Full("unsupported-frame", detail: "stride");
+        if ((long)frame.Width * frame.Height > 16777216) return Full("unsupported-frame", detail: "pixel-limit");
+        if ((long)cols * rows > 8192) return Full("unsupported-frame", detail: "tile-limit");
+        if (frame.Origin is not { } current) return Full("untrusted-source", detail: "missing-origin");
+        if (now < current.FreshnessTimestamp) return Full("untrusted-source", detail: "future-source");
+        if (now - current.FreshnessTimestamp > TimeSpan.FromSeconds(2))
+            return Full("untrusted-source", detail: "expired-source");
         if (frame.IsCachedReuse)
         {
             // Reuse work only for the exact successfully processed source, never renew evidence.
-            if (hashes is null || region != frame.Region || origin?.SourceId != current.SourceId
-                || origin.SourceTimestamp != current.SourceTimestamp
-                || origin.FreshnessTimestamp != current.FreshnessTimestamp)
-                return Full("untrusted-source");
+            if (hashes is null) return Full("untrusted-source", detail: "cached-no-baseline");
+            if (region != frame.Region) return Full("untrusted-source", detail: "cached-region-mismatch");
+            if (origin?.SourceId != current.SourceId) return Full("untrusted-source", detail: "cached-source-mismatch");
+            if (origin.SourceTimestamp != current.SourceTimestamp) return Full("untrusted-source", detail: "cached-timestamp-mismatch");
+            if (origin.FreshnessTimestamp != current.FreshnessTimestamp) return Full("untrusted-source", detail: "cached-freshness-mismatch");
             if (now - lastFull >= TimeSpan.FromSeconds(2)) return Full("periodic-audit");
             var repeated = HashTiles(frame, cols, rows, cancellationToken);
-            if (!repeated.AsSpan().SequenceEqual(hashes)) return Full("untrusted-source");
+            if (!repeated.AsSpan().SequenceEqual(hashes)) return Full("untrusted-source", detail: "cached-pixels-mismatch");
             return new("cached-source-reused", false, [], 0, cols * rows, hashes);
         }
         var next = HashTiles(frame, cols, rows, cancellationToken);
-        if (hashes is null || region != frame.Region || hashes.Length != next.Length
-            || origin?.SourceId != current.SourceId) return Full("initial-or-context", next);
-        if (current.SourceTimestamp <= origin.SourceTimestamp
-            || current.FreshnessTimestamp < origin.FreshnessTimestamp
-            || current.FreshnessTimestamp - origin.FreshnessTimestamp > TimeSpan.FromSeconds(2))
-            return Full("source-gap", next);
+        if (hashes is null) return Full("initial-or-context", next, detail: "no-baseline");
+        if (region != frame.Region) return Full("initial-or-context", next, detail: "region-mismatch");
+        if (hashes.Length != next.Length) return Full("initial-or-context", next, detail: "tile-layout-mismatch");
+        if (origin?.SourceId != current.SourceId) return Full("initial-or-context", next, detail: "source-mismatch");
+        if (current.SourceTimestamp <= origin.SourceTimestamp) return Full("source-gap", next, detail: "non-increasing-source");
+        if (current.FreshnessTimestamp < origin.FreshnessTimestamp) return Full("source-gap", next, detail: "freshness-regressed");
+        if (current.FreshnessTimestamp - origin.FreshnessTimestamp > TimeSpan.FromSeconds(2))
+            return Full("source-gap", next, detail: "source-gap-exceeded");
         if (now - lastFull >= TimeSpan.FromSeconds(2)) return Full("periodic-audit", next);
 
         var dirty = new bool[cols * rows];
@@ -113,11 +120,12 @@ internal sealed class MenuRegionChangeMap
     {
         if (plan.Reason == "cached-source-reused") return;
         hashes = plan.Hashes;
+        BaselineState = hashes is null ? "discarded-after-full-scan" : "available";
         region = frame.Region;
         origin = frame.Origin;
         if (fullScan && frame.Origin is { } current) lastFull = current.FreshnessTimestamp;
     }
-    internal void Reset() { hashes = null; origin = null; }
+    internal void Reset(string reason = "explicit-reset") { hashes = null; origin = null; BaselineState = reason; }
 
     private static byte[] HashTiles(CapturedFrame frame, int cols, int rows, CancellationToken token)
     {
@@ -148,4 +156,7 @@ internal sealed class MenuRegionChangeMap
 }
 
 internal sealed record MenuRegionPlan(string Reason, bool FullScan, BoundingBox[] Areas,
-    int ChangedTiles, int TotalTiles, byte[]? Hashes);
+    int ChangedTiles, int TotalTiles, byte[]? Hashes)
+{
+    public string? Detail { get; init; }
+}

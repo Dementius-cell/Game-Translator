@@ -3171,7 +3171,9 @@ public sealed class ProfileManagerViewModelTests
             Menu = new MenuLiveDiagnostics(7, 3, Guid.Empty, 1200, 500, true, 2, true, true,
                 1, 1, 14, 0, "text-observed", 250),
             RegionRefresh = new RegionDetectionDiagnostics("local-change", false, 2, 128,
-                [new BoundingBox(64, 128, 192, 96)], 12, 1, 18432),
+                [new BoundingBox(64, 128, 192, 96)], 12, 1, 18432)
+            { Detail = "cached-no-baseline", BaselineState = "no-confirmed-translation",
+                BaselineAfter = "discarded-after-full-scan", SourceAgeMs = 123.5, CachedReuse = true },
         });
         var appendMethod = viewModel.GetType().GetMethod(
             "AppendLiveCandidateLifecycleDebugInfo",
@@ -3189,6 +3191,11 @@ public sealed class ProfileManagerViewModelTests
         Assert.Contains("MenuReplacedPending=14", report, StringComparison.Ordinal);
         Assert.Contains("MenuDecision=text-observed", report, StringComparison.Ordinal);
         Assert.Contains("RegionRefreshReason=local-change", report, StringComparison.Ordinal);
+        Assert.Contains("RegionRefreshDetail=cached-no-baseline", report, StringComparison.Ordinal);
+        Assert.Contains("RegionBaselineState=no-confirmed-translation", report, StringComparison.Ordinal);
+        Assert.Contains("RegionBaselineAfter=discarded-after-full-scan", report, StringComparison.Ordinal);
+        Assert.Contains("RegionSourceAgeMs=123.5", report, StringComparison.Ordinal);
+        Assert.Contains("RegionCachedReuse=True", report, StringComparison.Ordinal);
         Assert.Contains("RegionDetectorCalls=1", report, StringComparison.Ordinal);
         Assert.Contains("RegionProcessedPixels=18432", report, StringComparison.Ordinal);
         Assert.Contains("RegionAreas=X64,Y128,W192,H96", report, StringComparison.Ordinal);

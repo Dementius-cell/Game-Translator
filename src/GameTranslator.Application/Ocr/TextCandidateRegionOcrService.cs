@@ -616,7 +616,14 @@ public sealed class TextCandidateRegionDetectionResult
 }
 
 public sealed record RegionDetectionDiagnostics(string Reason, bool FullScan, int ChangedTiles, int TotalTiles,
-    IReadOnlyList<BoundingBox> Areas, int RetainedCandidates, int DetectorCalls, long ProcessedPixels);
+    IReadOnlyList<BoundingBox> Areas, int RetainedCandidates, int DetectorCalls, long ProcessedPixels)
+{
+    public string? Detail { get; init; }
+    public string? BaselineState { get; init; }
+    public string? BaselineAfter { get; init; }
+    public double? SourceAgeMs { get; init; }
+    public bool CachedReuse { get; init; }
+}
 
 public sealed record TextCandidateRegionOcrOptions
 {

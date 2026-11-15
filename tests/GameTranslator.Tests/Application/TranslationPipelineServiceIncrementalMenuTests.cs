@@ -58,6 +58,10 @@ public sealed partial class TranslationPipelineServiceTests
         var replay = await session.RefreshAsync();
         var replayScope = Assert.Single(replay.CandidateLifecycleEvents, e => e.RegionRefresh is not null).RegionRefresh!;
         Assert.Equal("cached-source-reused", replayScope.Reason);
+        Assert.Equal("available", replayScope.BaselineState);
+        Assert.Equal("available", replayScope.BaselineAfter);
+        Assert.True(replayScope.CachedReuse);
+        Assert.Equal(500, replayScope.SourceAgeMs);
         Assert.Equal(0, replayScope.DetectorCalls);
         Assert.Empty(sent);
         Assert.DoesNotContain(replay.CandidateLifecycleEvents, e => e.Menu?.Decision == "visual-source-renewed");

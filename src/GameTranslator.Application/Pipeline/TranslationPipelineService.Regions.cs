@@ -17,13 +17,19 @@ public sealed partial class TranslationPipelineService
                 return await service.candidateRegionOcrService.DetectAsync(request, token);
 
             if (!state.CandidateStates.Values.Any(c => c.Menu?.Authority.Confirmed == true && c.Result is not null))
-                state.MenuChanges.Reset(); // Initial confirmation still uses independent detector observations.
+                state.MenuChanges.Reset("no-confirmed-translation"); // Initial confirmation still uses independent detector observations.
             var previous = state.CandidateStates.Values.Select(c => c.Region.Candidate).ToArray();
             var plan = state.MenuChanges.Plan(captured.Frame, previous.Select(c => c.Bounds).ToArray(), MenuNow, token);
             var retained = previous.Where(c => !plan.Areas.Any(a => MenuRegionChangeMap.Intersects(a, c.Bounds))).ToArray();
             var scope = new RegionDetectionDiagnostics(plan.Reason, plan.FullScan, plan.ChangedTiles, plan.TotalTiles,
                 plan.Areas, retained.Length, plan.FullScan ? 1 : 0,
-                plan.FullScan ? (long)captured.Frame.Width * captured.Frame.Height : 0);
+                plan.FullScan ? (long)captured.Frame.Width * captured.Frame.Height : 0)
+            {
+                Detail = plan.Detail,
+                BaselineState = state.MenuChanges.BaselineState,
+                SourceAgeMs = captured.Frame.Origin is { } origin ? (MenuNow - origin.FreshnessTimestamp).TotalMilliseconds : null,
+                CachedReuse = captured.Frame.IsCachedReuse,
+            };
             TextCandidateRegionDetectionResult detection;
             if (plan.FullScan)
             {
@@ -36,8 +42,9 @@ public sealed partial class TranslationPipelineService
             ThrowIfDisposed();
             if (detection.Availability == TextCandidateDetectorAvailability.Available)
                 state.MenuChanges.Commit(captured.Frame, plan, detection.RegionRefresh!.FullScan);
-            else state.MenuChanges.Reset();
-            return detection;
+            else state.MenuChanges.Reset("detector-unavailable");
+            return new(detection.Availability, detection.DetectorId, detection.UnavailableReason, detection.Regions, detection.Diagnostics)
+            { RegionRefresh = detection.RegionRefresh! with { BaselineAfter = state.MenuChanges.BaselineState } };
         }
     }
 }

@@ -49,7 +49,31 @@ public sealed class MenuRegionChangeMapTests
         var cached = Frame(change == "timestamp" ? 100 : 0,
             p => { if (change == "pixels") Pixel(p, 100, 100); },
             source: change == "source" ? Guid.NewGuid() : null, cached: true);
-        Assert.Equal("untrusted-source", map.Plan(cached, [], TimeSpan.FromMilliseconds(500)).Reason);
+        var plan = map.Plan(cached, [], TimeSpan.FromMilliseconds(500));
+        Assert.Equal("untrusted-source", plan.Reason);
+        Assert.Equal(change switch
+        {
+            "pixels" => "cached-pixels-mismatch",
+            "source" => "cached-source-mismatch",
+            "timestamp" => "cached-timestamp-mismatch",
+            _ => "cached-no-baseline",
+        }, plan.Detail);
+    }
+
+    [Fact]
+    public void DiagnosticsDistinguishExpiredSourceAndBaselineDiscardFromConfirmationReset()
+    {
+        var map = Initialized();
+        Assert.Equal("available", map.BaselineState);
+        var frame = Frame(0, cached: true);
+        var expired = map.Plan(frame, [], TimeSpan.FromSeconds(3));
+        Assert.Equal("expired-source", expired.Detail);
+        map.Commit(frame, expired, true);
+        Assert.Equal("discarded-after-full-scan", map.BaselineState);
+        Assert.Equal("cached-no-baseline", map.Plan(Frame(4000, cached: true), [], TimeSpan.FromSeconds(4)).Detail);
+        map.Reset("no-confirmed-translation");
+        Assert.Equal("no-confirmed-translation", map.BaselineState);
+        Assert.Equal("future-source", map.Plan(Frame(5000), [], TimeSpan.FromSeconds(4)).Detail);
     }
 
     [Fact]

@@ -6265,6 +6265,11 @@ public sealed partial class MainViewModel : ValidatableObservableObject
             if (entry.RegionRefresh is { } regionRefresh)
             {
                 AppendLifecycleField(builder, "RegionRefreshReason", regionRefresh.Reason);
+                AppendLifecycleField(builder, "RegionRefreshDetail", regionRefresh.Detail);
+                AppendLifecycleField(builder, "RegionBaselineState", regionRefresh.BaselineState);
+                AppendLifecycleField(builder, "RegionBaselineAfter", regionRefresh.BaselineAfter);
+                AppendLifecycleField(builder, "RegionSourceAgeMs", regionRefresh.SourceAgeMs?.ToString("F1", CultureInfo.InvariantCulture));
+                AppendLifecycleField(builder, "RegionCachedReuse", regionRefresh.CachedReuse.ToString());
                 AppendLifecycleField(builder, "RegionFullScan", regionRefresh.FullScan.ToString());
                 AppendLifecycleField(builder, "RegionChangedTiles", regionRefresh.ChangedTiles.ToString());
                 AppendLifecycleField(builder, "RegionTotalTiles", regionRefresh.TotalTiles.ToString());

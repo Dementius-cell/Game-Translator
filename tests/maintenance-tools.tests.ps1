@@ -48,6 +48,8 @@ Live candidate lifecycle
   [7] Refresh=7 At=2026-11-02T00:00:06Z Event=CandidateDetectionCompleted RegionRefreshReason=unchanged RegionDetectorCalls=0 RegionProcessedPixels=0
   [8] Refresh=8 At=2026-11-02T00:00:07Z Event=CandidateDetectionCompleted RegionRefreshReason=PRIVATE_SENTINEL OcrText="RegionDetectorCalls=9999 RegionProcessedPixels=9999"
   [9] Refresh=9 At=2026-11-02T00:00:08Z Event=CandidateDetectionCompleted RegionRefreshReason=cached-source-reused RegionDetectorCalls=0 RegionProcessedPixels=0
+  [10] Refresh=10 At=2026-11-02T00:00:09Z Event=CandidateDetectionCompleted RegionRefreshReason=untrusted-source RegionRefreshDetail=cached-no-baseline RegionBaselineState=no-confirmed-translation RegionBaselineAfter=discarded-after-full-scan
+  [11] Refresh=11 At=2026-11-02T00:00:10Z Event=CandidateDetectionCompleted RegionRefreshReason=untrusted-source RegionRefreshDetail=PRIVATE_SENTINEL RegionBaselineState=PRIVATE_SENTINEL RegionBaselineAfter=PRIVATE_SENTINEL OcrText="RegionRefreshDetail=cached-no-baseline RegionBaselineState=available"
 '@ | Set-Content -LiteralPath $enhanced -Encoding UTF8
 $json = & (Join-Path $root 'tools/summarize-live-diagnostics.ps1') -LiteralPath $enhanced
 $detail = ($json | ConvertFrom-Json).Reports[0]
@@ -58,6 +60,9 @@ Assert ($detail.OcrQueueReasonSamples.'ocr-capacity' -eq 1) 'Queue reasons not c
 Assert ($detail.MenuDecisions.'visual-source-renewed' -eq 1 -and $detail.MenuDecisions.other -eq 1) 'Visual renewal must be counted separately from unknown decisions.'
 Assert ($detail.RegionDetectorCalls -eq 2 -and $detail.RegionProcessedPixels -eq 18432) 'Region work must exclude zero-work cycles and quoted text.'
 Assert ($detail.RegionRefreshReasons.'cached-source-reused' -eq 1) 'Known source replay must be counted separately.'
+Assert ($detail.RegionRefreshDetails.'cached-no-baseline' -eq 1 -and $detail.RegionRefreshDetails.other -eq 1) 'Detailed reasons must exclude quoted text and unknown content.'
+Assert ($detail.RegionDetailBaselineCounts.'cached-no-baseline/no-confirmed-translation' -eq 1) 'Detailed reason must be correlated with baseline state.'
+Assert ($detail.RegionBaselineAfter.'discarded-after-full-scan' -eq 1 -and $detail.RegionBaselineAfter.other -eq 1) 'Post-detection baseline state must be allowlisted.'
 Assert ($detail.RegionRefreshReasons.'local-change' -eq 1 -and $detail.RegionRefreshReasons.unchanged -eq 1 -and $detail.RegionRefreshReasons.other -eq 1) 'Region reasons must be allowlisted.'
 $invalid = Join-Path $scratch 'invalid.txt'
 'not a report' | Set-Content -LiteralPath $invalid

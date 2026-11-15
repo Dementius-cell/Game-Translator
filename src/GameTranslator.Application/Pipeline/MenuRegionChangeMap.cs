@@ -32,15 +32,22 @@ internal sealed class MenuRegionChangeMap
             return Full("untrusted-source", detail: "expired-source");
         if (frame.IsCachedReuse)
         {
+            // A full detector pass can establish geometry for a recent cached delivery.
+            // Hashes are only committed after success; cached pixels never become OCR evidence.
+            MenuRegionPlan VerifyFull(string detail) => Full("untrusted-source",
+                HashTiles(frame, cols, rows, cancellationToken), detail: detail);
             // Reuse work only for the exact successfully processed source, never renew evidence.
-            if (hashes is null) return Full("untrusted-source", detail: "cached-no-baseline");
-            if (region != frame.Region) return Full("untrusted-source", detail: "cached-region-mismatch");
-            if (origin?.SourceId != current.SourceId) return Full("untrusted-source", detail: "cached-source-mismatch");
-            if (origin.SourceTimestamp != current.SourceTimestamp) return Full("untrusted-source", detail: "cached-timestamp-mismatch");
+            if (hashes is null) return VerifyFull("cached-no-baseline");
+            if (origin?.SourceId == current.SourceId
+                && (current.SourceTimestamp < origin.SourceTimestamp || current.FreshnessTimestamp < origin.FreshnessTimestamp))
+                return Full("untrusted-source", detail: "cached-source-regressed");
+            if (region != frame.Region) return VerifyFull("cached-region-mismatch");
+            if (origin?.SourceId != current.SourceId) return VerifyFull("cached-source-mismatch");
+            if (origin.SourceTimestamp != current.SourceTimestamp) return VerifyFull("cached-timestamp-mismatch");
             if (origin.FreshnessTimestamp != current.FreshnessTimestamp) return Full("untrusted-source", detail: "cached-freshness-mismatch");
-            if (now - lastFull >= TimeSpan.FromSeconds(2)) return Full("periodic-audit");
             var repeated = HashTiles(frame, cols, rows, cancellationToken);
             if (!repeated.AsSpan().SequenceEqual(hashes)) return Full("untrusted-source", detail: "cached-pixels-mismatch");
+            if (now - lastFull >= TimeSpan.FromSeconds(2)) return Full("periodic-audit", repeated);
             return new("cached-source-reused", false, [], 0, cols * rows, hashes);
         }
         var next = HashTiles(frame, cols, rows, cancellationToken);

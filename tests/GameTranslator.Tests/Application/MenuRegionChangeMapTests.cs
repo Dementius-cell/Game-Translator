@@ -77,6 +77,39 @@ public sealed class MenuRegionChangeMapTests
     }
 
     [Fact]
+    public void FullDetectionOfNewCachedSourceEstablishesReusableBaselineOnlyAfterCommit()
+    {
+        var map = Initialized();
+        var frame = Frame(500, cached: true);
+        var plan = map.Plan(frame, [], TimeSpan.FromMilliseconds(600));
+        Assert.True(plan.FullScan);
+        Assert.Equal("cached-timestamp-mismatch", plan.Detail);
+        Assert.True(map.Plan(frame, [], TimeSpan.FromMilliseconds(650)).FullScan);
+        map.Commit(frame, plan, true);
+        Assert.Equal("available", map.BaselineState);
+        Assert.Equal("cached-source-reused", map.Plan(frame, [], TimeSpan.FromMilliseconds(700)).Reason);
+        Assert.Equal("local-change", map.Plan(Frame(800, p => Pixel(p, 100, 100)), [], TimeSpan.FromMilliseconds(800)).Reason);
+        Assert.Equal("untrusted-source", map.Plan(frame, [], TimeSpan.FromSeconds(3)).Reason);
+    }
+
+    [Fact]
+    public void CachedBootstrapDoesNotAuthorizeRegressedOrInconsistentSource()
+    {
+        var map = new MenuRegionChangeMap();
+        var frame = Frame(500, cached: true);
+        var plan = map.Plan(frame, [], TimeSpan.FromMilliseconds(600));
+        Assert.Equal("cached-no-baseline", plan.Detail);
+        map.Commit(frame, plan, true);
+        var regressed = map.Plan(Frame(400, cached: true), [], TimeSpan.FromMilliseconds(700));
+        Assert.Equal("cached-source-regressed", regressed.Detail);
+        Assert.Null(regressed.Hashes);
+        Assert.Null(map.Plan(Frame(500, p => Pixel(p, 100, 100), cached: true), [], TimeSpan.FromMilliseconds(700)).Hashes);
+        Assert.Null(map.Plan(Frame(500, p => Pixel(p, 100, 100), cached: true), [], TimeSpan.FromMilliseconds(2500)).Hashes);
+        map.Reset("detector-unavailable");
+        Assert.True(map.Plan(frame, [], TimeSpan.FromMilliseconds(700)).FullScan);
+    }
+
+    [Fact]
     public void SeparateChangesStaySeparateAndExpandToWholeTextBlocks()
     {
         var map = Initialized();

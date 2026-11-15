@@ -35,7 +35,7 @@ foreach ($inputPath in $LiteralPath) {
     $knownRegionDetails = @('missing-origin','future-source','expired-source','cached-no-baseline',
         'cached-region-mismatch','cached-source-mismatch','cached-timestamp-mismatch','cached-freshness-mismatch',
         'cached-pixels-mismatch','no-baseline','region-mismatch','tile-layout-mismatch','source-mismatch',
-        'non-increasing-source','freshness-regressed','source-gap-exceeded','pixel-format','stride','pixel-limit','tile-limit')
+        'non-increasing-source','freshness-regressed','source-gap-exceeded','pixel-format','stride','pixel-limit','tile-limit','cached-source-regressed')
     $knownBaselineStates = @('not-initialized','available','discarded-after-full-scan','explicit-reset',
         'no-confirmed-translation','detector-unavailable')
     $regionCalls = $null

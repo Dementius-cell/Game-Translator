@@ -13,6 +13,10 @@ public sealed class MenuTranslationIntegrityTests
     [InlineData("EE", 1)]
     [InlineData("ED", 2)]
     [InlineData("ny", 4)]
+    [InlineData("V|", 1)]
+    [InlineData("| U |", 2)]
+    [InlineData("[ ZZ ]", 4)]
+    [InlineData("ZX ]", 1)]
     public void KeycapEvidence_ExcludesProjectionWithoutChangingRawRecognition(string text, int scale)
     {
         var raw = Keycap(text, scale);
@@ -43,6 +47,31 @@ public sealed class MenuTranslationIntegrityTests
         var projected = TranslationTextGroupingService.CreateTranslationSourceResult(raw,
             new OcrZone { ContentLayoutMode = condition == "comic" ? ContentLayoutMode.DialogComic : ContentLayoutMode.StaticMenu });
         Assert.Equal(raw.TextBlocks.Select(b => b.Text), projected.TextBlocks.Select(b => b.Text));
+    }
+
+    [Theory]
+    [InlineData("A|B", "")]
+    [InlineData("A B", "")]
+    [InlineData("A.", "")]
+    [InlineData("[[A]]", "")]
+    [InlineData("[Word]", "")]
+    [InlineData("[On]", "two-glyphs")]
+    [InlineData("| V |", "dark")]
+    [InlineData("ZX ]", "connected-to-edge")]
+    [InlineData("[ ZZ ]", "no-glyph")]
+    [InlineData("[ ZZ ]", "no-detector")]
+    [InlineData("[ ZZ ]", "multiple-lines")]
+    [InlineData("[ ZZ ]", "multiple-blocks")]
+    [InlineData("[ ZZ ]", "vertical")]
+    [InlineData("[ ZZ ]", "comic")]
+    public void KeycapBorderNoise_StillRequiresIsolatedSingleGlyphEvidence(string text, string condition)
+    {
+        var raw = Keycap(text, 1, condition);
+        Assert.False(MenuTranslationIntegrity.HasStandaloneKeycapEvidence(raw));
+        var projected = TranslationTextGroupingService.CreateTranslationSourceResult(raw,
+            new OcrZone { ContentLayoutMode = condition == "comic" ? ContentLayoutMode.DialogComic : ContentLayoutMode.StaticMenu });
+        Assert.Equal(raw.TextBlocks.Select(b => b.Text), projected.TextBlocks.Select(b => b.Text));
+        Assert.False(MenuTranslationIntegrity.IsStandaloneControlHint(text));
     }
 
     [Theory]

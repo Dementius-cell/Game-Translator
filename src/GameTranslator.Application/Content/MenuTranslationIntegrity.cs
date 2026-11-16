@@ -61,7 +61,10 @@ public static partial class MenuTranslationIntegrity
             || frame.Width < frame.Height * .8 || frame.Width > frame.Height * 1.3
             || request.DetectorLineBounds[0].Width * request.DetectorLineBounds[0].Height < frame.Width * frame.Height * .8) return false;
         var text = result.TextBlocks[0].Text.Trim();
-        if (text.Length is < 1 or > 3 || text.Any(c => !char.IsAsciiLetter(c))) return false;
+        // A crop edge can be recognized as a bracket or bar beside the glyph.
+        // This only admits the pixel check below; it does not strip raw OCR or
+        // classify decorated words as keys without the enclosed-glyph evidence.
+        if (text.Length is < 1 or > 7 || !KeycapGlyphText().IsMatch(text)) return false;
         var area = frame.Width * frame.Height;
         var dark = new bool[area];
         var pixels = frame.PixelData.Span;
@@ -110,6 +113,9 @@ public static partial class MenuTranslationIntegrity
         }
         return glyphs == 1;
     }
+
+    [GeneratedRegex(@"^[\[\]|]?\s*[A-Za-z]{1,3}\s*[\[\]|]?$", RegexOptions.CultureInvariant)]
+    private static partial Regex KeycapGlyphText();
 
     [GeneratedRegex(@"\[[A-Za-z0-9+ ]{1,24}\]|(?<!\w)[xX×]\s?\d+|[+\-−]?\d+(?:[.,:/]\d+)*(?:\s?(?:[%％]|(?:[KMGT]i?[Bb]|Hz|MHz|GHz|FPS|ms)\b))?", RegexOptions.CultureInvariant)]
     private static partial Regex ProtectedTokens();

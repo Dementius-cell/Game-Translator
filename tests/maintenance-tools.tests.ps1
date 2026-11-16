@@ -50,14 +50,18 @@ Live candidate lifecycle
   [9] Refresh=9 At=2026-11-02T00:00:08Z Event=CandidateDetectionCompleted RegionRefreshReason=cached-source-reused RegionDetectorCalls=0 RegionProcessedPixels=0
   [10] Refresh=10 At=2026-11-02T00:00:09Z Event=CandidateDetectionCompleted RegionRefreshReason=untrusted-source RegionRefreshDetail=cached-no-baseline RegionBaselineState=no-confirmed-translation RegionBaselineAfter=discarded-after-full-scan
   [11] Refresh=11 At=2026-11-02T00:00:10Z Event=CandidateDetectionCompleted RegionRefreshReason=untrusted-source RegionRefreshDetail=PRIVATE_SENTINEL RegionBaselineState=PRIVATE_SENTINEL RegionBaselineAfter=PRIVATE_SENTINEL OcrText="RegionRefreshDetail=cached-no-baseline RegionBaselineState=available"
+  [12] Refresh=12 At=2026-11-02T00:00:11Z Event=CandidateMenuAuthorityObserved MenuDecision=association-proposed
+  [13] Refresh=13 At=2026-11-02T00:00:12Z Event=CandidateMenuAuthorityObserved MenuDecision=association-confirmed
+  [14] Refresh=14 At=2026-11-02T00:00:13Z Event=CandidateMenuAuthorityObserved MenuDecision=translation-invalidated-association-proposed MenuHadPublishedTranslation=True
 '@ | Set-Content -LiteralPath $enhanced -Encoding UTF8
 $json = & (Join-Path $root 'tools/summarize-live-diagnostics.ps1') -LiteralPath $enhanced
 $detail = ($json | ConvertFrom-Json).Reports[0]
 Assert ($json -notmatch 'PRIVATE_SENTINEL') 'Enhanced summary leaked untrusted fields.'
-Assert ($detail.PublishedTranslationInvalidations -eq 1 -and $detail.MaximumPendingOcr -eq 40) 'Menu evidence aggregation failed.'
+Assert ($detail.PublishedTranslationInvalidations -eq 2 -and $detail.MaximumPendingOcr -eq 40) 'Menu evidence aggregation failed.'
 Assert ($detail.Timings.MenuOcrQueueWait.P50Ms -eq 450.5) 'OCR queue wait incorrect.'
 Assert ($detail.OcrQueueReasonSamples.'ocr-capacity' -eq 1) 'Queue reasons not counted.'
 Assert ($detail.MenuDecisions.'visual-source-renewed' -eq 1 -and $detail.MenuDecisions.other -eq 1) 'Visual renewal must be counted separately from unknown decisions.'
+Assert ($detail.MenuDecisions.'association-proposed' -eq 1 -and $detail.MenuDecisions.'association-confirmed' -eq 1 -and $detail.MenuDecisions.'translation-invalidated-association-proposed' -eq 1) 'Association lifecycle must remain visible without exporting arbitrary decision text.'
 Assert ($detail.RegionDetectorCalls -eq 2 -and $detail.RegionProcessedPixels -eq 18432) 'Region work must exclude zero-work cycles and quoted text.'
 Assert ($detail.RegionRefreshReasons.'cached-source-reused' -eq 1) 'Known source replay must be counted separately.'
 Assert ($detail.RegionRefreshDetails.'cached-no-baseline' -eq 1 -and $detail.RegionRefreshDetails.other -eq 1) 'Detailed reasons must exclude quoted text and unknown content.'

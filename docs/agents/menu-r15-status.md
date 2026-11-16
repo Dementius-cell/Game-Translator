@@ -1,6 +1,12 @@
 # Menu r15 source status
 
-Updated: 2026-11-14. Scope: source status through commit `4e7ed59` and local runtime recovery verification, not release publication or completed live-game acceptance.
+Updated: 2026-11-16. Scope: ADR-044 development implementation and local verification, not release publication or completed live-game acceptance.
+
+## Current menu association change
+
+Explicit Horizontal/None/watermark-off single-line menus can now enter a separate OCR-confirmed association when bounded padding jitter fails the strict matcher. Entry removes the old translation and retires the OCR generation; fresh independent OCR must confirm the new authority. Fixed anchors, reciprocal uniqueness, source freshness, cache routing and late-result rejection remain required. Auto/Vertical, grouped and expanded-core paths retain their previous rules. See [ADR-044](../adr/README.md#adr-044) and the [implementation and validation record](../design/incremental-menu-regions-plan.md#ocr-подтверждаемое-сопоставление--2026-11-16).
+
+Release build passed without warnings/errors; 1569/1569 tests and maintenance/docs checks passed. A local real-Tesseract replay on synthetic pixels restored confirmation under alternating detector boxes and handled changed text; detector/capture/provider/overlay were simulated. More OCR work completed instead of being cancelled, increasing replay CPU; this does not establish game performance. Real-menu visibility, CPU/queue behaviour and mixed-zone endurance remain open under #59.
 
 ## Current diagnostics and capture
 

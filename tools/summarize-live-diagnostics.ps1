@@ -47,7 +47,8 @@ foreach ($inputPath in $LiteralPath) {
         'translation-rejected-version-or-age','scheduler-sample','geometry-no-compatible-region','geometry-ambiguous',
         'translation-invalidated-text-contradicted','translation-invalidated-ocr-failure','translation-invalidated-source-expired',
         'translation-invalidated-text-version-changed','candidate-removed-CandidateDisappeared',
-        'candidate-removed-CandidatePipelineDegraded','candidate-removed-CaptureFailed')
+        'candidate-removed-CandidatePipelineDegraded','candidate-removed-CaptureFailed',
+        'association-proposed','association-confirmed','translation-invalidated-association-proposed')
     $knownQueueReasons = @('retired','ocr-active','no-pending-frame','source-expired','grouping-unconfirmed',
         'minimum-start-interval','visual-quiet-wait','ocr-capacity','eligible','capture-in-progress')
     $timings = @{}

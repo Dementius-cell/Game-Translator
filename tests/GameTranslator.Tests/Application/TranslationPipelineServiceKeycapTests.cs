@@ -28,7 +28,7 @@ public sealed partial class TranslationPipelineServiceTests
         var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available("synthetic",
             [new TextCandidate(new(10, 10, 32, 32), .99), new TextCandidate(new(100, 10, 100, 24), .99)]));
         var count = 0;
-        var labels = new[] { "V|", "| U |", "[ ZZ ]" };
+        var labels = new[] { "V|", "/U", @"ZZ\" };
         var engine = new FakeOcrEngine { EngineId = OcrSettings.TesseractEngineId,
             BlocksFactory = r => [new OcrTextBlock(r.Frame.Region.X < 50 ? labels[count++ % labels.Length] : "Open map", new(4, 4, 20, 16))] };
         var translator = new FakeTranslatorProvider("Google");

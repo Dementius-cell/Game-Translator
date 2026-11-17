@@ -17,6 +17,9 @@ public sealed class MenuTranslationIntegrityTests
     [InlineData("| U |", 2)]
     [InlineData("[ ZZ ]", 4)]
     [InlineData("ZX ]", 1)]
+    [InlineData("/V", 1)]
+    [InlineData(@"U\", 2)]
+    [InlineData(@"/ ZZ \", 4)]
     public void KeycapEvidence_ExcludesProjectionWithoutChangingRawRecognition(string text, int scale)
     {
         var raw = Keycap(text, scale);
@@ -51,6 +54,18 @@ public sealed class MenuTranslationIntegrityTests
 
     [Theory]
     [InlineData("A|B", "")]
+    [InlineData("A/B", "")]
+    [InlineData(@"A\B", "")]
+    [InlineData("//A", "")]
+    [InlineData("/On", "two-glyphs")]
+    [InlineData("/V", "dark")]
+    [InlineData("/V", "connected-to-edge")]
+    [InlineData("/V", "no-glyph")]
+    [InlineData("/V", "no-detector")]
+    [InlineData("/V", "multiple-lines")]
+    [InlineData("/V", "multiple-blocks")]
+    [InlineData("/V", "vertical")]
+    [InlineData("/V", "comic")]
     [InlineData("A B", "")]
     [InlineData("A.", "")]
     [InlineData("[[A]]", "")]

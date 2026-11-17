@@ -1,6 +1,6 @@
 # Menu r15 source status
 
-Updated: 2026-11-16. Scope: ADR-044 development implementation and local verification, not release publication or completed live-game acceptance.
+Updated: 2026-11-17. Scope: ADR-044 development implementation and local verification, not release publication or completed live-game acceptance.
 
 ## Current menu association change
 
@@ -8,7 +8,7 @@ Explicit Horizontal/None/watermark-off single-line menus can now enter a separat
 
 Release build passed without warnings/errors; 1569/1569 tests and maintenance/docs checks passed. A local real-Tesseract replay on synthetic pixels restored confirmation under alternating detector boxes and handled changed text; detector/capture/provider/overlay were simulated. More OCR work completed instead of being cancelled, increasing replay CPU; this does not establish game performance. Real-menu visibility, CPU/queue behaviour and mixed-zone endurance remain open under #59.
 
-The first owner game run exercised 25 associations and confirmed seven with three independent source frames each. Follow-up analysis separated keycap border noise from ordinary-label OCR changes. A narrow projection fix now lets short Latin OCR with edge brackets/bars reach the existing single-enclosed-glyph pixel check; it does not strip raw recognition, match arbitrary words as keys or accept multiple glyphs. Release build and 1588/1588 tests passed. Universal short-line padding was rejected after nine regressions on 144 synthetic controls. Real-menu verification of this keycap fix and ordinary-label OCR stability remain open; see the validation record above.
+The first owner game run exercised 25 associations and confirmed seven with three independent source frames each. Follow-up analysis separated keycap border noise from ordinary-label OCR changes. A narrow projection fix now lets short Latin OCR with edge brackets/bars reach the existing single-enclosed-glyph pixel check; it does not strip raw recognition, match arbitrary words as keys or accept multiple glyphs. Release build and 1588/1588 tests passed. Universal short-line padding was rejected after nine regressions on 144 synthetic controls. The next owner run exercised the fix: 128 top-left keycap OCR results and 104 of 124 top-right results projected no translation, with no published OCR invalidation in either area. Twenty slash-decorated results still passed through. Edge slashes now reach the same single-glyph check; Release build and 1603/1603 tests passed. Multi-letter keycaps and ordinary-label OCR stability remain open; see the validation record above.
 
 ## Current diagnostics and capture
 

@@ -19,6 +19,7 @@ public static partial class TranslationTextGroupingService
         if (sourceResult.WatermarkDecision?.Excluded == true
             || (zone.ContentLayoutMode == ContentLayoutMode.StaticMenu
                 && (MenuTranslationIntegrity.HasStandaloneKeycapEvidence(sourceResult)
+                    || MenuNamedKeycapEvidence.Matches(sourceResult)
                     || MenuTriggerKeycapEvidence.Matches(sourceResult)
                     || MenuStarRatingEvidence.Matches(sourceResult))))
         {

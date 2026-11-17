@@ -925,13 +925,22 @@ public sealed partial class TranslationPipelineService
 
         if (!shouldRestoreOverlay)
         {
+            if (overlayService is IOverlayCaptureControl { IsRecordingAllowed: true } recording)
+            {
+                if (overlayService.IsVisible) throw new CaptureFrameSourceException("Hide the recording overlay before OCR capture.");
+                return await captureService.CaptureAfterAsync(CreateCaptureRegion(zone), recording.CaptureHiddenAfter
+                    ?? TimeSpan.FromSeconds(timeProvider.GetTimestamp() / (double)timeProvider.TimestampFrequency), cancellationToken);
+            }
             return await captureService.CaptureAsync(CreateCaptureRegion(zone), cancellationToken);
         }
 
         overlayService.Hide();
         try
         {
-            return await captureService.CaptureAsync(CreateCaptureRegion(zone), cancellationToken);
+            return overlayService is IOverlayCaptureControl { IsRecordingAllowed: true } recording
+                ? await captureService.CaptureAfterAsync(CreateCaptureRegion(zone),
+                    recording.CaptureHiddenAfter ?? TimeSpan.FromSeconds(timeProvider.GetTimestamp() / (double)timeProvider.TimestampFrequency), cancellationToken)
+                : await captureService.CaptureAsync(CreateCaptureRegion(zone), cancellationToken);
         }
         finally
         {
@@ -2117,7 +2126,9 @@ public sealed partial class TranslationPipelineService
                     {
                         var frameMeasurement = await AwaitWithMenuProgressAsync(RunTimedStageAsync(
                             TranslationPipelineStage.Capture,
-                            () => runOptions.EnableCandidateDetectorPilot && zone.ContentLayoutMode == ContentLayoutMode.StaticMenu
+                            () => service.overlayService is IOverlayCaptureControl { IsRecordingAllowed: true } recording
+                                ? service.captureService.CaptureAfterAsync(CreateCaptureRegion(zone), recording.CaptureHiddenAfter ?? MenuNow, cancellationToken)
+                                : runOptions.EnableCandidateDetectorPilot && zone.ContentLayoutMode == ContentLayoutMode.StaticMenu
                                 ? service.captureService.CaptureRecentAsync(CreateCaptureRegion(zone), TimeSpan.FromMilliseconds(500), cancellationToken)
                                 : service.captureService.CaptureAsync(CreateCaptureRegion(zone), cancellationToken)), cancellationToken);
                         cancellationToken.ThrowIfCancellationRequested();

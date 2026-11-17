@@ -38,6 +38,17 @@ public partial class OverlayWindow : Window
     }
 
     public bool IsExcludedFromCapture { get; private set; }
+    public bool IsRecordingAllowed { get; private set; }
+
+    public void SetRecordingAllowed(bool allowed)
+    {
+        Dispatcher.VerifyAccess();
+        var handle = new WindowInteropHelper(this).EnsureHandle();
+        if (!SetWindowDisplayAffinity(handle, allowed ? 0u : WdaExcludeFromCapture))
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        IsExcludedFromCapture = !allowed;
+        IsRecordingAllowed = allowed;
+    }
     internal event Action<OverlaySnapshot>? SnapshotApplied;
 
     public void ShowSnapshot(OverlaySnapshot snapshot)

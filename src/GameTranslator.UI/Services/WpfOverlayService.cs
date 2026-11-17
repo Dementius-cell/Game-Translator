@@ -9,7 +9,7 @@ using GameTranslator.UI.Views;
 
 namespace GameTranslator.UI.Services;
 
-public sealed class WpfOverlayService : IOverlayService, IOverlayDiagnosticsSource, IDisposable
+public sealed class WpfOverlayService : IOverlayService, IOverlayDiagnosticsSource, IOverlayCaptureControl, IDisposable
 {
     private const int HistoryCapacity = 2048;
     private readonly OverlayWindow overlayWindow;
@@ -39,6 +39,24 @@ public sealed class WpfOverlayService : IOverlayService, IOverlayDiagnosticsSour
 
     public bool IsVisible => overlayWindow.IsVisible;
     public bool IsExcludedFromCapture => overlayWindow.IsExcludedFromCapture;
+    public bool IsRecordingAllowed => overlayWindow.IsRecordingAllowed;
+    public TimeSpan? CaptureHiddenAfter { get; private set; }
+
+    public void SetRecordingAllowed(bool allowed)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        try
+        {
+            overlayWindow.SetRecordingAllowed(allowed);
+            CaptureHiddenAfter = null;
+            Record(allowed ? "capture-recording-enabled" : "capture-recording-disabled", CurrentSnapshot);
+        }
+        catch (Exception error)
+        {
+            Record("capture-recording-change-failed", CurrentSnapshot, error: error);
+            throw;
+        }
+    }
     public OverlaySnapshot? CurrentSnapshot { get; private set; }
     public IReadOnlyList<OverlayPresentationDiagnostic> PresentationDiagnostics { get { lock (historyGate) return history.ToArray(); } }
     public long DroppedPresentationDiagnostics { get { lock (historyGate) return dropped; } }
@@ -53,6 +71,7 @@ public sealed class WpfOverlayService : IOverlayService, IOverlayDiagnosticsSour
         try
         {
             overlayWindow.ShowSnapshot(snapshot);
+            CaptureHiddenAfter = null;
             Record("show-returned", snapshot, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
         }
         catch (Exception error)
@@ -65,7 +84,15 @@ public sealed class WpfOverlayService : IOverlayService, IOverlayDiagnosticsSour
     public void Hide()
     {
         Record("hide-requested", CurrentSnapshot);
-        try { overlayWindow.Hide(); }
+        try
+        {
+            overlayWindow.Hide();
+            if (IsRecordingAllowed)
+            {
+                CaptureHiddenAfter = TimeSpan.FromSeconds(Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency);
+                System.Runtime.InteropServices.Marshal.ThrowExceptionForHR(DwmFlush());
+            }
+        }
         catch (Exception error) { Record("hide-failed", CurrentSnapshot, error: error); throw; }
         finally { CancelPending("hidden-before-render-callback"); }
         Record("hide-returned", CurrentSnapshot);
@@ -81,6 +108,9 @@ public sealed class WpfOverlayService : IOverlayService, IOverlayDiagnosticsSour
         pendingGeneration = preferences?.CollectionGeneration ?? 0;
         CompositionTarget.Rendering += OnRendering;
     }
+
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    private static extern int DwmFlush();
 
     private void OnRendering(object? sender, EventArgs args)
     {

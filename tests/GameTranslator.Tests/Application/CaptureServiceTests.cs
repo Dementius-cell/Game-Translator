@@ -7,6 +7,52 @@ public sealed class CaptureServiceTests
     private static readonly CaptureRegion SelectedRegion = new(120, 240, 320, 180);
 
     [Fact]
+    public async Task RecordingCapture_RejectsPreHideAndUnknownSourcesEvenWhenDeliveredNow()
+    {
+        var calls = 0;
+        var source = new RecordingSource(() =>
+        {
+            calls++;
+            return calls switch
+            {
+                1 => null,
+                2 => new CaptureFrameOrigin(Guid.NewGuid(), TimeSpan.FromSeconds(9), DateTimeOffset.UtcNow),
+                3 => new CaptureFrameOrigin(Guid.NewGuid(), TimeSpan.FromSeconds(11), DateTimeOffset.UtcNow)
+                    { ObservedAtTimestamp = TimeSpan.FromSeconds(9) },
+                _ => new CaptureFrameOrigin(Guid.NewGuid(), TimeSpan.FromSeconds(11), DateTimeOffset.UtcNow)
+            };
+        });
+        var result = await new CaptureService(source).CaptureAfterAsync(new(0, 0, 1, 1), TimeSpan.FromSeconds(10));
+        Assert.Equal(4, calls);
+        Assert.Equal(TimeSpan.FromSeconds(11), result.Origin!.SourceTimestamp);
+    }
+
+    [Fact]
+    public async Task RecordingCapture_PropagatesCancellation()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var source = new RecordingSource(() => { cancellation.Cancel(); return null; });
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => new CaptureService(source)
+            .CaptureAfterAsync(new(0, 0, 1, 1), TimeSpan.Zero, cancellation.Token));
+    }
+
+    [Fact]
+    public async Task RecordingCapture_FailsWhenOnlyPreHideFramesAreAvailable()
+    {
+        var source = new RecordingSource(() => new CaptureFrameOrigin(Guid.NewGuid(), TimeSpan.Zero, DateTimeOffset.UtcNow));
+        await Assert.ThrowsAsync<CaptureFrameSourceException>(() => new CaptureService(source)
+            .CaptureAfterAsync(new(0, 0, 1, 1), TimeSpan.FromSeconds(1)));
+    }
+
+    private sealed class RecordingSource(Func<CaptureFrameOrigin?> next) : IRecentCaptureFrameSource
+    {
+        public Task<CapturedFrame> CaptureAsync(CaptureRegion region, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("No unverified fallback.");
+        public Task<CapturedFrame> CaptureRecentAsync(CaptureRegion region, TimeSpan maximumSourceAge, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new CapturedFrame(region, 1, 1, 4, "Bgra32", new byte[4], DateTimeOffset.UtcNow, next(), true));
+    }
+
+    [Fact]
     public async Task RecentCapture_WhenUnsupported_FailsInsteadOfPretendingLegacyFrameIsFresh()
     {
         var source = new FakeCaptureFrameSource();

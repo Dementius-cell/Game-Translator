@@ -1,4 +1,5 @@
 using System.Text;
+using GameTranslator.Application.Overlay;
 using GameTranslator.Application.Settings;
 
 namespace GameTranslator.UI.ViewModels;
@@ -8,6 +9,25 @@ public sealed partial class MainViewModel
     private readonly LiveDiagnosticsPreferences diagnostics;
     private readonly Queue<(DateTimeOffset At, string Button)> buttonLog = new();
     private int droppedButtons;
+    public bool CanChangeOverlayRecording => !IsBusy && !IsLiveTranslationRunning && overlayService is IOverlayCaptureControl;
+    public bool OverlayRecordingAllowed
+    {
+        get => overlayService is IOverlayCaptureControl control && control.IsRecordingAllowed;
+        set
+        {
+            if (!CanChangeOverlayRecording || value == OverlayRecordingAllowed) return;
+            try
+            {
+                ((IOverlayCaptureControl)overlayService).SetRecordingAllowed(value);
+                StatusMessage = value ? "Overlay recording enabled until application exit." : "Overlay capture protection restored.";
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                StatusMessage = "Windows could not change overlay capture protection.";
+            }
+            OnPropertyChanged(nameof(OverlayRecordingAllowed));
+        }
+    }
     internal bool ButtonCaptureActive => IsLiveTranslationRunning && DiagnosticsEnabled && DiagnosticsInput && DiagnosticsButtons;
     internal bool ButtonDeviceAvailable { get; set; }
     internal string GamepadCaptureStatus { get; set; } = "not started";

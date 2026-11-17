@@ -4644,8 +4644,42 @@ public sealed class ProfileManagerViewModelTests
         }
     }
 
-    private sealed class TestOverlayService : IOverlayService
+    [Fact]
+    public void OverlayRecording_IsIdleOnlyAndRetainsActualStateAfterWindowsFailure()
     {
+        var overlay = new TestOverlayService();
+        var vm = CreateMainViewModel(new InMemoryProfileRepository(), new TestSettingsService(), overlayService: overlay);
+        Assert.Equal(false, GetPropertyValue(vm, "OverlayRecordingAllowed"));
+        SetPropertyValue(vm, "OverlayRecordingAllowed", true);
+        Assert.True(overlay.IsRecordingAllowed);
+        foreach (var state in new[] { "IsBusy", "IsLiveTranslationRunning" })
+        {
+            SetPropertyValue(vm, state, true);
+            Assert.Equal(false, GetPropertyValue(vm, "CanChangeOverlayRecording"));
+            SetPropertyValue(vm, "OverlayRecordingAllowed", false);
+            Assert.True(overlay.IsRecordingAllowed);
+            SetPropertyValue(vm, state, false);
+        }
+        overlay.FailCaptureChange = true;
+        SetPropertyValue(vm, "OverlayRecordingAllowed", false);
+        Assert.Equal(true, GetPropertyValue(vm, "OverlayRecordingAllowed"));
+        Assert.Equal("Windows could not change overlay capture protection.", GetPropertyValue(vm, "StatusMessage"));
+        overlay.FailCaptureChange = false;
+        SetPropertyValue(vm, "OverlayRecordingAllowed", false);
+        Assert.False(overlay.IsRecordingAllowed);
+        Assert.True(overlay.IsExcludedFromCapture);
+    }
+
+    private sealed class TestOverlayService : IOverlayService, IOverlayCaptureControl
+    {
+        public bool IsRecordingAllowed { get; private set; }
+        public bool FailCaptureChange { get; set; }
+        public void SetRecordingAllowed(bool allowed)
+        {
+            if (FailCaptureChange) throw new System.ComponentModel.Win32Exception(5);
+            IsRecordingAllowed = allowed;
+            IsExcludedFromCapture = !allowed;
+        }
         public bool IsVisible { get; private set; }
 
         public bool IsExcludedFromCapture { get; set; }

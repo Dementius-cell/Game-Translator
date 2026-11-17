@@ -1656,6 +1656,7 @@ public sealed partial class MainViewModel : ValidatableObservableObject
             if (SetProperty(ref isBusy, value))
             {
                 OnPropertyChanged(nameof(IsIdle));
+                OnPropertyChanged(nameof(CanChangeOverlayRecording));
                 NotifyCommandStateChanged();
             }
         }
@@ -1673,6 +1674,7 @@ public sealed partial class MainViewModel : ValidatableObservableObject
             if (SetProperty(ref isLiveTranslationRunning, value))
             {
                 OnPropertyChanged(nameof(IsLiveTranslationStopped));
+                OnPropertyChanged(nameof(CanChangeOverlayRecording));
                 NotifyCommandStateChanged();
             }
         }
@@ -3198,7 +3200,10 @@ public sealed partial class MainViewModel : ValidatableObservableObject
                 zone.AbsoluteHeight);
 
             StatusMessage = $"Recognizing text for '{zone.DisplayName}'...";
-            var frame = await captureService.CaptureAsync(region);
+            var frame = overlayService is IOverlayCaptureControl { IsRecordingAllowed: true } recording
+                ? await captureService.CaptureAfterAsync(region, recording.CaptureHiddenAfter
+                    ?? TimeSpan.FromSeconds(System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency))
+                : await captureService.CaptureAsync(region);
             UpdateCapturePreview(frame);
             CapturePreviewStatus = $"Captured {frame.Width}x{frame.Height} at {frame.CapturedAt:HH:mm:ss}.";
 
@@ -6159,6 +6164,7 @@ public sealed partial class MainViewModel : ValidatableObservableObject
         builder.AppendLine("Live candidate lifecycle");
         builder.AppendLine("  Text diagnostics: bounded OCR, translation-input, and translated text are recorded locally; provider responses and credentials are not recorded.");
         builder.AppendLine($"  Capture frame sampling enabled: {DiagnosticsEnabled && DiagnosticsFrames}. Sampled PNGs and metadata are local. Frame budget: {DiagnosticsFramesMiB} MiB per capture source.");
+        builder.AppendLine($"  OverlayRecordingAllowed: {OverlayRecordingAllowed}; OverlayCaptureExcluded: {overlayService.IsExcludedFromCapture}");
         builder.AppendLine("  Storage: local files only; no diagnostics upload is performed.");
         builder.AppendLine("  EventBufferCapacity: 131072");
         builder.AppendLine($"  RetainedEvents: {latestCandidateLifecycleEvents.Count}");

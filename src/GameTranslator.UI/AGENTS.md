@@ -79,3 +79,6 @@ When Auto OCR is enabled with a manual reading direction, retain the orientation
 Diagnostic schema 2 correlates snapshot IDs between pipeline publication and bounded WPF presentation history (2048 events). Rendering callbacks precede composition and do not prove monitor presentation. Menu diagnostics record invalidation before clearing results, publication membership (128 entries), queue wait and once-per-second scheduler samples without changing decisions. Capture sample logs identify saved files/source frames and report sampling limits or storage failures. All new collection honors the master switch; sink failures must not affect operation. Reports identify build, process and active collection settings. Sampled screenshots remain capture inputs without the overlay.
 
 Export RegionRefreshDetail, RegionBaselineState/After, RegionSourceAgeMs (invariant numeric format) and RegionCachedReuse for region diagnostics. Missing additive fields in old reports remain unknown, not inferred success.
+
+
+Do not render DebugMetricLines as a floating top-left panel over the game. Placement/collision warnings remain in OverlaySnapshot and exported diagnostics; they must not implicitly enable an on-screen HUD when debug mode is off. Translation text, masks and explicitly enabled OCR debug boxes retain their existing rendering.

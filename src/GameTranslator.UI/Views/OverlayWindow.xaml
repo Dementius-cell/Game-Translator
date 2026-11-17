@@ -189,26 +189,5 @@
                 </DataTemplate>
             </ItemsControl.ItemTemplate>
         </ItemsControl>
-        <Border
-            Canvas.Left="12"
-            Canvas.Top="12"
-            Padding="8"
-            Background="#DD111827"
-            BorderBrush="#00D4FF"
-            BorderThickness="1"
-            CornerRadius="4"
-            Visibility="{Binding HasDebugMetricLines, Converter={StaticResource BooleanToVisibilityConverter}}">
-            <ItemsControl ItemsSource="{Binding DebugMetricLines}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <TextBlock
-                            Margin="0,0,0,2"
-                            Foreground="#E0F2FE"
-                            FontSize="12"
-                            Text="{Binding}" />
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </Border>
     </Canvas>
 </Window>

@@ -65,3 +65,6 @@ The owner confirmed translation and overlay on the current development build. A 
 ## Temporary capture-affinity control — 2026-11-17
 
 The owner explicitly requested a recording switch after noting that ordinary Windows recordings omit the protected overlay. The implementation is opt-in, session-only, idle-only and separate from log collection. Release build passed with zero warnings/errors; 1639/1639 tests passed, followed by the focused native WPF affinity/hide/restore checks after strengthening that test. Maintenance/docs checks passed. Runtime/model, profiles, default capture and provider/cache configuration were not changed. See the [recording workflow and limitations](../testing/maintenance-and-live-smoke.md#temporary-overlay-recording). Real recorder verification remains open; no claim of unchanged recording-mode cadence or real-game flicker acceptance is made.
+
+
+The owner identified the cyan top-left message panel during recording. It was populated by positioning DebugMetricLines even with debug overlay disabled; these messages are not runtime exceptions. The floating message panel has been removed from the overlay view. Raw snapshot diagnostics and exported placement warnings remain available; translation, masks and optional OCR debug boxes are unchanged.

@@ -5,6 +5,15 @@ namespace GameTranslator.Tests.Smoke;
 public sealed class OverlayWindowSourceTests
 {
     [Fact]
+    public void OverlayWindow_DoesNotRenderDiagnosticMessagePanelOverGame()
+    {
+        var source = ReadSource("src/GameTranslator.UI/Views/OverlayWindow.xaml");
+        Assert.DoesNotContain("ItemsSource=\"{Binding DebugMetricLines}\"", source, StringComparison.Ordinal);
+        Assert.Contains("ItemsSource=\"{Binding TextItems}\"", source, StringComparison.Ordinal);
+        Assert.Contains("ItemsSource=\"{Binding MaskItems}\"", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Application_ShutsDownWhenMainWindowClosesEvenIfOverlayIsOpen()
     {
         var source = ReadSource("src/GameTranslator.UI/App.xaml");

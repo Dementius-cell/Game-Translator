@@ -91,14 +91,16 @@ public sealed class TesseractOcrEngine : IOcrEngine
             }
 
             var pageSegMode = MapCandidateLayoutMode(request, recognitionOrientationMode);
-            var menuBorder = pageSegMode == PageSegMode.SingleLine ? MenuRecognitionBorder.TryCreate(request) : null;
-            using var borderedImage = menuBorder is null ? null : PixImage.LoadFromMemory(CreateBitmapBytes(menuBorder.Frame));
+            var neutralMenu = pageSegMode == PageSegMode.SingleLine ? MenuChromaticTexture.TryCreate(request, cancellationToken) : null;
+            var menuBorder = pageSegMode == PageSegMode.SingleLine ? MenuRecognitionBorder.TryCreate(request, neutralMenu) : null;
+            var preparedMenu = menuBorder?.Frame ?? neutralMenu;
+            using var preparedMenuImage = preparedMenu is null ? null : PixImage.LoadFromMemory(CreateBitmapBytes(preparedMenu));
             engine.DefaultPageSegMode = pageSegMode;
             var recognitionPassId = CreateRecognitionPassId(pageSegMode);
             IReadOnlyList<OcrTextBlock> textBlocks;
             IReadOnlyList<OcrWord> words;
             double confidence;
-            using (var page = engine.Process(borderedImage ?? image, pageSegMode))
+            using (var page = engine.Process(preparedMenuImage ?? image, pageSegMode))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var recognitionFrame = menuBorder?.Frame ?? request.Frame;

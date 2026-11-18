@@ -7,18 +7,23 @@ namespace GameTranslator.Infrastructure.Ocr;
 // Recognition-only margin: never expands detector, source or overlay geometry.
 internal sealed record MenuRecognitionBorder(CapturedFrame Frame, int Padding, int SourceWidth, int SourceHeight)
 {
-    internal static MenuRecognitionBorder? TryCreate(OcrRequest request)
+    internal static bool CanPrepareSingleLine(OcrRequest request)
     {
         var frame = request.Frame;
-        if (request.ContentLayoutMode != ContentLayoutMode.StaticMenu
-            || request.OrientationMode != OcrOrientationMode.Horizontal
-            || request.LayoutMode == OcrLayoutMode.Comic
-            || request.PreprocessingSettings.ResolveMode() != OcrPreprocessingMode.None
-            || request.DetectorLineBounds.Count != 1
-            || request.DetectorLineBounds[0] != new BoundingBox(0, 0, frame.Width, frame.Height)
-            || frame.PixelFormat != "Bgra32" || frame.Stride < (long)frame.Width * 4
-            || frame.Width < (long)frame.Height * 3 || (long)frame.Width * frame.Height > 1_000_000)
-            return null;
+        return request.ContentLayoutMode == ContentLayoutMode.StaticMenu
+            && request.OrientationMode == OcrOrientationMode.Horizontal
+            && request.LayoutMode != OcrLayoutMode.Comic
+            && request.PreprocessingSettings.ResolveMode() == OcrPreprocessingMode.None
+            && request.DetectorLineBounds.Count == 1
+            && request.DetectorLineBounds[0] == new BoundingBox(0, 0, frame.Width, frame.Height)
+            && frame.PixelFormat == "Bgra32" && frame.Stride >= (long)frame.Width * 4
+            && frame.Width >= (long)frame.Height * 3 && (long)frame.Width * frame.Height <= 1_000_000;
+    }
+
+    internal static MenuRecognitionBorder? TryCreate(OcrRequest request, CapturedFrame? preparedFrame = null)
+    {
+        if (!CanPrepareSingleLine(request)) return null;
+        var frame = preparedFrame ?? request.Frame;
 
         var histogram = new int[256];
         var edgeHistogram = new int[256];

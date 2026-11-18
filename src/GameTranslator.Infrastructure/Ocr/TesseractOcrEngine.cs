@@ -91,17 +91,30 @@ public sealed class TesseractOcrEngine : IOcrEngine
             }
 
             var pageSegMode = MapCandidateLayoutMode(request, recognitionOrientationMode);
+            var menuBorder = pageSegMode == PageSegMode.SingleLine ? MenuRecognitionBorder.TryCreate(request) : null;
+            using var borderedImage = menuBorder is null ? null : PixImage.LoadFromMemory(CreateBitmapBytes(menuBorder.Frame));
             engine.DefaultPageSegMode = pageSegMode;
             var recognitionPassId = CreateRecognitionPassId(pageSegMode);
             IReadOnlyList<OcrTextBlock> textBlocks;
             IReadOnlyList<OcrWord> words;
             double confidence;
-            using (var page = engine.Process(image, pageSegMode))
+            using (var page = engine.Process(borderedImage ?? image, pageSegMode))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                textBlocks = CreateTextBlocks(page, request.Frame.Width, request.Frame.Height);
-                words = CreateWords(page, request.Frame.Width, request.Frame.Height, recognitionPassId);
+                var recognitionFrame = menuBorder?.Frame ?? request.Frame;
+                textBlocks = CreateTextBlocks(page, recognitionFrame.Width, recognitionFrame.Height);
+                words = CreateWords(page, recognitionFrame.Width, recognitionFrame.Height, recognitionPassId);
                 confidence = page.MeanConfidence;
+            }
+
+            if (menuBorder is not null)
+            {
+                textBlocks = textBlocks.Select(block => (block, bounds: menuBorder.ToSource(block.Bounds)))
+                    .Where(item => item.bounds is not null)
+                    .Select(item => new OcrTextBlock(item.block.Text, item.bounds!.Value)).ToArray();
+                words = words.Select(word => (word, bounds: menuBorder.ToSource(word.Bounds)))
+                    .Where(item => item.bounds is not null)
+                    .Select(item => new OcrWord(item.word.Text, item.bounds!.Value, item.word.Confidence, item.word.RecognitionPassId)).ToArray();
             }
 
             if (TryRecognizeOutlinedLines(request, engine, recognitionOrientationMode, confidence,

@@ -36,6 +36,32 @@ public sealed class WpfTextFitTests
         Assert.True(measured.Width > 60);
     });
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(4)]
+    public void MenuAutoFont_UsesLargestSizeThatFitsMenuInsteadOfExpandedDialoguePadding(int scale) => OnSta(() =>
+    {
+        var measurer = (IOverlayTextMeasurer)Activator.CreateInstance(LoadUi().GetType("GameTranslator.UI.Services.WpfOverlayTextMeasurer", true)!)!;
+        var width = 96 * scale;
+        var height = 26 * scale;
+        var frame = new CapturedFrame(new(0, 0, width, height), width, height, width * 4, "Bgra32", new byte[width * height * 4], DateTimeOffset.UnixEpoch);
+        var raw = new OcrResult(new OcrRequest(frame, "eng"), [new OcrTextBlock("Меню", new(0, 0, width, height))], DateTimeOffset.UnixEpoch);
+        var style = new OcrZoneTextStyle { AutoFontSize = true, IsBold = true, LayoutMode = OverlayTextLayoutMode.KeepWithinSourceBounds };
+        var snapshot = new OverlayPositioningService(measurer).CreateSnapshot(raw, DateTimeOffset.UnixEpoch, null, style);
+        var item = Assert.Single(snapshot.TextItems);
+        Assert.Equal(width, item.Width);
+        Assert.Equal(height, item.Height);
+        Assert.Empty(snapshot.DebugMetricLines);
+        var fit = measurer.Measure(new(item.Text, item.TextStyle, width - 16));
+        Assert.True(fit.Height + 4 <= height && !fit.HasOverflowed);
+        if (item.TextStyle.FontSize < OcrZoneTextStyle.MaximumFontSize)
+        {
+            var larger = measurer.Measure(new(item.Text, item.TextStyle with { FontSize = item.TextStyle.FontSize + 1 }, width - 16));
+            Assert.True(larger.Height + 4 > height || larger.HasOverflowed, "The next size still fits the menu; the selected size is unnecessarily small.");
+        }
+    });
+
     [Fact]
     public void AutoFont_RussianTextFitsWithWholeWordLineBreaks() => OnSta(() =>
     {

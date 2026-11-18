@@ -15,6 +15,7 @@ public sealed class OverlayPositioningService
     private const int ExpandedTextHorizontalPadding = 8;
     private const int ExpandedTextVerticalPadding = 4;
     private const int ExpandedTextVerticalSafetyPadding = 2;
+    private const int MenuTextVerticalAllowance = 4;
     private const int InitialTranslationFramePadding = 4;
     private const int MinimumExpandedTextWidth = 96;
     private const int ExpandedTextMaxWidth = 960;
@@ -280,7 +281,10 @@ public sealed class OverlayPositioningService
             var size = low + (high - low) / 2;
             var measured = MeasureText(item.Text, item.TextStyle with { FontSize = size },
                 Math.Max(1, item.Width - ExpandedTextHorizontalPadding * 2));
-            var fits = measured.Height + ExpandedTextVerticalPadding * 2 + ExpandedTextVerticalSafetyPadding <= item.Height
+            var verticalAllowance = item.TextStyle.LayoutMode == OverlayTextLayoutMode.KeepWithinSourceBounds
+                ? MenuTextVerticalAllowance
+                : ExpandedTextVerticalPadding * 2 + ExpandedTextVerticalSafetyPadding;
+            var fits = measured.Height + verticalAllowance <= item.Height
                 && measured.Lines.All(line => !line.HasOverflowed);
             if (fits) { best = size; low = size + 1; }
             else { high = size - 1; }
@@ -334,7 +338,7 @@ public sealed class OverlayPositioningService
                     textStyle with { FontSize = FindAutoFontSize(item) });
             }
             var measured = MeasureText(block.Text, item.TextStyle, Math.Max(1, item.Width - 16));
-            var warnings = measured.Height + 4 > item.Height || measured.Lines.Any(line => line.HasOverflowed)
+            var warnings = measured.Height + MenuTextVerticalAllowance > item.Height || measured.Lines.Any(line => line.HasOverflowed)
                 ? new[] { "Overlay fit warning: menu text may be truncated inside its source element; the selected font size is preserved." }
                 : Array.Empty<string>();
             return new OverlayPositionedTextItem(item,

@@ -100,7 +100,7 @@ Keep application use cases and contracts independent from concrete UI, platform,
 
 No nested `AGENTS.md` files are currently defined below this directory.
 
-ADR-033 expanded overlay layout preserves source height where unobstructed and optionally fits font size through IOverlayTextMeasurer; the bounded in-memory font-fit cache does not replace translation caching.
+ADR-033 expanded overlay layout preserves source height where unobstructed and optionally fits font size through IOverlayTextMeasurer; the bounded in-memory font-fit cache does not replace translation caching. Menu auto sizing uses the same vertical allowance as the menu overflow check, not the larger expanded-dialogue allowance. Keep fixed-font selection and source/mask bounds unchanged; geometry or DPI must not silently select another layout mode.
 
 Explicit user cache clearing removes all memory and persistent translations with translation stopped; ordinary expiry and the 30-day TTL remain unchanged. Translation and diagnostic reading order honor resolved OCR source orientation before request-level Auto, independently for projected detector regions.
 

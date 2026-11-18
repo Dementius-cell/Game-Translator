@@ -1,6 +1,6 @@
 # Menu r15 source status
 
-Updated: 2026-11-17. Scope: ADR-044 development implementation and local verification, not release publication or completed live-game acceptance.
+Updated: 2026-11-18. Scope: ADR-044 development implementation and local verification, not release publication or completed live-game acceptance.
 
 ## Current menu association change
 
@@ -68,3 +68,12 @@ The owner explicitly requested a recording switch after noting that ordinary Win
 
 
 The owner identified the cyan top-left message panel during recording. It was populated by positioning DebugMetricLines even with debug overlay disabled; these messages are not runtime exceptions. The floating message panel has been removed from the overlay view. Raw snapshot diagnostics and exported placement warnings remain available; translation, masks and optional OCR debug boxes are unchanged.
+
+
+## Menu font-fit follow-up — 2026-11-18
+
+The supplied recording confirms capture of translations and removal of the cyan message panel. Global blank intervals are expected in recording mode and do not establish protected-mode flicker. Separate visible truncation led to a font-fit audit: the owner's selected zone used fixed 16 bold text with AutoFontSize disabled. Menu auto sizing also incorrectly reserved expanded-dialogue vertical padding; it now uses the existing menu overflow allowance consistently. Fixed-font rendering, source bounds, masks, other layouts and confirmation authority are unchanged.
+
+Three real-WPF regression cases verify the largest fitting menu size at three geometry scales. Release build passed with zero warnings/errors; 1643/1643 tests passed. Local reconstruction of 88 unique single-block logged cases found 80 overflow warnings with fixed size and 10 with automatic sizing. The correction increased automatic size in 72 cases, reduced none and added no warnings; 11 cases now reach the minimum, versus 44 before. These are measurement results using logged OCR bounds, not exact reconstruction of every grouped/positioned overlay or a readability assessment. Private inputs, text and harness outputs stay ignored under work/video-review-20261117/fit-probe.
+
+The current local test profile is prepared with AutoFontSize enabled after preserving a private backup. No profile defaults or migrations change. Owner verification of readable text on the real menu is still required; small frames and false icon recognitions remain open. Capture recording should remain off for this check to avoid deliberate hide/restore gaps. Performance/runtime/provider/release acceptance is not claimed. Application AGENTS was clarified; UI ownership contracts are unchanged.

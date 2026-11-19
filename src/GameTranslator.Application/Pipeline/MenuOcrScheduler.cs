@@ -66,19 +66,20 @@ internal sealed class MenuOcrScheduler<T> : IDisposable
         if (!first && pixelsChanged) track.ChangedFrames = Math.Min(3, track.ChangedFrames + 1);
         track.LastOrigin = origin;
         UpdatePeriodic(track, now);
-        if (track.Pending is null)
+        if (track.Pending is not null) ReplacedPendingCount++;
+        if (track.QueueSequence == 0)
         {
             track.QueueSequence = checked(++queueSequence);
             track.QueuedAt = now;
         }
-        else ReplacedPendingCount++;
         track.Pending = new Pending(work, origin);
         return OfferOutcome.Queued;
     }
 
     internal bool IsPeriodic(string trackId) => tracks[trackId].Periodic;
 
-    // Drop redundant queued work only. An outstanding lease still owns its slot.
+    // Suppress speculative work, but retain its place until validated renewal or OCR.
+    // Detection may still require OCR after changing the crop geometry.
     internal void ClearPending(string trackId) => tracks[trackId].Pending = null;
 
     internal void ObserveUnchanged(string trackId, CaptureFrameOrigin origin, TimeSpan now)
@@ -89,6 +90,7 @@ internal sealed class MenuOcrScheduler<T> : IDisposable
             || origin.SourceId != previous.SourceId || origin.SourceTimestamp < previous.SourceTimestamp) return;
         track.LastOrigin = origin;
         track.Pending = null;
+        track.QueueSequence = 0;
     }
 
     internal Lease? TryStartNext(TimeSpan now, Func<T, bool>? canStart = null)
@@ -103,6 +105,7 @@ internal sealed class MenuOcrScheduler<T> : IDisposable
             if (!IsFresh(pending.Origin, now))
             {
                 track.Pending = null;
+                track.QueueSequence = 0;
                 ExpiredPendingCount++;
                 continue;
             }
@@ -121,6 +124,7 @@ internal sealed class MenuOcrScheduler<T> : IDisposable
         var lease = new Lease(selectedId!, selected.Generation, item.Work, item.Origin, now)
         { QueueWait = now - selected.QueuedAt };
         selected.Pending = null;
+        selected.QueueSequence = 0;
         selected.LastStartedAt = now;
         active.Add(selected.Generation, lease);
         return lease;

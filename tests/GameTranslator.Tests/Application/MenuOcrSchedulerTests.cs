@@ -6,6 +6,51 @@ namespace GameTranslator.Tests.Application;
 public sealed class MenuOcrSchedulerTests
 {
     [Fact]
+    public void SpeculativeClearPreservesQueuePositionWhenDetectionStillNeedsOcr()
+    {
+        using var scheduler = new MenuOcrScheduler<int>(concurrency: 1, visualQuietInterval: TimeSpan.Zero);
+        scheduler.Register("a");
+        scheduler.Register("b");
+        Offer(scheduler, "a", 0);
+        Offer(scheduler, "b", 100);
+        scheduler.ClearPending("a");
+        Assert.Equal(1, scheduler.PendingCount);
+        Assert.Null(scheduler.TryStartNext(Ms(150), work => work == 0));
+        Offer(scheduler, "a", 200);
+        var lease = Assert.IsType<MenuOcrScheduler<int>.Lease>(scheduler.TryStartNext(Ms(200)));
+        Assert.Equal("a", lease.TrackId);
+        Assert.Equal(200, lease.Work);
+        Assert.Equal(Ms(200), lease.QueueWait);
+        scheduler.Complete(lease);
+        Assert.Equal("b", scheduler.TryStartNext(Ms(200))!.TrackId);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void FulfilledOrExpiredQueuePositionDoesNotSurviveIntoNextRequest(bool renewed)
+    {
+        using var scheduler = new MenuOcrScheduler<int>(concurrency: 1, visualQuietInterval: TimeSpan.Zero);
+        scheduler.Register("a");
+        scheduler.Register("b");
+        Offer(scheduler, "a", 0);
+        if (renewed)
+        {
+            scheduler.ClearPending("a");
+            scheduler.ObserveUnchanged("a", Origin(100), Ms(100));
+        }
+        else Assert.Null(scheduler.TryStartNext(Ms(2001)));
+        Offer(scheduler, "b", 2100);
+        Offer(scheduler, "a", 2200);
+        var first = scheduler.TryStartNext(Ms(2200))!;
+        Assert.Equal("b", first.TrackId);
+        scheduler.Complete(first);
+        var second = scheduler.TryStartNext(Ms(2200))!;
+        Assert.Equal("a", second.TrackId);
+        Assert.Equal(TimeSpan.Zero, second.QueueWait);
+    }
+
+    [Fact]
     public void VisuallyObservedSourceCannotBeQueuedAgainAsCachedWork()
     {
         using var scheduler = new MenuOcrScheduler<int>();

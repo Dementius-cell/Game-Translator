@@ -210,7 +210,8 @@ public sealed partial class TranslationPipelineService
                 && profile.OcrPreprocessingSettings.ResolveMode() == OcrPreprocessingMode.None
                 && candidate.Menu is { AnchorExpanded: false } menu && current.ExpandedMenuCore is null
                 && candidate.Region.Frame.Origin is { } previous
-                && current.Frame is { IsCachedReuse: false, Origin: { } origin }
+                && current.Frame is { Origin: { } origin }
+                && (!current.Frame.IsCachedReuse || runOptions.AllowFreshCachedMenuAssociation)
                 && origin.SourceId == previous.SourceId && origin.SourceTimestamp > previous.SourceTimestamp
                 && MenuNow >= origin.FreshnessTimestamp && MenuNow - origin.FreshnessTimestamp <= TimeSpan.FromSeconds(2)
                 && MenuProvisionalGeometry.Matches(menu.AnchorBounds, menu.AnchorMembers,

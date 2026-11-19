@@ -3735,6 +3735,8 @@ public sealed partial class MainViewModel : ValidatableObservableObject
             {
                 MinimumCandidateGroupingDuration = stableTextInterval,
                 EnableIncrementalMenuDetection = true,
+                AllowFreshCachedMenuAssociation = !System.IO.File.Exists(System.IO.Path.Combine(
+                    AppContext.BaseDirectory, "menu-cached-association.disabled")),
             });
     }
 
@@ -6021,6 +6023,7 @@ public sealed partial class MainViewModel : ValidatableObservableObject
         var liveTiming = lastLiveTranslationTiming ?? CreateLiveTranslationTiming(LiveTranslationTimingPreset);
         builder.AppendLine($"  LiveTimingPreset: {lastLiveTranslationTimingPreset?.ToString() ?? "(not started; current selection shown below)"}");
         builder.AppendLine($"  CurrentLiveTimingSelection: {LiveTranslationTimingPreset}");
+        builder.AppendLine($"  AllowFreshCachedMenuAssociation: {liveTiming.RunOptions.AllowFreshCachedMenuAssociation}");
         builder.AppendLine($"  LivePollingIntervalMs: {liveTiming.PollingInterval.TotalMilliseconds:0}");
         builder.AppendLine($"  RequiredGroupingObservations: {liveTiming.RunOptions.MinimumCandidateGroupingObservations}");
         builder.AppendLine($"  MinimumGroupingDurationMs: {liveTiming.RunOptions.MinimumCandidateGroupingDuration.TotalMilliseconds:0}");

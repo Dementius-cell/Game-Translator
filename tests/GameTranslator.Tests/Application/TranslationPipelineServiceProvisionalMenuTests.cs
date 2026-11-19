@@ -9,6 +9,69 @@ namespace GameTranslator.Tests.Application;
 public sealed partial class TranslationPipelineServiceTests
 {
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task ProvisionalMenu_FreshCachedAssociationCanBeRolledBack(bool enabled, bool changedText)
+    {
+        var zone = CreateZone("cached-proposal", "Menu", new AbsoluteRectangle(0, 0, 400, 160))
+            with { ContentLayoutMode = ContentLayoutMode.StaticMenu };
+        var anchor = new BoundingBox(100, 80, 120, 24);
+        var padded = new BoundingBox(96, 74, 128, 36);
+        var bounds = anchor;
+        var text = "Mode 10";
+        var capture = new FakeCaptureFrameSource { PixelFactory = (r, _) =>
+            Enumerable.Repeat((byte)(bounds == anchor ? 35 : 36), r.Width * r.Height * 4).ToArray() };
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available("synthetic",
+            [new TextCandidate(bounds, .99)]));
+        var engine = new FakeOcrEngine { EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = _ => [new OcrTextBlock(text, new(8, 4, 90, 16))] };
+        var clock = new ManualTimeProvider(FrameTime);
+        var overlay = new FakeOverlayService();
+        var service = CreateService(capture, engine, new FakeTranslatorProvider("Google"), overlay,
+            candidateDetector: detector, timeProvider: clock);
+        using var session = service.CreateLiveSession(CreateProfile(zone) with
+        { OcrSettings = new OcrSettings { OrientationMode = OcrOrientationMode.Horizontal } },
+            new TranslationPipelineRunOptions { AllowFreshCachedMenuAssociation = enabled });
+        var events = new List<LiveCandidateLifecycleEvent>();
+        async Task Step(bool fresh = true)
+        {
+            if (fresh) capture.SourceTimestampOverride = TimeSpan.FromSeconds(clock.GetTimestamp() / (double)clock.TimestampFrequency);
+            events.AddRange((await session.RefreshAsync()).CandidateLifecycleEvents);
+            events.AddRange((await session.PublishCompletedWorkAsync()).CandidateLifecycleEvents);
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+        }
+        for (var i = 0; i < 4; i++) await Step();
+        Assert.Contains(overlay.CurrentSnapshot!.TextItems, t => t.Text == "Translated Mode 10");
+        events.Clear();
+        bounds = padded;
+        if (changedText) text = "Mode 18.";
+        await Step();
+        Assert.Empty(overlay.CurrentSnapshot!.TextItems);
+        Assert.Equal(enabled, events.Any(e => e.Menu?.Decision == "association-proposed"));
+        await Step(false);
+        Assert.Empty(overlay.CurrentSnapshot!.TextItems);
+        Assert.DoesNotContain(events, e => e.Menu?.Decision == "association-confirmed");
+        for (var i = 0; i < 10; i++)
+        {
+            bounds = i % 2 == 0 ? anchor : padded;
+            await Step();
+            if (changedText) Assert.DoesNotContain(overlay.CurrentSnapshot!.TextItems, t => t.Text == "Translated Mode 10");
+        }
+        if (enabled)
+        {
+            Assert.Single(events, e => e.Menu?.Decision == "association-proposed");
+            Assert.Contains(events, e => e.Menu?.Decision == "association-confirmed");
+            Assert.Contains(overlay.CurrentSnapshot!.TextItems, t => t.Text == "Translated " + text);
+        }
+        else Assert.DoesNotContain(events, e => e.Menu?.Decision == "association-confirmed");
+        clock.Advance(TimeSpan.FromSeconds(3));
+        await Step(false);
+        Assert.Empty(overlay.CurrentSnapshot!.TextItems);
+    }
+
+    [Theory]
     [InlineData(OcrOrientationMode.Horizontal, OcrPreprocessingMode.None, WatermarkFilterMode.Off, false, true)]
     [InlineData(OcrOrientationMode.Horizontal, OcrPreprocessingMode.None, WatermarkFilterMode.Off, true, true)]
     [InlineData(OcrOrientationMode.Auto, OcrPreprocessingMode.None, WatermarkFilterMode.Off, false, false)]

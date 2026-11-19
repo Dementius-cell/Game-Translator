@@ -134,3 +134,5 @@ ADR-042 allows a recent cached source with the same source/region, strictly newe
 
 
 Optional IOverlayCaptureControl exposes session-only recording consent and the most recent hidden-window monotonic boundary. Recording-mode live and one-shot OCR use CaptureAfterAsync: require compositor and freshness timestamps after that boundary, preserve provenance, and fail within a one-second wait rather than accept queued pre-hide or unknown frames. Caller cancellation remains cancellation. Normal protected capture, OCR freshness/confirmation and provider/cache semantics remain unchanged. Capture diagnostics may sample a rejected frame before the application-level boundary check; use accepted source identity when correlating recording-mode PNGs.
+
+ADR-045 adds opt-in AllowFreshCachedMenuAssociation (default false). Only fresh, strictly newer same-source cached delivery may start the existing provisional association; preserve all geometry/route guards, generation reset, independent OCR confirmation and two-second freshness. False retains ADR-044.

@@ -4,6 +4,9 @@ public sealed class TranslationPipelineRunOptions
 {
     private TimeSpan minimumCandidateGroupingDuration;
 
+    /// <summary>ADR-045 opt-in; false retains the ADR-044 non-cached association guard.</summary>
+    public bool AllowFreshCachedMenuAssociation { get; init; }
+
     public static TimeSpan DefaultStableTextInterval { get; } = TimeSpan.FromSeconds(1);
 
     public static TimeSpan DefaultMinimumCandidateOverlayVisibleDuration { get; } = TimeSpan.FromSeconds(2);

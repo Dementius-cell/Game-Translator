@@ -36,8 +36,13 @@ public sealed class InfrastructureServiceModule : IApplicationServiceModule
         services.AddSingleton<ITranslationCacheRepository, SqliteTranslationCacheRepository>();
         services.AddSingleton<ICaptureFrameSource, WindowsGraphicsCaptureFrameSource>();
         services.AddSingleton<IInputActivityClock, WindowsInputActivityClock>();
-        services.AddSingleton<IOcrEngine, WindowsOcrEngine>();
-        services.AddSingleton<IOcrEngine, TesseractOcrEngine>();
+        services.AddSingleton<OcrInputDiagnosticRecorder>();
+        services.AddSingleton<WindowsOcrEngine>();
+        services.AddSingleton<TesseractOcrEngine>();
+        services.AddSingleton<IOcrEngine>(p => new DiagnosticOcrEngine(p.GetRequiredService<WindowsOcrEngine>(),
+            p.GetRequiredService<OcrInputDiagnosticRecorder>(), p.GetRequiredService<LiveDiagnosticsPreferences>()));
+        services.AddSingleton<IOcrEngine>(p => new DiagnosticOcrEngine(p.GetRequiredService<TesseractOcrEngine>(),
+            p.GetRequiredService<OcrInputDiagnosticRecorder>(), p.GetRequiredService<LiveDiagnosticsPreferences>()));
         services.AddSingleton(new PaddleOcrTextCandidateDetectorOptions());
         services.AddSingleton<PaddleOcrTextCandidateDetector>();
         services.AddSingleton<ITextCandidateDetector>(provider => provider.GetRequiredService<PaddleOcrTextCandidateDetector>());

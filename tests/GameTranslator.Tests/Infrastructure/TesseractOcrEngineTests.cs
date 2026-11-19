@@ -51,7 +51,7 @@ public sealed class TesseractOcrEngineTests
 
         Assert.Contains(
             services,
-            descriptor => descriptor.ServiceType == typeof(IOcrEngine)
+            descriptor => descriptor.ServiceType == typeof(TesseractOcrEngine)
                 && descriptor.ImplementationType == typeof(TesseractOcrEngine));
     }
 

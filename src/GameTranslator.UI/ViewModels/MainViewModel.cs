@@ -6166,6 +6166,7 @@ public sealed partial class MainViewModel : ValidatableObservableObject
         builder.AppendLine();
         builder.AppendLine("Live candidate lifecycle");
         builder.AppendLine("  Text diagnostics: bounded OCR, translation-input, and translated text are recorded locally; provider responses and credentials are not recorded.");
+        builder.AppendLine($"  Capture minimum interval: 250 ms. OCR engine inputs: {DiagnosticsEnabled && DiagnosticsFrames}; separate budget up to {Math.Min(256, DiagnosticsFramesMiB)} MiB per process, 20000 inputs, queue 32 / 16 MiB. Limits and failures are logged locally.");
         builder.AppendLine($"  Capture frame sampling enabled: {DiagnosticsEnabled && DiagnosticsFrames}. Sampled PNGs and metadata are local. Frame budget: {DiagnosticsFramesMiB} MiB per capture source.");
         builder.AppendLine($"  OverlayRecordingAllowed: {OverlayRecordingAllowed}; OverlayCaptureExcluded: {overlayService.IsExcludedFromCapture}");
         builder.AppendLine("  Storage: local files only; no diagnostics upload is performed.");

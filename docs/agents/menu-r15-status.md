@@ -105,10 +105,16 @@ Owner-approved ADR-045 enables the existing provisional association for a fresh 
 
 Validation: zero-warning Release build, 1679/1679 tests (four new enabled/rollback and same/changed-text cases), maintenance tooling and docs checks passed. These checks do not replace live acceptance.
 
-## Preserve pending OCR position across speculative suppression � 2026-11-19
+## Preserve pending OCR position across speculative suppression — 2026-11-19
 
 A protected transition run retained a published-label expiry despite normal detector timings. Its pending wait restarted without an intervening OCR start or visual renewal. The speculative unchanged-pixel path clears pending work before detection; if the detected crop then differs, re-offering OCR previously assigned a new FIFO position without renewing authority. The scheduler now suppresses the crop while preserving the unfulfilled request position. Validated visual renewal, actual dispatch, expired pending source and retired tracks release the position. It cannot start suppressed work or extend text freshness. No priority-by-text rules, additional concurrency, profile changes or OCR preparation changes are introduced.
 
 A regression reproduced the old ordering failure before the fix; focused scheduler tests cover resumed ordering, suppressed work, current replacement pixels, fulfilled/expired positions and existing fairness/cancellation rules. Private source timelines remain ignored local-only under work/live-review-20261119-0809. This addresses one queue defect; OCR contradictions and real-game stability remain open. Deliver as a separate commit with a backup of the preceding package so rollback preserves ADR-045.
 
 Validation: zero-warning Release build, 1682/1682 full-suite tests including three new scheduler cases, maintenance tooling and docs checks passed. Live validation is still required.
+
+## Exact OCR inputs for remaining failures — 2026-11-19
+
+Owner requested more frequent screenshots. Full capture minimum interval is250ms. Successful OCR calls additionally enqueue exact engine-entry pixels, settings/hints/source provenance and raw recognized blocks. Engine-internal transformations require the same engine build/models. Both engines share a bounded32-input/16MiB queue, separate min(256MiB, configuredFramesMiB) disk budget and20000-input cap per process. Disable/stop, queue limits and storage failures can leave gaps; bounded local diagnostics report losses/failures. No OCR/authority/queue-order algorithm changes. Private evidence remains local-only; existing fixes and rollback remain available.
+
+Validation: zero-warning Release build and1689/1689 tests, including recording cadence, concurrent per-input hashes/settings/results, collection gates/generation, storage failure, oversize/cancellation and both engine registrations. Maintenance and documentation checks passed. Real-game disk/CPU impact remains to be measured; diagnostic sampling is bounded, not lossless.

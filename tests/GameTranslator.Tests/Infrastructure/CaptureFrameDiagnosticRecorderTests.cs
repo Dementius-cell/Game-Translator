@@ -14,6 +14,26 @@ public sealed class CaptureFrameDiagnosticRecorderTests
         new CaptureFrameOrigin(Guid.NewGuid(), TimeSpan.FromSeconds(42), DateTimeOffset.UtcNow));
 
     [Fact]
+    public async Task CaptureSamplingAcceptsQuarterSecondButNotEarlier()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "gt-frame-rate-" + Guid.NewGuid());
+        var clock = new TestClock();
+        var recorder = new CaptureFrameDiagnosticRecorder(directory, clock);
+        try
+        {
+            Assert.True(recorder.TryRecord(Frame()));
+            await recorder.Completion;
+            clock.Ticks = TimeSpan.FromMilliseconds(249).Ticks;
+            Assert.False(recorder.TryRecord(Frame()));
+            clock.Ticks = TimeSpan.FromMilliseconds(250).Ticks;
+            Assert.True(recorder.TryRecord(Frame()));
+            await recorder.Completion;
+            Assert.Equal(2, Directory.GetFiles(directory, "*.png").Length);
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
+    [Fact]
     public async Task SampleEvidence_IdentifiesFilesAndExplainsLimitWithoutLeakingStorageExceptionMessage()
     {
         var directory = Path.Combine(Path.GetTempPath(), "gt-sample-evidence-" + Guid.NewGuid());

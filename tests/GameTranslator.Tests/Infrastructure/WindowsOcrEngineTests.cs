@@ -17,7 +17,7 @@ public sealed class WindowsOcrEngineTests
 
         Assert.Contains(
             services,
-            descriptor => descriptor.ServiceType == typeof(IOcrEngine)
+            descriptor => descriptor.ServiceType == typeof(WindowsOcrEngine)
                 && descriptor.ImplementationType == typeof(WindowsOcrEngine));
     }
 

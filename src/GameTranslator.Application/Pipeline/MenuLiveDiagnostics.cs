@@ -1,3 +1,5 @@
+using GameTranslator.Application.Ocr;
+
 namespace GameTranslator.Application.Pipeline;
 
 /// <summary>Local, pixel-free menu authority and scheduler evidence. Queue counters are session totals.</summary>
@@ -6,6 +8,10 @@ public sealed record MenuLiveDiagnostics(long Generation, long TextVersion, Guid
     int ObservationCount, bool Confirmed, bool Periodic, int ActiveOcrCount, int PendingOcrCount,
     long ReplacedPendingCount, long ExpiredPendingCount, string Decision, double? WorkAgeMilliseconds)
 {
+    // Association geometry is captured before the live region is replaced.
+    public BoundingBox? PreviousBounds { get; init; }
+    public BoundingBox? ProposedBounds { get; init; }
+    public BoundingBox? AnchorBounds { get; init; }
     public int? CompatibleDetections { get; init; }
     public int? DetectedRegions { get; init; }
     public bool HadTranslation { get; init; }

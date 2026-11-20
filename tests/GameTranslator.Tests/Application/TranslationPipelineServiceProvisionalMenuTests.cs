@@ -50,6 +50,18 @@ public sealed partial class TranslationPipelineServiceTests
         await Step();
         Assert.Empty(overlay.CurrentSnapshot!.TextItems);
         Assert.Equal(enabled, events.Any(e => e.Menu?.Decision == "association-proposed"));
+        if (enabled)
+        {
+            foreach (var decision in new[] { "association-proposed", "translation-invalidated-association-proposed" })
+            {
+                var diagnostic = Assert.Single(events, e => e.Menu?.Decision == decision);
+                Assert.Equal(padded, diagnostic.CandidateBounds);
+                Assert.Equal(anchor, diagnostic.Menu!.PreviousBounds);
+                Assert.Equal(padded, diagnostic.Menu.ProposedBounds);
+                Assert.Equal(anchor, diagnostic.Menu.AnchorBounds);
+                Assert.Equal(capture.SourceTimestampOverride!.Value.Ticks, diagnostic.Menu.SourceTimestampTicks);
+            }
+        }
         await Step(false);
         Assert.Empty(overlay.CurrentSnapshot!.TextItems);
         Assert.DoesNotContain(events, e => e.Menu?.Decision == "association-confirmed");

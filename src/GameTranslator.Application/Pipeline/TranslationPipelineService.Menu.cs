@@ -165,7 +165,7 @@ public sealed partial class TranslationPipelineService
                 {
                     // Retire both kinds of asynchronous work before replacing authority.
                     // Old OCR keeps its global slot until it actually terminates.
-                    changed |= InvalidateMenuTranslation(current, "association-proposed");
+                    changed |= InvalidateMenuTranslation(current, "association-proposed", region);
                     menuScheduler.Remove(current.Id);
                     current.Menu.Generation = menuScheduler.Register(current.Id);
                     current.Menu.Authority = CreateMenuTextAuthority();
@@ -173,7 +173,7 @@ public sealed partial class TranslationPipelineService
                     current.Menu.LatestAcceptedInput = null;
                     current.Menu.LatestAcceptedResult = null;
                     current.Menu.ProvisionalAssociation = true;
-                    RecordMenuDecision(current, "association-proposed", region.Frame);
+                    RecordMenuDecision(current, "association-proposed", region.Frame, associationRegion: region);
                 }
                 var previousDetectedOrigin = current.Region.Frame.Origin;
                 var pixelsChanged = !current.SourceIdentity.Matches(region.Frame);
@@ -296,10 +296,10 @@ public sealed partial class TranslationPipelineService
             }
         }
 
-        private bool InvalidateMenuTranslation(LiveCandidateState candidate, string reason)
+        private bool InvalidateMenuTranslation(LiveCandidateState candidate, string reason, TextCandidateRegion? associationRegion = null)
         {
             var changed = candidate.Result is not null || candidate.Failure is not null;
-            RecordMenuDecision(candidate, "translation-invalidated-" + reason);
+            RecordMenuDecision(candidate, "translation-invalidated-" + reason, associationRegion?.Frame, associationRegion: associationRegion);
             CancelActiveWork(candidate);
             candidate.Result = null;
             candidate.ResultPublishedAt = null;
@@ -485,7 +485,7 @@ public sealed partial class TranslationPipelineService
                 translated.Timings, translated.Optimization, projected.TextBlocks.Count, translated.TextStability);
         }
 
-        private void RecordMenuDecision(LiveCandidateState candidate, string decision, CapturedFrame? frame = null, TimeSpan? workAge = null, TimeSpan? queueWait = null, int? compatibleDetections = null, int? detectedRegions = null, MenuOcrWork? retiredWork = null)
+        private void RecordMenuDecision(LiveCandidateState candidate, string decision, CapturedFrame? frame = null, TimeSpan? workAge = null, TimeSpan? queueWait = null, int? compatibleDetections = null, int? detectedRegions = null, MenuOcrWork? retiredWork = null, TextCandidateRegion? associationRegion = null)
         {
             if (service.diagnostics?.Current.Enabled == false) return;
             var menu = candidate.Menu!;
@@ -496,13 +496,16 @@ public sealed partial class TranslationPipelineService
             var acceptedOrigin = authority.LastEvidenceOrigin;
             RecordLifecycleEvent(LiveCandidateLifecycleEventKind.CandidateMenuAuthorityObserved,
                 zoneId: candidate.SourceZoneId, candidateId: candidate.Id,
-                candidateBounds: retiredWork?.Lease.Work.Region.Candidate.Bounds ?? candidate.Region.Candidate.Bounds,
+                candidateBounds: associationRegion?.Candidate.Bounds ?? retiredWork?.Lease.Work.Region.Candidate.Bounds ?? candidate.Region.Candidate.Bounds,
                 menuDiagnostics: new MenuLiveDiagnostics(retiredWork?.Lease.Generation ?? menu.Generation, authority.Version, origin?.SourceId,
                     origin?.SourceTimestamp.Ticks, origin is null ? null : (MenuNow - origin.FreshnessTimestamp).TotalMilliseconds,
                     frame.IsCachedReuse, authority.ObservationCount, authority.Confirmed, retiredWork?.Periodic ?? menu.Periodic,
                     menuScheduler.ActiveCount, menuScheduler.PendingCount, menuScheduler.ReplacedPendingCount,
                     menuScheduler.ExpiredPendingCount, decision, workAge?.TotalMilliseconds)
                 {
+                    PreviousBounds = associationRegion is null ? null : candidate.Region.Candidate.Bounds,
+                    ProposedBounds = associationRegion?.Candidate.Bounds,
+                    AnchorBounds = associationRegion is null ? null : menu.AnchorBounds,
                     CompatibleDetections = compatibleDetections,
                     DetectedRegions = detectedRegions,
                     HadTranslation = retiredWork is null && candidate.Result is not null,

@@ -6304,6 +6304,9 @@ public sealed partial class MainViewModel : ValidatableObservableObject
             if (entry.Menu is { } menu)
             {
                 AppendLifecycleField(builder, "MenuDecision", menu.Decision);
+                AppendLifecycleField(builder, "MenuPreviousBounds", menu.PreviousBounds is { } previousBounds ? FormatBounds(previousBounds) : null);
+                AppendLifecycleField(builder, "MenuProposedBounds", menu.ProposedBounds is { } proposedBounds ? FormatBounds(proposedBounds) : null);
+                AppendLifecycleField(builder, "MenuAnchorBounds", menu.AnchorBounds is { } anchorBounds ? FormatBounds(anchorBounds) : null);
                 AppendLifecycleField(builder, "MenuCompatibleDetections", menu.CompatibleDetections?.ToString());
                 AppendLifecycleField(builder, "MenuDetectedRegions", menu.DetectedRegions?.ToString());
                 AppendLifecycleField(builder, "MenuHadTranslation", menu.HadTranslation.ToString());

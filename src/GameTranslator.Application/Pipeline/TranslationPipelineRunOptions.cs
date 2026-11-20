@@ -4,6 +4,9 @@ public sealed class TranslationPipelineRunOptions
 {
     private TimeSpan minimumCandidateGroupingDuration;
 
+    /// <summary>ADR-046 experiment; retain published text through one bounded nonempty contradiction.</summary>
+    public bool DeferFirstMenuContradiction { get; init; }
+
     /// <summary>ADR-045 opt-in; false retains the ADR-044 non-cached association guard.</summary>
     public bool AllowFreshCachedMenuAssociation { get; init; }
 

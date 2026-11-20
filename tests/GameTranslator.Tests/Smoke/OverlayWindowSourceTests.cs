@@ -112,6 +112,18 @@ public sealed class OverlayWindowSourceTests
         }
     }
 
+    [Fact]
+    public void MenuContradictionExperiment_HasLocalRollbackAndSessionDiagnostics()
+    {
+        var source = ReadSource("src/GameTranslator.UI/ViewModels/MainViewModel.cs");
+        Assert.Contains("DeferFirstMenuContradiction = !System.IO.File.Exists", source);
+        Assert.Contains("AppContext.BaseDirectory, \"menu-contradiction-hold.disabled\"", source);
+        Assert.Contains("liveTiming.RunOptions.DeferFirstMenuContradiction", source);
+        Assert.Contains("\"MenuPendingContradiction\", menu.PendingContradiction", source);
+        Assert.Contains("\"MenuContradictionRemainingMs\", menu.ContradictionRemainingMilliseconds", source);
+        Assert.False(new GameTranslator.Application.Pipeline.TranslationPipelineRunOptions().DeferFirstMenuContradiction);
+    }
+
     private static string ReadSource(string relativePath)
     {
         return File.ReadAllText(Path.Combine(RepositoryRoot.Find(), relativePath));

@@ -3735,6 +3735,8 @@ public sealed partial class MainViewModel : ValidatableObservableObject
             {
                 MinimumCandidateGroupingDuration = stableTextInterval,
                 EnableIncrementalMenuDetection = true,
+                DeferFirstMenuContradiction = !System.IO.File.Exists(System.IO.Path.Combine(
+                    AppContext.BaseDirectory, "menu-contradiction-hold.disabled")),
                 AllowFreshCachedMenuAssociation = !System.IO.File.Exists(System.IO.Path.Combine(
                     AppContext.BaseDirectory, "menu-cached-association.disabled")),
             });
@@ -6023,6 +6025,7 @@ public sealed partial class MainViewModel : ValidatableObservableObject
         var liveTiming = lastLiveTranslationTiming ?? CreateLiveTranslationTiming(LiveTranslationTimingPreset);
         builder.AppendLine($"  LiveTimingPreset: {lastLiveTranslationTimingPreset?.ToString() ?? "(not started; current selection shown below)"}");
         builder.AppendLine($"  CurrentLiveTimingSelection: {LiveTranslationTimingPreset}");
+        builder.AppendLine($"  DeferFirstMenuContradiction: {liveTiming.RunOptions.DeferFirstMenuContradiction}");
         builder.AppendLine($"  AllowFreshCachedMenuAssociation: {liveTiming.RunOptions.AllowFreshCachedMenuAssociation}");
         builder.AppendLine($"  LivePollingIntervalMs: {liveTiming.PollingInterval.TotalMilliseconds:0}");
         builder.AppendLine($"  RequiredGroupingObservations: {liveTiming.RunOptions.MinimumCandidateGroupingObservations}");
@@ -6304,6 +6307,8 @@ public sealed partial class MainViewModel : ValidatableObservableObject
             if (entry.Menu is { } menu)
             {
                 AppendLifecycleField(builder, "MenuDecision", menu.Decision);
+                AppendLifecycleField(builder, "MenuPendingContradiction", menu.PendingContradiction.ToString());
+                AppendLifecycleField(builder, "MenuContradictionRemainingMs", menu.ContradictionRemainingMilliseconds?.ToString("F1", CultureInfo.InvariantCulture));
                 AppendLifecycleField(builder, "MenuPreviousBounds", menu.PreviousBounds is { } previousBounds ? FormatBounds(previousBounds) : null);
                 AppendLifecycleField(builder, "MenuProposedBounds", menu.ProposedBounds is { } proposedBounds ? FormatBounds(proposedBounds) : null);
                 AppendLifecycleField(builder, "MenuAnchorBounds", menu.AnchorBounds is { } anchorBounds ? FormatBounds(anchorBounds) : null);

@@ -12,6 +12,8 @@ public sealed record MenuLiveDiagnostics(long Generation, long TextVersion, Guid
     public BoundingBox? PreviousBounds { get; init; }
     public BoundingBox? ProposedBounds { get; init; }
     public BoundingBox? AnchorBounds { get; init; }
+    public bool PendingContradiction { get; init; }
+    public double? ContradictionRemainingMilliseconds { get; init; }
     public int? CompatibleDetections { get; init; }
     public int? DetectedRegions { get; init; }
     public bool HadTranslation { get; init; }

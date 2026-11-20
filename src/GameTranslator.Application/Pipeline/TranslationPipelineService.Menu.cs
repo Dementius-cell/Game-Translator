@@ -236,6 +236,7 @@ public sealed partial class TranslationPipelineService
             return profile.OcrSettings.WatermarkFilter == WatermarkFilterMode.Off
                 && candidate.Result is not null && menu.CompletedOcr is null
                 && !menuScheduler.HasActive(candidate.Id)
+                && !menu.Authority.HasPendingContradiction
                 && menu.Authority.CanPublish(menu.Authority.Version, MenuNow)
                 && region.Frame is { IsCachedReuse: false, Origin: { } origin }
                 && MenuNow >= origin.FreshnessTimestamp
@@ -332,10 +333,15 @@ public sealed partial class TranslationPipelineService
                         input.Zone, profile.TranslatorSettings.AutoDetectSourceLanguage == true);
                     if (candidate.Region.Frame.Origin is { } geometryOrigin
                         && geometryOrigin.SourceTimestamp < work.Lease.Origin.SourceTimestamp
-                        && candidate.Menu!.Authority.RevokeIfDifferent(work.Lease.Origin, projected.TextBlocks.Select(b => b.Text), MenuNow))
+                        && candidate.Menu!.Authority.RevokeIfDifferent(work.Lease.Origin, projected.TextBlocks.Select(b => b.Text), MenuNow, CanDeferMenuContradiction(candidate, input)))
                     {
                         changed |= InvalidateMenuTranslation(candidate, "text-contradicted");
                         RecordMenuDecision(candidate, "text-revoked-before-geometry", result.CapturedFrame);
+                    }
+                    if (candidate.Menu!.Authority.HasPendingContradiction)
+                    {
+                        CancelActiveWork(candidate);
+                        RecordMenuDecision(candidate, "contradiction-pending", result.CapturedFrame);
                     }
                     candidate.Menu!.CompletedOcr = new CompletedMenuOcr(input, result, work.Lease.Origin, MenuNow - work.Lease.StartedAt);
                 }
@@ -355,9 +361,10 @@ public sealed partial class TranslationPipelineService
                 changed |= AcceptCompletedMenuOcr(candidate);
                 // Consume only ready, source/geometry-validated evidence before expiry.
                 // Pending or unvalidated work cannot extend the old authority's lifetime.
+                var pendingContradiction = candidate.Menu?.Authority.HasPendingContradiction == true;
                 if (candidate.Menu?.Authority.Expire(MenuNow) == true)
                 {
-                    changed |= InvalidateMenuTranslation(candidate, "source-expired");
+                    changed |= InvalidateMenuTranslation(candidate, pendingContradiction ? "contradiction-timeout" : "source-expired");
                     RecordMenuDecision(candidate, "text-expired", candidate.Menu.LatestAcceptedResult?.CapturedFrame);
                 }
                 if (candidate.Menu is not { } menu || candidate.ActiveWork is not { } work) continue;
@@ -367,7 +374,7 @@ public sealed partial class TranslationPipelineService
                 try
                 {
                     var result = await work.Task;
-                    if (!menu.Authority.CanPublish(menu.TranslatingVersion, MenuNow))
+                    if (menu.Authority.HasPendingContradiction || !menu.Authority.CanPublish(menu.TranslatingVersion, MenuNow))
                     {
                         RecordMenuDecision(candidate, "translation-rejected-version-or-age");
                         continue;
@@ -426,10 +433,19 @@ public sealed partial class TranslationPipelineService
             var version = menu.Authority.Version;
             var projected = TranslationTextGroupingService.CreateTranslationSourceResult(result.SourceOcrResult,
                 input.Zone, profile.TranslatorSettings.AutoDetectSourceLanguage == true);
-            var accepted = menu.Authority.Observe(completed.Origin, projected.TextBlocks.Select(b => b.Text), MenuNow);
+            var accepted = menu.Authority.Observe(completed.Origin, projected.TextBlocks.Select(b => b.Text), MenuNow,
+                CanDeferMenuContradiction(candidate, input));
             if (menu.Authority.Version != version) changed |= InvalidateMenuTranslation(candidate, "text-version-changed");
             if (!accepted)
             {
+                if (menu.Authority.HasPendingContradiction)
+                {
+                    CancelActiveWork(candidate);
+                    RecordMenuDecision(candidate, "contradiction-pending", result.CapturedFrame, completed.WorkAge);
+                    RecordCandidateLifecycleEvent(LiveCandidateLifecycleEventKind.CandidateOcrCompleted, candidate, result,
+                        frameCapturedAt: result.CapturedFrame.CapturedAt);
+                    return changed;
+                }
                 RecordMenuDecision(candidate, "ocr-rejected-source", result.CapturedFrame, completed.WorkAge);
                 return changed;
             }
@@ -455,6 +471,18 @@ public sealed partial class TranslationPipelineService
                 StartMenuTranslation(candidate, input, result);
             return changed;
         }
+
+        private bool CanDeferMenuContradiction(LiveCandidateState candidate, MenuOcrInput input)
+            => runOptions.DeferFirstMenuContradiction
+                && candidate.ResultPublishedAt is not null && candidate.Result is not null
+                && candidate.Zone.ContentLayoutMode == ContentLayoutMode.StaticMenu
+                && profile.OcrSettings.OrientationMode == OcrOrientationMode.Horizontal
+                && profile.OcrPreprocessingSettings.ResolveMode() == OcrPreprocessingMode.None
+                && profile.OcrSettings.WatermarkFilter == WatermarkFilterMode.Off
+                && candidate.Region.Candidate.SourceCandidateCount == 1
+                && input.Region.Candidate.SourceCandidateCount == 1
+                && MenuGeometryMatches(candidate, input.Region, getCore: _ => input.Core)
+                && MenuGeometryMatches(candidate, candidate.Region, getCore: _ => candidate.Menu!.CurrentCore);
 
         private void StartMenuTranslation(LiveCandidateState candidate, MenuOcrInput input, TranslationPipelineResult recognized)
         {
@@ -503,6 +531,9 @@ public sealed partial class TranslationPipelineService
                     menuScheduler.ActiveCount, menuScheduler.PendingCount, menuScheduler.ReplacedPendingCount,
                     menuScheduler.ExpiredPendingCount, decision, workAge?.TotalMilliseconds)
                 {
+                    PendingContradiction = authority.HasPendingContradiction,
+                    ContradictionRemainingMilliseconds = authority.ContradictionDeadline is { } deadline
+                        ? Math.Max(0, (deadline - MenuNow).TotalMilliseconds) : null,
                     PreviousBounds = associationRegion is null ? null : candidate.Region.Candidate.Bounds,
                     ProposedBounds = associationRegion?.Candidate.Bounds,
                     AnchorBounds = associationRegion is null ? null : menu.AnchorBounds,

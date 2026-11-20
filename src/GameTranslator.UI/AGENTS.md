@@ -84,3 +84,5 @@ Export RegionRefreshDetail, RegionBaselineState/After, RegionSourceAgeMs (invari
 Do not render DebugMetricLines as a floating top-left panel over the game. Placement/collision warnings remain in OverlaySnapshot and exported diagnostics; they must not implicitly enable an on-screen HUD when debug mode is off. Translation text, masks and explicitly enabled OCR debug boxes retain their existing rendering.
 
 ADR-045 live timing enables fresh cached menu association unless menu-cached-association.disabled exists beside the executable. Read the local rollback flag when constructing each live run; diagnostics report the captured run option. Do not persist it in profiles or change an active session.
+
+ADR-046 live timing enables DeferFirstMenuContradiction unless menu-contradiction-hold.disabled exists beside the executable. Read at session construction, export the run option and pending/remaining-time fields, and preserve profile persistence. The marker rolls back only this experiment on the next live start.

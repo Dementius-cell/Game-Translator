@@ -1997,6 +1997,33 @@ ADR-028 уже отменил пятисекундный cold-start gate, ADR-03
 Проверять оба режима, неизменный и изменённый текст, повтор того же источника без подтверждения, чередование padding и истечение. Остальные отрицательные сценарии ADR-044 остаются обязательными. Первое снятие при предложении намеренно сохраняется. Изменение направлено на повторные сбросы областей, не гарантирует устранения всех пропаданий. Реальная эффективность требует следующего игрового прогона; локальные материалы исследования не публикуются.
 
 ---
+# ADR-046: Bounded first OCR contradiction experiment
+
+Status: ACCEPTED
+
+Date: 2026-11-20
+
+Issue: #59. Owner explicitly approved the experiment and required rollback. This supersedes only the immediate nonempty-contradiction removal rule for the eligible route below; geometry and freshness decisions remain unchanged.
+
+## Change request and decision
+
+Repeated nonempty recognition errors can revoke a correct published translation. Retain that existing translation on the first fresh nonempty contradiction for at most 750 ms from observation, capped by the supporting source's existing two-second freshness deadline. Eligibility requires a published result, confirmed current authority, one detector member, StaticMenu, explicit Horizontal, None preparation, watermark Off and compatible fixed-anchor geometry for both the OCR input and current detection. Moving crop bounds are allowed by existing matching rules; no fixed screen grid is introduced.
+
+A distinct newer contradictory source revokes immediately, even when its text differs from the first contradiction. Duplicate source delivery cannot count twice or restart the deadline. Only a newer agreeing OCR result that passes ordinary source and detector validation cancels the pending contradiction. Neither speculative agreement nor exact pixel reuse can renew pending authority. Do not publish new in-flight translations while pending. At timeout, clear and require ordinary confirmation again; a late agreement cannot rescue the expired snapshot.
+
+Empty OCR, candidate loss, ambiguity, new geometry association/generation, capture/detector failure and session stop retain immediate removal. Contradictory observations never advance the supporting source timestamp. Preserve independent zones, three OCR slots, 500 ms per-track start spacing and the existing confirmation requirements. No additional OCR calls or changes to recognition, translation providers, cache, profile persistence or one-shot/comic behavior.
+
+## Tradeoff and rollback
+
+An actual text change can retain the previous translation for up to 750 ms after its first contradictory OCR observation, or less when source freshness expires or another contradiction arrives. This is an experimental stability tradeoff, not evidence that the old text is still correct. Geometry jitter alone is not text confirmation.
+
+Application run option DeferFirstMenuContradiction defaults to false. Product live timing enables it unless the local file `menu-contradiction-hold.disabled` exists beside the executable. Read the marker for each new live session and export the captured option; changing it does not mutate a running session. Create the marker and restart translation to roll back; removing it re-enables the experiment. Preserve the preceding package separately as an additional rollback. No migration is required.
+
+## Verification
+
+Deterministic authority and pipeline tests cover isolated contradiction and validated recovery, different second contradiction, duplicate/older source, empty OCR, deadline and source-age cap, late recovery, geometry reassociation, candidate loss and disabled behavior. Existing regression gates cover capture failure, cancellation, independent zones and scheduler limits. Diagnostics expose pending status and remaining hold time, without claiming monitor presentation. Live acceptance requires a protected-mode game run with unchanged labels, actual label changes and menu transitions. Private input images, logs and research outputs remain local-only.
+
+---
 # ADR-XXX
 
 

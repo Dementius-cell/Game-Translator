@@ -6,6 +6,78 @@ namespace GameTranslator.Tests.Application;
 public sealed class MenuTextAuthorityTests
 {
     [Fact]
+    public void PendingContradiction_PreservesOnlyOldFreshAuthorityUntilValidatedAgreement()
+    {
+        var gate = Confirm("Action");
+        var version = gate.Version;
+        Assert.False(gate.RevokeIfDifferent(Origin(500), ["Actlon"], Ms(600), true));
+        Assert.True(gate.HasPendingContradiction);
+        Assert.Equal(Ms(1350), gate.ContradictionDeadline);
+        Assert.Equal(Origin(200), gate.LastEvidenceOrigin);
+        Assert.False(gate.Observe(Origin(500), ["Actlon"], Ms(650), true));
+        Assert.True(gate.CanPublish(version, Ms(1000)));
+        Assert.False(gate.RenewUnchanged(Origin(700), Ms(700)));
+        Assert.False(gate.RevokeIfDifferent(Origin(900), ["Action"], Ms(900), true));
+        Assert.True(gate.HasPendingContradiction); // Speculative agreement is not validation.
+        Assert.True(gate.Observe(Origin(900), ["Action"], Ms(950), true));
+        Assert.False(gate.HasPendingContradiction);
+        Assert.Equal(version, gate.Version);
+        Assert.True(gate.Confirmed);
+    }
+
+    [Theory]
+    [InlineData("Other")]
+    [InlineData("Third")]
+    [InlineData("")]
+    public void SecondIndependentContradictionOrEmptyRevokes(string second)
+    {
+        var gate = Confirm("Action");
+        Assert.False(gate.RevokeIfDifferent(Origin(500), ["Other"], Ms(500), true));
+        Assert.False(gate.RevokeIfDifferent(Origin(500), ["Other"], Ms(600), true));
+        Assert.True(gate.RevokeIfDifferent(Origin(1000), [second], Ms(1000), true));
+        Assert.False(gate.Confirmed);
+        Assert.False(gate.HasPendingContradiction);
+    }
+
+    [Theory]
+    [InlineData(500, 1250)]
+    [InlineData(1900, 2200)]
+    public void PendingDeadlineCannotExtendSupportOrBeRescuedLate(int first, int deadline)
+    {
+        var gate = Confirm("Action");
+        var version = gate.Version;
+        Assert.False(gate.Observe(Origin(first), ["Other"], Ms(first), true));
+        Assert.Equal(Ms(deadline), gate.ContradictionDeadline);
+        Assert.False(gate.CanPublish(version, Ms(deadline)));
+        Assert.True(gate.Observe(Origin(deadline), ["Action"], Ms(deadline), true));
+        Assert.False(gate.Confirmed);
+        Assert.NotEqual(version, gate.Version);
+        Assert.Equal(1, gate.ObservationCount);
+    }
+
+    [Fact]
+    public void PendingContradictionRejectsOlderAgreementAndDoesNotRestartDeadline()
+    {
+        var gate = Confirm("Action");
+        gate.Observe(Origin(500), ["Other"], Ms(500), true);
+        Assert.False(gate.Observe(Origin(400), ["Action"], Ms(600), true));
+        Assert.False(gate.Observe(Origin(500), ["Other"], Ms(700), true));
+        Assert.Equal(Ms(1250), gate.ContradictionDeadline);
+        Assert.True(gate.Expire(Ms(1250)));
+        Assert.False(gate.Confirmed);
+    }
+
+    [Fact]
+    public void EmptyOnSamePendingSourceStillRevokesImmediately()
+    {
+        var gate = Confirm("Action");
+        gate.Observe(Origin(500), ["Other"], Ms(500), true);
+        Assert.True(gate.Observe(Origin(500), [], Ms(600), true));
+        Assert.False(gate.Confirmed);
+        Assert.False(gate.HasPendingContradiction);
+    }
+
+    [Fact]
     public void VisualRenewal_PreservesVersionAndObservationCountButStillExpires()
     {
         var gate = Confirm("Action");

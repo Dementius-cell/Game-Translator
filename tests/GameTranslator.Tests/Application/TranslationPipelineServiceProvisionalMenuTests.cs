@@ -9,6 +9,83 @@ namespace GameTranslator.Tests.Application;
 public sealed partial class TranslationPipelineServiceTests
 {
     [Theory]
+    [InlineData(false, "agreement")]
+    [InlineData(true, "agreement")]
+    [InlineData(true, "different")]
+    [InlineData(true, "same-contradiction")]
+    [InlineData(true, "capture-failure")]
+    [InlineData(true, "empty")]
+    [InlineData(true, "timeout")]
+    [InlineData(true, "geometry")]
+    [InlineData(true, "loss")]
+    public async Task MenuContradiction_HoldsOnlyPublishedTextAndClearsOnInvalidation(bool enabled, string outcome)
+    {
+        var zone = CreateZone("hold", "Menu", new AbsoluteRectangle(0, 0, 400, 160))
+            with { ContentLayoutMode = ContentLayoutMode.StaticMenu };
+        var bounds = new BoundingBox(100, 80, 120, 24);
+        var text = "Mode 10";
+        var lost = false;
+        var captureFailed = false;
+        var capture = new FakeCaptureFrameSource { FailureFactory = (_, _) => captureFailed
+            ? new CaptureFrameSourceException("Synthetic failure") : null, PixelFactory = (r, n) =>
+            Enumerable.Repeat((byte)(25 + n % 25), r.Width * r.Height * 4).ToArray() };
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available("synthetic",
+            lost ? [] : [new TextCandidate(bounds, .99)]));
+        var engine = new FakeOcrEngine { EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = _ => string.IsNullOrEmpty(text) ? [] : [new OcrTextBlock(text, new(8, 4, 90, 16))] };
+        var clock = new ManualTimeProvider(FrameTime);
+        var overlay = new FakeOverlayService();
+        var service = CreateService(capture, engine, new FakeTranslatorProvider("Google"), overlay,
+            candidateDetector: detector, timeProvider: clock);
+        using var session = service.CreateLiveSession(CreateProfile(zone) with
+        { OcrSettings = new OcrSettings { OrientationMode = OcrOrientationMode.Horizontal } },
+            new TranslationPipelineRunOptions { DeferFirstMenuContradiction = enabled, AllowFreshCachedMenuAssociation = true });
+        var events = new List<LiveCandidateLifecycleEvent>();
+        async Task Step()
+        {
+            capture.SourceTimestampOverride = TimeSpan.FromSeconds(clock.GetTimestamp() / (double)clock.TimestampFrequency);
+            events.AddRange((await session.RefreshAsync()).CandidateLifecycleEvents);
+            events.AddRange((await session.PublishCompletedWorkAsync()).CandidateLifecycleEvents);
+            clock.Advance(TimeSpan.FromMilliseconds(100));
+        }
+        for (var n = 0; n < 30; n++) await Step();
+        Assert.Contains(overlay.CurrentSnapshot!.TextItems, t => t.Text == "Translated Mode 10");
+        events.Clear();
+        text = "Mode 18";
+        for (var n = 0; n < 6; n++)
+        {
+            await Step();
+            if (events.Any(e => e.Menu?.PendingContradiction == true)
+                || !overlay.CurrentSnapshot!.TextItems.Any(t => t.Text == "Translated Mode 10")) break;
+        }
+        Assert.Equal(enabled, overlay.CurrentSnapshot!.TextItems.Any(t => t.Text == "Translated Mode 10"));
+        if (!enabled) return;
+        Assert.Contains(events, e => e.Menu is { PendingContradiction: true, ContradictionRemainingMilliseconds: > 0 and <= 750 });
+        events.Clear();
+        if (outcome == "timeout")
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(750));
+            await session.PublishCompletedWorkAsync();
+            Assert.Empty(overlay.CurrentSnapshot!.TextItems);
+            return;
+        }
+        text = outcome == "agreement" ? "Mode 10" : outcome == "empty" ? "" : outcome == "same-contradiction" ? "Mode 18" : "Mode 19";
+        if (outcome == "geometry") bounds = new BoundingBox(96, 74, 128, 36);
+        if (outcome == "loss") lost = true;
+        if (outcome == "capture-failure") captureFailed = true;
+        for (var n = 0; n < 6; n++)
+        {
+            await Step();
+            if (outcome == "agreement")
+                Assert.Contains(overlay.CurrentSnapshot!.TextItems, t => t.Text == "Translated Mode 10");
+            else if (!overlay.CurrentSnapshot!.TextItems.Any(t => t.Text == "Translated Mode 10")) break;
+        }
+        Assert.Equal(outcome == "agreement", overlay.CurrentSnapshot!.TextItems.Any(t => t.Text == "Translated Mode 10"));
+        if (outcome == "agreement")
+            Assert.DoesNotContain(events, e => e.Menu?.Decision.StartsWith("translation-invalidated") == true);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task ProvisionalMenu_MovingBackgroundRetainsCadenceButRequiresFreshConfirmation(bool changedText)

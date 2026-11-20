@@ -45,6 +45,19 @@ internal sealed class MenuOcrScheduler<T> : IDisposable
         return track.Generation;
     }
 
+    // A geometry association retires OCR authority, not the observed background cadence.
+    // Keep rate limiting across generations; pending work and source evidence are discarded.
+    internal long RestartAssociation(string trackId)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        var previous = tracks[trackId];
+        Remove(trackId);
+        var next = Register(trackId);
+        tracks[trackId].Periodic = previous.Periodic;
+        tracks[trackId].LastStartedAt = previous.LastStartedAt;
+        return next;
+    }
+
     internal OfferOutcome Offer(string trackId, T work, CaptureFrameOrigin? origin,
         bool pixelsChanged, TimeSpan now)
     {

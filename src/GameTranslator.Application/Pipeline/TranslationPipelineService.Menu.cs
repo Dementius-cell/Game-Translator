@@ -166,8 +166,8 @@ public sealed partial class TranslationPipelineService
                     // Retire both kinds of asynchronous work before replacing authority.
                     // Old OCR keeps its global slot until it actually terminates.
                     changed |= InvalidateMenuTranslation(current, "association-proposed", region);
-                    menuScheduler.Remove(current.Id);
-                    current.Menu.Generation = menuScheduler.Register(current.Id);
+                    current.Menu.Generation = menuScheduler.RestartAssociation(current.Id);
+                    current.Menu.Periodic = menuScheduler.IsPeriodic(current.Id);
                     current.Menu.Authority = CreateMenuTextAuthority();
                     current.Menu.CompletedOcr = null;
                     current.Menu.LatestAcceptedInput = null;

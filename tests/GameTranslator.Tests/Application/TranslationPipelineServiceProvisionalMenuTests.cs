@@ -9,6 +9,61 @@ namespace GameTranslator.Tests.Application;
 public sealed partial class TranslationPipelineServiceTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProvisionalMenu_MovingBackgroundRetainsCadenceButRequiresFreshConfirmation(bool changedText)
+    {
+        var zone = CreateZone("cadence", "Menu", new AbsoluteRectangle(0, 0, 400, 160))
+            with { ContentLayoutMode = ContentLayoutMode.StaticMenu };
+        var anchor = new BoundingBox(100, 80, 120, 24);
+        var padded = new BoundingBox(96, 74, 128, 36);
+        var bounds = anchor;
+        var text = "Mode 10";
+        var capture = new FakeCaptureFrameSource { PixelFactory = (r, n) =>
+            Enumerable.Repeat((byte)(25 + n % 25), r.Width * r.Height * 4).ToArray() };
+        var detector = new FakeCandidateDetector(_ => TextCandidateDetectionResult.Available("synthetic",
+            [new TextCandidate(bounds, .99)]));
+        var engine = new FakeOcrEngine { EngineId = OcrSettings.TesseractEngineId,
+            BlocksFactory = _ => [new OcrTextBlock(text, new(8, 4, 90, 16))] };
+        var clock = new ManualTimeProvider(FrameTime);
+        var overlay = new FakeOverlayService();
+        var service = CreateService(capture, engine, new FakeTranslatorProvider("Google"), overlay,
+            candidateDetector: detector, timeProvider: clock);
+        using var session = service.CreateLiveSession(CreateProfile(zone) with
+        { OcrSettings = new OcrSettings { OrientationMode = OcrOrientationMode.Horizontal } },
+            new TranslationPipelineRunOptions { AllowFreshCachedMenuAssociation = true });
+        var events = new List<LiveCandidateLifecycleEvent>();
+        async Task Step()
+        {
+            capture.SourceTimestampOverride = TimeSpan.FromSeconds(clock.GetTimestamp() / (double)clock.TimestampFrequency);
+            events.AddRange((await session.RefreshAsync()).CandidateLifecycleEvents);
+            events.AddRange((await session.PublishCompletedWorkAsync()).CandidateLifecycleEvents);
+            clock.Advance(TimeSpan.FromMilliseconds(100));
+        }
+        for (var n = 0; n < 30; n++) await Step();
+        Assert.Contains(overlay.CurrentSnapshot!.TextItems, t => t.Text == "Translated Mode 10");
+        Assert.Contains(events, e => e.Menu is { Decision: "ocr-started", Periodic: true });
+        events.Clear();
+        bounds = padded;
+        if (changedText) text = "Mode 18.";
+        await Step();
+        Assert.Empty(overlay.CurrentSnapshot!.TextItems);
+        var proposal = Assert.Single(events, e => e.Menu?.Decision == "association-proposed");
+        Assert.Equal(0, proposal.Menu!.ObservationCount);
+        Assert.False(proposal.Menu.Confirmed);
+        Assert.True(proposal.Menu.Periodic);
+        // Continuing motion never provides the 200ms quiet window. A mature track
+        // must still recognize and confirm its new generation within two starts.
+        for (var n = 0; n < 10; n++)
+        {
+            await Step();
+            if (changedText) Assert.DoesNotContain(overlay.CurrentSnapshot!.TextItems, t => t.Text == "Translated Mode 10");
+        }
+        Assert.Contains(events, e => e.Menu is { Decision: "association-confirmed", ObservationCount: >= 2 });
+        Assert.Contains(overlay.CurrentSnapshot!.TextItems, t => t.Text == "Translated " + text);
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]
     [InlineData(true, false)]

@@ -1,6 +1,6 @@
 # Menu r15 source status
 
-Updated: 2026-11-19. Scope: ADR-044 development implementation and local verification, not release publication or completed live-game acceptance.
+Updated: 2026-11-20. Scope: ADR-044 development implementation and local verification, not release publication or completed live-game acceptance.
 
 ## Current menu association change
 
@@ -118,3 +118,12 @@ Validation: zero-warning Release build, 1682/1682 full-suite tests including thr
 Owner requested more frequent screenshots. Full capture minimum interval is250ms. Successful OCR calls additionally enqueue exact engine-entry pixels, settings/hints/source provenance and raw recognized blocks. Engine-internal transformations require the same engine build/models. Both engines share a bounded32-input/16MiB queue, separate min(256MiB, configuredFramesMiB) disk budget and20000-input cap per process. Disable/stop, queue limits and storage failures can leave gaps; bounded local diagnostics report losses/failures. No OCR/authority/queue-order algorithm changes. Private evidence remains local-only; existing fixes and rollback remain available.
 
 Validation: zero-warning Release build and1689/1689 tests, including recording cadence, concurrent per-input hashes/settings/results, collection gates/generation, storage failure, oversize/cancellation and both engine registrations. Maintenance and documentation checks passed. Real-game disk/CPU impact remains to be measured; diagnostic sampling is bounded, not lossless.
+
+
+## Preserve established OCR cadence across association — 2026-11-20
+
+A provisional association previously restarted the visual-quiet wait even when the existing region had already established periodic recognition on a moving background. Restart now creates a new generation while retaining only the established periodic flag and last-start time. Pending pixels, queue position, source history, accepted OCR and text authority are not inherited. The 500ms start interval, three active slots including cancelled work, two-second freshness, fixed geometry guards and independent new-text confirmation remain required. Ordinary registration after disappearance/context change remains unchanged.
+
+The deterministic moving-background regression fails under the former pipeline and passes with the fix for both unchanged and changed text. Scheduler tests cover cadence, minimum start interval, unpromoted quiet tracks, discarded pending frames, retired-slot accounting and stale-source rejection. This targets time to reconfirm after association, not OCR spelling errors or removal prevention. Deliver separately with the previous installed package backed up; rollback restores that package without removing earlier queue/diagnostic fixes. Real-menu improvement remains unverified until an owner run.
+
+Validation: Release build with zero warnings/errors;1694/1694 tests passed, including five new cases. Maintenance tooling, documentation links and staged publication checks passed. UI/real-game performance remains pending; a preceding-package backup provides rollback.

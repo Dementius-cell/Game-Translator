@@ -6,6 +6,60 @@ namespace GameTranslator.Tests.Application;
 public sealed class MenuOcrSchedulerTests
 {
     [Fact]
+    public void AssociationRestart_PreservesPeriodicCadenceAndMinimumStartInterval()
+    {
+        using var scheduler = new MenuOcrScheduler<int>();
+        scheduler.Register("a");
+        foreach (var time in new[] { 0, 100, 200, 2000 }) Offer(scheduler, "a", time, true);
+        var old = scheduler.TryStartNext(Ms(2000))!;
+        Assert.True(scheduler.Complete(old));
+        Offer(scheduler, "a", 2100, true);
+        var generation = scheduler.RestartAssociation("a");
+        Assert.NotEqual(old.Generation, generation);
+        Assert.Equal(0, scheduler.PendingCount);
+        Assert.True(scheduler.IsPeriodic("a"));
+        Offer(scheduler, "a", 2100, true);
+        Assert.Null(scheduler.TryStartNext(Ms(2499)));
+        Offer(scheduler, "a", 2500, true);
+        var next = Assert.IsType<MenuOcrScheduler<int>.Lease>(scheduler.TryStartNext(Ms(2500)));
+        Assert.Equal(generation, next.Generation);
+        Assert.Equal(2500, next.Work);
+    }
+
+    [Fact]
+    public void AssociationRestart_DoesNotPromoteQuietTrackOrReusePendingSource()
+    {
+        using var scheduler = new MenuOcrScheduler<int>();
+        scheduler.Register("a");
+        Offer(scheduler, "a", 0);
+        scheduler.RestartAssociation("a");
+        Assert.False(scheduler.IsPeriodic("a"));
+        Assert.Null(scheduler.TryStartNext(Ms(200)));
+        Offer(scheduler, "a", 200);
+        Assert.Null(scheduler.TryStartNext(Ms(399)));
+        Assert.NotNull(scheduler.TryStartNext(Ms(400)));
+    }
+
+    [Fact]
+    public void AssociationRestart_RetainsRetiredSlotAndRejectsStalePendingFrame()
+    {
+        using var scheduler = new MenuOcrScheduler<int>(concurrency: 1);
+        scheduler.Register("a");
+        foreach (var time in new[] { 0, 100, 200, 2000 }) Offer(scheduler, "a", time, true);
+        var old = scheduler.TryStartNext(Ms(2000))!;
+        scheduler.RestartAssociation("a");
+        Assert.True(old.CancellationToken.IsCancellationRequested);
+        Offer(scheduler, "a", 2500, true);
+        Assert.Null(scheduler.TryStartNext(Ms(2500)));
+        Assert.Equal(1, scheduler.ActiveCount);
+        Assert.False(scheduler.Complete(old));
+        Assert.Null(scheduler.TryStartNext(Ms(4501)));
+        Assert.Equal(1, scheduler.ExpiredPendingCount);
+        Offer(scheduler, "a", 4501, true);
+        Assert.NotNull(scheduler.TryStartNext(Ms(4501)));
+    }
+
+    [Fact]
     public void SpeculativeClearPreservesQueuePositionWhenDetectionStillNeedsOcr()
     {
         using var scheduler = new MenuOcrScheduler<int>(concurrency: 1, visualQuietInterval: TimeSpan.Zero);

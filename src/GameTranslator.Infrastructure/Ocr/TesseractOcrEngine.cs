@@ -10,7 +10,7 @@ using PixImage = TesseractOCR.Pix.Image;
 
 namespace GameTranslator.Infrastructure.Ocr;
 
-public sealed class TesseractOcrEngine : IOcrEngine
+public sealed class TesseractOcrEngine : IOcrEngine, IDisposable
 {
     internal const int MaximumRecognitionConcurrency = 3;
     private const int BytesPerPixel = 4;
@@ -20,6 +20,11 @@ public sealed class TesseractOcrEngine : IOcrEngine
     private const string SupportedPixelFormat = "Bgra32";
     private static readonly BoundedNativeOcrExecutor RecognitionExecutor = new(MaximumRecognitionConcurrency);
     private readonly string tessdataPath;
+    private readonly ReusableNativeOcrPool<Engine> menuEngines = new(MaximumRecognitionConcurrency);
+    private bool disposed;
+    internal bool ReuseMenuEngines { get; set; } = true;
+
+    public void Dispose() { disposed = true; menuEngines.Dispose(); }
 
     public TesseractOcrEngine()
         : this(Path.Combine(AppContext.BaseDirectory, "tessdata"))
@@ -39,6 +44,7 @@ public sealed class TesseractOcrEngine : IOcrEngine
         OcrRequest request,
         CancellationToken cancellationToken = default)
     {
+        ObjectDisposedException.ThrowIf(disposed, this);
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -70,7 +76,12 @@ public sealed class TesseractOcrEngine : IOcrEngine
                 if (missing.Length > 0)
                     throw new OcrEngineException($"Multilingual OCR requires all selected language packs. Missing: {string.Join(", ", missing)}.");
             }
-            using var engine = new Engine(tessdataPath, language, EngineMode.Default);
+            var reuse = ReuseMenuEngines && CanReuseMenuEngine(request, recognitionOrientationMode, language);
+            using var lease = reuse ? menuEngines.Rent(MenuModelKey(language),
+                () => new Engine(tessdataPath, language, EngineMode.Default)) : null;
+            using var ownedEngine = lease is null ? new Engine(tessdataPath, language, EngineMode.Default) : null;
+            var engine = lease?.Value ?? ownedEngine!;
+            if (lease is not null) engine.ClearAdaptiveClassifier();
             cancellationToken.ThrowIfCancellationRequested();
 
             var detectorLines = ResolveKoreanDetectorLines(request, recognitionOrientationMode);
@@ -176,12 +187,15 @@ public sealed class TesseractOcrEngine : IOcrEngine
                     CreateRecognitionPassId(pageSegMode, "missing-vertical-column")), bounds.X, bounds.Y)).ToArray();
             }
 
-            return new ApplicationOcrResult(
+            cancellationToken.ThrowIfCancellationRequested();
+            var result = new ApplicationOcrResult(
                 request,
                 textBlocks,
                 DateTimeOffset.UtcNow,
                 CreateTextBlockSources(textBlocks, recognitionOrientationMode),
                 words: words);
+            if (lease is not null) lease.Reusable = true;
+            return result;
         }
         catch (OperationCanceledException)
         {
@@ -209,6 +223,20 @@ public sealed class TesseractOcrEngine : IOcrEngine
                 "Tesseract OCR failed to recognize text from the captured frame.",
                 exception);
         }
+    }
+
+    internal static bool CanReuseMenuEngine(OcrRequest request, OcrOrientationMode orientation, string language)
+        => language == "eng" && request.ContentLayoutMode == ContentLayoutMode.StaticMenu
+            && request.OrientationMode == OcrOrientationMode.Horizontal
+            && request.PreprocessingSettings.ResolveMode() == OcrPreprocessingMode.None
+            && request.LayoutMode != OcrLayoutMode.Comic
+            && MapCandidateLayoutMode(request, orientation) == PageSegMode.SingleLine;
+
+    private string MenuModelKey(string language)
+    {
+        var model = new FileInfo(Path.Combine(tessdataPath, language + ".traineddata"));
+        // Do not retain an old model after the installed pack is replaced or removed.
+        return $"{language}:{model.Length}:{model.LastWriteTimeUtc.Ticks}";
     }
 
     private static bool TryRecognizeOutlinedLines(OcrRequest request, Engine engine,

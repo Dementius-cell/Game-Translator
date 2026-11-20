@@ -14,6 +14,23 @@ namespace GameTranslator.Tests.Infrastructure;
 public sealed class TesseractOcrEngineTests
 {
     [Theory]
+    [InlineData("eng", ContentLayoutMode.StaticMenu, OcrOrientationMode.Horizontal, 1, true)]
+    [InlineData("eng", ContentLayoutMode.StaticMenu, OcrOrientationMode.Horizontal, 2, false)]
+    [InlineData("eng", ContentLayoutMode.StaticMenu, OcrOrientationMode.Auto, 1, false)]
+    [InlineData("eng", ContentLayoutMode.StaticMenu, OcrOrientationMode.Vertical, 1, false)]
+    [InlineData("eng", ContentLayoutMode.DialogComic, OcrOrientationMode.Horizontal, 1, false)]
+    [InlineData("jpn", ContentLayoutMode.StaticMenu, OcrOrientationMode.Horizontal, 1, false)]
+    [InlineData("eng+jpn", ContentLayoutMode.StaticMenu, OcrOrientationMode.Horizontal, 1, false)]
+    public void EngineReuseIsLimitedToValidatedMenuRoute(string language, ContentLayoutMode content,
+        OcrOrientationMode orientation, int count, bool expected)
+    {
+        var request = new OcrRequest(CreateRequest().Frame, language, orientationMode: orientation,
+            layoutMode: OcrLayoutMode.Dialog, contentLayoutMode: content)
+        { DetectorLineBounds = Enumerable.Range(0, count).Select(i => new BoundingBox(0, i, 2, 1)).ToArray() };
+        Assert.Equal(expected, TesseractOcrEngine.CanReuseMenuEngine(request, orientation, language));
+    }
+
+    [Theory]
     [InlineData(ContentLayoutMode.StaticMenu, OcrOrientationMode.Horizontal, 1, PageSegMode.SingleLine)]
     [InlineData(ContentLayoutMode.StaticMenu, OcrOrientationMode.Horizontal, 2, PageSegMode.SingleBlock)]
     [InlineData(ContentLayoutMode.StaticMenu, OcrOrientationMode.Vertical, 1, PageSegMode.SingleBlockVertText)]

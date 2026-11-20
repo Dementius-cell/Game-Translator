@@ -51,6 +51,8 @@ Current publication boundary: source and tests are maintained on main. Local tes
 
 See [Menu r15 source status](docs/agents/menu-r15-status.md) and [issue #59](https://github.com/Dementius-cell/Game-Translator/issues/59) for the current implementation, verified build and remaining acceptance. ADR-037 background OCR initialization and its readiness banner are implemented. Historical test totals are evidence for their dated snapshots, not current suite targets.
 
+As of 2026-11-21, the latest production source is 0300108 with 1724/1724 local regression tests passing. Native OCR reuse and queue/cadence fixes are retained, but unchanged-text overlay disappearance remains unresolved. The owner rejected the 750ms contradiction-hold experiment and disabled it locally with menu-contradiction-hold.disabled. Its code remains in main, and a clean UI build enables it when that local marker is absent. See the status document for evidence, unsuccessful methods, rollback scope and next acceptance work. No binary release is implied.
+
 ## Documentation
 
 Start here:

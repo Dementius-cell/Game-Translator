@@ -1,8 +1,72 @@
 # Menu r15 source status
 
-Updated: 2026-11-20. Scope: ADR-044 development implementation and local verification, not release publication or completed live-game acceptance.
+Updated: 2026-11-21 (Europe/Moscow). Delivery: [issue #59](https://github.com/Dementius-cell/Game-Translator/issues/59); release gates: [#30](https://github.com/Dementius-cell/Game-Translator/issues/30). **Overlay stability is unresolved.** This is a development status, not release acceptance.
 
-## Current menu association change
+## Current source and installed behavior
+
+Latest production change: [0300108](https://github.com/Dementius-cell/Game-Translator/commit/0300108), following native reuse [b7f10f5](https://github.com/Dementius-cell/Game-Translator/commit/b7f10f5). Its source-equivalent Release build passed with zero warnings/errors and **1724/1724 tests**, plus maintenance and documentation checks. These are local results, not a claim about current remote CI or a published binary release.
+
+The owner rejected the practical result of the ADR-046 750ms contradiction-hold experiment: no perceived stability improvement, and lingering translations interfered with changed scenes. On 2026-11-21 the installed development package was rolled back using the local file menu-contradiction-hold.disabled beside the executable. It takes effect at the next live start. Earlier fixes remain installed; cache, profiles and diagnostic history were not cleared.
+
+**The rollback marker is local-only and is not included in Git.** Experimental code and tests remain in main. Application defaults false, but the current UI enables the experiment when the marker is absent. A clean build therefore does not inherit the owner's rollback. Do not report a repository-wide code revert or re-enable this as an accepted fix. The accepted ADR records authorization to test, not successful live acceptance; its original decision is preserved.
+
+## Retained improvements and evidence
+
+| Method | Evidence and current disposition |
+| --- | --- |
+| Fresh cached association (ADR-045), fixed anchors and bounded relative geometry | Retained with separate local rollback. Enables independent reconfirmation after padding jitter; first transition still removes the old result. Dynamic bounds are not a fixed screen grid. Overall flicker remains open. |
+| Preserve queue position across speculative suppression | Retained; fixes pending work repeatedly moving behind newer requests. Deterministic scheduler coverage; does not eliminate service-capacity limits. |
+| Preserve established periodic OCR cadence across association | Retained; new generations keep cadence and last-start time, never old text/source authority. Synthetic moving-background reproduction passed for unchanged and changed text. |
+| Up to three exclusive reusable native engines on the narrow English horizontal menu route | Retained. Offline fresh/reused outputs matched all 405 inputs, including blocks/words, sequentially and with three workers. Concurrent median call time 37.8 to 9.1ms. A later fresh-engine replay reproduced all 87 selected failure-associated outputs: reuse-state contamination was not supported for those samples. |
+| Live queue/service improvement after native reuse | Two noncontrolled owner runs: OCR median 56.2 to 14.6ms, P95 88.5 to 50.1ms; queue median 888.05 to 412.1ms, P95 1147.3 to 560.7ms; association-to-publication median 3164.923 to 1544.535ms, 15/15 later intervals completed. Published source-expiry events fell 5 to 0 in that pair, but returned in the later multi-menu run. Performance improved; expiry and flicker are not eliminated. |
+| Guarded recognition margin and minimum-RGB chromatic preparation | Retained only under existing geometry/pixel/route guards. Scoped margin probes improved without observed regressions; chromatic probe: 488 cases, no correct-to-incorrect regression. Other dim/outlined/textured inputs still fail; do not broaden guards without negative controls. |
+| Conservative keycap/rating projection | Retained with raw OCR preserved. Owner logs confirmed isolated decorated-key exclusions. Mixed controller icons, badges and ordinary-label errors remain unresolved. |
+| Diagnostic corrections | Retained: proposed/previous/fixed-anchor geometry, exact engine-entry OCR inputs, 250ms capture sampling, pending-hold fields, removal reasons and bounded presentation history. These improve evidence; they are not stability fixes. |
+| Recording/HUD changes | Recording switch works; cyan diagnostic panel removed. Recording intentionally hides overlays during capture and cannot measure normal protected-mode flicker. Baseline tests use recording off. Font-fit work is separate from the disappearance priority. |
+
+## Rejected or inconclusive methods
+
+These are finite offline experiments unless identified as an owner game run. Private images, actual text and harnesses are not public fixtures. Do not repeat a rejected method without new evidence or different controls.
+
+| Method | Result and disposition |
+| --- | --- |
+| First nonempty contradiction held up to 750ms (ADR-046) | Tested in source 0300108; rejected by owner after live run, disabled locally. Do not substitute a longer grace interval for recognition/identity fixes. |
+| Raw-text return within 750ms as predicted success count | 54/88 earlier removals had a raw return in that window. Not a projected-authority replay or 54 prevented disappearances; geometry, capture and occlusion also matter. |
+| Universal padding | Regressed 9/144 synthetic controls. Rejected; the distinct guarded missing-margin correction above remains. |
+| Extra source margins 15/25/50% on 25 inputs | Baseline 18 correct; variants 16/19/21, with 6/5/3 regressions. More aggregate matches do not justify breaking previously correct text. |
+| Directional and stroke-guided margins | Best directional variant 20/25 versus 18 baseline but 2 regressions; stroke-guided 16/25 with 1 fix and 3 regressions. Rejected. |
+| Cubic enlargement 2x/3x | 34/53 and 30/53 versus 41/53 baseline. Rejected for these inputs. |
+| Segmentation changes | SingleLine 41/53; RawLine 33/53 with 11 regressions. SingleBlock/Sparse reproduced baseline outputs. No justified improvement. |
+| Adaptive processing at saved engine entry | 3/53 in this probe, but it does not reproduce the whole-profile adaptive route faithfully. Inconclusive for profile-level Adaptive; do not claim that route was fully tested. |
+| Stronger chromatic suppression | 29/53 versus 41/53, 12 regressions and 0 fixes. Rejected; preserve the narrow minimum-RGB gate. |
+| Contrast-derived identity mask | Matched 11 adjacent stable pairs and 8 fixed discovery canvases, but falsely ignored 4/12 dim added-dot controls. Rejected: can miss actual punctuation changes. |
+| Treat a light boxed prefix as a removable control icon | Geometry also accepted legitimate boxed letters/numbers. Rejected; shape/confidence alone cannot justify deleting meaningful content. |
+| Local key-box/glyph polarity transforms | 528 paired cases examined. Some glyphs improved, but previously correct synthetic captions regressed and real prefixes remained unstable; outlined/clipped icons were not covered. Rejected. |
+| Assume observed detector jitter is nondeterminism | Repeated exact-source replay of 8 selected triggers returned identical raw detections. Strict/nested guards rejected those geometry changes. No basis for global tolerance relaxation. |
+
+## Latest owner run and rollback decision
+
+The final stopped report covers 154.356s on 2026-11-20 at 23:56–23:59 Moscow time; feedback and rollback were recorded on November 21. It used source 0300108's verified precommit binaries, hold enabled and protected capture. There were 53434 lifecycle events, with no dropped lifecycle or presentation events. Engine-input recording is separately bounded and is not assumed complete.
+
+There were 110 distinct pending-hold episodes (duplicate observations collapsed by track/generation): 21 ended with validated agreement to the same confirmed version; 89 ended in removal: 26 timeout, 15 text-version change, 25 speculative contradiction, 21 candidate disappearance, 2 association changes. These are authority outcomes, not proof of 21 prevented visible flickers.
+
+Across the run there were 198 removals of published results: 33 source expiry, 26 hold timeout, 23 association, 15 text-version change, 70 speculative contradiction and 31 candidate disappearance. The user traversed multiple menus. True scene changes must be separated from false removals before comparison; these totals are not 198 bugs or a controlled comparison with the preceding 121s run. Individual latest-run removals have not yet been checked against exact source images. Earlier messenger occlusion must also be excluded from stationary-text comparisons.
+
+## Next work and acceptance
+
+1. Use existing exact OCR inputs and source identities to classify removals into real scene/text changes, wrong OCR on unchanged text, candidate geometry/loss, and source-expiry queue gaps. Do not substitute a nearby screenshot for a missing exact input.
+2. Investigate the 33 source expiries and remaining ordinary-label/control-icon recognition errors with chronological per-track evidence. Preserve letters, numbers and punctuation in negative controls; avoid fixture text lists or absolute screen coordinates.
+3. Require a demonstrated cause and regression-safe offline result before another production experiment. Keep changes reversible. Existing evidence is sufficient to start; no new owner run is needed just to re-triage it.
+4. After a concrete fix, validate unchanged menus, actual label changes, page transitions, capture loss, stop/restart and mixed-zone independence with protected capture. Do not ask the owner to watch every overlay or use recording-mode blanking as baseline flicker evidence.
+5. Retain deferred native-memory attribution and cold-import investigation below. Revisit memory earlier for actual pressure/failures. Transferable packaging, signing and release acceptance remain #30; provider capture-loss acceptance remains #34 and official credential evidence #57.
+
+Preserve source provenance, exact normalized text/groups, two-second freshness, three OCR slots, minimum 500ms per-track start spacing, cache/provider boundaries and raw geometry. Permitted relative anchor jitter does not prove semantic equality. Source/authority events and WPF callbacks do not certify monitor presentation.
+
+## Historical implementation and validation records
+
+The dated records below describe their own snapshots. Test counts, planned next runs and previous acceptance statements are historical; the summary above controls current disposition.
+
+## Association implementation — November 2026
 
 Explicit Horizontal/None/watermark-off single-line menus can now enter a separate OCR-confirmed association when bounded padding jitter fails the strict matcher. Entry removes the old translation and retires the OCR generation; fresh independent OCR must confirm the new authority. Fixed anchors, reciprocal uniqueness, source freshness, cache routing and late-result rejection remain required. Auto/Vertical, grouped and expanded-core paths retain their previous rules. See [ADR-044](../adr/README.md#adr-044) and the [implementation and validation record](../design/incremental-menu-regions-plan.md#ocr-подтверждаемое-сопоставление--2026-11-16).
 
